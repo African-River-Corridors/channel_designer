@@ -1,0 +1,4 @@
+# Release-guard allowlist. Format: <path-glob>  <term>  # reason
+# Every entry needs a reason. Keep this list short.
+
+tests/test_release_guard.py  *  # the guard's own tests plant each term to prove it fails
