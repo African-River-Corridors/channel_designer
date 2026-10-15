@@ -1,0 +1,12 @@
+[package]
+name = "cd-format"
+description = "The parity seam (eval) now; the .cdesign document in spec 0002."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+cd-core.workspace = true
+serde_json.workspace = true

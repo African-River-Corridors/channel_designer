@@ -1,0 +1,5 @@
+# Pinned so every machine and CI build the same way (spec 0001).
+[toolchain]
+channel = "1.99.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

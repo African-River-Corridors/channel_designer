@@ -43,3 +43,38 @@ def test_untracked_files_are_not_scanned(tmp_path):
     root = _repo(tmp_path, {"a.md": "clean\n"})
     (root / "new.md").write_text("genser\n")
     assert rg.scan(root)[0] == []
+
+
+def _commit(root, message="work", author="Dev <dev@example.org>"):
+    env = {"GIT_AUTHOR_NAME": author.split(" <")[0], "GIT_AUTHOR_EMAIL": author.split("<")[1][:-1],
+           "GIT_COMMITTER_NAME": "Dev", "GIT_COMMITTER_EMAIL": "dev@example.org",
+           "PATH": __import__("os").environ["PATH"], "HOME": str(root)}
+    subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", message], check=True, env=env)
+
+
+def test_history_finds_a_term_that_a_later_commit_removed(tmp_path):
+    root = _repo(tmp_path, {"a.md": "the capex is 3\n"})
+    _commit(root)
+    (root / "a.md").write_text("clean\n")
+    subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+    _commit(root, "scrub")
+    assert rg.scan(root)[0] == []                        # the tree is clean
+    hits, _ = rg.scan_history(root)
+    assert len(hits) == 1 and hits[0].endswith(":a.md:1:capex")
+
+
+def test_history_finds_a_term_in_a_commit_message(tmp_path):
+    root = _repo(tmp_path, {"a.md": "clean\n"})
+    _commit(root, "note about the genser deal")
+    hits, _ = rg.scan_history(root)
+    assert len(hits) == 1 and hits[0].endswith(":(commit):3:genser")
+
+
+def test_history_allowlist_can_name_one_commit(tmp_path):
+    root = _repo(tmp_path, {"a.md": "capex\n"})
+    _commit(root)
+    sha = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], check=True,
+                         capture_output=True, text=True).stdout.strip()[:12]
+    (root / rg.ALLOW_FILE).write_text(f"{sha}:a.md  capex  # already published\n")
+    hits, ok = rg.scan_history(root)
+    assert hits == [] and len(ok) == 1

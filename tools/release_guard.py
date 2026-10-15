@@ -1,9 +1,12 @@
 """Release guard: fail if a tracked file holds an embargoed term or a machine-local path.
 
-    python3 tools/release_guard.py
+    python3 tools/release_guard.py              # every file `git ls-files` lists
+    python3 tools/release_guard.py --history    # every line added in `git log -p --all`,
+                                                # plus commit authors and messages
 
-Scans every file `git ls-files` lists, case-insensitively, for the terms in TERMS. Prints one
-`file:line:term` per hit and exits 1 if any hit is not allowlisted. Standard library only.
+Scans case-insensitively for the terms in TERMS. Prints one `where:line:term` per hit and exits 1
+if any hit is not allowlisted. In history mode `where` is `<commit12>:<path>`, with
+`<commit12>:(commit)` for the author, committer and message. Standard library only.
 
 Allowlist: `.release-guard-allow` at the repo root, one entry per line:
 
@@ -11,7 +14,9 @@ Allowlist: `.release-guard-allow` at the repo root, one entry per line:
 
 `<path-glob>` is matched with fnmatch against the repo-relative path. `<term>` is one of TERMS
 (case-insensitive), or `*` for every term. Blank lines and lines starting with `#` are ignored.
-The guard does not scan itself or the allowlist file.
+The guard does not scan itself or the allowlist file. In history mode a glob may also name one
+commit, as `<commit12>:<path>`, to excuse a hit already in published history without excusing the
+same text in the tree.
 """
 from __future__ import annotations
 
@@ -86,13 +91,58 @@ def scan(root: Path) -> tuple[list[str], list[str]]:
     return hits, ok
 
 
+def _git(root: Path, *args: str) -> str:
+    return subprocess.run(["git", "-c", "core.quotepath=off", *args], cwd=root, check=True,
+                          capture_output=True).stdout.decode("utf-8", errors="replace")
+
+
+def scan_history(root: Path) -> tuple[list[str], list[str]]:
+    """Every added line in every commit reachable from any ref, plus each commit's author,
+    committer and message. Hits as '<commit12>:<path>:<line>:<term>'."""
+    allow = load_allow(root)
+    hits, ok = [], []
+
+    def check(where: str, path: str, n: int, line: str) -> None:
+        for term, pat in TERMS.items():
+            if pat.search(line):
+                excused = allowed(path, term, allow) or allowed(where, term, allow)
+                (ok if excused else hits).append(f"{where}:{n}:{term}")
+
+    meta = _git(root, "log", "--all", "--format=%H%x00%an <%ae>%n%cn <%ce>%n%B%x01")
+    for rec in filter(str.strip, meta.split("\x01")):
+        sha, _, body = rec.strip("\n").partition("\x00")
+        for n, line in enumerate(body.splitlines(), 1):
+            check(f"{sha[:12]}:(commit)", "(commit)", n, line)
+
+    patch = _git(root, "log", "--all", "-p", "--no-color", "--no-ext-diff", "-U0",
+                 "--format=commit %H")
+    sha, path, n, header = "", None, 0, False
+    for raw in patch.splitlines():
+        if raw.startswith("commit ") and len(raw) == 47:
+            sha, path, header = raw[7:], None, False
+        elif raw.startswith("diff --git "):
+            path, header = None, True
+        elif header and raw.startswith("+++ "):
+            target = raw[4:]
+            path = None if target == "/dev/null" else target[2:] if target.startswith("b/") else target
+        elif raw.startswith("@@"):
+            header = False
+            n = int(raw.split("+", 1)[1].split()[0].split(",")[0])
+        elif raw.startswith("+") and not header and path and path not in (SELF, ALLOW_FILE):
+            check(f"{sha[:12]}:{path}", path, n, raw[1:])
+            n += 1
+    return hits, ok
+
+
 def main() -> int:
     root = Path(subprocess.run(["git", "rev-parse", "--show-toplevel"], check=True,
                                capture_output=True, text=True).stdout.strip())
-    hits, ok = scan(root)
+    history = "--history" in sys.argv[1:]
+    hits, ok = scan_history(root) if history else scan(root)
     for h in hits:
         print(h)
-    print(f"release guard: {len(hits)} hit(s), {len(ok)} allowlisted", file=sys.stderr)
+    mode = "history" if history else "tree"
+    print(f"release guard ({mode}): {len(hits)} hit(s), {len(ok)} allowlisted", file=sys.stderr)
     return 1 if hits else 0
 
 
