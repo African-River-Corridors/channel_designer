@@ -36,7 +36,7 @@ try:
 except ImportError as exc:  # pragma: no cover - exercised by test_drawings_extra
     raise ImportError(
         "channel_designer drawings need the optional extra: "
-        "pip install 'channel_designer[drawings]'") from exc
+        f"pip install 'channel_designer[drawings]'. Cause: {exc}") from exc
 
 from ..volumes.sections import CrossSection, SectionVolumes
 
