@@ -61,8 +61,10 @@ def cases():
     k = np.concatenate([np.full(25, 1 / 400.0), np.full(25, -1 / 300.0), np.zeros(10)])
     c("bend_units", 1, "bend_units", dict(s=[10.0 * i for i in range(60)], kappa=k))
     c("bend_units_smooth_9", 1, "bend_units", dict(s=[10.0 * i for i in range(60)], kappa=k, smooth_n=9))
+    # Alternating signs that do not cancel: a 5-point mean of +-0.002 is zero up to the last bit, and the
+    # sign of that zero is whatever the platform rounds to (a knife edge). This one is never near zero.
     c("bend_units_noisy", 1, "bend_units",
-      dict(s=[10.0 * i for i in range(30)], kappa=[0.002 * ((-1) ** i) for i in range(30)]))
+      dict(s=[10.0 * i for i in range(30)], kappa=[0.004 if i % 2 == 0 else -0.0035 for i in range(30)]))
     # e_exact and feasible_within, from the tests
     c("e_exact_feasible_bend_is_zero", 1, "e_exact", dict(kappa=[1 / 1000.0] * 50, ds=10.0, r_min=300.0))
     c("e_exact_tight_bend", 1, "e_exact", dict(kappa=[1 / 150.0] * 50, ds=10.0, r_min=300.0))

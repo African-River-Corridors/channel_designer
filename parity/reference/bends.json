@@ -151,9 +151,9 @@
             "s1": 30.0,
             "length_m": 30.0,
             "sign": 1,
-            "kappa_max": 0.0004,
-            "r_min_natural_m": 2500.0,
-            "deflection_rad": 0.004
+            "kappa_max": 0.001,
+            "r_min_natural_m": 1000.0,
+            "deflection_rad": 0.016
           }
         ]
       }
