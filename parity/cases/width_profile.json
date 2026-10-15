@@ -1,0 +1,633 @@
+{
+  "entry_point": "width_profile",
+  "cases": [
+    {
+      "id": "make_width_fn/loa80_beam12",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 80.0,
+          "beam_m": 12.0,
+          "draft_m": 2.5,
+          "radii": [60.0, 150.0, 240.0, 480.0, 1000.0, 5000.0, "float:inf", 0.0, -10.0]
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/loa60_beam10",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 60.0,
+          "beam_m": 10.0,
+          "draft_m": 2.0,
+          "radii": [60.0, 150.0, 240.0, 480.0, 1000.0, 5000.0, "float:inf", 0.0, -10.0]
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/buildup_override",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 80.0,
+          "beam_m": 12.0,
+          "draft_m": 2.5,
+          "radii": [60.0, 150.0, 240.0, 480.0, 1000.0, 5000.0, "float:inf", 0.0, -10.0],
+          "overrides": {
+            "pianc_use_buildup": true,
+            "pianc_maneuverability": "good"
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/options_override",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 80.0,
+          "beam_m": 12.0,
+          "draft_m": 2.5,
+          "radii": [60.0, 150.0, 240.0, 480.0, 1000.0, 5000.0, "float:inf", 0.0, -10.0],
+          "overrides": {
+            "options": {
+              "width_multiple": 3.1
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/toy_method",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 80.0,
+          "beam_m": 12.0,
+          "draft_m": 2.5,
+          "rule_set": "toy",
+          "radii": [60.0, 150.0, 240.0, 480.0, 1000.0, 5000.0, "float:inf", 0.0, -10.0],
+          "toy_method": {
+            "name": "toy",
+            "k_beam": 2.5,
+            "bend_div": 4.0,
+            "rmin_mult": 4.0
+          }
+        }
+      }
+    },
+    {
+      "id": "width_params_dict/params_dict_pianc",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "width_params_dict",
+        "args": {
+          "loa_m": 80.0,
+          "beam_m": 12.0,
+          "draft_m": 2.5
+        }
+      }
+    },
+    {
+      "id": "width_params_dict/params_dict_toy",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "width_params_dict",
+        "args": {
+          "loa_m": 80.0,
+          "beam_m": 12.0,
+          "draft_m": 2.5,
+          "rule_set": "toy",
+          "toy_method": {
+            "name": "toy",
+            "k_beam": 2.5,
+            "bend_div": 4.0,
+            "rmin_mult": 4.0
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_00",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 115.89,
+          "beam_m": 14.187,
+          "draft_m": 4.824,
+          "radii": [3302.294, 1988.584, 2822.343, 1640.66, 3579.32, 382.23, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 2.367,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_01",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 136.645,
+          "beam_m": 29.339,
+          "draft_m": 3.781,
+          "radii": [3363.476, 450.708, 742.842, 3260.557, 3656.87, 2451.345, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 3.264,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_02",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 78.353,
+          "beam_m": 5.637,
+          "draft_m": 5.39,
+          "radii": [1619.908, 945.709, 2132.327, 3553.129, 433.711, 2220.854, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 2.081,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_03",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 217.288,
+          "beam_m": 23.61,
+          "draft_m": 5.937,
+          "radii": [715.188, 1320.874, 983.103, 368.209, 3752.463, 315.78, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 2.071,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_04",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 224.428,
+          "beam_m": 18.61,
+          "draft_m": 1.014,
+          "radii": [3491.695, 623.82, 2456.784, 2353.856, 3633.893, 2768.623, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 3.265,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_05",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 114.531,
+          "beam_m": 21.092,
+          "draft_m": 4.852,
+          "radii": [1443.279, 1938.404, 1575.84, 1800.473, 385.565, 100.186, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 2.033,
+            "pianc_use_buildup": true
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_06",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 150.771,
+          "beam_m": 23.824,
+          "draft_m": 5.471,
+          "radii": [1391.904, 2990.741, 452.837, 760.387, 809.969, 2603.06, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 2.544,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_07",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 238.002,
+          "beam_m": 15.228,
+          "draft_m": 5.955,
+          "radii": [1965.643, 319.495, 550.942, 1235.627, 251.168, 996.447, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 2.232,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_08",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 116.007,
+          "beam_m": 21.794,
+          "draft_m": 3.551,
+          "radii": [2106.511, 2557.48, 3466.182, 3377.678, 70.248, 2818.521, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 3.799,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_09",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 173.981,
+          "beam_m": 20.125,
+          "draft_m": 3.722,
+          "radii": [3735.283, 2113.966, 3507.592, 3689.768, 3589.78, 2359.292, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 2.47,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_10",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 194.624,
+          "beam_m": 8.991,
+          "draft_m": 2.768,
+          "radii": [2562.633, 929.227, 2852.38, 734.164, 631.169, 1519.682, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 3.74,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_11",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 145.02,
+          "beam_m": 29.306,
+          "draft_m": 1.284,
+          "radii": [1385.463, 2213.977, 1619.466, 2595.834, 337.26, 2746.114, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 3.005,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_12",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 209.018,
+          "beam_m": 23.151,
+          "draft_m": 2.712,
+          "radii": [1687.89, 3880.932, 235.701, 330.908, 3853.871, 2789.208, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 3.341,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_13",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 142.105,
+          "beam_m": 29.229,
+          "draft_m": 1.684,
+          "radii": [2684.451, 1224.902, 103.016, 1631.316, 515.276, 272.42, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 2.138,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_14",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 77.679,
+          "beam_m": 29.175,
+          "draft_m": 4.878,
+          "radii": [3488.231, 2160.785, 2668.514, 2937.357, 3305.048, 2808.428, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 3.914,
+            "pianc_use_buildup": true
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_15",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 190.318,
+          "beam_m": 17.84,
+          "draft_m": 2.92,
+          "radii": [2512.883, 602.305, 898.534, 2892.359, 1442.043, 2548.297, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 2.138,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_16",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 106.489,
+          "beam_m": 14.288,
+          "draft_m": 2.924,
+          "radii": [2973.23, 1127.325, 3112.604, 2275.023, 360.102, 2759.42, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 3.357,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_17",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 213.343,
+          "beam_m": 16.579,
+          "draft_m": 3.395,
+          "radii": [3195.336, 102.053, 2023.177, 3877.275, 223.895, 3651.757, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 2.634,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_18",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 39.608,
+          "beam_m": 29.504,
+          "draft_m": 3.343,
+          "radii": [1531.943, 2501.82, 3734.684, 321.527, 2722.409, 1667.514, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 3.88,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_19",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 212.617,
+          "beam_m": 14.138,
+          "draft_m": 3.347,
+          "radii": [1572.997, 1417.219, 494.245, 1929.576, 3722.229, 3017.108, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 2.404,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_20",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 191.562,
+          "beam_m": 25.456,
+          "draft_m": 5.199,
+          "radii": [1416.853, 990.262, 1120.019, 1409.329, 280.432, 2385.739, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 2.765,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_21",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 127.278,
+          "beam_m": 17.935,
+          "draft_m": 4.118,
+          "radii": [1664.041, 3258.242, 3234.675, 3802.299, 543.13, 1791.14, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 2.817,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_22",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 110.736,
+          "beam_m": 17.426,
+          "draft_m": 3.868,
+          "radii": [450.451, 293.513, 368.85, 1730.67, 2908.815, 3858.619, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 2.607,
+            "pianc_use_buildup": true
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_23",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 36.58,
+          "beam_m": 11.846,
+          "draft_m": 1.678,
+          "radii": [1470.315, 739.55, 3810.71, 1148.175, 98.983, 2393.464, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 3.75,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/sweep_24",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 128.37,
+          "beam_m": 6.34,
+          "draft_m": 2.088,
+          "radii": [2920.077, 1024.585, 1600.206, 555.603, 1209.128, 3014.416, "float:inf"],
+          "overrides": {
+            "pianc_width_multiple": 2.409,
+            "pianc_use_buildup": false
+          }
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/unknown_rule_set",
+      "tier": 3,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 80.0,
+          "beam_m": 12.0,
+          "draft_m": 2.5,
+          "rule_set": "nope",
+          "radii": [100.0]
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/china_rule_set",
+      "tier": 3,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 80.0,
+          "beam_m": 12.0,
+          "draft_m": 2.5,
+          "rule_set": "china",
+          "radii": [100.0]
+        }
+      }
+    },
+    {
+      "id": "make_width_fn/nonpositive_beam",
+      "tier": 3,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "make_width_fn",
+        "args": {
+          "loa_m": 80.0,
+          "beam_m": 0.0,
+          "draft_m": 2.5,
+          "radii": [100.0]
+        }
+      }
+    },
+    {
+      "id": "width_params_dict/params_dict_unknown",
+      "tier": 3,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "width_params_dict",
+        "args": {
+          "loa_m": 80.0,
+          "beam_m": 12.0,
+          "draft_m": 2.5,
+          "rule_set": "nope"
+        }
+      }
+    }
+  ],
+  "retired": []
+}

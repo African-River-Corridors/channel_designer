@@ -140,7 +140,9 @@ fn base_tree(sha: &str) -> Result<oracle::Tree> {
 }
 
 /// Re-run the frozen Python into a scratch folder; the committed Reference Results must match
-/// byte for byte. This proves they came from `cargo xtask regen` and not from a hand edit.
+/// within the parity tolerance (see `oracle::reproduces_within`; not byte for byte, because other
+/// machines round the last bits of a float differently). This proves they came from
+/// `cargo xtask regen` and not from a hand edit.
 fn reproduces() -> Result<Vec<String>> {
     let root = root();
     let scratch = root.join("target/oracle-guard/reference");
@@ -162,13 +164,27 @@ fn reproduces() -> Result<Vec<String>> {
     all.extend(names(&scratch));
     all.sort();
     all.dedup();
+    let tol: serde_json::Value = std::fs::read_to_string(root.join(oracle::TOLERANCE))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default();
+    let get = |k: &str| {
+        tol.get(k)
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(0.0)
+    };
+    let (rel, abs) = (get("rel"), get("abs"));
     let mut bad = Vec::new();
     for name in all {
-        let committed = std::fs::read(committed_dir.join(&name)).ok();
-        let fresh = std::fs::read(scratch.join(&name)).ok();
-        if committed != fresh {
+        let committed = std::fs::read_to_string(committed_dir.join(&name)).ok();
+        let fresh = std::fs::read_to_string(scratch.join(&name)).ok();
+        let why = match (&committed, &fresh) {
+            (Some(c), Some(f)) => oracle::reproduces_within(c, f, rel, abs),
+            _ => Some("present on one side only".to_string()),
+        };
+        if let Some(why) = why {
             bad.push(format!(
-                "{}{name}: does not match a fresh `cargo xtask regen`; never edit Reference Results by hand",
+                "{}{name}: does not match a fresh `cargo xtask regen` ({why}); never edit Reference Results by hand",
                 oracle::REFERENCE_DIR
             ));
         }

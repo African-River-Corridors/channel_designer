@@ -1,0 +1,1192 @@
+{
+  "entry_point": "pools",
+  "cases": [
+    {
+      "id": "sample_bed_profile/profile_straight_river",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "sample_bed_profile",
+        "args": {
+          "centerline": {
+            "geom": "LineString",
+            "coords": [[0.0, 0.0], [9000.0, 0.0]]
+          },
+          "terrain": {
+            "kind": "hills",
+            "base": -1.0,
+            "gx": 0.0002,
+            "gy": 0.0,
+            "hills": [[3000.0, 0.0, 6.0, 80.0], [7000.0, 0.0, 9.0, 120.0]]
+          }
+        }
+      }
+    },
+    {
+      "id": "sample_bed_profile/profile_window_options",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "sample_bed_profile",
+        "args": {
+          "centerline": {
+            "geom": "LineString",
+            "coords": [[0.0, 0.0], [6000.0, 0.0]]
+          },
+          "terrain": {
+            "kind": "hills",
+            "base": -1.0,
+            "gx": 0.0002,
+            "gy": 0.0,
+            "hills": [[3000.0, 0.0, 6.0, 80.0], [7000.0, 0.0, 9.0, 120.0]]
+          },
+          "spacing_m": 20.0,
+          "slope_percentile": 30.0,
+          "slope_perc_window_m": 1000.0,
+          "slope_smooth_window_m": 2000.0
+        }
+      }
+    },
+    {
+      "id": "sample_bed_profile/profile_flows_the_wrong_way_is_reversed",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "sample_bed_profile",
+        "args": {
+          "centerline": {
+            "geom": "LineString",
+            "coords": [[0.0, 0.0], [8000.0, 0.0]]
+          },
+          "terrain": {
+            "kind": "hills",
+            "base": -1.0,
+            "gx": -0.0002,
+            "gy": 0.0,
+            "hills": [[3000.0, 0.0, 6.0, 80.0], [7000.0, 0.0, 9.0, 120.0]]
+          }
+        }
+      }
+    },
+    {
+      "id": "sample_bed_profile/profile_with_no_ground_data",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "sample_bed_profile",
+        "args": {
+          "centerline": {
+            "geom": "LineString",
+            "coords": [[0.0, 0.0], [3000.0, 0.0]]
+          },
+          "terrain": {
+            "kind": "plane",
+            "z0": "float:nan",
+            "gx": 0.0,
+            "gy": 0.0
+          }
+        }
+      }
+    },
+    {
+      "id": "sample_bed_profile/profile_bent_line",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "sample_bed_profile",
+        "args": {
+          "centerline": {
+            "geom": "LineString",
+            "coords": [[0.0, 0.0], [2000.0, 600.0], [4000.0, -300.0], [7000.0, 100.0]]
+          },
+          "terrain": {
+            "kind": "hills",
+            "base": 0.0,
+            "gx": 0.0003,
+            "gy": 0.0,
+            "hills": []
+          }
+        }
+      }
+    },
+    {
+      "id": "sample_bed_profile/profile_window_zero",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "sample_bed_profile",
+        "args": {
+          "centerline": {
+            "geom": "LineString",
+            "coords": [[0.0, 0.0], [2000.0, 0.0]]
+          },
+          "terrain": {
+            "kind": "hills",
+            "base": -1.0,
+            "gx": 0.0002,
+            "gy": 0.0,
+            "hills": [[3000.0, 0.0, 6.0, 80.0], [7000.0, 0.0, 9.0, 120.0]]
+          },
+          "slope_perc_window_m": 0.0,
+          "slope_smooth_window_m": 0.0
+        }
+      }
+    },
+    {
+      "id": "overall_bottom_slope/slope_trend_with_spike",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "overall_bottom_slope",
+        "args": {
+          "z_raw": [0.2, 0.2075, 0.215, 0.2225, 0.23, 0.2375, 0.245, 0.2525, 0.26, 0.2675, 0.275, 0.2825, 0.29, 0.2975, 0.305, 0.3125, 0.32, 0.3275, 0.335, 0.3425, 0.35, 0.3575, 0.365, 0.3725, 0.38, 0.3875, 0.395, 0.4025, 0.41, 0.4175, 0.425, 0.4325, 0.44, 0.4475, 0.455, 0.4625, 0.47, 0.4775, 0.485, 0.4925, 0.5, 6.5075, 6.515, 6.5225, 6.53, 6.5375, 0.545, 0.5525, 0.56, 0.5675, 0.575, 0.5825, 0.59, 0.5975, 0.605, 0.6125, 0.62, 0.6275, 0.635, 0.6425, 0.65, 0.6575, 0.665, 0.6725, 0.68, 0.6875, 0.695, 0.7025, 0.71, 0.7175, 0.725, 0.7325, 0.74, 0.7475, 0.755, 0.7625, 0.77, 0.7775, 0.785, 0.7925, 0.8, 0.8075, 0.815, 0.8225, 0.83, 0.8375, 0.845, 0.8525, 0.86, 0.8675, 0.875, 0.8825, 0.89, 0.8975, 0.905, 0.9125, 0.92, 0.9275, 0.935, 0.9425, 0.95, 0.9575, 0.965, 0.9725, 0.98, 0.9875, 0.995, 1.0025, 1.01, 1.0175, 1.025, 1.0325, 1.04, 1.0475, 1.055, 1.0625, 1.07, 1.0775, 1.085, 1.0925],
+          "spacing_m": 25.0
+        }
+      }
+    },
+    {
+      "id": "overall_bottom_slope/slope_with_nans",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "overall_bottom_slope",
+        "args": {
+          "z_raw": ["float:nan", 0.2075, 0.215, 0.2225, 0.23, 0.2375, 0.245, 0.2525, 0.26, 0.2675, "float:nan", "float:nan", "float:nan", "float:nan", 0.305, 0.3125, 0.32, 0.3275, 0.335, 0.3425, 0.35, 0.3575, 0.365, 0.3725, 0.38, 0.3875, 0.395, 0.4025, 0.41, 0.4175, 0.425, 0.4325, 0.44, 0.4475, 0.455, 0.4625, 0.47, 0.4775, 0.485, 0.4925, 0.5, 6.5075, 6.515, 6.5225, 6.53, 6.5375, 0.545, 0.5525, 0.56, 0.5675, 0.575, 0.5825, 0.59, 0.5975, 0.605, 0.6125, 0.62, 0.6275, 0.635, 0.6425, 0.65, 0.6575, 0.665, 0.6725, 0.68, 0.6875, 0.695, 0.7025, 0.71, 0.7175, 0.725, 0.7325, 0.74, 0.7475, 0.755, 0.7625, 0.77, 0.7775, 0.785, 0.7925, 0.8, 0.8075, 0.815, 0.8225, 0.83, 0.8375, 0.845, 0.8525, 0.86, 0.8675, 0.875, 0.8825, 0.89, 0.8975, 0.905, 0.9125, 0.92, 0.9275, 0.935, 0.9425, 0.95, 0.9575, 0.965, 0.9725, 0.98, 0.9875, 0.995, 1.0025, 1.01, 1.0175, 1.025, 1.0325, 1.04, 1.0475, 1.055, 1.0625, 1.07, 1.0775, 1.085, "float:nan"],
+          "spacing_m": 25.0
+        }
+      }
+    },
+    {
+      "id": "overall_bottom_slope/slope_all_nan",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "overall_bottom_slope",
+        "args": {
+          "z_raw": ["float:nan", "float:nan", "float:nan", "float:nan", "float:nan", "float:nan", "float:nan", "float:nan", "float:nan", "float:nan"],
+          "spacing_m": 25.0
+        }
+      }
+    },
+    {
+      "id": "overall_bottom_slope/slope_short_windows",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "overall_bottom_slope",
+        "args": {
+          "z_raw": [0.2, 0.2075, 0.215, 0.2225, 0.23, 0.2375, 0.245, 0.2525, 0.26, 0.2675, 0.275, 0.2825, 0.29, 0.2975, 0.305, 0.3125, 0.32, 0.3275, 0.335, 0.3425, 0.35, 0.3575, 0.365, 0.3725, 0.38, 0.3875, 0.395, 0.4025, 0.41, 0.4175, 0.425, 0.4325, 0.44, 0.4475, 0.455, 0.4625, 0.47, 0.4775, 0.485, 0.4925, 0.5, 6.5075, 6.515, 6.5225, 6.53, 6.5375, 0.545, 0.5525, 0.56, 0.5675, 0.575, 0.5825, 0.59, 0.5975, 0.605, 0.6125, 0.62, 0.6275, 0.635, 0.6425, 0.65, 0.6575, 0.665, 0.6725, 0.68, 0.6875, 0.695, 0.7025, 0.71, 0.7175, 0.725, 0.7325, 0.74, 0.7475, 0.755, 0.7625, 0.77, 0.7775, 0.785, 0.7925, 0.8, 0.8075, 0.815, 0.8225, 0.83, 0.8375, 0.845, 0.8525, 0.86, 0.8675, 0.875, 0.8825, 0.89, 0.8975, 0.905, 0.9125, 0.92, 0.9275, 0.935, 0.9425, 0.95, 0.9575, 0.965, 0.9725, 0.98, 0.9875, 0.995, 1.0025, 1.01, 1.0175, 1.025, 1.0325, 1.04, 1.0475, 1.055, 1.0625, 1.07, 1.0775, 1.085, 1.0925],
+          "spacing_m": 25.0,
+          "percentile": 50.0,
+          "perc_window_m": 100.0,
+          "smooth_window_m": 200.0
+        }
+      }
+    },
+    {
+      "id": "overall_bottom_slope/slope_falling_bed_is_made_non_decreasing",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "overall_bottom_slope",
+        "args": {
+          "z_raw": [5.0, 4.915254237288136, 4.830508474576272, 4.745762711864407, 4.661016949152542, 4.576271186440678, 4.491525423728813, 4.406779661016949, 4.322033898305085, 4.237288135593221, 4.152542372881356, 4.067796610169491, 3.983050847457627, 3.898305084745763, 3.8135593220338984, 3.7288135593220337, 3.6440677966101696, 3.5593220338983054, 3.4745762711864407, 3.389830508474576, 3.305084745762712, 3.2203389830508478, 3.135593220338983, 3.0508474576271185, 2.9661016949152543, 2.88135593220339, 2.7966101694915255, 2.711864406779661, 2.6271186440677967, 2.5423728813559325, 2.457627118644068, 2.3728813559322033, 2.288135593220339, 2.203389830508475, 2.1186440677966103, 2.0338983050847457, 1.9491525423728815, 1.8644067796610173, 1.7796610169491527, 1.694915254237288, 1.6101694915254239, 1.5254237288135597, 1.440677966101695, 1.3559322033898304, 1.2711864406779663, 1.186440677966102, 1.1016949152542375, 1.0169491525423728, 0.9322033898305087, 0.8474576271186445, 0.7627118644067803, 0.6779661016949152, 0.593220338983051, 0.5084745762711869, 0.4237288135593218, 0.3389830508474576, 0.25423728813559343, 0.16949152542372925, 0.08474576271186507, 0.0],
+          "spacing_m": 25.0,
+          "perc_window_m": 100.0,
+          "smooth_window_m": 100.0
+        }
+      }
+    },
+    {
+      "id": "place_weirs/weirs_recursion",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "place_weirs",
+        "args": {
+          "profile": {
+            "centerline": {
+              "geom": "LineString",
+              "coords": [[0.0, 0.0], [9000.0, 0.0]]
+            },
+            "terrain": {
+              "kind": "hills",
+              "base": -1.0,
+              "gx": 0.0002,
+              "gy": 0.0,
+              "hills": [[3000.0, 0.0, 6.0, 80.0], [7000.0, 0.0, 9.0, 120.0]]
+            }
+          },
+          "place": {
+            "kind": "recursion",
+            "weir_height_m": 5.0,
+            "implantation_depth_m": 2.0
+          }
+        }
+      }
+    },
+    {
+      "id": "place_weirs/weirs_start_elevation",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "place_weirs",
+        "args": {
+          "profile": {
+            "centerline": {
+              "geom": "LineString",
+              "coords": [[0.0, 0.0], [9000.0, 0.0]]
+            },
+            "terrain": {
+              "kind": "hills",
+              "base": -1.0,
+              "gx": 0.0002,
+              "gy": 0.0,
+              "hills": [[3000.0, 0.0, 6.0, 80.0], [7000.0, 0.0, 9.0, 120.0]]
+            }
+          },
+          "place": {
+            "kind": "recursion",
+            "weir_height_m": 5.0,
+            "implantation_depth_m": 2.0,
+            "start_elevation_m": 1.0
+          }
+        }
+      }
+    },
+    {
+      "id": "place_weirs/weirs_start_chainage",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "place_weirs",
+        "args": {
+          "profile": {
+            "centerline": {
+              "geom": "LineString",
+              "coords": [[0.0, 0.0], [9000.0, 0.0]]
+            },
+            "terrain": {
+              "kind": "hills",
+              "base": -1.0,
+              "gx": 0.0002,
+              "gy": 0.0,
+              "hills": [[3000.0, 0.0, 6.0, 80.0], [7000.0, 0.0, 9.0, 120.0]]
+            }
+          },
+          "place": {
+            "kind": "recursion",
+            "weir_height_m": 5.0,
+            "implantation_depth_m": 2.0,
+            "start_chainage_m": 2500.0
+          }
+        }
+      }
+    },
+    {
+      "id": "place_weirs/weirs_ceiling",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "place_weirs",
+        "args": {
+          "profile": {
+            "centerline": {
+              "geom": "LineString",
+              "coords": [[0.0, 0.0], [9000.0, 0.0]]
+            },
+            "terrain": {
+              "kind": "hills",
+              "base": -1.0,
+              "gx": 0.0002,
+              "gy": 0.0,
+              "hills": [[3000.0, 0.0, 6.0, 80.0], [7000.0, 0.0, 9.0, 120.0]]
+            }
+          },
+          "place": {
+            "kind": "recursion",
+            "weir_height_m": 5.0,
+            "implantation_depth_m": 2.0,
+            "max_weir_elevation_m": 4.0
+          }
+        }
+      }
+    },
+    {
+      "id": "place_weirs/weirs_no_lift_refused",
+      "tier": 3,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "place_weirs",
+        "args": {
+          "profile": {
+            "centerline": {
+              "geom": "LineString",
+              "coords": [[0.0, 0.0], [9000.0, 0.0]]
+            },
+            "terrain": {
+              "kind": "hills",
+              "base": -1.0,
+              "gx": 0.0002,
+              "gy": 0.0,
+              "hills": [[3000.0, 0.0, 6.0, 80.0], [7000.0, 0.0, 9.0, 120.0]]
+            }
+          },
+          "place": {
+            "kind": "recursion",
+            "weir_height_m": 2.0,
+            "implantation_depth_m": 2.0
+          }
+        }
+      }
+    },
+    {
+      "id": "place_weirs/weirs_start_chainage_past_end",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "place_weirs",
+        "args": {
+          "profile": {
+            "centerline": {
+              "geom": "LineString",
+              "coords": [[0.0, 0.0], [9000.0, 0.0]]
+            },
+            "terrain": {
+              "kind": "hills",
+              "base": -1.0,
+              "gx": 0.0002,
+              "gy": 0.0,
+              "hills": [[3000.0, 0.0, 6.0, 80.0], [7000.0, 0.0, 9.0, 120.0]]
+            }
+          },
+          "place": {
+            "kind": "recursion",
+            "weir_height_m": 5.0,
+            "implantation_depth_m": 2.0,
+            "start_chainage_m": 99999.0
+          }
+        }
+      }
+    },
+    {
+      "id": "place_weirs/weirs_explicit",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "place_weirs",
+        "args": {
+          "profile": {
+            "centerline": {
+              "geom": "LineString",
+              "coords": [[0.0, 0.0], [9000.0, 0.0]]
+            },
+            "terrain": {
+              "kind": "hills",
+              "base": -1.0,
+              "gx": 0.0002,
+              "gy": 0.0,
+              "hills": [[3000.0, 0.0, 6.0, 80.0], [7000.0, 0.0, 9.0, 120.0]]
+            }
+          },
+          "place": {
+            "kind": "explicit",
+            "cascade": [
+              {
+                "chainage_m": 6000.0,
+                "pool_mwl_m": 6.5,
+                "structure_height_m": 5.0
+              },
+              {
+                "chainage_m": 1500.0,
+                "pool_mwl_m": 2.0,
+                "structure_height_m": 4.0
+              },
+              {
+                "chainage_m": 9000.0,
+                "pool_mwl_m": 9.0
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "place_weirs/weirs_explicit_empty",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "place_weirs",
+        "args": {
+          "profile": {
+            "centerline": {
+              "geom": "LineString",
+              "coords": [[0.0, 0.0], [9000.0, 0.0]]
+            },
+            "terrain": {
+              "kind": "hills",
+              "base": -1.0,
+              "gx": 0.0002,
+              "gy": 0.0,
+              "hills": [[3000.0, 0.0, 6.0, 80.0], [7000.0, 0.0, 9.0, 120.0]]
+            }
+          },
+          "place": {
+            "kind": "explicit",
+            "cascade": []
+          }
+        }
+      }
+    },
+    {
+      "id": "place_weirs/weirs_explicit_chainage_past_end",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "place_weirs",
+        "args": {
+          "profile": {
+            "centerline": {
+              "geom": "LineString",
+              "coords": [[0.0, 0.0], [9000.0, 0.0]]
+            },
+            "terrain": {
+              "kind": "hills",
+              "base": -1.0,
+              "gx": 0.0002,
+              "gy": 0.0,
+              "hills": [[3000.0, 0.0, 6.0, 80.0], [7000.0, 0.0, 9.0, 120.0]]
+            }
+          },
+          "place": {
+            "kind": "explicit",
+            "cascade": [
+              {
+                "chainage_m": 99999.0,
+                "pool_mwl_m": 3.0
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "water_levels/levels_recursion",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "water_levels",
+        "args": {
+          "weirs": {
+            "profile": {
+              "centerline": {
+                "geom": "LineString",
+                "coords": [[0.0, 0.0], [9000.0, 0.0]]
+              },
+              "terrain": {
+                "kind": "hills",
+                "base": -1.0,
+                "gx": 0.0002,
+                "gy": 0.0,
+                "hills": [[3000.0, 0.0, 6.0, 80.0], [7000.0, 0.0, 9.0, 120.0]]
+              }
+            },
+            "place": {
+              "kind": "recursion",
+              "weir_height_m": 5.0,
+              "implantation_depth_m": 2.0
+            }
+          },
+          "chainages": [-10.0, 0.0, 100.0, 1500.0, 1500.0001, 4000.0, 6000.0, 8999.0, 9000.0, 20000.0],
+          "depth_m": 3.0
+        }
+      }
+    },
+    {
+      "id": "water_levels/levels_explicit_downstream_sea_level",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "water_levels",
+        "args": {
+          "weirs": {
+            "profile": {
+              "centerline": {
+                "geom": "LineString",
+                "coords": [[0.0, 0.0], [9000.0, 0.0]]
+              },
+              "terrain": {
+                "kind": "hills",
+                "base": -1.0,
+                "gx": 0.0002,
+                "gy": 0.0,
+                "hills": [[3000.0, 0.0, 6.0, 80.0], [7000.0, 0.0, 9.0, 120.0]]
+              }
+            },
+            "place": {
+              "kind": "explicit",
+              "cascade": [
+                {
+                  "chainage_m": 6000.0,
+                  "pool_mwl_m": 6.5,
+                  "structure_height_m": 5.0
+                },
+                {
+                  "chainage_m": 1500.0,
+                  "pool_mwl_m": 2.0,
+                  "structure_height_m": 4.0
+                },
+                {
+                  "chainage_m": 9000.0,
+                  "pool_mwl_m": 9.0
+                }
+              ]
+            }
+          },
+          "chainages": [-10.0, 0.0, 100.0, 1500.0, 1500.0001, 4000.0, 6000.0, 8999.0, 9000.0, 20000.0],
+          "depth_m": 3.0,
+          "downstream_water_level_m": 0.5,
+          "overdepth_m": 0.4
+        }
+      }
+    },
+    {
+      "id": "water_levels/levels_no_weirs",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "water_levels",
+        "args": {
+          "weirs": {
+            "profile": {
+              "centerline": {
+                "geom": "LineString",
+                "coords": [[0.0, 0.0], [9000.0, 0.0]]
+              },
+              "terrain": {
+                "kind": "hills",
+                "base": -1.0,
+                "gx": 0.0002,
+                "gy": 0.0,
+                "hills": [[3000.0, 0.0, 6.0, 80.0], [7000.0, 0.0, 9.0, 120.0]]
+              }
+            },
+            "place": {
+              "kind": "explicit",
+              "cascade": []
+            }
+          },
+          "chainages": [-10.0, 0.0, 100.0, 1500.0, 1500.0001, 4000.0, 6000.0, 8999.0, 9000.0, 20000.0],
+          "depth_m": 3.0,
+          "downstream_water_level_m": 1.2
+        }
+      }
+    },
+    {
+      "id": "sample_bed_profile/profile_sweep_00",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "sample_bed_profile",
+        "args": {
+          "centerline": {
+            "geom": "LineString",
+            "coords": [[0.0, 0.0], [3353.711, 0.0]]
+          },
+          "terrain": {
+            "kind": "hills",
+            "base": 0.22,
+            "gx": 0.0,
+            "gy": 0.0,
+            "hills": [[1706.895, 0.0, 3.345, 151.731]]
+          },
+          "spacing_m": 30.593,
+          "slope_percentile": 42.197,
+          "slope_perc_window_m": 1950.638,
+          "slope_smooth_window_m": 1398.418
+        }
+      }
+    },
+    {
+      "id": "place_weirs/weirs_sweep_00",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "place_weirs",
+        "args": {
+          "profile": {
+            "centerline": {
+              "geom": "LineString",
+              "coords": [[0.0, 0.0], [3353.711, 0.0]]
+            },
+            "terrain": {
+              "kind": "hills",
+              "base": 0.22,
+              "gx": 0.0,
+              "gy": 0.0,
+              "hills": [[1706.895, 0.0, 3.345, 151.731]]
+            },
+            "spacing_m": 30.593,
+            "slope_percentile": 42.197,
+            "slope_perc_window_m": 1950.638,
+            "slope_smooth_window_m": 1398.418
+          },
+          "place": {
+            "kind": "recursion",
+            "weir_height_m": 4.831,
+            "implantation_depth_m": 0.998,
+            "start_elevation_m": 0.873,
+            "max_weir_elevation_m": null
+          }
+        }
+      }
+    },
+    {
+      "id": "water_levels/levels_sweep_00",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "water_levels",
+        "args": {
+          "weirs": {
+            "profile": {
+              "centerline": {
+                "geom": "LineString",
+                "coords": [[0.0, 0.0], [3353.711, 0.0]]
+              },
+              "terrain": {
+                "kind": "hills",
+                "base": 0.22,
+                "gx": 0.0,
+                "gy": 0.0,
+                "hills": [[1706.895, 0.0, 3.345, 151.731]]
+              },
+              "spacing_m": 30.593,
+              "slope_percentile": 42.197,
+              "slope_perc_window_m": 1950.638,
+              "slope_smooth_window_m": 1398.418
+            },
+            "place": {
+              "kind": "recursion",
+              "weir_height_m": 4.831,
+              "implantation_depth_m": 0.998
+            }
+          },
+          "chainages": [1490.46, 1532.21, 1705.124, 581.359, 2956.198, 2394.696],
+          "depth_m": 3.072,
+          "downstream_water_level_m": 0.15,
+          "overdepth_m": 0.349
+        }
+      }
+    },
+    {
+      "id": "sample_bed_profile/profile_sweep_01",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "sample_bed_profile",
+        "args": {
+          "centerline": {
+            "geom": "LineString",
+            "coords": [[0.0, 0.0], [3873.842, 0.0]]
+          },
+          "terrain": {
+            "kind": "hills",
+            "base": 0.0,
+            "gx": 0.0,
+            "gy": 0.0,
+            "hills": []
+          },
+          "spacing_m": 30.187,
+          "slope_percentile": 12.943,
+          "slope_perc_window_m": 2545.487,
+          "slope_smooth_window_m": 3286.843
+        }
+      }
+    },
+    {
+      "id": "place_weirs/weirs_sweep_01",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "place_weirs",
+        "args": {
+          "profile": {
+            "centerline": {
+              "geom": "LineString",
+              "coords": [[0.0, 0.0], [3873.842, 0.0]]
+            },
+            "terrain": {
+              "kind": "hills",
+              "base": 0.0,
+              "gx": 0.0,
+              "gy": 0.0,
+              "hills": []
+            },
+            "spacing_m": 30.187,
+            "slope_percentile": 12.943,
+            "slope_perc_window_m": 2545.487,
+            "slope_smooth_window_m": 3286.843
+          },
+          "place": {
+            "kind": "recursion",
+            "weir_height_m": 3.753,
+            "implantation_depth_m": 2.61,
+            "start_elevation_m": -0.367,
+            "max_weir_elevation_m": 8.966
+          }
+        }
+      }
+    },
+    {
+      "id": "water_levels/levels_sweep_01",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "water_levels",
+        "args": {
+          "weirs": {
+            "profile": {
+              "centerline": {
+                "geom": "LineString",
+                "coords": [[0.0, 0.0], [3873.842, 0.0]]
+              },
+              "terrain": {
+                "kind": "hills",
+                "base": 0.0,
+                "gx": 0.0,
+                "gy": 0.0,
+                "hills": []
+              },
+              "spacing_m": 30.187,
+              "slope_percentile": 12.943,
+              "slope_perc_window_m": 2545.487,
+              "slope_smooth_window_m": 3286.843
+            },
+            "place": {
+              "kind": "recursion",
+              "weir_height_m": 3.753,
+              "implantation_depth_m": 2.61
+            }
+          },
+          "chainages": [643.249, 1481.726, 856.88, 3403.555, 3669.823, 304.62],
+          "depth_m": 2.637,
+          "downstream_water_level_m": 0.148,
+          "overdepth_m": 0.401
+        }
+      }
+    },
+    {
+      "id": "sample_bed_profile/profile_sweep_02",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "sample_bed_profile",
+        "args": {
+          "centerline": {
+            "geom": "LineString",
+            "coords": [[0.0, 0.0], [8186.345, 0.0]]
+          },
+          "terrain": {
+            "kind": "hills",
+            "base": 1.559,
+            "gx": 0.0,
+            "gy": 0.0,
+            "hills": [[5833.519, 0.0, 6.567, 133.747], [5847.562, 0.0, 8.868, 119.315]]
+          },
+          "spacing_m": 25.858,
+          "slope_percentile": 35.678,
+          "slope_perc_window_m": 1195.872,
+          "slope_smooth_window_m": 4901.246
+        }
+      }
+    },
+    {
+      "id": "place_weirs/weirs_sweep_02",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "place_weirs",
+        "args": {
+          "profile": {
+            "centerline": {
+              "geom": "LineString",
+              "coords": [[0.0, 0.0], [8186.345, 0.0]]
+            },
+            "terrain": {
+              "kind": "hills",
+              "base": 1.559,
+              "gx": 0.0,
+              "gy": 0.0,
+              "hills": [[5833.519, 0.0, 6.567, 133.747], [5847.562, 0.0, 8.868, 119.315]]
+            },
+            "spacing_m": 25.858,
+            "slope_percentile": 35.678,
+            "slope_perc_window_m": 1195.872,
+            "slope_smooth_window_m": 4901.246
+          },
+          "place": {
+            "kind": "recursion",
+            "weir_height_m": 7.8,
+            "implantation_depth_m": 5.042,
+            "start_elevation_m": 1.032,
+            "max_weir_elevation_m": null
+          }
+        }
+      }
+    },
+    {
+      "id": "water_levels/levels_sweep_02",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "water_levels",
+        "args": {
+          "weirs": {
+            "profile": {
+              "centerline": {
+                "geom": "LineString",
+                "coords": [[0.0, 0.0], [8186.345, 0.0]]
+              },
+              "terrain": {
+                "kind": "hills",
+                "base": 1.559,
+                "gx": 0.0,
+                "gy": 0.0,
+                "hills": [[5833.519, 0.0, 6.567, 133.747], [5847.562, 0.0, 8.868, 119.315]]
+              },
+              "spacing_m": 25.858,
+              "slope_percentile": 35.678,
+              "slope_perc_window_m": 1195.872,
+              "slope_smooth_window_m": 4901.246
+            },
+            "place": {
+              "kind": "recursion",
+              "weir_height_m": 7.8,
+              "implantation_depth_m": 5.042
+            }
+          },
+          "chainages": [2476.883, 3600.493, 1607.649, 3600.112, 7139.133, 7466.403],
+          "depth_m": 3.691,
+          "downstream_water_level_m": 0.93,
+          "overdepth_m": 0.386
+        }
+      }
+    },
+    {
+      "id": "sample_bed_profile/profile_sweep_03",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "sample_bed_profile",
+        "args": {
+          "centerline": {
+            "geom": "LineString",
+            "coords": [[0.0, 0.0], [5541.109, 0.0]]
+          },
+          "terrain": {
+            "kind": "hills",
+            "base": 1.898,
+            "gx": 0.0,
+            "gy": 0.0,
+            "hills": []
+          },
+          "spacing_m": 16.981,
+          "slope_percentile": 49.75,
+          "slope_perc_window_m": 2482.664,
+          "slope_smooth_window_m": 4415.697
+        }
+      }
+    },
+    {
+      "id": "place_weirs/weirs_sweep_03",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "place_weirs",
+        "args": {
+          "profile": {
+            "centerline": {
+              "geom": "LineString",
+              "coords": [[0.0, 0.0], [5541.109, 0.0]]
+            },
+            "terrain": {
+              "kind": "hills",
+              "base": 1.898,
+              "gx": 0.0,
+              "gy": 0.0,
+              "hills": []
+            },
+            "spacing_m": 16.981,
+            "slope_percentile": 49.75,
+            "slope_perc_window_m": 2482.664,
+            "slope_smooth_window_m": 4415.697
+          },
+          "place": {
+            "kind": "recursion",
+            "weir_height_m": 3.066,
+            "implantation_depth_m": 1.484,
+            "start_elevation_m": 1.296,
+            "max_weir_elevation_m": 8.752
+          }
+        }
+      }
+    },
+    {
+      "id": "water_levels/levels_sweep_03",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "water_levels",
+        "args": {
+          "weirs": {
+            "profile": {
+              "centerline": {
+                "geom": "LineString",
+                "coords": [[0.0, 0.0], [5541.109, 0.0]]
+              },
+              "terrain": {
+                "kind": "hills",
+                "base": 1.898,
+                "gx": 0.0,
+                "gy": 0.0,
+                "hills": []
+              },
+              "spacing_m": 16.981,
+              "slope_percentile": 49.75,
+              "slope_perc_window_m": 2482.664,
+              "slope_smooth_window_m": 4415.697
+            },
+            "place": {
+              "kind": "recursion",
+              "weir_height_m": 3.066,
+              "implantation_depth_m": 1.484
+            }
+          },
+          "chainages": [3118.82, 998.239, 1233.497, 1209.702, 1760.122, 726.622],
+          "depth_m": 3.503,
+          "downstream_water_level_m": 0.702,
+          "overdepth_m": 0.305
+        }
+      }
+    },
+    {
+      "id": "sample_bed_profile/profile_sweep_04",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "sample_bed_profile",
+        "args": {
+          "centerline": {
+            "geom": "LineString",
+            "coords": [[0.0, 0.0], [5073.295, 0.0]]
+          },
+          "terrain": {
+            "kind": "hills",
+            "base": -0.392,
+            "gx": 0.0,
+            "gy": 0.0,
+            "hills": []
+          },
+          "spacing_m": 23.929,
+          "slope_percentile": 34.057,
+          "slope_perc_window_m": 555.93,
+          "slope_smooth_window_m": 4204.219
+        }
+      }
+    },
+    {
+      "id": "place_weirs/weirs_sweep_04",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "place_weirs",
+        "args": {
+          "profile": {
+            "centerline": {
+              "geom": "LineString",
+              "coords": [[0.0, 0.0], [5073.295, 0.0]]
+            },
+            "terrain": {
+              "kind": "hills",
+              "base": -0.392,
+              "gx": 0.0,
+              "gy": 0.0,
+              "hills": []
+            },
+            "spacing_m": 23.929,
+            "slope_percentile": 34.057,
+            "slope_perc_window_m": 555.93,
+            "slope_smooth_window_m": 4204.219
+          },
+          "place": {
+            "kind": "recursion",
+            "weir_height_m": 4.616,
+            "implantation_depth_m": 3.952,
+            "start_elevation_m": 0.814,
+            "max_weir_elevation_m": null
+          }
+        }
+      }
+    },
+    {
+      "id": "water_levels/levels_sweep_04",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "water_levels",
+        "args": {
+          "weirs": {
+            "profile": {
+              "centerline": {
+                "geom": "LineString",
+                "coords": [[0.0, 0.0], [5073.295, 0.0]]
+              },
+              "terrain": {
+                "kind": "hills",
+                "base": -0.392,
+                "gx": 0.0,
+                "gy": 0.0,
+                "hills": []
+              },
+              "spacing_m": 23.929,
+              "slope_percentile": 34.057,
+              "slope_perc_window_m": 555.93,
+              "slope_smooth_window_m": 4204.219
+            },
+            "place": {
+              "kind": "recursion",
+              "weir_height_m": 4.616,
+              "implantation_depth_m": 3.952
+            }
+          },
+          "chainages": [2817.282, 5064.822, 212.75, 574.904, 272.803, 3053.826],
+          "depth_m": 2.73,
+          "downstream_water_level_m": 0.693,
+          "overdepth_m": 0.12
+        }
+      }
+    },
+    {
+      "id": "overall_bottom_slope/slope_sweep_00",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "overall_bottom_slope",
+        "args": {
+          "z_raw": ["float:nan", 0.823, 10.961, 0.036, 4.267, 9.99, 9.253, 10.274, "float:nan", 0.488, 3.095, 8.957, 11.909, 3.62, 3.596, 4.783, -0.739, 0.229, 0.892, 7.308, 11.403, 3.802, 7.342, 1.857, 6.125, 1.173, 5.358, 2.291, 1.832, 6.739, 3.499, "float:nan", 3.217, 10.981, 11.399, 3.53, 1.782, 0.796, 0.603, 8.815, 6.337, -0.056, 4.697, 5.586, "float:nan", 0.724, 8.733, 8.493, 5.324, 0.214, "float:nan", 5.317, 1.593, "float:nan", 2.541, 11.581, "float:nan", 4.789, 8.095, 9.622, 7.088, 1.189, 6.225, 5.404, 5.443, 9.566, 11.469, 4.649, 3.069, 5.235, 0.101, 9.657, 2.686, "float:nan", -0.56, 2.6, 3.984, 11.071],
+          "spacing_m": 27.523,
+          "percentile": 46.188,
+          "perc_window_m": 1764.775,
+          "smooth_window_m": 484.179
+        }
+      }
+    },
+    {
+      "id": "overall_bottom_slope/slope_sweep_01",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "overall_bottom_slope",
+        "args": {
+          "z_raw": [8.974, 10.947, 9.357, 6.442, 11.895, 10.325, 7.855, 8.636, 4.896, 4.174, "float:nan", 9.102, 11.729, 4.343, 2.661, 9.536, 11.883, 8.378, 9.545, "float:nan", 4.528, "float:nan", 2.557, 3.705, 0.879, 7.775, 3.351, 5.648, 6.927, 0.582, "float:nan", 9.97, -0.927, 3.877, "float:nan", -0.034, 3.948, 11.725, -0.205, 11.33, 4.347, 11.233, 1.484, 11.398, 9.311, 5.654, 4.096, 10.787, 7.97, 3.478, 9.031, -0.008, 7.124, 8.732, 5.834, "float:nan", 11.207, 10.335, 3.603, 11.39, 10.162, 2.272, "float:nan", 8.679, 8.347, 9.286, 5.533, 11.044, 9.014, 0.87, 0.683, 2.962, "float:nan", -0.584, 5.136, 2.382, 8.178, 10.616, 2.032, 7.112, "float:nan", 8.974, -0.141, 3.518, 4.181, 0.233, 2.526, 4.719, 6.615, "float:nan", 2.651, 7.867, -0.13, 1.947, "float:nan", 3.662, -0.98, 1.143, -0.06, 7.167, -0.248, "float:nan", 5.368, 3.892, 2.378, 7.574, 2.972, 7.235],
+          "spacing_m": 19.343,
+          "percentile": 18.71,
+          "perc_window_m": 708.236,
+          "smooth_window_m": 3938.383
+        }
+      }
+    },
+    {
+      "id": "overall_bottom_slope/slope_sweep_02",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "overall_bottom_slope",
+        "args": {
+          "z_raw": [10.637, -0.382, 3.974, 0.659, 4.434, "float:nan", 11.603, 5.496, 3.383, 5.9, 10.337, 6.545, 3.886, 8.181, 2.6, 3.52, 10.248, 2.166, 0.619, 9.746, 7.057, 1.206, 9.617, 3.49, 9.738, 7.107, 3.356, 8.235, 0.143, 5.822, 0.36, 4.197, 3.775, 4.479, 2.748, "float:nan", 3.005, 6.925, 3.028, 4.951, 9.414, -0.362, 6.3, 6.148, 8.07, 9.506, 9.439, 7.332, "float:nan", 3.103, 0.471, 2.076, 7.426, 4.694, 8.31, -0.902, 2.105, 3.675, 2.622, 7.808, 10.059, -0.551, 1.526, 11.816, 9.853, 10.188, 0.959, 10.087, 3.772, 9.387, -0.502, 0.718, 6.66, 10.658, 8.941, 0.77, 2.18, 3.767, 2.084, 4.298, 10.96, 5.529, 2.099, 3.567, 11.374, 2.22, "float:nan", 2.268, 7.955, 10.875, 0.35, 2.667, 10.988, 9.49, 11.582, 1.323, 4.444, 10.105, -0.007, 6.328, "float:nan", 0.765, 2.873, 0.404, 7.603, 10.329, -0.16, 7.858, 0.02, 4.763, 1.428, 5.396, 7.36, 9.465, 9.865, "float:nan", 10.15, 2.332, 0.688],
+          "spacing_m": 40.84,
+          "percentile": 58.237,
+          "perc_window_m": 730.211,
+          "smooth_window_m": 3145.633
+        }
+      }
+    },
+    {
+      "id": "overall_bottom_slope/slope_sweep_03",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "overall_bottom_slope",
+        "args": {
+          "z_raw": ["float:nan", 10.682, 3.815, 0.644, 1.832, -0.243, 6.147, 4.224, 0.867, 3.323, 7.461, 3.039, 10.728, 0.868, 6.741, 3.1, -0.838, 2.56, 3.647, 0.185, 0.76, 0.227, 5.573, 8.029, 4.41, 8.793, 1.408, 8.99, 10.308, 1.385, 11.655, 9.468, "float:nan", 0.829, 3.191, 0.789, 7.455, "float:nan", 3.747, 2.88, 2.985, 10.907, "float:nan", 9.399, 9.139, 6.169, 11.218, 1.888, 2.138, 3.174, 11.798, 7.058, 11.357, 9.838, 5.396, 1.118, 2.434, 1.02, 11.098, 3.422, 6.442, 4.198, 7.421, 7.764, "float:nan", 6.003, 0.84, "float:nan", "float:nan", 8.167, 10.258, 3.683, 8.926, 11.828, 7.664, 5.355, "float:nan", 5.633, 10.859, 2.308, 8.453, 9.81, -0.148, 11.326, 4.177, 5.583, 5.938, 1.026, 2.809, "float:nan", 4.888, 8.24, 5.96, 4.016, 10.18, 7.094, -0.037, 7.788, 9.562, 7.7, 10.855, 3.582, 0.7, 4.632, -0.011, 0.61, 3.721, 9.685, 11.229],
+          "spacing_m": 28.27,
+          "percentile": 58.857,
+          "perc_window_m": 1535.934,
+          "smooth_window_m": 3072.472
+        }
+      }
+    },
+    {
+      "id": "overall_bottom_slope/slope_sweep_04",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "overall_bottom_slope",
+        "args": {
+          "z_raw": [8.047, 6.073, "float:nan", 7.845, 10.23, 9.921, 10.569, 0.871, 7.439, "float:nan", 6.096, 8.198, 1.941, -0.153, -0.583, 10.235, 3.251, 5.825, 11.92, 4.565, 10.28, 5.196, "float:nan", 1.344, 2.645, 4.258, 8.076, 7.247, 9.893, 11.768, 4.327, 5.199, 10.155, 4.373, 3.303, "float:nan", 3.362, "float:nan", 10.085, 8.133, 5.487, 11.115, 2.09, 4.091, 10.618, 2.781, -0.773, 10.762, 1.165, 6.176, 3.509, 1.083, 5.051, 0.511, 6.49, 0.321, 10.195, -0.991, 7.79, 8.919, 7.606, 1.759, "float:nan", 11.737, 4.692, 10.033, 3.766, 2.046, 3.53, 2.642, 1.644, 4.319, 6.079, 8.501],
+          "spacing_m": 26.22,
+          "percentile": 35.642,
+          "perc_window_m": 1852.023,
+          "smooth_window_m": 2752.2
+        }
+      }
+    },
+    {
+      "id": "overall_bottom_slope/slope_sweep_05",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "overall_bottom_slope",
+        "args": {
+          "z_raw": [6.597, 6.054, 9.704, 1.067, "float:nan", -0.081, 3.981, 8.828, 9.387, "float:nan", 0.919, 4.552, 7.877, 6.832, 4.776, 5.855, 10.662, 7.858, 5.462, 3.813, -0.552, 7.431, "float:nan", 4.057],
+          "spacing_m": 34.646,
+          "percentile": 46.105,
+          "perc_window_m": 1469.54,
+          "smooth_window_m": 1585.948
+        }
+      }
+    },
+    {
+      "id": "overall_bottom_slope/slope_sweep_06",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "overall_bottom_slope",
+        "args": {
+          "z_raw": [2.494, 7.278, 3.682, 6.406, 2.554, 5.961, 10.278, 4.908, 0.132, 3.106, 1.161, "float:nan", 8.38, 4.436, 10.851, 2.388, 10.958, 11.591, 0.375, 10.031, 4.139, 5.182, 0.42, 2.056, 11.113, 5.678, "float:nan", "float:nan", -0.278, 9.774, 1.057, -0.75, 6.879, 1.017, 11.378, "float:nan", 10.642, 1.046, 8.634, 8.05, 0.396, 2.562, 9.905, "float:nan", 7.712, 0.465, 4.273, "float:nan", "float:nan", 1.332, 5.656, "float:nan", 5.447, "float:nan", 3.851, 11.586, 2.085, 4.9, 4.966, 7.066, 4.398, 8.74, 0.657, 10.911, 5.007, 11.806, 7.597, 11.615, 7.011, 11.879, 11.702, 4.845, 4.542, 5.342, 5.916, "float:nan", 5.015, 2.408, "float:nan", 3.11, 9.512, -0.724, 6.474, 0.9, 7.08, 4.654, 7.981, 9.257, 4.612, "float:nan", 2.366, 9.655, 11.553, 6.007, 11.025, -0.658, 3.701, 2.416, 9.389, 3.057, 2.078, 11.477, 10.272, 6.253, 0.041, 11.841, 4.535, 3.551, 6.129, 1.904, 9.025, 2.58, 1.089, 8.757, 11.124, 3.108, 1.835, -0.446, 5.653, 2.801, 7.107, "float:nan", 11.132, 9.884, 5.397, -0.886, "float:nan", 2.086, -0.286, 9.114, "float:nan", "float:nan", 1.294, 10.845, 4.628, 8.401, 4.456, 10.838, 2.504, 1.818, 11.766, 9.821, 9.234, 1.902, 5.176],
+          "spacing_m": 28.748,
+          "percentile": 47.573,
+          "perc_window_m": 184.431,
+          "smooth_window_m": 2996.849
+        }
+      }
+    },
+    {
+      "id": "overall_bottom_slope/slope_sweep_07",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "overall_bottom_slope",
+        "args": {
+          "z_raw": [3.17, 6.7, 3.002, 5.909, 9.263, 4.202, -0.066, 6.688, 7.136, 5.765, 5.949, 4.798, 11.106, 2.545, 3.421, 10.666, 0.131, 6.556, 10.252, 10.208, 10.992, 2.248, "float:nan", 8.822, 1.594, 7.604, "float:nan", -0.961, 7.86, 11.232, "float:nan", 4.608, 9.274, 11.672, 8.695, "float:nan", 11.515, -0.038, 10.07, 10.068, 3.722, 3.019, 4.726, 1.805, 10.23, 9.083, 11.811, 3.843, 6.972, 11.496, 10.313, 3.789, "float:nan", 6.138, 7.194, 11.656, 5.886, -0.473, 10.965, 4.102, 3.915, 9.809, 10.972, 7.236, 11.671, 1.564, -0.86, 8.358, 0.695, 9.069, 10.0, -0.986, "float:nan", 11.15, 11.07, 11.336, 2.633, "float:nan", 8.89, 7.727, -0.557, 3.046, 8.887, 5.807, 1.759],
+          "spacing_m": 11.105,
+          "percentile": 37.167,
+          "perc_window_m": 1261.063,
+          "smooth_window_m": 2887.29
+        }
+      }
+    }
+  ],
+  "retired": []
+}
