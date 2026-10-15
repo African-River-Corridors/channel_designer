@@ -12,8 +12,10 @@ def _sections():
     try:
         from . import sections
     except ImportError as exc:
+        if _HINT in str(exc):  # sections.py already named the hint and the cause
+            raise
         raise ImportError(
-            f"channel_designer drawings need the optional extra: {_HINT}") from exc
+            f"channel_designer drawings need the optional extra: {_HINT}. Cause: {exc}") from exc
     return sections
 
 
