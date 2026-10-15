@@ -54,7 +54,7 @@ def test_property_chord_radius_finds_the_sine_apex():
 
 def test_golden_chord_reads_the_whole_line_at_the_exact_chord():
     """A kink in the last stride is read (only the backward pass reaches it)."""
-    line = LineString([(0.0, 0.0), (1004.0, 0.0), (1009.0, 5.0)])
+    line = LineString([(0.0, 0.0), (1008.0, 0.0), (1009.0, 0.5)])
     assert min_radius_on_chord(line, chord_m=100.0) < math.inf
     # a line too short for the chord has no reading
     assert min_radius_on_chord(LineString([(0, 0), (40, 0), (60, 30)]), chord_m=100.0) == math.inf
