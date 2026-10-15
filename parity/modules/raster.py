@@ -120,7 +120,9 @@ def cases():
     # a river with a hill beside it
     rv = synth(length_m=2000.0, hill_height_m=18.0)
     T = {"kind": "synthetic_river", "params": {"length_m": 2000.0, "hill_height_m": 18.0}}
-    dem = dict(x0=-100.0, y_top=450.0, res=5.0, width=440, height=180, terrain=T)
+    # The origin is off the 5 m pixel grid on purpose: a corridor edge that lands exactly on a pixel edge
+    # rounds one pixel either way depending on the last bit of the platform's arithmetic (a knife edge).
+    dem = dict(x0=-101.7, y_top=452.3, res=5.0, width=440, height=180, terrain=T)
     cl, poly = rv["centreline"], rv["polygon"]
     wA = [{"index": 1, "pool_water_level_m": 0.6, "pool_start_m": 300.0, "pool_end_m": 1100.0},
           {"index": 2, "pool_water_level_m": 1.4, "pool_start_m": 1100.0, "pool_end_m": 2000.0}]
@@ -154,7 +156,7 @@ def cases():
         T2 = {"kind": "hills", "base": rng.r3(0.0, 4.0), "gx": rng.r3(-0.0005, 0.0005), "gy": rng.r3(-0.005, 0.005),
               "hills": [[rng.r3(300.0, L2 - 300.0), rng.r3(-150.0, 150.0), rng.r3(3.0, 25.0), rng.r3(50.0, 200.0)]
                         for _ in range(rng.i(1, 3))]}
-        dem2 = dict(x0=-100.0, y_top=rng.r3(300.0, 450.0), res=rng.r3(5.0, 12.0), width=int(L2 // 8) + 40, height=100,
+        dem2 = dict(x0=-100.0 - rng.r3(0.1, 0.9), y_top=rng.r3(300.0, 450.0), res=rng.r3(5.0, 12.0), width=int(L2 // 8) + 40, height=100,
                     terrain=T2)
         dem2["height"] = int(2 * dem2["y_top"] / dem2["res"])
         s1 = rng.r3(L2 * 0.2, L2 * 0.5)

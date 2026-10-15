@@ -5,7 +5,7 @@ import math
 
 import numpy as np
 
-from ..common import Rng, case as _case, frozen, frange
+from ..common import Rng, case as _case, frozen, frange, rnd
 from .methods import toy_method
 
 ENTRY_POINT = "design"
@@ -91,6 +91,18 @@ def s_bend(r=400.0, spacing=10.0, turn_deg=70.0):
     return np.array(pts)
 
 
+def _well_conditioned(pts, limit=1e5):
+    """True when no 3-point radius on `pts` (as the centreline code resamples them) is both finite and
+    above `limit` m. Radii past that are noise on almost collinear points."""
+    ds = frozen("rules.design")
+    for step in (10.0, 15.0, 20.0, 25.0, 30.0, 40.0):
+        rp = ds._resample_points(np.asarray(pts, dtype=float), step)
+        r = ds._compute_curvature_radius(rp)
+        if np.any(np.isfinite(r) & (r > limit)):
+            return False
+    return True
+
+
 def cases():
     out = []
 
@@ -163,17 +175,24 @@ def cases():
     # --- tier 2: seeded sweep ---
     rng = Rng(23003)
     for i in range(14):
-        kind = i % 4
-        if kind == 0:
-            pts = arc(rng.r3(150.0, 2500.0), rng.r3(20.0, 160.0), rng.r3(15.0, 40.0))
-        elif kind == 1:
-            pts = sine(rng.r3(1500.0, 3500.0), rng.r3(600.0, 2000.0), rng.r3(40.0, 300.0),
-                       rng.r3(25.0, 60.0))
-        elif kind == 2:
-            base = sine(2500.0, rng.r3(500.0, 1200.0), rng.r3(50.0, 200.0), 25.0)
-            pts = np.column_stack([base, rng.r3(0.0, 20.0) + 0.001 * base[:, 0]])
-        else:
-            pts = s_bend(rng.r3(150.0, 900.0), rng.r3(15.0, 40.0))
+        # A centreline with a nearly straight stretch (a sine at its inflection) gives a 3-point radius
+        # of 1e7 or more, computed from points that are almost collinear: the last bits of the platform's
+        # arithmetic then move it by 1e-8 relative. Such a case is drawn again.
+        for attempt in range(8):
+            kind = i % 4
+            if kind == 0:
+                pts = arc(rng.r3(150.0, 2500.0), rng.r3(20.0, 160.0), rng.r3(15.0, 40.0))
+            elif kind == 1:
+                pts = sine(rng.r3(1500.0, 3500.0), rng.r3(600.0, 2000.0), rng.r3(40.0, 300.0),
+                           rng.r3(25.0, 60.0))
+            elif kind == 2:
+                base = sine(2500.0, rng.r3(500.0, 1200.0), rng.r3(50.0, 200.0), 25.0)
+                pts = np.column_stack([base, rng.r3(0.0, 20.0) + 0.001 * base[:, 0]])
+            else:
+                pts = s_bend(rng.r3(150.0, 900.0), rng.r3(15.0, 40.0))
+            pts = rnd(pts, 4)
+            if _well_conditioned(pts):
+                break
         params = dict(width_multiple=rng.r3(2.0, 4.0), radius_multiple=rng.r3(2.0, 5.0),
                       side_slope=rng.r3(1.0, 5.0), draft_m=rng.r3(1.0, 4.0),
                       extra_width_coefficient=rng.r3(0.1, 1.0),
