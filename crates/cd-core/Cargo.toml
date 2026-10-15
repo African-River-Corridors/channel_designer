@@ -1,0 +1,12 @@
+[package]
+name = "cd-core"
+description = "Pure calculation core of channel_designer. Its modules mirror the Python files one to one."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Only libm (spec 0001): every transcendental goes through it, so results are identical on every platform.
+[dependencies]
+libm = "0.2"

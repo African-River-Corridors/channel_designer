@@ -1,0 +1,18 @@
+[package]
+name = "cd-cli"
+description = "The cdesign command-line tool: a thin layer over cd-format."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "cdesign"
+path = "src/main.rs"
+
+[dependencies]
+cd-format.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]

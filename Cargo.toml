@@ -1,0 +1,19 @@
+[workspace]
+resolver = "3"
+members = ["crates/cd-core", "crates/cd-format", "crates/cd-cli", "crates/cd-py", "xtask"]
+# cd-py (PyO3 bindings, ticket 35) is left out so `cargo build` and `cargo test` need no Python.
+default-members = ["crates/cd-core", "crates/cd-format", "crates/cd-cli", "xtask"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "Apache-2.0"
+repository = "https://github.com/African-River-Corridors/channel_designer"
+
+[workspace.dependencies]
+cd-core = { path = "crates/cd-core" }
+cd-format = { path = "crates/cd-format" }
+# float_roundtrip, arbitrary_precision: read every number exactly as written, big ints too.
+# preserve_order: a JSON object keeps its key order, as a Python dict does.
+serde_json = { version = "1", features = ["float_roundtrip", "arbitrary_precision", "preserve_order"] }

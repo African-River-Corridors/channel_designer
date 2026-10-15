@@ -12,21 +12,28 @@ permissions:
   contents: read
 
 jobs:
+  # Fast gate (spec 0001): one fail-closed script, tools/gates.sh. Target under 5 minutes.
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the oracle guard diffs against the merge base
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install the pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
       # vessel_designer and technical_drawings_for_agents install from git. While those
       # repositories are private this step needs read access to them; after release it does not.
       - name: Install
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev,dem,drawings]'
-      - name: Test
-        run: python -m pytest -q
+      - name: Fast gate
+        run: bash tools/gates.sh
 
   # The test job uses the pinned git refs in pyproject.toml. This job tries both git
   # dependencies at @main instead, so an upstream change that will break the next pin bump
@@ -58,8 +65,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Embargoed terms and local paths
+      - name: Embargoed terms and local paths (tree)
         run: python tools/release_guard.py
+      - name: Embargoed terms and local paths (history)
+        run: python tools/release_guard.py --history
       - name: Secrets (gitleaks)
         run: |
           curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz \

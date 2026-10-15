@@ -1,0 +1,9 @@
+[package]
+name = "cd-py"
+description = "PyO3 bindings for the Python wrapper (ticket 35). Not a default member."
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
