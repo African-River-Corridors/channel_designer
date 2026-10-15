@@ -46,7 +46,7 @@ import math
 from dataclasses import dataclass
 from typing import Callable, Mapping, Optional
 
-ENTRY_POINT_GROUP = "channel_designer.width_methods"
+ENTRY_POINT_GROUP = "channel_designer_frozen.width_methods"
 
 Options = Mapping[str, object]
 

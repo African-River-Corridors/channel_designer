@@ -38,7 +38,7 @@ import numpy as np
 from shapely.geometry import GeometryCollection, LineString, MultiLineString, MultiPoint, Point
 from shapely.ops import linemerge
 
-from channel_designer.alignment.radius_check import (default_check_chord,
+from channel_designer_frozen.alignment.radius_check import (default_check_chord,
                                                      min_radius_on_chord, radius_ok)
 
 

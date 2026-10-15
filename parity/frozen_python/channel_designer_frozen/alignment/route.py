@@ -45,7 +45,7 @@ import numpy as np
 from shapely import contains_xy
 from shapely.geometry import LineString
 
-from channel_designer.alignment.radius_check import (RADIUS_TOL, min_radius_on_vertices,
+from channel_designer_frozen.alignment.radius_check import (RADIUS_TOL, min_radius_on_vertices,
                                                      radius_ok)
 
 TerrainSampler = Callable[[np.ndarray, np.ndarray], np.ndarray]
