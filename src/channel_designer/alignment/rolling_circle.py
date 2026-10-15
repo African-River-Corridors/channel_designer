@@ -22,6 +22,11 @@ holds R_min; on a short chord the kink reads as a much tighter radius. Measured 
 on 25 m, 297 m on 50 m (25 m step: 55 / 165 / 296 m). Read curvature on a chord of about one
 vessel length, or smooth the exits first. Kept as is on purpose; a test pins it. See
 ``docs/known-issues.md``.
+
+Unresolved bends. The circle does not always lift the line to R_min. On a jagged input (a
+trace digitised at coarse vertices, with zigzags) more passes do not converge. The result
+says so: ``radius_ok``, ``measured_min_radius_m`` and the chord it was read on
+(:mod:`channel_designer.alignment.radius_check`). Check ``radius_ok`` before you use the line.
 """
 from __future__ import annotations
 
@@ -33,12 +38,18 @@ import numpy as np
 from shapely.geometry import GeometryCollection, LineString, MultiLineString, MultiPoint, Point
 from shapely.ops import linemerge
 
+from channel_designer.alignment.radius_check import (default_check_chord,
+                                                     min_radius_on_chord, radius_ok)
+
 
 @dataclass
 class RollingCircleResult:
     centreline: LineString
-    min_radius_m: float
+    min_radius_m: float                  # the radius REQUESTED (the circle's), not a measurement
     circles: List[dict] = field(default_factory=list)   # one per arc spliced in
+    measured_min_radius_m: float = math.inf   # minimum radius of ``centreline`` on the chord
+    radius_check_chord_m: float = 0.0         # the chord it was read on, m
+    radius_ok: bool = False                   # measured holds ``min_radius_m`` (2 % reading tol)
 
     @property
     def n_arcs(self) -> int:
@@ -287,11 +298,19 @@ def find_forward_circle_contact(centreline: LineString, tangent_point: np.ndarra
 
 def rolling_circle(centreline, min_radius: float, step: float, passes: int = 2,
                    sides: Sequence[str] = ("left", "right"),
-                   min_chainage_gap: Optional[float] = None) -> RollingCircleResult:
+                   min_chainage_gap: Optional[float] = None,
+                   check_chord_m: Optional[float] = None) -> RollingCircleResult:
     """Straighten ``centreline`` so a circle of ``min_radius`` can roll along both sides.
 
     ``min_radius`` is usually ``radius_multiple × LOA`` from the rules layer. ``step`` is the
     sampling interval (m) of the sweep; smaller is slower and finer.
+
+    The result is measured, not assumed: ``radius_ok`` is False when the returned line is
+    tighter than ``min_radius`` on a chord of ``check_chord_m`` (default ``min_radius / 3``,
+    one LOA at R_min = 3 × LOA). Pass the vessel length to read it on one LOA.
+
+    Expects a smooth input line. On a jagged trace (coarse vertices, zigzags) the circle does
+    not resolve the zigzags and ``radius_ok`` comes back False: smooth or resample it first.
     """
     if min_radius <= 0:
         raise ValueError("min_radius must be positive.")
@@ -346,4 +365,8 @@ def rolling_circle(centreline, min_radius: float, step: float, passes: int = 2,
                 updated = float(line.project(Point(contact_point[0], contact_point[1])))
                 idx = int(np.searchsorted(chainages, updated, side="left"))
                 idx = min(idx + 1, samples.shape[0] - 1)
-    return RollingCircleResult(centreline=line, min_radius_m=float(min_radius), circles=circles)
+    chord = default_check_chord(min_radius) if check_chord_m is None else float(check_chord_m)
+    measured = min_radius_on_chord(line, chord)
+    return RollingCircleResult(centreline=line, min_radius_m=float(min_radius), circles=circles,
+                               measured_min_radius_m=measured, radius_check_chord_m=chord,
+                               radius_ok=radius_ok(measured, min_radius))

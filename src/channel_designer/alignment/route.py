@@ -14,8 +14,15 @@ METHOD
    baseline's own turn plus the slew), and a fold bound so a parallel offset cannot fold a
    bend below R_min.
 3. SMOOTH + ENFORCE. A light smoothing that keeps feasibility, then Laplacian passes on the
-   built geometry until its measured minimum three-point radius clears the target.
+   built geometry until its measured minimum three-point radius clears ``r_min`` less the
+   fixed reading tolerance ``RADIUS_TOL`` (2 %), the same one ``radius_ok`` allows. The target
+   is never relaxed to the baseline's own radius. The passes stop after ``max_iter`` even if
+   it is not cleared, so the result is measured, not assumed (step 5).
 4. A corridor sweep picks the sub-corridor whose radius-enforced line saves most.
+5. CHECK. The winner's minimum radius is read on a chord (:mod:`.radius_check`) and reported
+   as ``radius_ok``, ``measured_min_radius_m`` and ``radius_check_chord_m``. The search only
+   shifts the baseline sideways: it cannot lift a baseline that is itself tighter than
+   ``r_min``. Roll the baseline first (:mod:`.rolling_circle`) and check ``radius_ok``.
 
 Validate a winner with a true volume integration (:mod:`channel_designer.volumes.sections`
 or :mod:`channel_designer.volumes.raster`), never with the grid's own numbers.
@@ -34,6 +41,9 @@ from typing import Callable, Optional, Sequence, Union
 import numpy as np
 from shapely import contains_xy
 from shapely.geometry import LineString
+
+from channel_designer.alignment.radius_check import (RADIUS_TOL, default_check_chord,
+                                                     min_radius_on_chord, radius_ok)
 
 TerrainSampler = Callable[[np.ndarray, np.ndarray], np.ndarray]
 GradeLike = Union[float, Callable[[float], float]]
@@ -70,6 +80,9 @@ class RouteResult:
     approx_saving_pct: float     # grid-approx, vs offset 0 everywhere — a search number
     smooth_passes: int
     sweep: list = field(default_factory=list)   # (corridor, saving %, min R) per candidate
+    measured_min_radius_m: float = np.inf       # minimum radius of ``line`` on the chord
+    radius_check_chord_m: float = 0.0           # the chord it was read on, m
+    radius_ok: bool = False                     # measured holds ``r_min`` (2 % reading tol)
 
 
 def _grade_fn(grade: GradeLike) -> Callable[[float], float]:
@@ -185,7 +198,11 @@ def baseline_turn_angles(centres) -> np.ndarray:
 
 def offset_bounds(centres, target_R):
     """Per-station admissible offset window [o_lo, o_hi] so a PARALLEL offset cannot fold the
-    alignment below ``target_R`` on the inside of a baseline bend."""
+    alignment below ``target_R`` on the inside of a baseline bend.
+
+    Where the baseline is already tighter than ``target_R`` the window only forbids moving
+    further inside (margin 0); it does not force the line outside. ``radius_ok`` on the
+    result reports what that leaves."""
     n = len(centres)
     R = radii(centres)
     beta = baseline_turn_angles(centres)
@@ -195,7 +212,7 @@ def offset_bounds(centres, target_R):
         rho = R[i]
         if not np.isfinite(rho):
             continue
-        margin = rho - target_R
+        margin = max(rho - target_R, 0.0)
         if beta[i] > 1e-6:          # left turn: centre on +normal side
             o_hi[i] = margin
         elif beta[i] < -1e-6:       # right turn: centre on -normal side
@@ -307,6 +324,9 @@ def enforce_min_radius(offset_vals, centres, normals, target_R, max_iter=600,
     Offsets are tapered to zero over the first/last ``taper_stations`` (the channel ties
     into fixed points at both ends), which makes zero offset the smoothing fixed point, so
     the passes converge to the baseline. Returns ``(offsets, passes, min_R)``.
+
+    Returns after ``max_iter`` passes even when ``min_R < target_R`` (e.g. the baseline itself
+    is tighter than the target). Compare ``min_R`` with ``target_R``; never assume it cleared.
     """
     o = offset_vals.astype("float64").copy()
     n = o.size
@@ -344,11 +364,13 @@ def approx_saving_pct(grid: CostGrid, cost: np.ndarray, ovals) -> float:
 
 
 def solve_at_corridor(grid: CostGrid, cost: np.ndarray, corridor_half: float, r_min: float):
-    """DP within ``±corridor_half`` and the fold band, then smooth to the radius floor."""
+    """DP within ``±corridor_half`` and the fold band, then smooth to ``r_min``.
+
+    The target is ``r_min`` less the fixed reading tolerance, never relaxed to the
+    baseline's own radius (issue #9).
+    """
     offsets = grid.offsets
-    baseline_rmin, _ = min_radius_of_line(grid.centres)
-    target_R = min(r_min, baseline_rmin)
-    o_lo, o_hi = offset_bounds(grid.centres, target_R)
+    o_lo, o_hi = offset_bounds(grid.centres, r_min)
     g = cost.copy()
     for i in range(g.shape[0]):
         bad = ((np.abs(offsets) > corridor_half + 1e-6)
@@ -357,7 +379,8 @@ def solve_at_corridor(grid: CostGrid, cost: np.ndarray, corridor_half: float, r_
     path, _ = dp_optimise(offsets, grid.centres, g, r_min, grid.station_step, grid.offset_step)
     beta = baseline_turn_angles(grid.centres)
     sm = smooth_offsets(offsets[path], grid.station_step / r_min, beta, grid.station_step)
-    sm, passes, rmin = enforce_min_radius(sm, grid.centres, grid.normals, target_R)
+    sm, passes, rmin = enforce_min_radius(sm, grid.centres, grid.normals,
+                                          (1.0 - RADIUS_TOL) * r_min)
     return sm, passes, rmin, approx_saving_pct(grid, cost, sm)
 
 
@@ -367,11 +390,17 @@ def optimise_route(line: LineString, terrain: TerrainSampler, river_polygon, gra
                    corridor_sweep: Sequence[float] = DEFAULT_CORRIDOR_SWEEP,
                    station_step: float = 100.0, offset_step: float = 10.0,
                    transect_step: float = 2.0, daylight_m: Optional[float] = None,
-                   grid: Optional[CostGrid] = None) -> RouteResult:
+                   grid: Optional[CostGrid] = None,
+                   check_chord_m: Optional[float] = None) -> RouteResult:
     """Least-cost lateral re-route of ``line``. See the module docstring for the method.
 
     Wide excursions force sharp reconnection curves that the radius enforcement then smooths
     away, so a moderate corridor usually wins; the sweep finds it.
+
+    ``radius_ok`` on the result is False when the returned line is tighter than ``r_min`` on
+    a chord of ``check_chord_m``. The default is the larger of ``r_min / 3`` (one LOA at
+    R_min = 3 × LOA) and two station steps: the line has a vertex every station, and a
+    polyline only resolves its own curvature on a chord of at least two vertex spacings.
     """
     if grid is None:
         grid = build_cost_grid(line, terrain, river_polygon, grade, bottom_width=bottom_width,
@@ -388,6 +417,12 @@ def optimise_route(line: LineString, terrain: TerrainSampler, river_polygon, gra
             best = (float(ch), sav, sm, rmin, passes)
     ch, sav, sm, rmin, passes = best
     pts = build_line_from_offsets(grid.centres, grid.normals, sm)
-    return RouteResult(line=LineString(pts), offsets=sm, min_radius_m=float(rmin),
+    out = LineString(pts)
+    chord = (max(default_check_chord(r_min), 2.0 * grid.station_step) if check_chord_m is None
+             else float(check_chord_m))
+    measured = min_radius_on_chord(out, chord)
+    return RouteResult(line=out, offsets=sm, min_radius_m=float(rmin),
                        corridor_half_m=ch, approx_saving_pct=float(sav),
-                       smooth_passes=int(passes), sweep=sweep)
+                       smooth_passes=int(passes), sweep=sweep,
+                       measured_min_radius_m=measured, radius_check_chord_m=chord,
+                       radius_ok=radius_ok(measured, r_min))
