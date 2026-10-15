@@ -38,6 +38,20 @@ Both must pass. CI runs them on every push and pull request.
 - A project choice is not a standard. Name it as a user choice (for example `BANK_CUT_FRACTION`), and
   never present it as a default from a standard.
 
+## The Python code is frozen for the Rust port
+
+The calculation core is being ported to Rust (spec 0001, issue #20; decisions in `docs/adr/`). The
+Python package is frozen at the tag `py-reference` as the reference the Rust code must match.
+
+From that tag until the port closes:
+
+- **Python takes bug fixes only.** No new features, no refactors, and no behaviour changes other
+  than the fix itself. New features wait for the Rust core.
+- **Each fix is mirrored in the parity cases**, in the same pull request or in a linked one, so
+  the Rust code matches the fixed behaviour rather than the old one. Say in the pull request which
+  cases you changed and why.
+- Documentation, examples and CI changes are still welcome.
+
 ## Pull requests
 
 1. Open an issue first for anything bigger than a small fix, so we can agree the approach.
