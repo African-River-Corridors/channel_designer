@@ -47,7 +47,7 @@ def test_no_sys_path_hacks_or_file_io_in_calculation_layers():
         text = py.read_text()
         if "sys.path" in text:
             bad.append(f"{rel}: sys.path")
-        if rel.split("/")[0] in ("rules", "alignment", "volumes") and rel not in EXEMPT:
+        if rel.split("/")[0] in ("rules", "alignment", "volumes", "terrain") and rel not in EXEMPT:
             for needle in ("open(", ".read_text(", ".write_text(", "to_file("):
                 if needle in text:
                     bad.append(f"{rel}: {needle}")
