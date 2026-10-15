@@ -37,6 +37,7 @@ where unknown), the present river polygon, and a design grade (float or ``grade(
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Callable, Optional, Sequence, Union
 
@@ -83,7 +84,7 @@ class RouteResult:
     smooth_passes: int
     sweep: list = field(default_factory=list)   # (corridor, saving %, min R) per candidate
     measured_min_radius_m: float = np.nan       # minimum radius of ``line`` on the chord
-    radius_check_chord_m: float = np.nan        # the chord it was read on, m
+    radius_check_chord_m: float = np.nan        # NOMINAL chord, 2 × k × station_step, m
     radius_ok: bool = False                     # measured holds ``r_min`` (2 % reading tol)
 
 
@@ -402,8 +403,10 @@ def optimise_route(line: LineString, terrain: TerrainSampler, river_polygon, gra
     ``radius_ok`` on the result is False when the returned line is tighter than ``r_min``.
     It is read on the line's own station vertices, ``k`` stations each side, so the chord is
     ``2 × k × station_step``. The default ``k = 1`` is the reading the enforcement uses. Pass
-    ``check_chord_m`` to read a longer chord (``k = round(check_chord_m / (2 × step))``, at
-    least 1). For a reading on about one vessel length, keep ``station_step`` near LOA / 2.
+    ``check_chord_m`` to read a longer chord (``k = floor(check_chord_m / (2 × step) + 0.5)``,
+    at least 1). The chord is NOMINAL, measured along the baseline: offsets stretch segments,
+    so the real chord at a corner can be longer. A resampled check on one LOA can read well
+    below a ``radius_ok`` route line at a corner between stations (see docs/known-issues.md).
     """
     if grid is None:
         grid = build_cost_grid(line, terrain, river_polygon, grade, bottom_width=bottom_width,
@@ -412,8 +415,12 @@ def optimise_route(line: LineString, terrain: TerrainSampler, river_polygon, gra
                                station_step=station_step, offset_step=offset_step,
                                transect_step=transect_step, daylight_m=daylight_m)
     cost = grid.weighted(wet_weight, dry_weight)
-    k = 1 if check_chord_m is None else max(1, int(round(check_chord_m
-                                                         / (2.0 * grid.station_step))))
+    if check_chord_m is None:
+        k = 1
+    elif not (math.isfinite(check_chord_m) and check_chord_m > 0.0):
+        raise ValueError("check_chord_m must be finite and positive.")
+    else:   # round half up, so a port reproduces it exactly (not Python's half-to-even)
+        k = max(1, int(math.floor(check_chord_m / (2.0 * grid.station_step) + 0.5)))
     best, sweep = None, []
     for ch in corridor_sweep:
         sm, passes, rmin, sav = solve_at_corridor(grid, cost, float(ch), r_min)

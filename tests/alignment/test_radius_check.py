@@ -53,9 +53,9 @@ def test_property_chord_radius_finds_the_sine_apex():
 
 
 def test_golden_chord_reads_the_whole_line_at_the_exact_chord():
-    """A kink 5 m from the end is still read, and the chord is the chord asked for."""
-    line = LineString([(0.0, 0.0), (995.0, 0.0), (1000.0, 5.0)])
-    assert min_radius_on_chord(line, chord_m=100.0) < 1000.0
+    """A kink in the last stride is read (only the backward pass reaches it)."""
+    line = LineString([(0.0, 0.0), (1004.0, 0.0), (1009.0, 5.0)])
+    assert min_radius_on_chord(line, chord_m=100.0) < math.inf
     # a line too short for the chord has no reading
     assert min_radius_on_chord(LineString([(0, 0), (40, 0), (60, 30)]), chord_m=100.0) == math.inf
 
@@ -152,3 +152,16 @@ def test_property_unmeasured_result_is_not_ok():
     res = RollingCircleResult(LineString([(0, 0), (1, 0)]), 300.0)
     assert not res.radius_ok and math.isnan(res.measured_min_radius_m)
     assert math.isnan(res.radius_check_chord_m)
+
+
+def test_feasibility_route_check_chord_is_validated_and_rounds_half_up():
+    import pytest
+    line = LineString([(0.0, 0.0), (2000.0, 0.0)])
+    river = line.buffer(20.0, cap_style="flat")
+    kw = dict(bottom_width=30.0, depth=3.0, side_slope=3.0, r_min=600.0,
+              corridor_sweep=(40.0,), station_step=50.0)
+    for bad in (0.0, -100.0, math.nan, math.inf):
+        with pytest.raises(ValueError):
+            route.optimise_route(line, _hill, river, 0.0, check_chord_m=bad, **kw)
+    res = route.optimise_route(line, _hill, river, 0.0, check_chord_m=250.0, **kw)
+    assert res.radius_check_chord_m == 300.0             # k = 2.5 rounds up to 3

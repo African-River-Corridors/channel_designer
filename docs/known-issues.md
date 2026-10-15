@@ -54,8 +54,14 @@ reading error.
 The route reads its vertices, not a resample. A resample reads the corners between straight
 segments: a polyline with every vertex on an R circle reads 3-6 % below R at usual spacings.
 Pass `check_chord_m` (the vessel length) to `rolling_circle` to read on one LOA. On the route,
-`check_chord_m` sets how many stations each side are used; for a one-LOA reading keep
-`station_step` near LOA / 2.
+`check_chord_m` sets how many stations each side are used (rounded half up), and the chord
+reported is nominal (2 × k × `station_step` along the baseline; offsets stretch segments).
+
+The route's reading is the one its smoothing enforces, so `radius_ok` there means the
+stations hold R_min. It does not mean every LOA-length chord does: a resampled one-LOA check
+can read well below it at a corner between stations. In one synthetic case (R_min 150 m,
+50 m stations) a 23° corner read 149.8 m on the vertices and 124.6 m on a resampled 100 m
+chord. If a corner matters, use a smaller `station_step` or smooth the line before use.
 
 The route's corridor sweep now prefers a corridor that holds R_min over one that saves more
 but does not. Up to 0.1.0 the route relaxed its target to the baseline's own radius,
