@@ -47,8 +47,8 @@ class RollingCircleResult:
     centreline: LineString
     min_radius_m: float                  # the radius REQUESTED (the circle's), not a measurement
     circles: List[dict] = field(default_factory=list)   # one per arc spliced in
-    measured_min_radius_m: float = math.inf   # minimum radius of ``centreline`` on the chord
-    radius_check_chord_m: float = 0.0         # the chord it was read on, m
+    measured_min_radius_m: float = math.nan   # minimum radius of ``centreline`` on the chord
+    radius_check_chord_m: float = math.nan    # the chord it was read on, m
     radius_ok: bool = False                   # measured holds ``min_radius_m`` (2 % reading tol)
 
     @property

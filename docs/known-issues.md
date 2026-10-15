@@ -43,18 +43,23 @@ every rolled line, so it ships as its own change.
   itself tighter than R_min, and its smoothing stops after a fixed number of passes.
 
 **What the result says.** Each result carries `radius_ok`, `measured_min_radius_m` and
-`radius_check_chord_m`. The radius is read on a chord (`alignment.radius_check`):
-three-point radius with points half a chord apart, sliding at a stride of 10 m or less.
-`radius_ok` allows 2 % below R_min for reading error. Default chords:
+`radius_check_chord_m` (`alignment.radius_check`). `radius_ok` allows 2 % below R_min for
+reading error.
 
-| Step | Default chord | Why |
+| Step | How it reads | Default chord |
 |---|---|---|
-| `rolling_circle` | R_min / 3 | one LOA at R_min = 3 × LOA |
-| `optimise_route` | larger of R_min / 3 and 2 × `station_step` | the line has a vertex per station; a polyline reads its own corners as tight radii on a shorter chord |
+| `rolling_circle` | three-point radius, points half a chord apart, sliding at a stride of 10 m or less, read from both ends | R_min / 3 (one LOA at R_min = 3 × LOA) |
+| `optimise_route` | three-point radius on the line's own station vertices, the same reading its smoothing enforces | 2 × `station_step` |
 
-Pass `check_chord_m` (the vessel length) to read on one LOA. Up to 0.1.0 the route relaxed
-its target to the baseline's own radius and reported the result as if it passed; it no longer
-does.
+The route reads its vertices, not a resample. A resample reads the corners between straight
+segments: a polyline with every vertex on an R circle reads 3-6 % below R at usual spacings.
+Pass `check_chord_m` (the vessel length) to `rolling_circle` to read on one LOA. On the route,
+`check_chord_m` sets how many stations each side are used; for a one-LOA reading keep
+`station_step` near LOA / 2.
+
+The route's corridor sweep now prefers a corridor that holds R_min over one that saves more
+but does not. Up to 0.1.0 the route relaxed its target to the baseline's own radius,
+reported the result as if it passed, and picked on saving alone; it no longer does.
 
 **What to do.** Check `radius_ok`. If it is False, smooth or resample a jagged input first,
 or roll the baseline before the route search.

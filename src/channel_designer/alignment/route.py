@@ -18,11 +18,13 @@ METHOD
    fixed reading tolerance ``RADIUS_TOL`` (2 %), the same one ``radius_ok`` allows. The target
    is never relaxed to the baseline's own radius. The passes stop after ``max_iter`` even if
    it is not cleared, so the result is measured, not assumed (step 5).
-4. A corridor sweep picks the sub-corridor whose radius-enforced line saves most.
-5. CHECK. The winner's minimum radius is read on a chord (:mod:`.radius_check`) and reported
-   as ``radius_ok``, ``measured_min_radius_m`` and ``radius_check_chord_m``. The search only
-   shifts the baseline sideways: it cannot lift a baseline that is itself tighter than
-   ``r_min``. Roll the baseline first (:mod:`.rolling_circle`) and check ``radius_ok``.
+4. CHECK + SWEEP. Each candidate's minimum radius is read on its own station vertices
+   (:func:`.radius_check.min_radius_on_vertices`, the reading the enforcement uses). The sweep
+   picks the sub-corridor that saves most AMONG THOSE THAT HOLD ``r_min``; only if none does,
+   the one that saves most, flagged. The winner reports ``radius_ok``,
+   ``measured_min_radius_m`` and ``radius_check_chord_m``. The search only shifts the
+   baseline sideways: it cannot lift a baseline that is itself tighter than ``r_min``. Roll
+   the baseline first (:mod:`.rolling_circle`) and check ``radius_ok``.
 
 Validate a winner with a true volume integration (:mod:`channel_designer.volumes.sections`
 or :mod:`channel_designer.volumes.raster`), never with the grid's own numbers.
@@ -42,8 +44,8 @@ import numpy as np
 from shapely import contains_xy
 from shapely.geometry import LineString
 
-from channel_designer.alignment.radius_check import (RADIUS_TOL, default_check_chord,
-                                                     min_radius_on_chord, radius_ok)
+from channel_designer.alignment.radius_check import (RADIUS_TOL, min_radius_on_vertices,
+                                                     radius_ok)
 
 TerrainSampler = Callable[[np.ndarray, np.ndarray], np.ndarray]
 GradeLike = Union[float, Callable[[float], float]]
@@ -75,13 +77,13 @@ class CostGrid:
 class RouteResult:
     line: LineString
     offsets: np.ndarray          # chosen lateral offset per station
-    min_radius_m: float
+    min_radius_m: float          # enforcement's reading: three-point radius on the stations
     corridor_half_m: float
     approx_saving_pct: float     # grid-approx, vs offset 0 everywhere — a search number
     smooth_passes: int
     sweep: list = field(default_factory=list)   # (corridor, saving %, min R) per candidate
-    measured_min_radius_m: float = np.inf       # minimum radius of ``line`` on the chord
-    radius_check_chord_m: float = 0.0           # the chord it was read on, m
+    measured_min_radius_m: float = np.nan       # minimum radius of ``line`` on the chord
+    radius_check_chord_m: float = np.nan        # the chord it was read on, m
     radius_ok: bool = False                     # measured holds ``r_min`` (2 % reading tol)
 
 
@@ -201,8 +203,8 @@ def offset_bounds(centres, target_R):
     alignment below ``target_R`` on the inside of a baseline bend.
 
     Where the baseline is already tighter than ``target_R`` the window only forbids moving
-    further inside (margin 0); it does not force the line outside. ``radius_ok`` on the
-    result reports what that leaves."""
+    further inside (margin 0); it does not force the line outside, which would leave the DP
+    no feasible path. ``radius_ok`` on the result reports what that leaves."""
     n = len(centres)
     R = radii(centres)
     beta = baseline_turn_angles(centres)
@@ -397,10 +399,11 @@ def optimise_route(line: LineString, terrain: TerrainSampler, river_polygon, gra
     Wide excursions force sharp reconnection curves that the radius enforcement then smooths
     away, so a moderate corridor usually wins; the sweep finds it.
 
-    ``radius_ok`` on the result is False when the returned line is tighter than ``r_min`` on
-    a chord of ``check_chord_m``. The default is the larger of ``r_min / 3`` (one LOA at
-    R_min = 3 × LOA) and two station steps: the line has a vertex every station, and a
-    polyline only resolves its own curvature on a chord of at least two vertex spacings.
+    ``radius_ok`` on the result is False when the returned line is tighter than ``r_min``.
+    It is read on the line's own station vertices, ``k`` stations each side, so the chord is
+    ``2 × k × station_step``. The default ``k = 1`` is the reading the enforcement uses. Pass
+    ``check_chord_m`` to read a longer chord (``k = round(check_chord_m / (2 × step))``, at
+    least 1). For a reading on about one vessel length, keep ``station_step`` near LOA / 2.
     """
     if grid is None:
         grid = build_cost_grid(line, terrain, river_polygon, grade, bottom_width=bottom_width,
@@ -409,20 +412,20 @@ def optimise_route(line: LineString, terrain: TerrainSampler, river_polygon, gra
                                station_step=station_step, offset_step=offset_step,
                                transect_step=transect_step, daylight_m=daylight_m)
     cost = grid.weighted(wet_weight, dry_weight)
+    k = 1 if check_chord_m is None else max(1, int(round(check_chord_m
+                                                         / (2.0 * grid.station_step))))
     best, sweep = None, []
     for ch in corridor_sweep:
         sm, passes, rmin, sav = solve_at_corridor(grid, cost, float(ch), r_min)
         sweep.append((float(ch), float(sav), float(rmin)))
-        if best is None or sav > best[1]:
-            best = (float(ch), sav, sm, rmin, passes)
-    ch, sav, sm, rmin, passes = best
-    pts = build_line_from_offsets(grid.centres, grid.normals, sm)
-    out = LineString(pts)
-    chord = (max(default_check_chord(r_min), 2.0 * grid.station_step) if check_chord_m is None
-             else float(check_chord_m))
-    measured = min_radius_on_chord(out, chord)
-    return RouteResult(line=out, offsets=sm, min_radius_m=float(rmin),
+        pts = build_line_from_offsets(grid.centres, grid.normals, sm)
+        measured = min_radius_on_vertices(pts, k)
+        ok = radius_ok(measured, r_min)
+        if best is None or (ok, sav) > (best[0], best[2]):
+            best = (ok, float(ch), sav, sm, rmin, passes, pts, measured)
+    ok, ch, sav, sm, rmin, passes, pts, measured = best
+    return RouteResult(line=LineString(pts), offsets=sm, min_radius_m=float(rmin),
                        corridor_half_m=ch, approx_saving_pct=float(sav),
                        smooth_passes=int(passes), sweep=sweep,
-                       measured_min_radius_m=measured, radius_check_chord_m=chord,
-                       radius_ok=radius_ok(measured, r_min))
+                       measured_min_radius_m=float(measured),
+                       radius_check_chord_m=2.0 * k * grid.station_step, radius_ok=ok)

@@ -11,7 +11,7 @@ import numpy as np
 from shapely.geometry import LineString
 
 from channel_designer.alignment import route
-from channel_designer.alignment.radius_check import min_radius_on_chord
+from channel_designer.alignment.radius_check import min_radius_on_chord, min_radius_on_vertices
 from channel_designer.alignment.rolling_circle import rolling_circle
 from channel_designer.synthetic import sine_generated_centreline
 
@@ -52,6 +52,30 @@ def test_property_chord_radius_finds_the_sine_apex():
     assert 210.0 < r < 225.0, r
 
 
+def test_golden_chord_reads_the_whole_line_at_the_exact_chord():
+    """A kink 5 m from the end is still read, and the chord is the chord asked for."""
+    line = LineString([(0.0, 0.0), (995.0, 0.0), (1000.0, 5.0)])
+    assert min_radius_on_chord(line, chord_m=100.0) < 1000.0
+    # a line too short for the chord has no reading
+    assert min_radius_on_chord(LineString([(0, 0), (40, 0), (60, 30)]), chord_m=100.0) == math.inf
+
+
+def test_feasibility_chord_must_be_finite_and_positive():
+    import pytest
+    for bad in (0.0, -1.0, math.nan, math.inf):
+        with pytest.raises(ValueError):
+            min_radius_on_chord(LineString([(0, 0), (1000, 0)]), chord_m=bad)
+
+
+def test_golden_vertex_radius_of_a_polyline_on_a_circle_is_its_radius():
+    """A polyline with every vertex on an R circle reads R, whatever its vertex spacing."""
+    for R, ds in ((150.0, 100.0), (200.0, 100.0), (100.0, 50.0)):
+        th = np.arange(0.0, 5.0, ds / R)
+        pts = np.column_stack([R * np.sin(th), R * (1 - np.cos(th))])
+        assert abs(min_radius_on_vertices(pts, 1) - R) < 1e-6
+        assert abs(min_radius_on_vertices(pts, 2) - R) < 1e-6
+
+
 # --- rolling circle (#10) -----------------------------------------------------------------
 
 def test_property_rolling_circle_reports_a_compliant_line():
@@ -87,8 +111,9 @@ def test_property_route_reports_a_compliant_line():
     res = route.optimise_route(line, _hill, river, 0.0, bottom_width=30.0, depth=3.0,
                                side_slope=3.0, r_min=600.0, corridor_sweep=(40.0, 80.0))
     assert res.radius_ok
-    assert res.radius_check_chord_m == 200.0             # 2 × station step beats R_min/3
+    assert res.radius_check_chord_m == 200.0             # read on the stations, 2 × 100 m
     assert res.measured_min_radius_m >= 0.98 * 600.0
+    assert res.measured_min_radius_m == res.min_radius_m  # enforced on what it reports
 
 
 def test_property_route_does_not_relax_rmin_to_a_tight_baseline():
@@ -104,3 +129,26 @@ def test_property_route_does_not_relax_rmin_to_a_tight_baseline():
     # it tried for R_min (every smoothing pass), rather than stopping at the baseline's radius
     assert res.smooth_passes == 600
 
+
+
+def test_property_route_prefers_a_compliant_corridor():
+    """A wider corridor that saves more but fails R_min must not beat one that holds it.
+    Straight baseline, so the baseline is not the cause: the 200 m corridor's excursion is."""
+    line = LineString([(0.0, 0.0), (4000.0, 0.0)])
+    river = line.buffer(20.0, cap_style="flat")
+    grid = route.build_cost_grid(line, _hill, river, 0.0, bottom_width=30.0, depth=3.0,
+                                 side_slope=3.0, corridor_half=200.0, station_step=50.0)
+    kw = dict(bottom_width=30.0, depth=3.0, side_slope=3.0, r_min=900.0, grid=grid)
+    narrow = route.optimise_route(line, _hill, river, 0.0, corridor_sweep=(120.0,), **kw)
+    wide = route.optimise_route(line, _hill, river, 0.0, corridor_sweep=(200.0,), **kw)
+    assert narrow.radius_ok and not wide.radius_ok
+    assert wide.approx_saving_pct > narrow.approx_saving_pct
+    res = route.optimise_route(line, _hill, river, 0.0, corridor_sweep=(120.0, 200.0), **kw)
+    assert res.radius_ok and res.corridor_half_m == 120.0
+
+
+def test_property_unmeasured_result_is_not_ok():
+    from channel_designer.alignment.rolling_circle import RollingCircleResult
+    res = RollingCircleResult(LineString([(0, 0), (1, 0)]), 300.0)
+    assert not res.radius_ok and math.isnan(res.measured_min_radius_m)
+    assert math.isnan(res.radius_check_chord_m)
