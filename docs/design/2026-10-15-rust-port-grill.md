@@ -45,3 +45,14 @@ note keeps every answer, so the specs (`docs/specs/0001`–`0004`) can be writte
 | Q25 | Installers | Unsigned pre-releases on GitHub Releases (macOS, Windows, Linux) until 1.0. Signing (Apple Developer account, Windows certificate) gates 1.0 and is a purchase decision for the maintainers. |
 | Q26 | Failed checks | Show the option with a red check, failures sorted first; "fails: R_min" carried in the table and on every export. |
 | Q27 | Screening label | A small "Screening — not for construction" status line in the app and on every export. |
+
+## Ticket breakdown (2026-10-15)
+
+| # | Question | Decision |
+|---|---|---|
+| T1 | Granularity | 17 tickets under one spec issue, as proposed. |
+| T2 | Spec first | Spec 0001 is posted as the parent issue before the tickets. |
+| T3 | Geometry parity | Reproduce GEOS approximations that change a number; compare polygons normalised. ADR 0005. |
+| T4 | `terrain/` | The line profiles are ported in spec 0001. Network fetching stays out of the core and comes in spec 0002, for Copernicus GLO-30 only. A FABDEM fetcher (non-commercial licence) is not frozen into the reference. |
+| T5 | Tracker | GitHub issues, native blocked-by links, sub-issues of the spec issue, and OVCD's five triage labels. `docs/agents/`. |
+
