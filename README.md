@@ -18,7 +18,7 @@ measures the cut and dredge volumes.
 | **Drawings** *(optional)* | `channel_designer.drawings` | Cross-section gallery sheets as SVG (and DXF) with ISO 7200 title blocks, built on [`technical_drawings_for_agents`](https://github.com/African-River-Corridors/technical_drawings_for_agents). |
 
 Vessel classes and dimensions come from
-[`vessel_designer`](https://github.com/African-River-Corridors/vessel_designer).
+[`vessel_designer`](https://github.com/African-River-Corridors/open-vessel-concept-drawings).
 
 Pricing is out of scope. The package measures quantities; what they cost is your call.
 
