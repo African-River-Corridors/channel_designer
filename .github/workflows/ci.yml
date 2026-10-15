@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  # Weekly, so a break in an upstream git dependency shows up without a push here.
+  schedule:
+    - cron: "17 6 * * 1"
 
 permissions:
   contents: read
@@ -22,6 +25,27 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev,dem,drawings]'
+      - name: Test
+        run: python -m pytest -q
+
+  # The test job uses the pinned git refs in pyproject.toml. This job tries both git
+  # dependencies at @main instead, so an upstream change that will break the next pin bump
+  # shows up here first. Weekly and on demand only; it never gates a pull request.
+  upstream-main:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install (git dependencies at @main)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev,dem,drawings]'
+          python -m pip install --force-reinstall \
+            'vessel_designer @ git+https://github.com/African-River-Corridors/open-vessel-concept-drawings@main' \
+            'technical_drawings_for_agents @ git+https://github.com/African-River-Corridors/technical_drawings_for_agents@main'
       - name: Test
         run: python -m pytest -q
 

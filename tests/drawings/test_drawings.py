@@ -49,5 +49,7 @@ def test_missing_extra_gives_an_install_hint(monkeypatch):
     drawings = importlib.import_module("channel_designer.drawings")
     monkeypatch.delattr(drawings, "sections", raising=False)
     monkeypatch.setattr(builtins, "__import__", fake_import)
-    with pytest.raises(ImportError, match=r"channel_designer\[drawings\]"):
+    # The hint, and the real cause: an installed but incompatible toolkit looks the same (#14).
+    with pytest.raises(ImportError,
+                       match=r"channel_designer\[drawings\].*technical_drawings_for_agents"):
         drawings.section_gallery([], None)
