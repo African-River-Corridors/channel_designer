@@ -82,7 +82,7 @@ Output:
 PIANC-B x CEMT_IV: bottom 30.4 m, R_min 255 m, depth 3.25 m
 8 bends tighter than R_min; 16 arcs spliced in
 rolling circle: dredge   562,780 m3   dry cut   941,841 m3   tallest face 17.3 m
-    least-cost: dredge   513,119 m3   dry cut   771,438 m3   tallest face 13.3 m
+    least-cost: dredge   513,163 m3   dry cut   776,725 m3   tallest face 13.3 m
 ```
 
 The numbers describe the synthetic river only.
@@ -154,6 +154,10 @@ more `radius_multiples`) follows the river more closely and runs longer.
   R_min 300 m, 111 m on a 10 m chord and 288 m on a 25 m chord. Read curvature on a
   vessel-length chord, or smooth the exits first. Details:
   [docs/known-issues.md](docs/known-issues.md).
+- **R_min is reported, not guaranteed.** `rolling_circle` and `optimise_route` can return a
+  design line tighter than R_min (a jagged input line; a baseline tighter than R_min). Both
+  results carry `radius_ok`, `measured_min_radius_m` and `radius_check_chord_m`. Check
+  `radius_ok` before you use the line.
 
 ## Contributing
 

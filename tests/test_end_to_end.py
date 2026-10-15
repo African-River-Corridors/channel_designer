@@ -44,6 +44,7 @@ def test_synthetic_river_rules_alignment_volumes():
                            bottom_width=shape.bottom_width_straight_m, depth=depth,
                            side_slope=3.0, r_min=r_min, corridor_sweep=(40, 80, 120))
     assert route.min_radius_m >= 0.98 * r_min
+    assert rolled.radius_ok and route.radius_ok
     assert route.approx_saving_pct > 0.0
 
     # volumes: the least-cost line must cut less than the line it started from
