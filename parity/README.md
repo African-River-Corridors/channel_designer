@@ -108,16 +108,19 @@ python3 -m parity.coverage    # case count per entry point and tier
 `cargo test` needs no Python. The `cd-cli` test also runs a few cases through `cdesign eval`.
 
 To add or change a case: edit its module in `modules/`, run `gen_cases`, run `cargo xtask regen`, and
-give the new or changed case a `reason` (a case that did not change keeps its old one). Reference Results come out byte for byte the same on any machine with
-the same numpy and shapely, so the oracle guard re-runs the frozen Python to check them.
+give the new or changed case a `reason` (a case that did not change keeps its old one). The same machine writes the same bytes every time, but another machine (macOS against Linux,
+or another CPU) rounds the last bits of a float differently, so the oracle guard re-runs the
+frozen Python and compares by the parity tolerance, not by bytes.
 
 ## Oracle guard
 
 The fast gate fails a pull request that changes `cases/`, `reference/`, `tolerance.json` or
 `ported.json`, unless:
 
-- re-running the frozen Python reproduces every committed Reference Result byte for byte (so the
-  change came from `cargo xtask regen`, not a hand edit);
+- re-running the frozen Python reproduces every committed Reference Result within the parity
+  tolerance (`rel` and `abs`; never above their ceilings): floats within it, everything else exact
+  (so the change came from `cargo xtask regen`, not a hand edit; a hand edit larger than the
+  tolerance fails);
 - every new case, and every case whose input or Reference Result changed, carries a new `reason`;
 - every removed case is in `retired` with a reason;
 - no tolerance is loosened (each has a ceiling written into the guard), and a tightened tolerance

@@ -3,7 +3,7 @@
 //!
 //! [`check`] compares the guarded files on the base branch with the files on the PR head. The
 //! caller adds the second half of the proof: re-running the frozen Python must reproduce the
-//! committed Reference Results byte for byte.
+//! committed Reference Results within the parity tolerance (see [`reproduces_within`]).
 
 use std::collections::BTreeMap;
 
@@ -276,6 +276,62 @@ fn check_entry_point(name: &str, base: &Tree, head: &Tree, v: &mut Vec<String>) 
     }
 }
 
+/// Does a freshly regenerated Reference Result file match the committed one?
+///
+/// Not byte for byte: macOS and Linux (and two CPU families) round the last bits of a float
+/// differently in numpy and GEOS, so the same frozen Python writes different last digits. Floats
+/// match within the parity tolerance (`rel` and `abs`, Python's `math.isclose` rule, never above the
+/// ceilings in [`TOLERANCE_CEILINGS`]); everything else matches exactly: integers (an integer never
+/// matches a float), booleans, text, null, list length and order, object keys and their order.
+/// Returns the path of the first difference, or `None` when they match.
+pub fn reproduces_within(committed: &str, fresh: &str, rel: f64, abs: f64) -> Option<String> {
+    let rel = rel.min(TOLERANCE_CEILINGS[0].1);
+    let abs = abs.min(TOLERANCE_CEILINGS[1].1);
+    let (Ok(a), Ok(b)) = (
+        serde_json::from_str::<Value>(committed),
+        serde_json::from_str::<Value>(fresh),
+    ) else {
+        return Some("$: not valid JSON".into());
+    };
+    first_difference("$", &a, &b, rel, abs)
+}
+
+fn first_difference(path: &str, a: &Value, b: &Value, rel: f64, abs: f64) -> Option<String> {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => {
+            let same = match (x.is_f64(), y.is_f64()) {
+                (true, true) => {
+                    let (x, y) = (
+                        x.as_f64().unwrap_or(f64::NAN),
+                        y.as_f64().unwrap_or(f64::NAN),
+                    );
+                    x == y || (x - y).abs() <= (rel * x.abs().max(y.abs())).max(abs)
+                }
+                (false, false) => x == y,
+                _ => false,
+            };
+            (!same).then(|| format!("{path}: {x} against {y}"))
+        }
+        (Value::Array(x), Value::Array(y)) => {
+            if x.len() != y.len() {
+                return Some(format!("{path}: {} items against {}", x.len(), y.len()));
+            }
+            x.iter()
+                .zip(y)
+                .enumerate()
+                .find_map(|(i, (p, q))| first_difference(&format!("{path}[{i}]"), p, q, rel, abs))
+        }
+        (Value::Object(x), Value::Object(y)) => {
+            if !x.keys().eq(y.keys()) {
+                return Some(format!("{path}: keys differ"));
+            }
+            x.iter()
+                .find_map(|(k, p)| first_difference(&format!("{path}.{k}"), p, &y[k], rel, abs))
+        }
+        _ => (a != b).then(|| format!("{path}: {a} against {b}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -539,5 +595,66 @@ mod tests {
             ),
         );
         assert_violation(&check(&tree(), &head), "duplicate");
+    }
+
+    #[test]
+    fn last_bit_noise_reproduces_but_a_real_edit_does_not() {
+        let a = r#"{"ok": [450.0, 1e-12, 3, "float:inf"]}"#;
+        let noise = r#"{"ok": [450.00000000001, 2e-12, 3, "float:inf"]}"#;
+        assert_eq!(reproduces_within(a, noise, 1e-9, 1e-9), None);
+        let just_over = r#"{"ok": [450.0000005, 1e-12, 3, "float:inf"]}"#; // 1.1e-9 relative
+        assert!(
+            reproduces_within(a, just_over, 1e-9, 1e-9)
+                .unwrap()
+                .contains("$.ok[0]")
+        );
+        let just_under = r#"{"ok": [450.0000004, 1e-12, 3, "float:inf"]}"#; // 0.9e-9 relative
+        assert_eq!(reproduces_within(a, just_under, 1e-9, 1e-9), None);
+    }
+
+    #[test]
+    fn everything_but_floats_must_reproduce_exactly() {
+        let a = r#"{"ok": {"n": 3, "s": "x", "b": true, "l": [1.0, 2.0]}}"#;
+        for (bad, what) in [
+            (
+                r#"{"ok": {"n": 3.0, "s": "x", "b": true, "l": [1.0, 2.0]}}"#,
+                "$.ok.n",
+            ),
+            (
+                r#"{"ok": {"n": 3, "s": "y", "b": true, "l": [1.0, 2.0]}}"#,
+                "$.ok.s",
+            ),
+            (
+                r#"{"ok": {"n": 3, "s": "x", "b": false, "l": [1.0, 2.0]}}"#,
+                "$.ok.b",
+            ),
+            (
+                r#"{"ok": {"n": 3, "s": "x", "b": true, "l": [1.0]}}"#,
+                "$.ok.l",
+            ),
+            (
+                r#"{"ok": {"n": 3, "s": "x", "b": true, "l": [2.0, 1.0]}}"#,
+                "$.ok.l[0]",
+            ),
+            (
+                r#"{"ok": {"s": "x", "n": 3, "b": true, "l": [1.0, 2.0]}}"#,
+                "$.ok",
+            ),
+        ] {
+            let got = reproduces_within(a, bad, 1e-9, 1e-9);
+            assert!(
+                got.as_deref().is_some_and(|g| g.contains(what)),
+                "{bad}: {got:?}"
+            );
+        }
+        assert_eq!(reproduces_within(a, a, 1e-9, 1e-9), None);
+        assert!(reproduces_within(a, "not json", 1e-9, 1e-9).is_some());
+    }
+
+    #[test]
+    fn a_loosened_tolerance_file_cannot_widen_the_reproduction_check() {
+        let a = r#"{"ok": 100.0}"#;
+        let off = r#"{"ok": 100.001}"#; // 1e-5 relative
+        assert!(reproduces_within(a, off, 1e-3, 1e-3).is_some());
     }
 }
