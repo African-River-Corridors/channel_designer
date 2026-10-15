@@ -1,0 +1,540 @@
+{
+  "entry_point": "radius_check",
+  "generated_by": "cargo xtask regen (frozen Python); never edit by hand",
+  "results": [
+    {
+      "id": "constants/tolerances",
+      "output": {
+        "ok": {
+          "MAX_STRIDE_M": 10.0,
+          "RADIUS_TOL": 0.02
+        }
+      }
+    },
+    {
+      "id": "default_check_chord/chord_r150",
+      "output": {
+        "ok": 50.0
+      }
+    },
+    {
+      "id": "default_check_chord/chord_r300",
+      "output": {
+        "ok": 100.0
+      }
+    },
+    {
+      "id": "default_check_chord/chord_r450",
+      "output": {
+        "ok": 150.0
+      }
+    },
+    {
+      "id": "default_check_chord/chord_r1000",
+      "output": {
+        "ok": 333.3333333333333
+      }
+    },
+    {
+      "id": "min_radius_on_chord/arc_r500_chord100",
+      "output": {
+        "ok": 499.74764426460615
+      }
+    },
+    {
+      "id": "min_radius_on_chord/straight_is_infinite",
+      "output": {
+        "ok": "float:inf"
+      }
+    },
+    {
+      "id": "min_radius_on_chord/sine_apex_chord60",
+      "output": {
+        "ok": 220.58509423775456
+      }
+    },
+    {
+      "id": "min_radius_on_chord/sine_apex_chord200",
+      "output": {
+        "ok": 232.6182304318286
+      }
+    },
+    {
+      "id": "min_radius_on_chord/last_stride_kink_is_read",
+      "output": {
+        "ok": 4982.621552093012
+      }
+    },
+    {
+      "id": "min_radius_on_chord/line_shorter_than_chord",
+      "output": {
+        "ok": "float:inf"
+      }
+    },
+    {
+      "id": "min_radius_on_chord/jagged_trace_chord100",
+      "output": {
+        "ok": 64.03094701487989
+      }
+    },
+    {
+      "id": "min_radius_on_chord/jagged_trace_chord33",
+      "output": {
+        "ok": 21.418826998989147
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_circle_r150_ds100_k1",
+      "output": {
+        "ok": 149.99999804678285
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_circle_r150_ds100_k2",
+      "output": {
+        "ok": 149.9999997316406
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_circle_r200_ds100_k1",
+      "output": {
+        "ok": 199.99999690671666
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_circle_r200_ds100_k2",
+      "output": {
+        "ok": 199.99999931285612
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_circle_r100_ds50_k1",
+      "output": {
+        "ok": 99.99999868139045
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_circle_r100_ds50_k2",
+      "output": {
+        "ok": 99.99999962895838
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_default_k",
+      "output": {
+        "ok": 299.99998330709616
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_too_few_points",
+      "output": {
+        "ok": "float:inf"
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_collinear",
+      "output": {
+        "ok": "float:inf"
+      }
+    },
+    {
+      "id": "radius_ok/ok_300.0_300",
+      "output": {
+        "ok": true
+      }
+    },
+    {
+      "id": "radius_ok/ok_294.0_300",
+      "output": {
+        "ok": true
+      }
+    },
+    {
+      "id": "radius_ok/ok_293.9_300",
+      "output": {
+        "ok": false
+      }
+    },
+    {
+      "id": "radius_ok/ok_299.9_300",
+      "output": {
+        "ok": true
+      }
+    },
+    {
+      "id": "radius_ok/ok_400.0_300",
+      "output": {
+        "ok": true
+      }
+    },
+    {
+      "id": "radius_ok/ok_float:inf_300",
+      "output": {
+        "ok": true
+      }
+    },
+    {
+      "id": "radius_ok/ok_float:nan_300",
+      "output": {
+        "ok": false
+      }
+    },
+    {
+      "id": "radius_ok/ok_0.0_0",
+      "output": {
+        "ok": true
+      }
+    },
+    {
+      "id": "radius_ok/ok_-1.0_300",
+      "output": {
+        "ok": false
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_00",
+      "output": {
+        "ok": 635.1923908625503
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_01",
+      "output": {
+        "ok": 233.67955899219106
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_02",
+      "output": {
+        "ok": 4.16471485718361
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_03",
+      "output": {
+        "ok": 1344.8910856251043
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_04",
+      "output": {
+        "ok": 598.6940730618774
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_05",
+      "output": {
+        "ok": 124.83849900658096
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_06",
+      "output": {
+        "ok": 598.0535082955587
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_07",
+      "output": {
+        "ok": 369.5430345675778
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_08",
+      "output": {
+        "ok": 189.98961724693612
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_09",
+      "output": {
+        "ok": 1389.1755621751174
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_10",
+      "output": {
+        "ok": 618.7081928182286
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_11",
+      "output": {
+        "ok": 260.6137041722327
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_12",
+      "output": {
+        "ok": 891.963562973342
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_13",
+      "output": {
+        "ok": 302.0756575960036
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_14",
+      "output": {
+        "ok": 102.8628634805344
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_15",
+      "output": {
+        "ok": 566.8732501338388
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_16",
+      "output": {
+        "ok": 136.4394394602386
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_17",
+      "output": {
+        "ok": 39.37349612415104
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_18",
+      "output": {
+        "ok": 1428.2541757876284
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_19",
+      "output": {
+        "ok": 412.19722878121115
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_20",
+      "output": {
+        "ok": 244.77681052626076
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_21",
+      "output": {
+        "ok": 1716.5665817957704
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_22",
+      "output": {
+        "ok": 330.2618673072574
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_23",
+      "output": {
+        "ok": 211.22830654953992
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_sweep_24",
+      "output": {
+        "ok": 1012.8685539912842
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_sweep_00",
+      "output": {
+        "ok": 526.5319919844543
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_sweep_01",
+      "output": {
+        "ok": 279.25242637415437
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_sweep_02",
+      "output": {
+        "ok": 770.2299949024573
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_sweep_03",
+      "output": {
+        "ok": 215.15419095251605
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_sweep_04",
+      "output": {
+        "ok": "float:inf"
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_sweep_05",
+      "output": {
+        "ok": "float:inf"
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_sweep_06",
+      "output": {
+        "ok": 458.4958978973853
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_sweep_07",
+      "output": {
+        "ok": "float:inf"
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_sweep_08",
+      "output": {
+        "ok": 393.8779835918993
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_sweep_09",
+      "output": {
+        "ok": 197.9935154308788
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_sweep_10",
+      "output": {
+        "ok": 414.01097714486565
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_sweep_11",
+      "output": {
+        "ok": 369.918702264927
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_sweep_12",
+      "output": {
+        "ok": 793.2929920685348
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_sweep_13",
+      "output": {
+        "ok": 216.5982836960337
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_sweep_14",
+      "output": {
+        "ok": 507.18893825839695
+      }
+    },
+    {
+      "id": "radius_ok/ok_sweep_00",
+      "output": {
+        "ok": true
+      }
+    },
+    {
+      "id": "radius_ok/ok_sweep_01",
+      "output": {
+        "ok": true
+      }
+    },
+    {
+      "id": "radius_ok/ok_sweep_02",
+      "output": {
+        "ok": false
+      }
+    },
+    {
+      "id": "radius_ok/ok_sweep_03",
+      "output": {
+        "ok": true
+      }
+    },
+    {
+      "id": "radius_ok/ok_sweep_04",
+      "output": {
+        "ok": true
+      }
+    },
+    {
+      "id": "radius_ok/ok_sweep_05",
+      "output": {
+        "ok": false
+      }
+    },
+    {
+      "id": "radius_ok/ok_sweep_06",
+      "output": {
+        "ok": false
+      }
+    },
+    {
+      "id": "radius_ok/ok_sweep_07",
+      "output": {
+        "ok": false
+      }
+    },
+    {
+      "id": "radius_ok/ok_sweep_08",
+      "output": {
+        "ok": false
+      }
+    },
+    {
+      "id": "radius_ok/ok_sweep_09",
+      "output": {
+        "ok": false
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_not_positive_0.0",
+      "output": {
+        "error": {
+          "type": "ValueError",
+          "message": "chord_m must be finite and positive."
+        }
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_not_positive_-1.0",
+      "output": {
+        "error": {
+          "type": "ValueError",
+          "message": "chord_m must be finite and positive."
+        }
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_not_positive_float:nan",
+      "output": {
+        "error": {
+          "type": "ValueError",
+          "message": "chord_m must be finite and positive."
+        }
+      }
+    },
+    {
+      "id": "min_radius_on_chord/chord_not_positive_float:inf",
+      "output": {
+        "error": {
+          "type": "ValueError",
+          "message": "chord_m must be finite and positive."
+        }
+      }
+    },
+    {
+      "id": "min_radius_on_vertices/vertices_k0",
+      "output": {
+        "error": {
+          "type": "ValueError",
+          "message": "k must be at least 1."
+        }
+      }
+    }
+  ]
+}

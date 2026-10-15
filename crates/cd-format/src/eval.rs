@@ -32,9 +32,37 @@ impl core::fmt::Display for EvalError {
 
 impl std::error::Error for EvalError {}
 
-/// Every parity entry point in spec 0001. Ticket 23 lists them all; each port ticket adds its
-/// dispatch arm and its name to `parity/ported.json`.
-pub const ENTRY_POINTS: &[&str] = &["cut_model"];
+/// Every parity entry point in spec 0001: one per Python module, named after it (`cut_model`
+/// keeps the name it had before the others were added). Each port ticket adds its dispatch arm and
+/// its name to `parity/ported.json`; until then `eval` says `NotPorted`.
+pub const ENTRY_POINTS: &[&str] = &[
+    "bends",
+    "cascade",
+    "centreline",
+    "cut_model",
+    "cut_model_extras",
+    "cut_model_grid",
+    "design",
+    "footprint",
+    "lattice",
+    "limits",
+    "loops",
+    "meanders",
+    "methods",
+    "pools",
+    "primitives",
+    "radius_check",
+    "raster",
+    "rolling_circle",
+    "route",
+    "rulesets",
+    "sections",
+    "simple",
+    "synthetic",
+    "terrain_profile",
+    "width_profile",
+    "widths",
+];
 
 /// Run one parity case through the Rust code.
 pub fn eval(entry_point: &str, input: &Value) -> Result<Value, EvalError> {

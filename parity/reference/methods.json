@@ -1,0 +1,533 @@
+{
+  "entry_point": "methods",
+  "generated_by": "cargo xtask regen (frozen Python); never edit by hand",
+  "results": [
+    {
+      "id": "width_methods/builtin",
+      "output": {
+        "ok": ["pianc"]
+      }
+    },
+    {
+      "id": "evaluate/pianc_default",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 26.599999999999998,
+          "min_radius": 255.0,
+          "bends": [35.631249999999994, 30.141666666666666, 27.503124999999997, 26.600000903124997, 26.599999999999998, 26.599999999999998],
+          "breakdown": {
+            "fairway_kw_x_beam": 26.6,
+            "width_multiple": 2.8
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/pianc_k_3",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 28.5,
+          "min_radius": 340.0,
+          "bends": [37.53125, 32.041666666666664, 29.403125, 28.500000903125, 28.5, 28.5],
+          "breakdown": {
+            "fairway_kw_x_beam": 28.5,
+            "width_multiple": 3.0
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/pianc_buildup_default_maneuver",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 33.25,
+          "min_radius": 255.0,
+          "bends": [42.28125, 36.791666666666664, 34.153125, 33.250000903125, 33.25, 33.25],
+          "breakdown": {
+            "W_BM_manoeuvring_lane": 17.1,
+            "sum_Wi_additional": 8.55,
+            "bank_clearances_Br_Bg": 7.6,
+            "maneuverability": "poor"
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/pianc_buildup_good",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 27.36,
+          "min_radius": 330.0,
+          "bends": [42.485, 33.291372549019606, 28.8725, 27.3600015125, 27.36, 27.36],
+          "breakdown": {
+            "W_BM_manoeuvring_lane": 14.82,
+            "sum_Wi_additional": 5.7,
+            "bank_clearances_Br_Bg": 6.84,
+            "maneuverability": "good"
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/pianc_buildup_moderate",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 29.64,
+          "min_radius": 330.0,
+          "bends": [44.765, 35.57137254901961, 31.1525, 29.6400015125, 29.64, 29.64],
+          "breakdown": {
+            "W_BM_manoeuvring_lane": 17.1,
+            "sum_Wi_additional": 5.7,
+            "bank_clearances_Br_Bg": 6.84,
+            "maneuverability": "moderate"
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/pianc_buildup_poor",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 33.06,
+          "min_radius": 330.0,
+          "bends": [48.185, 38.99137254901961, 34.572500000000005, 33.0600015125, 33.06, 33.06],
+          "breakdown": {
+            "W_BM_manoeuvring_lane": 20.52,
+            "sum_Wi_additional": 5.7,
+            "bank_clearances_Br_Bg": 6.84,
+            "maneuverability": "poor"
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/toy_method",
+      "output": {
+        "ok": {
+          "name": "toy",
+          "description": "toy method",
+          "straight": 25.0,
+          "min_radius": 360.0,
+          "bends": [35.125, 29.5, 25.0],
+          "breakdown": null
+        }
+      }
+    },
+    {
+      "id": "get_width_method/get_pianc",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA"
+        }
+      }
+    },
+    {
+      "id": "register_duplicate/duplicate_name_refused",
+      "output": {
+        "error": {
+          "type": "ValueError",
+          "message": "width method 'pianc' is already registered; pass replace=True to override it"
+        }
+      }
+    },
+    {
+      "id": "unregister/builtin_cannot_be_unregistered",
+      "output": {
+        "error": {
+          "type": "ValueError",
+          "message": "the built-in 'pianc' method cannot be unregistered"
+        }
+      }
+    },
+    {
+      "id": "unregister/unregister_unknown_is_quiet",
+      "output": {
+        "ok": ["pianc"]
+      }
+    },
+    {
+      "id": "get_width_method/unknown_method",
+      "output": {
+        "error": {
+          "type": "ValueError",
+          "message": "unknown width method 'nope'; registered: pianc"
+        }
+      }
+    },
+    {
+      "id": "evaluate/bad_maneuverability",
+      "output": {
+        "error": {
+          "type": "ValueError",
+          "message": "maneuverability must be one of ('good', 'moderate', 'poor')"
+        }
+      }
+    },
+    {
+      "id": "evaluate/unknown_method_in_evaluate",
+      "output": {
+        "error": {
+          "type": "ValueError",
+          "message": "unknown width method 'zzz'; registered: pianc"
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_00",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 42.482715,
+          "min_radius": 368.55128699999995,
+          "bends": [44.90829200680297, 45.407881373846756, 43.66558534683418, 43.912009007673, 44.015092485499075, 42.482715],
+          "breakdown": {
+            "fairway_kw_x_beam": 42.48,
+            "width_multiple": 3.527
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_01",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 48.524754,
+          "min_radius": 565.884192,
+          "bends": [51.90914743939709, 50.24278537493116, 51.678320206655954, 50.25403679645864, 51.87465598253577, 48.524754],
+          "breakdown": {
+            "fairway_kw_x_beam": 48.52,
+            "width_multiple": 2.913
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_02",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 36.64294400000001,
+          "min_radius": 182.72142,
+          "bends": [37.17621592416712, 36.98493001121343, 36.86221496176739, 37.02449514952327, 36.94577440285628, 36.64294400000001],
+          "breakdown": {
+            "W_BM_manoeuvring_lane": 20.79,
+            "sum_Wi_additional": 10.4,
+            "bank_clearances_Br_Bg": 5.45,
+            "maneuverability": "poor"
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_03",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 23.563638,
+          "min_radius": 231.536244,
+          "bends": [25.08686165032123, 24.31180691081583, 24.646860524471023, 24.21287594987344, 24.049650282472907, 23.563638],
+          "breakdown": {
+            "W_BM_manoeuvring_lane": 11.35,
+            "sum_Wi_additional": 6.81,
+            "bank_clearances_Br_Bg": 5.4,
+            "maneuverability": "moderate"
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_04",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 89.52953099999999,
+          "min_radius": 496.99315,
+          "bends": [90.68853667631188, 94.58234333836013, 90.88181413196219, 90.84385776448651, 94.62935888320247, 89.52953099999999],
+          "breakdown": {
+            "W_BM_manoeuvring_lane": 41.36,
+            "sum_Wi_additional": 24.82,
+            "bank_clearances_Br_Bg": 23.35,
+            "maneuverability": "moderate"
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_05",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 52.58774,
+          "min_radius": 220.624272,
+          "bends": [59.93270576708501, 55.595500536306844, 52.99517505785791, 53.56244935419992, 53.894324232143, 52.58774],
+          "breakdown": {
+            "W_BM_manoeuvring_lane": 26.15,
+            "sum_Wi_additional": 13.07,
+            "bank_clearances_Br_Bg": 13.36,
+            "maneuverability": "poor"
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_06",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 26.75168,
+          "min_radius": 313.34177700000004,
+          "bends": [27.016221092204248, 27.085181905396386, 27.046375351747397, 27.547930578572924, 26.99240628987573, 26.75168],
+          "breakdown": {
+            "W_BM_manoeuvring_lane": 14.68,
+            "sum_Wi_additional": 7.34,
+            "bank_clearances_Br_Bg": 4.73,
+            "maneuverability": "poor"
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_07",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 54.659448,
+          "min_radius": 168.651994,
+          "bends": [57.284530422211034, 54.99229452689575, 55.344811304539384, 56.9420713372509, 54.96231487502697, 54.659448],
+          "breakdown": {
+            "fairway_kw_x_beam": 54.66,
+            "width_multiple": 3.348
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_08",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 34.30238,
+          "min_radius": 340.7509,
+          "bends": [35.05100474269532, 34.55785417111865, 34.53354653337031, 34.552390438788834, 35.466630991820544, 34.30238],
+          "breakdown": {
+            "W_BM_manoeuvring_lane": 19.82,
+            "sum_Wi_additional": 9.91,
+            "bank_clearances_Br_Bg": 4.57,
+            "maneuverability": "poor"
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_09",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 72.90607499999999,
+          "min_radius": 416.182884,
+          "bends": [77.45802565037671, 85.65655941100192, 76.2530714622494, 75.74248175593875, 74.97430917057206, 72.90607499999999],
+          "breakdown": {
+            "W_BM_manoeuvring_lane": 35.46,
+            "sum_Wi_additional": 24.55,
+            "bank_clearances_Br_Bg": 12.9,
+            "maneuverability": "good"
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_10",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 53.354388,
+          "min_radius": 849.424158,
+          "bends": [55.968225449764475, 98.1030840174323, 60.3880885845514, 58.325144173336696, 84.49683087921562, 53.354388],
+          "breakdown": {
+            "fairway_kw_x_beam": 53.35,
+            "width_multiple": 3.634
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_11",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 59.88879,
+          "min_radius": 730.0478239999999,
+          "bends": [62.028751700341985, 62.22205640366716, 61.52053052953758, 103.7095340320576, 71.16272075559647, 59.88879],
+          "breakdown": {
+            "W_BM_manoeuvring_lane": 27.1,
+            "sum_Wi_additional": 16.26,
+            "bank_clearances_Br_Bg": 16.53,
+            "maneuverability": "moderate"
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_12",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 37.15533800000001,
+          "min_radius": 543.220471,
+          "bends": [43.08441341312088, 37.70171771043695, 38.948957427704435, 39.10275846605671, 38.33739046203568, 37.15533800000001],
+          "breakdown": {
+            "W_BM_manoeuvring_lane": 16.5,
+            "sum_Wi_additional": 11.42,
+            "bank_clearances_Br_Bg": 9.23,
+            "maneuverability": "good"
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_13",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 42.12208,
+          "min_radius": 988.307838,
+          "bends": [44.84446399853588, 49.705299293196994, 43.87319281665157, 45.522739568821606, 43.87691311815876, 42.12208],
+          "breakdown": {
+            "W_BM_manoeuvring_lane": 18.8,
+            "sum_Wi_additional": 13.02,
+            "bank_clearances_Br_Bg": 10.3,
+            "maneuverability": "good"
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_14",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 60.199685,
+          "min_radius": 274.06613500000003,
+          "bends": [60.607053127427335, 60.64356335700841, 62.37528799253953, 61.094907688056836, 60.53134275052345, 60.199685],
+          "breakdown": {
+            "fairway_kw_x_beam": 60.2,
+            "width_multiple": 3.731
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_15",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 60.719208,
+          "min_radius": 254.882016,
+          "bends": [61.34671157961092, 69.49987249676094, 61.49822334775185, 61.350462488907134, 62.73033585350672, 60.719208],
+          "breakdown": {
+            "fairway_kw_x_beam": 60.72,
+            "width_multiple": 3.048
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_16",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 72.95903999999999,
+          "min_radius": 234.92528,
+          "bends": [73.06991467338915, 73.46661688110586, 73.10217033227609, 74.8676741885129, 73.1258141075746, 72.95903999999999],
+          "breakdown": {
+            "W_BM_manoeuvring_lane": 32.93,
+            "sum_Wi_additional": 22.8,
+            "bank_clearances_Br_Bg": 17.23,
+            "maneuverability": "good"
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_17",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 44.66542999999999,
+          "min_radius": 270.031344,
+          "bends": [45.12537493694939, 47.044617196796764, 44.99737116787353, 45.106566946245174, 44.94309827473536, 44.66542999999999],
+          "breakdown": {
+            "fairway_kw_x_beam": 44.67,
+            "width_multiple": 3.07
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_18",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 35.084232,
+          "min_radius": 647.8131840000001,
+          "bends": [36.10369886859865, 60.900536044338715, 36.22294755811124, 37.15844317827164, 39.164532830935656, 35.084232],
+          "breakdown": {
+            "W_BM_manoeuvring_lane": 14.32,
+            "sum_Wi_additional": 9.91,
+            "bank_clearances_Br_Bg": 10.86,
+            "maneuverability": "good"
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_19",
+      "output": {
+        "ok": {
+          "name": "pianc",
+          "description": "PIANC: straight = k_w x beam (or the Report 121 build-up); bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
+          "straight": 27.040284,
+          "min_radius": 348.97682,
+          "bends": [27.670242358261273, 27.927696112036223, 28.28722022566624, 28.4641413016533, 27.44238469642461, 27.040284],
+          "breakdown": {
+            "fairway_kw_x_beam": 27.04,
+            "width_multiple": 3.924
+          }
+        }
+      }
+    }
+  ]
+}

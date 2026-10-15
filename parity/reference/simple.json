@@ -1,0 +1,738 @@
+{
+  "entry_point": "simple",
+  "generated_by": "cargo xtask regen (frozen Python); never edit by hand",
+  "results": [
+    {
+      "id": "size_channel/beam_9_5",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 23.75,
+          "bottom_width_bend_m": 26.40625,
+          "bend_widening_m": 2.65625,
+          "min_bend_radius_m": 340.0,
+          "required_depth_m": 3.0,
+          "max_draft_for_depth_m": 2.5,
+          "top_width_straight_m": 41.75,
+          "design_depth_m": 3.0,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 425.0
+        }
+      }
+    },
+    {
+      "id": "size_channel/width_scales_with_beam",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 47.5,
+          "bottom_width_bend_m": 50.15625,
+          "bend_widening_m": 2.65625,
+          "min_bend_radius_m": 340.0,
+          "required_depth_m": 3.0,
+          "max_draft_for_depth_m": 2.5,
+          "top_width_straight_m": 65.5,
+          "design_depth_m": 3.0,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 425.0
+        }
+      }
+    },
+    {
+      "id": "size_channel/bend_widening",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 30.0,
+          "bottom_width_bend_m": 34.166666666666664,
+          "bend_widening_m": 4.166666666666664,
+          "min_bend_radius_m": 300.0,
+          "required_depth_m": 2.5,
+          "max_draft_for_depth_m": 2.0,
+          "top_width_straight_m": 45.0,
+          "design_depth_m": 2.5,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 500.0
+        }
+      }
+    },
+    {
+      "id": "size_channel/from_depth_no_draft",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 25.0,
+          "bottom_width_bend_m": 28.125,
+          "bend_widening_m": 3.125,
+          "min_bend_radius_m": 400.0,
+          "required_depth_m": 0.0,
+          "max_draft_for_depth_m": 3.4782608695652177,
+          "top_width_straight_m": 49.0,
+          "design_depth_m": 4.0,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 500.0
+        }
+      }
+    },
+    {
+      "id": "size_channel/draft_and_depth",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 25.0,
+          "bottom_width_bend_m": 28.125,
+          "bend_widening_m": 3.125,
+          "min_bend_radius_m": 400.0,
+          "required_depth_m": 2.5,
+          "max_draft_for_depth_m": 3.0,
+          "top_width_straight_m": 46.0,
+          "design_depth_m": 3.5,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 500.0
+        }
+      }
+    },
+    {
+      "id": "size_channel/fractional_ukc",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 25.0,
+          "bottom_width_bend_m": 28.125,
+          "bend_widening_m": 3.125,
+          "min_bend_radius_m": 400.0,
+          "required_depth_m": 7.2,
+          "max_draft_for_depth_m": 6.0,
+          "top_width_straight_m": 68.2,
+          "design_depth_m": 7.2,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 500.0
+        }
+      }
+    },
+    {
+      "id": "size_channel/pianc_buildup_options",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 34.2,
+          "bottom_width_bend_m": 37.6375,
+          "bend_widening_m": 3.4375,
+          "min_bend_radius_m": 440.0,
+          "required_depth_m": 3.3,
+          "max_draft_for_depth_m": 2.8,
+          "top_width_straight_m": 54.0,
+          "design_depth_m": 3.3,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 550.0
+        }
+      }
+    },
+    {
+      "id": "size_channel/pianc_options_beat_field",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 38.76,
+          "bottom_width_bend_m": 42.1975,
+          "bend_widening_m": 3.4375,
+          "min_bend_radius_m": 440.0,
+          "required_depth_m": 3.3,
+          "max_draft_for_depth_m": 2.8,
+          "top_width_straight_m": 58.559999999999995,
+          "design_depth_m": 3.3,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 550.0
+        }
+      }
+    },
+    {
+      "id": "size_channel/passing_places",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 25.0,
+          "bottom_width_bend_m": 28.125,
+          "bend_widening_m": 3.125,
+          "min_bend_radius_m": 400.0,
+          "required_depth_m": 2.5,
+          "max_draft_for_depth_m": 2.0,
+          "top_width_straight_m": 40.0,
+          "design_depth_m": 2.5,
+          "passing_place_spacing_m": 1500.0,
+          "passing_place_length_m": 650.0
+        }
+      }
+    },
+    {
+      "id": "size_channel/zero_depth",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 25.0,
+          "bottom_width_bend_m": 28.125,
+          "bend_widening_m": 3.125,
+          "min_bend_radius_m": 400.0,
+          "required_depth_m": 0.0,
+          "max_draft_for_depth_m": 0.0,
+          "top_width_straight_m": 25.0,
+          "design_depth_m": 0.0,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 500.0
+        }
+      }
+    },
+    {
+      "id": "size_channel/negative_depth",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 25.0,
+          "bottom_width_bend_m": 28.125,
+          "bend_widening_m": 3.125,
+          "min_bend_radius_m": 400.0,
+          "required_depth_m": 2.5,
+          "max_draft_for_depth_m": 0.0,
+          "top_width_straight_m": 13.0,
+          "design_depth_m": -2.0,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 500.0
+        }
+      }
+    },
+    {
+      "id": "size_channel/toy_method",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 25.0,
+          "bottom_width_bend_m": 30.625,
+          "bend_widening_m": 5.625,
+          "min_bend_radius_m": 360.0,
+          "required_depth_m": 2.7,
+          "max_draft_for_depth_m": 2.2,
+          "top_width_straight_m": 41.2,
+          "design_depth_m": 2.7,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 450.0
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_00",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 72.523145,
+          "bottom_width_bend_m": 76.95602865862993,
+          "bend_widening_m": 4.432883658629933,
+          "min_bend_radius_m": 242.133645,
+          "required_depth_m": 2.648,
+          "max_draft_for_depth_m": 1.7600000000000002,
+          "top_width_straight_m": 83.798329,
+          "design_depth_m": 2.648,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 463.32500000000005
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_01",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 33.0981,
+          "bottom_width_bend_m": 34.763920067029744,
+          "bend_widening_m": 1.6658200670297418,
+          "min_bend_radius_m": 303.726654,
+          "required_depth_m": 5.9350000000000005,
+          "max_draft_for_depth_m": 5.591,
+          "top_width_straight_m": 78.15662,
+          "design_depth_m": 5.9350000000000005,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 318.105
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_02",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 20.895418,
+          "bottom_width_bend_m": 24.208294317109882,
+          "bend_widening_m": 3.3128763171098825,
+          "min_bend_radius_m": 421.085026,
+          "required_depth_m": 5.078,
+          "max_draft_for_depth_m": 4.8220264317180614,
+          "top_width_straight_m": 62.917111999999996,
+          "design_depth_m": 5.473,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 528.205
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_03",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 74.80968,
+          "bottom_width_bend_m": 83.75172192546584,
+          "bend_widening_m": 8.942041925465844,
+          "min_bend_radius_m": 741.71734,
+          "required_depth_m": 1.56,
+          "max_draft_for_depth_m": 4.112,
+          "top_width_straight_m": 114.60872,
+          "design_depth_m": 5.015,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 1151.7350000000001
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_04",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 51.721344,
+          "bottom_width_bend_m": 60.314891077922084,
+          "bend_widening_m": 8.593547077922082,
+          "min_bend_radius_m": 417.39174399999996,
+          "required_depth_m": 3.0940000000000003,
+          "max_draft_for_depth_m": 6.1240000000000006,
+          "top_width_straight_m": 86.11346,
+          "design_depth_m": 7.171,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 846.9799999999999
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_05",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 89.168202,
+          "bottom_width_bend_m": 95.50190917781403,
+          "bend_widening_m": 6.333707177814034,
+          "min_bend_radius_m": 685.443114,
+          "required_depth_m": 2.891,
+          "max_draft_for_depth_m": 5.7336585365853665,
+          "top_width_straight_m": 129.778272,
+          "design_depth_m": 5.877,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 931.815
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_06",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 69.64465,
+          "bottom_width_bend_m": 71.95746110004977,
+          "bend_widening_m": 2.312811100049771,
+          "min_bend_radius_m": 298.710174,
+          "required_depth_m": 6.20535,
+          "max_draft_for_depth_m": 5.045,
+          "top_width_straight_m": 114.6086161,
+          "design_depth_m": 6.20535,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 371.71500000000003
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_07",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 56.237331,
+          "bottom_width_bend_m": 64.37079840050804,
+          "bend_widening_m": 8.133467400508039,
+          "min_bend_radius_m": 816.7855050000001,
+          "required_depth_m": 2.923,
+          "max_draft_for_depth_m": 2.118,
+          "top_width_straight_m": 69.665593,
+          "design_depth_m": 2.923,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 1152.675
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_08",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 22.281204000000002,
+          "bottom_width_bend_m": 30.16652018435156,
+          "bend_widening_m": 7.885316184351556,
+          "min_bend_radius_m": 494.213832,
+          "required_depth_m": 5.104,
+          "max_draft_for_depth_m": 5.0920000000000005,
+          "top_width_straight_m": 49.34284400000001,
+          "design_depth_m": 5.69,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 882.84
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_09",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 76.77384,
+          "bottom_width_bend_m": 79.7246451846033,
+          "bend_widening_m": 2.950805184603297,
+          "min_bend_radius_m": 344.294307,
+          "required_depth_m": 5.34579,
+          "max_draft_for_depth_m": 4.882000000000001,
+          "top_width_straight_m": 118.02195564000002,
+          "design_depth_m": 5.34579,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 450.76500000000004
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_10",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 27.367283999999998,
+          "bottom_width_bend_m": 29.10434784998813,
+          "bend_widening_m": 1.7370638499881323,
+          "min_bend_radius_m": 246.654298,
+          "required_depth_m": 5.911165,
+          "max_draft_for_depth_m": 5.818009478672986,
+          "top_width_straight_m": 64.36714799999999,
+          "design_depth_m": 6.138,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 292.73
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_11",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 66.10923199999999,
+          "bottom_width_bend_m": 73.37521570772648,
+          "bend_widening_m": 7.265983707726491,
+          "min_bend_radius_m": 953.913276,
+          "required_depth_m": 6.13548,
+          "max_draft_for_depth_m": 3.6352657004830915,
+          "top_width_straight_m": 91.44741199999999,
+          "design_depth_m": 4.515,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 1177.38
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_12",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 39.67845,
+          "bottom_width_bend_m": 45.10202231533209,
+          "bend_widening_m": 5.423572315332095,
+          "min_bend_radius_m": 450.429156,
+          "required_depth_m": 1.3399999999999999,
+          "max_draft_for_depth_m": 0.0,
+          "top_width_straight_m": 41.983371999999996,
+          "design_depth_m": 0.563,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 698.99
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_13",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 28.275503999999998,
+          "bottom_width_bend_m": 40.82960236065574,
+          "bend_widening_m": 12.554098360655743,
+          "min_bend_radius_m": 597.93664,
+          "required_depth_m": 7.0367999999999995,
+          "max_draft_for_depth_m": 2.8099999999999996,
+          "top_width_straight_m": 48.415932,
+          "design_depth_m": 3.377,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 1225.28
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_14",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 60.13180799999999,
+          "bottom_width_bend_m": 70.54092873490814,
+          "bend_widening_m": 10.409120734908143,
+          "min_bend_radius_m": 592.3113629999999,
+          "required_depth_m": 3.839,
+          "max_draft_for_depth_m": 3.648,
+          "top_width_straight_m": 84.08716799999999,
+          "design_depth_m": 3.839,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 1110.445
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_15",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 21.148343999999998,
+          "bottom_width_bend_m": 24.683342698933124,
+          "bend_widening_m": 3.5349986989331263,
+          "min_bend_radius_m": 417.65724,
+          "required_depth_m": 3.103225,
+          "max_draft_for_depth_m": 2.525,
+          "top_width_straight_m": 38.88017165,
+          "design_depth_m": 3.103225,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 543.4000000000001
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_16",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 44.401039999999995,
+          "bottom_width_bend_m": 49.191697121879585,
+          "bend_widening_m": 4.79065712187959,
+          "min_bend_radius_m": 639.8553420000001,
+          "required_depth_m": 3.6668969999999996,
+          "max_draft_for_depth_m": 3.0329999999999995,
+          "top_width_straight_m": 61.305435169999996,
+          "design_depth_m": 3.6668969999999996,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 782.985
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_17",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 94.028875,
+          "bottom_width_bend_m": 100.27122485156428,
+          "bend_widening_m": 6.242349851564285,
+          "min_bend_radius_m": 957.6084779999999,
+          "required_depth_m": 3.499,
+          "max_draft_for_depth_m": 4.484,
+          "top_width_straight_m": 146.780695,
+          "design_depth_m": 5.654,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 1093.4099999999999
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_18",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 18.28444,
+          "bottom_width_bend_m": 22.060382270992367,
+          "bend_widening_m": 3.775942270992367,
+          "min_bend_radius_m": 132.70824,
+          "required_depth_m": 6.1049999999999995,
+          "max_draft_for_depth_m": 6.065,
+          "top_width_straight_m": 72.082984,
+          "design_depth_m": 6.564,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 316.575
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_19",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 54.223904,
+          "bottom_width_bend_m": 59.99103153950338,
+          "bend_widening_m": 5.7671275395033845,
+          "min_bend_radius_m": 905.43441,
+          "required_depth_m": 6.484,
+          "max_draft_for_depth_m": 5.555,
+          "top_width_straight_m": 93.28352,
+          "design_depth_m": 6.484,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 1021.935
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_20",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 60.070239,
+          "bottom_width_bend_m": 64.85685564133739,
+          "bend_widening_m": 4.786616641337389,
+          "min_bend_radius_m": 265.271384,
+          "required_depth_m": 6.929460000000001,
+          "max_draft_for_depth_m": 4.440389294403892,
+          "top_width_straight_m": 85.288089,
+          "design_depth_m": 5.475,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 503.93500000000006
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_21",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 54.18537800000001,
+          "bottom_width_bend_m": 60.166730941176475,
+          "bend_widening_m": 5.981352941176468,
+          "min_bend_radius_m": 864.3055,
+          "required_depth_m": 1.347,
+          "max_draft_for_depth_m": 2.617,
+          "top_width_straight_m": 77.95562000000001,
+          "design_depth_m": 3.117,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 1016.83
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_22",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 25.617072,
+          "bottom_width_bend_m": 28.50013225369979,
+          "bend_widening_m": 2.8830602536997887,
+          "min_bend_radius_m": 185.766966,
+          "required_depth_m": 4.691,
+          "max_draft_for_depth_m": 4.082,
+          "top_width_straight_m": 61.794064,
+          "design_depth_m": 4.691,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 327.28499999999997
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_23",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 12.081075,
+          "bottom_width_bend_m": 19.311885008481767,
+          "bend_widening_m": 7.230810008481766,
+          "min_bend_radius_m": 723.6808110000001,
+          "required_depth_m": 4.714,
+          "max_draft_for_depth_m": 3.8020000000000005,
+          "top_width_straight_m": 49.925067000000006,
+          "design_depth_m": 4.714,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 1023.0150000000001
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_24",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 63.171312,
+          "bottom_width_bend_m": 71.90959190348156,
+          "bend_widening_m": 8.738279903481555,
+          "min_bend_radius_m": 588.316998,
+          "required_depth_m": 5.434339,
+          "max_draft_for_depth_m": 3.539081385979049,
+          "top_width_straight_m": 96.21672000000001,
+          "design_depth_m": 4.392,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 1013.99
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_25",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 48.079948,
+          "bottom_width_bend_m": 54.694073295508275,
+          "bend_widening_m": 6.614125295508273,
+          "min_bend_radius_m": 236.69176500000003,
+          "required_depth_m": 4.636475,
+          "max_draft_for_depth_m": 0.53,
+          "top_width_straight_m": 53.425378,
+          "design_depth_m": 0.635,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 559.5550000000001
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_26",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 78.629577,
+          "bottom_width_bend_m": 81.11443644605208,
+          "bend_widening_m": 2.4848594460520843,
+          "min_bend_radius_m": 116.32245300000001,
+          "required_depth_m": 1.5899999999999999,
+          "max_draft_for_depth_m": 1.0629999999999997,
+          "top_width_straight_m": 92.608857,
+          "design_depth_m": 1.5899999999999999,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 240.435
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_27",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 15.81195,
+          "bottom_width_bend_m": 18.98421368159204,
+          "bend_widening_m": 3.172263681592039,
+          "min_bend_radius_m": 147.643344,
+          "required_depth_m": 5.696,
+          "max_draft_for_depth_m": 5.354,
+          "top_width_straight_m": 42.890733999999995,
+          "design_depth_m": 5.696,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 306.06
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_28",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 91.2282,
+          "bottom_width_bend_m": 94.3072810868635,
+          "bend_widening_m": 3.0790810868634964,
+          "min_bend_radius_m": 538.131642,
+          "required_depth_m": 5.487176,
+          "max_draft_for_depth_m": 4.348,
+          "top_width_straight_m": 142.215039392,
+          "design_depth_m": 5.487176,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 575.665
+        }
+      }
+    },
+    {
+      "id": "size_channel/sweep_29",
+      "output": {
+        "ok": {
+          "bottom_width_straight_m": 97.962033,
+          "bottom_width_bend_m": 101.38392666786142,
+          "bend_widening_m": 3.4218936678614114,
+          "min_bend_radius_m": 306.850896,
+          "required_depth_m": 1.319,
+          "max_draft_for_depth_m": 4.171,
+          "top_width_straight_m": 125.227745,
+          "design_depth_m": 4.952,
+          "passing_place_spacing_m": 2000.0,
+          "passing_place_length_m": 458.26
+        }
+      }
+    },
+    {
+      "id": "size_channel/unknown_method",
+      "output": {
+        "error": {
+          "type": "ValueError",
+          "message": "unknown width method 'nope'; registered: pianc"
+        }
+      }
+    },
+    {
+      "id": "size_channel/bad_maneuverability",
+      "output": {
+        "error": {
+          "type": "ValueError",
+          "message": "maneuverability must be one of ('good', 'moderate', 'poor')"
+        }
+      }
+    }
+  ]
+}

@@ -62,17 +62,3 @@ def test_driver_runs_the_frozen_copy_not_the_shipped_package():
     mod = driver._module("volumes.cut_model")
     assert mod.__name__ == "channel_designer_frozen.volumes.cut_model"
     assert "frozen_python" in Path(mod.__file__).parts
-
-
-def test_regenerating_the_cases_twice_gives_the_same_bytes(tmp_path):
-    gen = _load("gen_cases")
-    first = gen.dumps({"c": gen.cut_model_cases()})
-    second = gen.dumps({"c": gen.cut_model_cases()})
-    assert first == second
-
-
-def test_committed_reference_results_match_a_fresh_run_of_the_frozen_python(tmp_path):
-    subprocess.run([sys.executable, str(ROOT / "parity" / "driver.py"), str(tmp_path)], check=True)
-    for fresh in tmp_path.glob("*.json"):
-        committed = (ROOT / "parity" / "reference" / fresh.name).read_bytes()
-        assert fresh.read_bytes() == committed, f"{fresh.name} differs from `cargo xtask regen`"

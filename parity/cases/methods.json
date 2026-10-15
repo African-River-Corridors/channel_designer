@@ -1,0 +1,702 @@
+{
+  "entry_point": "methods",
+  "cases": [
+    {
+      "id": "width_methods/builtin",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "width_methods",
+        "args": {}
+      }
+    },
+    {
+      "id": "evaluate/pianc_default",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 85.0,
+          "beam": 9.5,
+          "radii": [100.0, 255.0, 1000.0, 1000000000.0, 0.0, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/pianc_k_3",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 85.0,
+          "beam": 9.5,
+          "radii": [100.0, 255.0, 1000.0, 1000000000.0, 0.0, "float:inf"],
+          "options": {
+            "width_multiple": 3.0,
+            "radius_multiple": 4.0
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/pianc_buildup_default_maneuver",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 85.0,
+          "beam": 9.5,
+          "radii": [100.0, 255.0, 1000.0, 1000000000.0, 0.0, "float:inf"],
+          "options": {
+            "use_buildup": true
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/pianc_buildup_good",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 110.0,
+          "beam": 11.4,
+          "radii": [100.0, 255.0, 1000.0, 1000000000.0, 0.0, "float:inf"],
+          "options": {
+            "use_buildup": true,
+            "maneuverability": "good",
+            "extra_widths": {
+              "wave": 0.3,
+              "cross_current": 0.2
+            },
+            "bank_clearance_outer": 0.4,
+            "bank_clearance_inner": 0.2
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/pianc_buildup_moderate",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 110.0,
+          "beam": 11.4,
+          "radii": [100.0, 255.0, 1000.0, 1000000000.0, 0.0, "float:inf"],
+          "options": {
+            "use_buildup": true,
+            "maneuverability": "moderate",
+            "extra_widths": {
+              "wave": 0.3,
+              "cross_current": 0.2
+            },
+            "bank_clearance_outer": 0.4,
+            "bank_clearance_inner": 0.2
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/pianc_buildup_poor",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 110.0,
+          "beam": 11.4,
+          "radii": [100.0, 255.0, 1000.0, 1000000000.0, 0.0, "float:inf"],
+          "options": {
+            "use_buildup": true,
+            "maneuverability": "poor",
+            "extra_widths": {
+              "wave": 0.3,
+              "cross_current": 0.2
+            },
+            "bank_clearance_outer": 0.4,
+            "bank_clearance_inner": 0.2
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/toy_method",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "toy",
+          "loa": 90.0,
+          "beam": 10.0,
+          "radii": [200.0, 450.0, "float:inf"],
+          "toy_method": {
+            "name": "toy",
+            "k_beam": 2.5,
+            "bend_div": 4.0,
+            "rmin_mult": 4.0
+          }
+        }
+      }
+    },
+    {
+      "id": "get_width_method/get_pianc",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "get_width_method",
+        "args": {
+          "name": "pianc"
+        }
+      }
+    },
+    {
+      "id": "register_duplicate/duplicate_name_refused",
+      "tier": 3,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "register_duplicate",
+        "args": {
+          "name": "pianc"
+        }
+      }
+    },
+    {
+      "id": "unregister/builtin_cannot_be_unregistered",
+      "tier": 3,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "unregister",
+        "args": {
+          "name": "pianc"
+        }
+      }
+    },
+    {
+      "id": "unregister/unregister_unknown_is_quiet",
+      "tier": 1,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "unregister",
+        "args": {
+          "name": "no-such-method"
+        }
+      }
+    },
+    {
+      "id": "get_width_method/unknown_method",
+      "tier": 3,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "get_width_method",
+        "args": {
+          "name": "nope"
+        }
+      }
+    },
+    {
+      "id": "evaluate/bad_maneuverability",
+      "tier": 3,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 85.0,
+          "beam": 9.5,
+          "radii": [100.0, 255.0, 1000.0, 1000000000.0, 0.0, "float:inf"],
+          "options": {
+            "maneuverability": "excellent"
+          }
+        }
+      }
+    },
+    {
+      "id": "evaluate/unknown_method_in_evaluate",
+      "tier": 3,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "zzz",
+          "loa": 85.0,
+          "beam": 9.5,
+          "radii": [100.0, 255.0, 1000.0, 1000000000.0, 0.0, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_00",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 136.957,
+          "beam": 12.045,
+          "options": {
+            "width_multiple": 3.527,
+            "radius_multiple": 2.691,
+            "use_buildup": false,
+            "maneuverability": "good",
+            "bank_clearance_outer": 0.349,
+            "bank_clearance_inner": 0.323
+          },
+          "deflection_deg": 41.384,
+          "radii": [966.637, 801.545, 1982.172, 1640.427, 1530.075, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_01",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 195.402,
+          "beam": 16.658,
+          "options": {
+            "width_multiple": 2.913,
+            "radius_multiple": 2.896,
+            "use_buildup": false,
+            "maneuverability": "good",
+            "bank_clearance_outer": 0.769,
+            "bank_clearance_inner": 0.29
+          },
+          "deflection_deg": 36.569,
+          "radii": [1410.221, 2778.03, 1513.443, 2759.955, 1424.741, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_02",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 64.452,
+          "beam": 11.552,
+          "options": {
+            "width_multiple": 2.159,
+            "radius_multiple": 2.835,
+            "use_buildup": true,
+            "maneuverability": "poor",
+            "bank_clearance_outer": 0.202,
+            "bank_clearance_inner": 0.27
+          },
+          "deflection_deg": 90.605,
+          "radii": [973.72, 1518.359, 2368.109, 1360.912, 1714.681, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_03",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 98.652,
+          "beam": 7.567,
+          "options": {
+            "width_multiple": 3.862,
+            "radius_multiple": 2.347,
+            "use_buildup": true,
+            "maneuverability": "moderate",
+            "bank_clearance_outer": 0.517,
+            "bank_clearance_inner": 0.197
+          },
+          "deflection_deg": 39.977,
+          "radii": [798.653, 1626.006, 1123.063, 1873.777, 2503.079, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_04",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 134.65,
+          "beam": 27.573,
+          "options": {
+            "width_multiple": 3.815,
+            "radius_multiple": 3.691,
+            "use_buildup": true,
+            "maneuverability": "moderate",
+            "bank_clearance_outer": 0.58,
+            "bank_clearance_inner": 0.267
+          },
+          "deflection_deg": 62.415,
+          "radii": [1955.407, 448.528, 1675.927, 1724.326, 444.393, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_05",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 80.874,
+          "beam": 14.527,
+          "options": {
+            "width_multiple": 3.054,
+            "radius_multiple": 2.728,
+            "use_buildup": true,
+            "maneuverability": "poor",
+            "bank_clearance_outer": 0.601,
+            "bank_clearance_inner": 0.319
+          },
+          "deflection_deg": 77.828,
+          "radii": [111.311, 271.822, 2006.64, 838.789, 625.735, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_06",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 72.989,
+          "beam": 8.156,
+          "options": {
+            "width_multiple": 2.791,
+            "radius_multiple": 4.293,
+            "use_buildup": true,
+            "maneuverability": "poor",
+            "bank_clearance_outer": 0.474,
+            "bank_clearance_inner": 0.106
+          },
+          "deflection_deg": 45.112,
+          "radii": [2517.281, 1996.763, 2259.704, 836.325, 2766.313, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_07",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 78.589,
+          "beam": 16.326,
+          "options": {
+            "width_multiple": 3.348,
+            "radius_multiple": 2.146,
+            "use_buildup": false,
+            "maneuverability": "moderate",
+            "bank_clearance_outer": 0.663,
+            "bank_clearance_inner": 0.162
+          },
+          "deflection_deg": 13.559,
+          "radii": [294.097, 2319.474, 1126.452, 338.22, 2549.07, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_08",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 68.95,
+          "beam": 11.012,
+          "options": {
+            "width_multiple": 3.744,
+            "radius_multiple": 4.942,
+            "use_buildup": true,
+            "maneuverability": "poor",
+            "bank_clearance_outer": 0.236,
+            "bank_clearance_inner": 0.179
+          },
+          "deflection_deg": 94.267,
+          "radii": [793.806, 2326.117, 2570.713, 2376.952, 510.425, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_09",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 173.121,
+          "beam": 27.275,
+          "options": {
+            "width_multiple": 2.557,
+            "radius_multiple": 2.404,
+            "use_buildup": true,
+            "maneuverability": "good",
+            "bank_clearance_outer": 0.257,
+            "bank_clearance_inner": 0.216
+          },
+          "deflection_deg": 75.937,
+          "radii": [823.023, 293.821, 1119.32, 1320.812, 1811.381, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_10",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 189.519,
+          "beam": 14.682,
+          "options": {
+            "width_multiple": 3.634,
+            "radius_multiple": 4.482,
+            "use_buildup": false,
+            "maneuverability": "moderate",
+            "bank_clearance_outer": 0.407,
+            "bank_clearance_inner": 0.24
+          },
+          "deflection_deg": 16.464,
+          "radii": [1717.659, 100.331, 638.31, 903.219, 144.166, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_11",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 180.884,
+          "beam": 18.066,
+          "options": {
+            "width_multiple": 3.181,
+            "radius_multiple": 4.036,
+            "use_buildup": true,
+            "maneuverability": "moderate",
+            "bank_clearance_outer": 0.549,
+            "bank_clearance_inner": 0.366
+          },
+          "deflection_deg": 37.586,
+          "radii": [1911.192, 1752.855, 2506.451, 93.332, 362.773, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_12",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 111.613,
+          "beam": 12.694,
+          "options": {
+            "width_multiple": 3.496,
+            "radius_multiple": 4.867,
+            "use_buildup": true,
+            "maneuverability": "good",
+            "bank_clearance_outer": 0.401,
+            "bank_clearance_inner": 0.326
+          },
+          "deflection_deg": 118.133,
+          "radii": [262.635, 2850.001, 868.179, 799.613, 1317.355, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_13",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 198.018,
+          "beam": 14.465,
+          "options": {
+            "width_multiple": 3.014,
+            "radius_multiple": 4.991,
+            "use_buildup": true,
+            "maneuverability": "good",
+            "bank_clearance_outer": 0.477,
+            "bank_clearance_inner": 0.235
+          },
+          "deflection_deg": 79.62,
+          "radii": [1800.404, 646.347, 2799.015, 1441.306, 2793.081, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_14",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 75.355,
+          "beam": 16.135,
+          "options": {
+            "width_multiple": 3.731,
+            "radius_multiple": 3.637,
+            "use_buildup": false,
+            "maneuverability": "poor",
+            "bank_clearance_outer": 0.417,
+            "bank_clearance_inner": 0.405
+          },
+          "deflection_deg": 15.408,
+          "radii": [1742.397, 1599.08, 326.253, 792.872, 2140.149, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_15",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 115.488,
+          "beam": 19.921,
+          "options": {
+            "width_multiple": 3.048,
+            "radius_multiple": 2.207,
+            "use_buildup": false,
+            "maneuverability": "poor",
+            "bank_clearance_outer": 0.726,
+            "bank_clearance_inner": 0.367
+          },
+          "deflection_deg": 113.801,
+          "radii": [2656.853, 189.87, 2140.118, 2641.066, 828.98, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_16",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 50.08,
+          "beam": 25.333,
+          "options": {
+            "width_multiple": 2.114,
+            "radius_multiple": 4.691,
+            "use_buildup": true,
+            "maneuverability": "good",
+            "bank_clearance_outer": 0.381,
+            "bank_clearance_inner": 0.299
+          },
+          "deflection_deg": 14.405,
+          "radii": [2827.524, 617.642, 2190.317, 164.254, 1879.793, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_17",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 80.751,
+          "beam": 14.549,
+          "options": {
+            "width_multiple": 3.07,
+            "radius_multiple": 3.344,
+            "use_buildup": false,
+            "maneuverability": "moderate",
+            "bank_clearance_outer": 0.483,
+            "bank_clearance_inner": 0.121
+          },
+          "deflection_deg": 113.81,
+          "radii": [1772.148, 342.592, 2455.527, 1847.704, 2935.483, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_18",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 153.948,
+          "beam": 11.012,
+          "options": {
+            "width_multiple": 2.134,
+            "radius_multiple": 4.208,
+            "use_buildup": true,
+            "maneuverability": "good",
+            "bank_clearance_outer": 0.589,
+            "bank_clearance_inner": 0.397
+          },
+          "deflection_deg": 24.761,
+          "radii": [2905.929, 114.753, 2601.614, 1428.253, 726.049, "float:inf"]
+        }
+      }
+    },
+    {
+      "id": "evaluate/sweep_19",
+      "tier": 2,
+      "reason": "initial case set (spec 0001, ticket 23)",
+      "input": {
+        "fn": "evaluate",
+        "args": {
+          "name": "pianc",
+          "loa": 97.78,
+          "beam": 6.891,
+          "options": {
+            "width_multiple": 3.924,
+            "radius_multiple": 3.569,
+            "use_buildup": false,
+            "maneuverability": "moderate",
+            "bank_clearance_outer": 0.418,
+            "bank_clearance_inner": 0.223
+          },
+          "deflection_deg": 88.81,
+          "radii": [1897.135, 1346.743, 958.442, 839.351, 2972.181, "float:inf"]
+        }
+      }
+    }
+  ],
+  "retired": []
+}
