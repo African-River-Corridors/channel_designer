@@ -596,3 +596,56 @@ fn the_worked_example_file_is_what_the_commands_produce() {
     );
     assert_eq!(code(&run(&["validate", example.to_str().unwrap()], "")), 0);
 }
+
+// --- the alignment stage (ticket 61) -------------------------------------------------------
+
+#[test]
+fn align_adds_a_rolling_circle_option_and_replaces_it_when_run_again() {
+    let dir = work_dir("align");
+    let doc = build(&dir);
+    let o = run(&["align", &doc, "--method", "rolling-circle", "--json"], "");
+    assert!(code(&o) == 0 || code(&o) == 1, "{}", err(&o));
+    let res: Value = serde_json::from_str(&out(&o)).unwrap();
+    assert_eq!(res["option"]["method"], "rolling_circle");
+    let saved: Value = serde_json::from_str(&std::fs::read_to_string(&doc).unwrap()).unwrap();
+    assert_eq!(saved["options"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        saved["options"][0]["checks"]["radius_ok"],
+        res["option"]["checks"]["radius_ok"]
+    );
+    // The exit code is the option's check: 0 when it holds R_min, 1 when it fails.
+    assert_eq!(
+        code(&o),
+        i32::from(!res["option"]["checks"]["radius_ok"].as_bool().unwrap())
+    );
+    // Again, with another step: one option still, with the new setting.
+    run(
+        &["align", &doc, "--method", "rolling-circle", "--step", "20"],
+        "",
+    );
+    let saved: Value = serde_json::from_str(&std::fs::read_to_string(&doc).unwrap()).unwrap();
+    assert_eq!(saved["options"].as_array().unwrap().len(), 1);
+    assert_eq!(saved["options"][0]["settings"]["step_m"], 20.0);
+    let s = run(&["status", &doc, "--json"], "");
+    let st: Value = serde_json::from_str(&out(&s)).unwrap();
+    assert_eq!(st["stages"]["alignment"], "fresh");
+}
+
+#[test]
+fn align_with_sizing_stale_is_refused_and_names_the_size_command() {
+    let dir = work_dir("align-stale");
+    let doc = build(&dir);
+    let text = std::fs::read_to_string(&doc).unwrap().replacen(
+        r#""vessel_standard_id": "CEMT_IV",
+        "draught_m""#,
+        r#""vessel_standard_id": "CEMT_Va",
+        "draught_m""#,
+        1,
+    );
+    std::fs::write(&doc, text).unwrap();
+    let o = run(&["align", &doc, "--method", "rolling-circle"], "");
+    assert_eq!(code(&o), 1);
+    assert!(err(&o).contains("cdesign size"), "{}", err(&o));
+    let o = run(&["align", &doc, "--method", "nonsense"], "");
+    assert_eq!(code(&o), 2);
+}

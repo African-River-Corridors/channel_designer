@@ -1,7 +1,8 @@
 //! The `cdesign` subcommands. File, stdin, stdout and clock access live here.
 
+use cd_format::design::crs::{Crs, Utm};
 use cd_format::design::geopackage;
-use cd_format::design::{DesignError, Role, Session, Stage, StageStatus};
+use cd_format::design::{AlignMethod, DesignError, Role, Session, Stage, StageStatus};
 use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::path::Path;
@@ -21,14 +22,31 @@ fn input_error(message: impl Into<String>) -> Failure {
     }
 }
 
+/// The command that runs a stage.
+fn command_for(stage: Stage) -> &'static str {
+    match stage {
+        Stage::Sizing => "size",
+        Stage::Alignment => "align",
+        Stage::Optimise => "optimise",
+        Stage::Volumes => "volumes",
+    }
+}
+
 fn from_design(e: DesignError) -> Failure {
-    let code = match e {
-        DesignError::StaleUpstream { .. } => 1,
-        _ => 2,
-    };
-    Failure {
-        message: e.to_string(),
-        code,
+    match e {
+        DesignError::StaleUpstream { stage, run_first } => Failure {
+            message: format!(
+                "the {} stage cannot run: {} is stale. Run `cdesign {}` first (or `cdesign run`).",
+                stage.name(),
+                run_first.name(),
+                command_for(run_first)
+            ),
+            code: 1,
+        },
+        other => Failure {
+            message: other.to_string(),
+            code: 2,
+        },
     }
 }
 
@@ -243,6 +261,145 @@ pub fn size(
         json!({"ok": true, "sizing": shape}),
     );
     Ok(())
+}
+
+/// The flags of `cdesign align`.
+pub struct AlignFlags {
+    pub step: Option<f64>,
+    pub passes: Option<u32>,
+    pub chord: Option<f64>,
+    pub dem: Option<String>,
+    pub water_level: Option<f64>,
+    pub water_slope: Option<f64>,
+    pub corridors: Option<String>,
+}
+
+pub fn align(
+    doc: &str,
+    method: &str,
+    flags: AlignFlags,
+    output: &Option<String>,
+    json_mode: bool,
+) -> Result {
+    let method = AlignMethod::from_name(method).ok_or_else(|| {
+        input_error(format!(
+            "unknown method `{method}`: use rolling-circle or reroute"
+        ))
+    })?;
+    let mut session = open(doc)?;
+    let mut overrides = serde_json::Map::new();
+    let mut put = |k: &str, v: Value| {
+        overrides.insert(k.to_string(), v);
+    };
+    match method {
+        AlignMethod::RollingCircle => {
+            if let Some(v) = flags.step {
+                put("step_m", json!(v));
+            }
+            if let Some(v) = flags.passes {
+                put("passes", json!(v));
+            }
+        }
+        AlignMethod::Reroute => {
+            if let Some(v) = flags.water_level {
+                put("water_level_start_m", json!(v));
+            }
+            if let Some(v) = flags.water_slope {
+                put("water_surface_slope", json!(v));
+            }
+            if let Some(list) = &flags.corridors {
+                let parsed: core::result::Result<Vec<f64>, _> =
+                    list.split(',').map(|x| x.trim().parse::<f64>()).collect();
+                let parsed = parsed
+                    .map_err(|_| input_error(format!("--corridors must be numbers: `{list}`")))?;
+                put("corridor_sweep_m", json!(parsed));
+            }
+        }
+    }
+    if let Some(v) = flags.chord {
+        put("check_chord_m", json!(v));
+    }
+    let overrides = Value::Object(overrides);
+    // The re-route samples a DEM; read it here, since the session has no file access.
+    let dem = match (&flags.dem, method) {
+        (Some(path), AlignMethod::Reroute) => Some(
+            cd_format::geotiff::read_file(Path::new(path))
+                .map_err(|e| input_error(format!("{path}: {e}")))?,
+        ),
+        (Some(_), _) => return Err(input_error("--dem is for the re-route only")),
+        _ => None,
+    };
+    let project = session.document()["project"]["crs"]["epsg"]
+        .as_u64()
+        .and_then(|c| Crs::from_epsg(c as u32).ok());
+    let sampler = dem.as_ref().map(|d| {
+        let to_dem: Box<dyn Fn(f64, f64) -> [f64; 2]> = match (d.epsg, project) {
+            (Some(4326), Some(Crs::Utm(u))) => {
+                Box::new(move |x, y| u.inverse(x, y).unwrap_or([f64::NAN; 2]))
+            }
+            _ => Box::new(|x, y| [x, y]),
+        };
+        move |xs: &[f64], ys: &[f64]| -> Vec<f64> {
+            xs.iter()
+                .zip(ys)
+                .map(|(&x, &y)| {
+                    let p = to_dem(x, y);
+                    d.sample_bilinear(p[0], p[1])
+                })
+                .collect()
+        }
+    });
+    if let (Some(d), Some(Crs::Utm(Utm { zone, .. }))) = (&dem, project)
+        && !matches!(d.epsg, Some(4326))
+        && d.epsg != project.map(Crs::epsg)
+    {
+        return Err(input_error(format!(
+            "the DEM's CRS ({}) is not WGS84 and not the channel design's UTM zone {zone}. Convert the DEM.",
+            d.epsg
+                .map_or("unknown".to_string(), |e| format!("EPSG:{e}"))
+        )));
+    }
+    session
+        .align(
+            method,
+            &overrides,
+            sampler
+                .as_ref()
+                .map(|s| s as &dyn Fn(&[f64], &[f64]) -> Vec<f64>),
+        )
+        .map_err(from_design)?;
+    let dest = destination(doc, output);
+    write(&dest, &session.to_text())?;
+    let option = session.document()["options"]
+        .as_array()
+        .and_then(|o| o.iter().find(|o| o["method"] == method.name()))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let c = &option["checks"];
+    let ok = c["radius_ok"].as_bool().unwrap_or(false);
+    let human = format!(
+        "{}: minimum radius {:.0} m on a {:.0} m chord against R_min {:.0} m: {}",
+        option["name"].as_str().unwrap_or(method.name()),
+        c["measured_min_radius_m"].as_f64().unwrap_or(f64::NAN),
+        c["radius_check_chord_m"].as_f64().unwrap_or(f64::NAN),
+        c["r_min_m"].as_f64().unwrap_or(f64::NAN),
+        if ok { "ok" } else { "FAILS R_min" }
+    );
+    say(
+        dest == "-",
+        json_mode,
+        &human,
+        json!({"ok": true, "option": option}),
+    );
+    // An option that fails a check is a failed check: exit code 1, with the document written.
+    if ok {
+        Ok(())
+    } else {
+        Err(Failure {
+            message: "the option fails R_min".into(),
+            code: 1,
+        })
+    }
 }
 
 pub fn run(doc: &str, output: &Option<String>, json_mode: bool) -> Result {
