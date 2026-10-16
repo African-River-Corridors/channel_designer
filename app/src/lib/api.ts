@@ -78,3 +78,28 @@ export const saveAs = () => invoke<Snapshot | null>("save_as");
 export const setSizing = (rulesetId: string, vesselStandardId: string, draught: string) =>
   invoke<Snapshot>("set_sizing", { rulesetId, vesselStandardId, draught });
 export const runStale = () => invoke<Snapshot>("run_stale");
+
+export type LonLat = [number, number];
+export interface MapOption {
+  id: string;
+  name: string;
+  method: string;
+  line: Line;
+  length_m: number;
+  radius_ok: boolean;
+  r_min_m: number;
+  measured_min_radius_m: number;
+  tight_bends: { chainage_m: number; radius_m: number; position: LonLat }[];
+  ticks: { chainage_m: number; label: string; position: LonLat }[];
+}
+/** The plan map's geometry, all in WGS84 (the session converts it). */
+export interface MapGeometry {
+  crs: "EPSG:4326";
+  bbox: [number, number, number, number] | null;
+  banks: { side: "left" | "right"; line: Line }[];
+  centreline: Line | null;
+  river_polygon: Polygon | null;
+  options: MapOption[];
+}
+/** Rejects with the reason when the design has nothing to draw yet. */
+export const mapGeometry = () => invoke<MapGeometry>("map_geometry");

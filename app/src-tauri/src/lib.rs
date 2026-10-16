@@ -218,6 +218,12 @@ fn set_sizing(
     finish(&window, &guard)
 }
 
+/// The plan map's geometry in WGS84 (banks, centreline, options with tight bends and ticks).
+#[tauri::command]
+fn map_geometry(state: State<Shared>) -> Reply {
+    lock(&state)?.map_geometry()
+}
+
 /// Rerun every stale stage.
 #[tauri::command]
 fn run_stale(window: Window, state: State<Shared>) -> Reply {
@@ -240,6 +246,7 @@ pub fn run() {
             save_as,
             set_sizing,
             run_stale,
+            map_geometry,
         ])
         .on_window_event(|window, event| {
             // The unsaved-changes guard on close: ask first, then close for real.
