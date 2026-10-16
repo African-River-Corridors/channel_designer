@@ -33,6 +33,23 @@ _Avoid_: route, rolled line, sailing line, fairway (as a line)
 The activity of finding a design line, and the stage that does it. Never a line itself.
 _Avoid_: route (as a noun)
 
+**Navigable water**:
+The part of the water a design line may use: the water polygon shrunk by half the channel's
+straight bottom width plus a clearance from the bank, then smoothed.
+_Avoid_: fairway (as an area in code), wet area
+
+**Fairway fit**:
+The step that fits a smooth design line inside navigable water between fixed poses, never tighter
+than R_min. It is a rung of the water-aware rolling circle and the fallback of a leg join, not a
+method of its own.
+
+**Infeasible stretch**:
+A stretch of a design line where no line that meets R_min fits inside navigable water. It is
+reported with its chainage, position and reason, and the option carries a failed check.
+
+**Seed leg**:
+One of several input lines, in order, that are joined into one design line before alignment.
+
 **Station**:
 A point on a line at which a cross-section is taken, identified by its chainage.
 
