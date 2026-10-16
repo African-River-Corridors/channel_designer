@@ -1,0 +1,25 @@
+[package]
+name = "cd-app"
+description = "The Channel Designer desktop app: a thin Tauri shell over the design session in cd-format."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "cd_app"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[features]
+# Set by `tauri build`: the app serves its built front end instead of the dev server.
+custom-protocol = ["tauri/custom-protocol"]
+
+[dependencies]
+cd-format.workspace = true
+serde_json.workspace = true
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"

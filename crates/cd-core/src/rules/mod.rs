@@ -11,6 +11,11 @@
 //! thing for a caller that wants one process-wide registry, and any other registry value works
 //! just as well (the parity runner makes a fresh one per case).
 
+/// The built-in vessel classes (from `ovcd-core`, pinned to a tag): key and class, in catalogue order.
+pub use ovcd_core::vessel_standards::{
+    Catalogue, VesselStandard, built_in_catalogue as vessel_catalogue,
+};
+
 pub mod design;
 pub mod methods;
 pub mod rulesets;

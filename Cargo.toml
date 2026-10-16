@@ -1,7 +1,8 @@
 [workspace]
 resolver = "3"
-members = ["crates/cd-core", "crates/cd-format", "crates/cd-cli", "crates/cd-py", "xtask"]
+members = ["crates/cd-core", "crates/cd-format", "crates/cd-cli", "crates/cd-py", "app/src-tauri", "xtask"]
 # cd-py (PyO3 bindings, ticket 35) is left out so `cargo build` and `cargo test` need no Python.
+# app/src-tauri (the desktop app, spec 0003) is left out so they need no Node and no Tauri system libraries.
 default-members = ["crates/cd-core", "crates/cd-format", "crates/cd-cli", "xtask"]
 
 [workspace.package]

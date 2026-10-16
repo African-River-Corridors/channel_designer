@@ -250,3 +250,39 @@ fn open_refuses_text_that_is_not_json_and_names_each_schema_break() {
     );
     assert!(errs.iter().any(|e| e.contains("title")), "{errs:?}");
 }
+
+#[test]
+fn run_reruns_every_stale_stage_in_order_and_nothing_else() {
+    let mut s = imported();
+    assert_eq!(s.run_stale().unwrap(), vec![], "all fresh: nothing runs");
+    s.set_sizing("PIANC-B", "CEMT_Va", Some(2.5)).unwrap();
+    assert_eq!(s.stage_status(Stage::Sizing), StageStatus::Stale);
+    assert_eq!(s.run_stale().unwrap(), vec![Stage::Sizing]);
+    assert_eq!(s.stage_status(Stage::Sizing), StageStatus::Fresh);
+    // Running gives what a direct sizing of the same choices gives.
+    assert_eq!(
+        s.document()["stages"]["sizing"]["results"],
+        Session::preview_sizing("PIANC-B", "CEMT_Va", Some(2.5)).unwrap()
+    );
+}
+
+#[test]
+fn the_sizing_choices_list_rulesets_and_vessel_classes_with_labels() {
+    let c = Session::sizing_choices();
+    let ids = |k: &str| -> Vec<String> {
+        c[k].as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v["id"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert!(ids("rulesets").contains(&"PIANC-B".to_string()));
+    assert!(ids("vessels").contains(&"CEMT_IV".to_string()));
+    // Every choice can be sized (the lists never offer something the session refuses).
+    for r in ids("rulesets") {
+        for v in ids("vessels") {
+            assert!(Session::preview_sizing(&r, &v, None).is_ok(), "{r} x {v}");
+        }
+    }
+    assert!(c["vessels"][0]["label"].as_str().unwrap().contains("LOA"));
+}

@@ -9,10 +9,26 @@ use super::geojson::{self, Role};
 use super::hash::{hash_value, sha256_hex};
 use super::schema;
 use cd_core::rules::rulesets::{RulesetRegistry, channel_shape};
+use cd_core::rules::vessel_catalogue;
 use serde_json::{Value, json};
 
 /// The engine version written into documents and stages.
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// The UTC calendar date, `YYYY-MM-DD`, of a Unix time in seconds. The session has no clock: a caller
+/// reads one and passes the seconds here when it needs a date to write into a new document.
+pub fn date_from_unix(secs: u64) -> String {
+    let z = (secs / 86_400) as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}")
+}
 
 /// A stage of a channel design, in order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -365,6 +381,51 @@ impl Session {
         }
     }
 
+    /// Run every stage that is stale, or has settings but no results, in order. Returns the stages
+    /// that ran. A stale stage that cannot run yet (a later ticket builds it) is an error.
+    pub fn run_stale(&mut self) -> Result<Vec<Stage>, DesignError> {
+        let mut ran = Vec::new();
+        for stage in Stage::ALL {
+            let due = match self.stage_status(stage) {
+                StageStatus::Stale => true,
+                StageStatus::NotRun => !self.doc["stages"][stage.name()]["settings"].is_null(),
+                StageStatus::Fresh => false,
+            };
+            if due {
+                self.run_stage(stage)?;
+                ran.push(stage);
+            }
+        }
+        Ok(ran)
+    }
+
+    /// The rulesets and vessel classes a user can choose for sizing, for the lists in the app and
+    /// for `--help`-style discovery: ids, display labels and the dimensions that matter.
+    pub fn sizing_choices() -> Value {
+        let rulesets: Vec<Value> = RulesetRegistry::new()
+            .iter()
+            .map(|r| json!({"id": r.ruleset_id, "label": r.label, "family": r.family}))
+            .collect();
+        let vessels: Vec<Value> = vessel_catalogue()
+            .into_iter()
+            .map(|(id, v)| {
+                json!({
+                    "id": id,
+                    "label": format!(
+                        "{} {} ({}, LOA {}-{} m)",
+                        v.family, v.class_name, v.formation.replace('_', " "), v.loa_m.0, v.loa_m.1
+                    ),
+                    "family": v.family,
+                    "formation": v.formation,
+                    "loa_m": [v.loa_m.0, v.loa_m.1],
+                    "beam_m": v.beam_m,
+                    "draught_nominal_m": v.draught_nominal_m(),
+                })
+            })
+            .collect();
+        json!({"rulesets": rulesets, "vessels": vessels})
+    }
+
     // --- inputs -------------------------------------------------------------------------
 
     /// Import inputs from GeoJSON text. Reads every input first and changes nothing if one is
@@ -455,6 +516,14 @@ impl Session {
 mod tests {
     //! Label: property
     use super::*;
+
+    #[test]
+    fn dates_come_from_unix_seconds() {
+        assert_eq!(date_from_unix(0), "1970-01-01");
+        assert_eq!(date_from_unix(951_782_400), "2000-02-29"); // a leap day
+        assert_eq!(date_from_unix(1_792_000_000), "2026-10-14");
+        assert_eq!(date_from_unix(4_107_542_400), "2100-03-01"); // 2100 is not a leap year
+    }
 
     fn with_sizing_fresh() -> Session {
         let mut s = Session::new("t", "2026-10-16");

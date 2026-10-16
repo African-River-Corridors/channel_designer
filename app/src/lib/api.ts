@@ -1,0 +1,80 @@
+// The only door to the Rust side. Every function forwards to a Tauri command; none computes.
+import { invoke } from "@tauri-apps/api/core";
+
+export type StageName = "sizing" | "alignment" | "optimise" | "volumes";
+export type StageState = "not_run" | "fresh" | "stale";
+
+/** The channel shape the sizing stage gives (all SI). */
+export interface ChannelShape {
+  ruleset_id: string;
+  vessel_standard_id: string;
+  loa_m: number;
+  beam_m: number;
+  draught_m: number;
+  formation: string;
+  bottom_width_straight_m: number;
+  min_bend_radius_m: number;
+  design_depth_m: number;
+  bend_widening_at_rmin_m: number;
+  bottom_width_at_rmin_m: number;
+  width_basis: string;
+  source: string;
+  warnings: string[];
+}
+export interface SizingSettings {
+  ruleset_id: string;
+  vessel_standard_id: string;
+  draught_m: number | null;
+}
+export interface Line {
+  type: "LineString";
+  coordinates: number[][];
+}
+export interface Polygon {
+  type: "Polygon";
+  coordinates: number[][][];
+}
+export interface Snapshot {
+  engine_version: string;
+  document: {
+    project: { title: string; created: string; crs: { epsg: number; name: string } | null };
+    inputs: {
+      left_bank: Line | null;
+      right_bank: Line | null;
+      centreline: Line | null;
+      river_polygon: Polygon | null;
+      dem: { path: string } | null;
+    };
+    stages: Record<StageName, { settings: SizingSettings | null; results: ChannelShape | null }>;
+  };
+  stages: { name: StageName; status: StageState }[];
+  file_name: string;
+  path: string | null;
+  dirty: boolean;
+  title: string;
+  warnings: string[];
+}
+export interface Choices {
+  rulesets: { id: string; label: string; family: string }[];
+  vessels: {
+    id: string;
+    label: string;
+    family: string;
+    formation: string;
+    loa_m: [number, number];
+    beam_m: number;
+    draught_nominal_m: number;
+  }[];
+}
+
+export const snapshot = () => invoke<Snapshot>("snapshot");
+export const sizingChoices = () => invoke<Choices>("sizing_choices");
+/** Each of these returns null when the user cancels a dialog. */
+export const newFile = () => invoke<Snapshot | null>("new_file");
+export const openFile = () => invoke<Snapshot | null>("open_file");
+export const save = () => invoke<Snapshot | null>("save");
+export const saveAs = () => invoke<Snapshot | null>("save_as");
+/** Choose ruleset, vessel class and draught (as typed; empty is the vessel class's own); the channel is sized at once. Rejects with the reason. */
+export const setSizing = (rulesetId: string, vesselStandardId: string, draught: string) =>
+  invoke<Snapshot>("set_sizing", { rulesetId, vesselStandardId, draught });
+export const runStale = () => invoke<Snapshot>("run_stale");

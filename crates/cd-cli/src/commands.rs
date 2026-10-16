@@ -111,21 +111,12 @@ fn destination(doc: &str, output: &Option<String>) -> String {
     output.clone().unwrap_or_else(|| doc.to_string())
 }
 
-/// Today's date in UTC, `YYYY-MM-DD`, from the system clock (civil-from-days).
+/// Today's date in UTC, `YYYY-MM-DD`, from the system clock.
 fn today() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    let z = (secs / 86_400) as i64 + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = yoe + era * 400 + i64::from(month <= 2);
-    format!("{year:04}-{month:02}-{day:02}")
+    cd_format::design::date_from_unix(secs)
 }
 
 pub fn new(file: &str, title: &str, date: Option<&str>, json_mode: bool) -> Result {
@@ -250,6 +241,26 @@ pub fn size(
         json_mode,
         &human,
         json!({"ok": true, "sizing": shape}),
+    );
+    Ok(())
+}
+
+pub fn run(doc: &str, output: &Option<String>, json_mode: bool) -> Result {
+    let mut session = open(doc)?;
+    let ran = session.run_stale().map_err(from_design)?;
+    let dest = destination(doc, output);
+    write(&dest, &session.to_text())?;
+    let names: Vec<&str> = ran.iter().map(|s| s.name()).collect();
+    let human = if names.is_empty() {
+        "nothing to run: every stage is fresh or not set up".to_string()
+    } else {
+        format!("ran: {}", names.join(", "))
+    };
+    say(
+        dest == "-",
+        json_mode,
+        &human,
+        json!({"ok": true, "ran": names}),
     );
     Ok(())
 }

@@ -8,3 +8,7 @@ build/
 target/
 mutants.out/
 mutants.out.old/
+
+# the desktop app (spec 0003)
+node_modules/
+app/src-tauri/gen/

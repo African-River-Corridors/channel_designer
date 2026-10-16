@@ -90,3 +90,71 @@ jobs:
           curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz \
             | tar -xz gitleaks
           ./gitleaks detect --source . --redact --verbose
+
+  # The desktop app (spec 0003). Kept out of the fast gate: it needs Node and the Tauri system
+  # libraries, and the workspace's default members must build without them.
+  app-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install the pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Tauri system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+      - name: Front end (type check and build)
+        working-directory: app
+        run: |
+          npm ci
+          npm run build
+      - name: App crate (clippy, tests)
+        run: |
+          cargo clippy -p cd-app --all-targets -- -D warnings
+          cargo test -p cd-app
+
+  # End-to-end smoke test (spec 0003): the built debug app, driven by Tauri's WebDriver on Linux.
+  # Its own job, so the fast gate keeps its time budget.
+  app-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install the pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Tauri system libraries, WebDriver and a virtual display
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev webkit2gtk-driver xvfb
+      - name: tauri-driver (cached)
+        id: driver
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/tauri-driver
+          key: tauri-driver-2.1.0-${{ runner.os }}
+      - name: Install tauri-driver
+        if: steps.driver.outputs.cache-hit != 'true'
+        run: cargo install tauri-driver --version 2.1.0 --locked
+      - name: Build the debug app
+        working-directory: app
+        run: |
+          npm ci
+          npx tauri build --debug --no-bundle
+      - name: Smoke test
+        working-directory: app
+        run: xvfb-run -a bash e2e/run.sh
