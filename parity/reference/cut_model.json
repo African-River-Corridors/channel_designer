@@ -222,6 +222,66 @@
       }
     },
     {
+      "id": "cut_model_a_bench_gate/named/ground_at_wl_single_point",
+      "output": {
+        "ok": {
+          "1": false,
+          "-1": false
+        }
+      }
+    },
+    {
+      "id": "section_area/named/ground_at_wl_single_point_model_a",
+      "output": {
+        "ok": [0.0, 3.966666666666667, 0.0]
+      }
+    },
+    {
+      "id": "section_area/named/ground_at_wl_single_point_model_b",
+      "output": {
+        "ok": [0.0, 3.966666666666667, 0.0]
+      }
+    },
+    {
+      "id": "cut_model_a_bench_gate/named/ground_at_wl_flat_run",
+      "output": {
+        "ok": {
+          "1": false,
+          "-1": false
+        }
+      }
+    },
+    {
+      "id": "section_area/named/ground_at_wl_flat_run_model_a",
+      "output": {
+        "ok": [0.0, 16.499999999999993, 0.0]
+      }
+    },
+    {
+      "id": "section_area/named/ground_at_wl_flat_run_model_b",
+      "output": {
+        "ok": [0.0, 16.499999999999993, 0.0]
+      }
+    },
+    {
+      "id": "cut_model_a_bench_gate/named/ground_just_above_wl_single_point",
+      "output": {
+        "ok": {
+          "1": true,
+          "-1": true
+        }
+      }
+    },
+    {
+      "id": "cut_model_a_bench_gate/named/intrusion_exactly_two_metres",
+      "output": {
+        "ok": {
+          "1": false,
+          "-1": false
+        }
+      }
+    },
+    {
       "id": "cut_model_a_face/sweep/00",
       "output": {
         "ok": 13.074
