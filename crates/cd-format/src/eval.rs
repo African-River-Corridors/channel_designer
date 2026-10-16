@@ -10,6 +10,8 @@ use serde_json::{Number, Value, json};
 
 mod alignment;
 mod geometry;
+mod terrain;
+mod volumes;
 
 /// Why `eval` could not produce a result. A Python `ValueError` is not an `EvalError`: it is a
 /// normal result, `{"error": {"type": "ValueError", "message": ...}}`.
@@ -83,6 +85,9 @@ pub fn eval(entry_point: &str, input: &Value) -> Result<Value, EvalError> {
         "radius_check" => alignment::radius_check(function, args),
         "loops" => alignment::loops(function, args),
         "rolling_circle" => alignment::rolling_circle(function, args),
+        "sections" => volumes::sections(function, args),
+        "cut_model_grid" => volumes::cut_model_grid(function, args),
+        "cut_model_extras" => volumes::cut_model_extras(function, args),
         "geometry" => geometry::geometry(function, args),
         "synthetic" => geometry::synthetic(function, args),
         ep if ENTRY_POINTS.contains(&ep) => Err(EvalError::NotPorted(ep.into())),
