@@ -12,6 +12,7 @@ pub mod map;
 pub mod optimise;
 pub mod schema;
 pub mod session;
+pub mod table;
 pub mod terrain;
 pub mod volumes;
 pub mod water;

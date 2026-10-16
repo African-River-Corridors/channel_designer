@@ -293,4 +293,41 @@ describe("Channel Designer app smoke test", () => {
     await until("volumes to go stale", async () => (await text("status-volumes")) === "stale");
     assert.equal(await text("status-alignment"), "stale");
   });
+  it("sorts a failing option first with a red mark and its numbers, and selecting a row selects the option on the map", async () => {
+    // Two options in the document, the passing one first. The failing one reads 222 m against R_min 330 m.
+    const option = (id, name, ok, measured, y) => ({
+      id, name, method: "rolling_circle", settings: {},
+      line: { type: "LineString", coordinates: [[500000, y], [501000, y + 100], [502000, y]] },
+      checks: { r_min_m: 330, radius_ok: ok, measured_min_radius_m: measured, radius_check_chord_m: 110 },
+      details: {},
+    });
+    const doc = JSON.parse(fs.readFileSync(EXAMPLE, "utf8"));
+    doc.options = [option("rolling-circle", "Rolling circle", true, 340, 600000), option("reroute", "Least-cost re-route", false, 222, 600150)];
+    const file = path.join(WORK, "two-options.cdesign");
+    fs.writeFileSync(file, JSON.stringify(doc, null, 2));
+    await open(file, "two-options.cdesign");
+    await until("the table to fill", async () => (await browser.$$("[data-testid=option-row]")).length === 2);
+    const rows = await browser.execute(() =>
+      [...document.querySelectorAll("[data-testid=option-row]")].map((r) => ({
+        id: r.dataset.option,
+        failed: r.dataset.failed,
+        text: r.textContent.replace(/\s+/g, " ").trim(),
+        minRadius: r.querySelector("[data-col=min-radius]").textContent,
+      })),
+    );
+    assert.equal(rows[0].id, "reroute", "the failing option sorts first");
+    assert.equal(rows[0].failed, "true");
+    assert.match(rows[0].text, /✕ fails/);
+    assert.equal(rows[0].minRadius, "222", "its numbers stay visible");
+    assert.equal(rows[1].id, "rolling-circle");
+    assert.doesNotMatch(rows[1].text, /✕/);
+    // The checks list has the failure first, too.
+    const checks = await browser.execute(() => [...document.querySelectorAll("[data-testid=check]")].map((c) => c.dataset.passed));
+    assert.deepEqual(checks, ["false", "true"]);
+    // The failing option starts selected; selecting the other row moves the map's selection.
+    const mapSelected = async () => (await (await browser.$("[data-testid=plan-map]")).getAttribute("data-selected")) ?? "";
+    await until("the map to select the failing option", async () => (await mapSelected()) === "reroute", 30000);
+    await (await browser.$("[data-testid=option-row][data-option=rolling-circle]")).click();
+    await until("the map to follow the table", async () => (await mapSelected()) === "rolling-circle", 30000);
+  });
 });

@@ -33,14 +33,14 @@ fn num(v: &Value) -> String {
 }
 
 impl Session {
-    fn volumes_row(&self, id: &str) -> Option<&Value> {
+    pub(super) fn volumes_row(&self, id: &str) -> Option<&Value> {
         self.doc["stages"]["volumes"]["results"]["options"]
             .as_array()?
             .iter()
             .find(|r| r["id"] == id)
     }
 
-    fn volumes_status_name(&self, dem: Option<&[u8]>) -> &'static str {
+    pub(super) fn volumes_status_name(&self, dem: Option<&[u8]>) -> &'static str {
         match self.stage_status_with_dem(Stage::Volumes, dem) {
             StageStatus::NotRun => "not run",
             StageStatus::Fresh => "fresh",
@@ -48,7 +48,7 @@ impl Session {
         }
     }
 
-    fn options_list(&self) -> Vec<Value> {
+    pub(super) fn options_list(&self) -> Vec<Value> {
         self.doc["options"].as_array().cloned().unwrap_or_default()
     }
 

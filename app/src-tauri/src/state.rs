@@ -155,6 +155,12 @@ impl AppState {
         }
     }
 
+    /// The option comparison table and the checks list, from the session.
+    pub fn option_table(&self) -> Value {
+        self.session
+            .option_table(self.dem_bytes.as_deref().map(|b| b.as_slice()))
+    }
+
     /// The plan map's geometry in WGS84, from the session.
     pub fn map_geometry(&self) -> Result<Value, String> {
         self.session.map_geometry().map_err(message)
