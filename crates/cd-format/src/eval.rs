@@ -12,6 +12,7 @@ mod alignment;
 mod cascade;
 mod geometry;
 mod lattice;
+mod plan;
 mod river;
 mod terrain;
 mod volumes;
@@ -93,6 +94,8 @@ pub fn eval(entry_point: &str, input: &Value) -> Result<Value, EvalError> {
         "sections" => volumes::sections(function, args),
         "cut_model_grid" => volumes::cut_model_grid(function, args),
         "cut_model_extras" => volumes::cut_model_extras(function, args),
+        "footprint" => plan::footprint(function, args),
+        "pools" => plan::pools(function, args),
         "centreline" => river::centreline(function, args),
         "widths" => river::widths(function, args),
         "limits" => river::limits(function, args),

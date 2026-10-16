@@ -135,6 +135,13 @@ pub enum Op {
 
 /// Rings oriented with the interior on the left: shells counter-clockwise, holes clockwise.
 fn oriented_edges(polys: &[Polygon]) -> Vec<[Pt; 2]> {
+    oriented_edges_with_origins(polys).0
+}
+
+/// `oriented_edges`, with each edge's start in the ring's own direction (where GEOS's noder
+/// starts walking it).
+fn oriented_edges_with_origins(polys: &[Polygon]) -> (Vec<[Pt; 2]>, Vec<Pt>) {
+    let mut origins = Vec::new();
     let mut edges = Vec::new();
     for poly in polys {
         for (k, ring) in core::iter::once(&poly.exterior)
@@ -148,15 +155,17 @@ fn oriented_edges(polys: &[Polygon]) -> Vec<[Pt; 2]> {
             for w in ring.windows(2) {
                 if w[0] != w[1] {
                     edges.push(if flip { [w[1], w[0]] } else { [w[0], w[1]] });
+                    origins.push(w[0]);
                 }
             }
         }
     }
-    edges
+    (edges, origins)
 }
 
 /// Split every edge of `a` at the points where it meets an edge of `b`, and the other way round.
-fn node(a: &[[Pt; 2]], b: &[[Pt; 2]]) -> (Vec<[Pt; 2]>, Vec<[Pt; 2]>) {
+#[allow(clippy::type_complexity)]
+fn node(a: &[[Pt; 2]], b: &[[Pt; 2]]) -> (Vec<([Pt; 2], usize)>, Vec<([Pt; 2], usize)>) {
     let mut cuts_a: Vec<Vec<Pt>> = vec![Vec::new(); a.len()];
     let mut cuts_b: Vec<Vec<Pt>> = vec![Vec::new(); b.len()];
     let minx = |e: &[Pt; 2]| e[0][0].min(e[1][0]);
@@ -184,12 +193,20 @@ fn node(a: &[[Pt; 2]], b: &[[Pt; 2]]) -> (Vec<[Pt; 2]>, Vec<[Pt; 2]>) {
             }
         }
     }
-    (split(a, cuts_a), split(b, cuts_b))
+    (split_ranked(a, cuts_a), split_ranked(b, cuts_b))
 }
 
 pub(crate) fn split(edges: &[[Pt; 2]], cuts: Vec<Vec<Pt>>) -> Vec<[Pt; 2]> {
+    split_ranked(edges, cuts)
+        .into_iter()
+        .map(|(e, _)| e)
+        .collect()
+}
+
+/// `split`, keeping the index of the edge each piece came from.
+fn split_ranked(edges: &[[Pt; 2]], cuts: Vec<Vec<Pt>>) -> Vec<([Pt; 2], usize)> {
     let mut out = Vec::new();
-    for (e, mut c) in edges.iter().zip(cuts) {
+    for (k, (e, mut c)) in edges.iter().zip(cuts).enumerate() {
         let d2 = |p: &Pt| (p[0] - e[0][0]) * (p[0] - e[0][0]) + (p[1] - e[0][1]) * (p[1] - e[0][1]);
         c.retain(|p| p != &e[0] && p != &e[1]);
         c.sort_by(|p, q| d2(p).total_cmp(&d2(q)));
@@ -197,7 +214,7 @@ pub(crate) fn split(edges: &[[Pt; 2]], cuts: Vec<Vec<Pt>>) -> Vec<[Pt; 2]> {
         let mut prev = e[0];
         for p in c.into_iter().chain(core::iter::once(e[1])) {
             if p != prev {
-                out.push([prev, p]);
+                out.push(([prev, p], k));
                 prev = p;
             }
         }
@@ -240,6 +257,8 @@ pub fn overlay_geometry(a: &[Polygon], b: &[Polygon], op: Op) -> Geometry {
         return Geometry::Empty("Polygon");
     }
     let (ea, eb) = node(&oriented_edges(a), &oriented_edges(b));
+    let ea: Vec<[Pt; 2]> = ea.into_iter().map(|(e, _)| e).collect();
+    let eb: Vec<[Pt; 2]> = eb.into_iter().map(|(e, _)| e).collect();
     let rev: BTreeMap<(Key, Key), ()> = eb.iter().map(|e| ((Key(e[1]), Key(e[0])), ())).collect();
     let shared: Vec<Vec<Pt>> = ea
         .iter()
@@ -268,12 +287,28 @@ pub fn overlay_geometry(a: &[Polygon], b: &[Polygon], op: Op) -> Geometry {
 
 /// The polygon part of `overlay_geometry`: a list of polygons (empty when there is no area).
 pub fn overlay(a: &[Polygon], b: &[Polygon], op: Op) -> Vec<Polygon> {
-    let (ea, eb) = node(&oriented_edges(a), &oriented_edges(b));
-    let set_b: BTreeMap<(Key, Key), ()> = eb.iter().map(|e| ((Key(e[0]), Key(e[1])), ())).collect();
-    let set_a: BTreeMap<(Key, Key), ()> = ea.iter().map(|e| ((Key(e[0]), Key(e[1])), ())).collect();
+    let (oa, origin_a) = oriented_edges_with_origins(a);
+    let (ob, origin_b) = oriented_edges_with_origins(b);
+    let (ea, eb) = node(&oa, &ob);
+    let set_b: BTreeMap<(Key, Key), ()> = eb
+        .iter()
+        .map(|(e, _)| ((Key(e[0]), Key(e[1])), ()))
+        .collect();
+    let set_a: BTreeMap<(Key, Key), ()> = ea
+        .iter()
+        .map(|(e, _)| ((Key(e[0]), Key(e[1])), ()))
+        .collect();
     let has = |s: &BTreeMap<(Key, Key), ()>, p: Pt, q: Pt| s.contains_key(&(Key(p), Key(q)));
+    // Each kept edge's place in GEOS's edge list: input (A first), the ring segment it came from,
+    // and how far along that segment, in the ring's own direction, it starts.
+    let rank = |src: u8, e: &[Pt; 2], parent: usize, origin: &[Pt]| -> Rank {
+        let o = origin[parent];
+        let d2 = |p: Pt| (p[0] - o[0]) * (p[0] - o[0]) + (p[1] - o[1]) * (p[1] - o[1]);
+        (src, parent, d2(e[0]).min(d2(e[1])))
+    };
     let mut result: Vec<[Pt; 2]> = Vec::new();
-    for e in &ea {
+    let mut ranks: Vec<Rank> = Vec::new();
+    for (e, parent) in &ea {
         let same = has(&set_b, e[0], e[1]);
         let opposite = has(&set_b, e[1], e[0]);
         let keep = if same {
@@ -289,22 +324,30 @@ pub fn overlay(a: &[Polygon], b: &[Polygon], op: Op) -> Vec<Polygon> {
         };
         if keep {
             result.push(*e);
+            ranks.push(rank(0, e, *parent, &origin_a));
         }
     }
-    for e in &eb {
+    for (e, parent) in &eb {
         if has(&set_a, e[0], e[1]) || has(&set_a, e[1], e[0]) {
             continue;
         }
         let inside_a = locate_all(mid(e), a) == Loc::Interior;
-        match op {
-            Op::Intersection if inside_a => result.push(*e),
-            Op::Union if !inside_a => result.push(*e),
-            Op::Difference if inside_a => result.push([e[1], e[0]]),
-            _ => {}
+        let kept = match op {
+            Op::Intersection if inside_a => Some(*e),
+            Op::Union if !inside_a => Some(*e),
+            Op::Difference if inside_a => Some([e[1], e[0]]),
+            _ => None,
+        };
+        if let Some(k) = kept {
+            result.push(k);
+            ranks.push(rank(1, e, *parent, &origin_b));
         }
     }
-    build_polygons(&result)
+    build_polygons_ranked(&result, &ranks)
 }
+
+/// An edge's place in GEOS's overlay edge list (see `overlay`).
+type Rank = (u8, usize, f64);
 
 /// GEOS `Quadrant::quadrant`.
 fn quadrant(dx: f64, dy: f64) -> i32 {
@@ -338,6 +381,13 @@ fn compare_dir(o: Pt, a: Pt, b: Pt) -> core::cmp::Ordering {
 /// Link directed edges (interior on the left) into rings, taking the sharpest left turn at each
 /// node, and group them into shells (counter-clockwise) with their holes.
 pub(crate) fn build_polygons(edges: &[[Pt; 2]]) -> Vec<Polygon> {
+    let ranks: Vec<Rank> = (0..edges.len()).map(|i| (0, i, 0.0)).collect();
+    build_polygons_ranked(edges, &ranks)
+}
+
+/// `build_polygons`, with the polygons in the order of the lowest-ranked edge of each shell: GEOS
+/// OverlayNG builds its shells in the order of its edge list, so this is the order it returns.
+fn build_polygons_ranked(edges: &[[Pt; 2]], ranks: &[Rank]) -> Vec<Polygon> {
     let mut out_of: BTreeMap<Key, Vec<usize>> = BTreeMap::new();
     for (i, e) in edges.iter().enumerate() {
         out_of.entry(Key(e[0])).or_default().push(i);
@@ -346,15 +396,19 @@ pub(crate) fn build_polygons(edges: &[[Pt; 2]]) -> Vec<Polygon> {
         outs.sort_by(|&x, &y| compare_dir(k.0, edges[x][1], edges[y][1]));
     }
     let mut used = vec![false; edges.len()];
-    let mut rings: Vec<Vec<Pt>> = Vec::new();
+    let mut rings: Vec<(Vec<Pt>, Rank)> = Vec::new();
     for s in 0..edges.len() {
         if used[s] {
             continue;
         }
         let mut ring = vec![edges[s][0]];
         let mut cur = s;
+        let mut low = ranks[s];
         loop {
             used[cur] = true;
+            if ranks[cur].partial_cmp(&low) == Some(core::cmp::Ordering::Less) {
+                low = ranks[cur];
+            }
             let [u, v] = edges[cur];
             ring.push(v);
             if v == edges[s][0] {
@@ -380,17 +434,20 @@ pub(crate) fn build_polygons(edges: &[[Pt; 2]]) -> Vec<Polygon> {
             }
         }
         if ring.len() >= 4 && ring.first() == ring.last() && ring_signed_area(&ring) != 0.0 {
-            rings.push(ring);
+            rings.push((ring, low));
         }
     }
-    let (mut shells, mut holes): (Vec<Vec<Pt>>, Vec<Vec<Pt>>) = (Vec::new(), Vec::new());
-    for r in rings {
+    let mut shells: Vec<(Vec<Pt>, Rank)> = Vec::new();
+    let mut holes: Vec<Vec<Pt>> = Vec::new();
+    for (r, low) in rings {
         if ring_signed_area(&r) < 0.0 {
-            shells.push(r)
+            shells.push((r, low))
         } else {
             holes.push(r)
         }
     }
+    shells.sort_by(|x, y| x.1.partial_cmp(&y.1).unwrap_or(core::cmp::Ordering::Equal));
+    let shells: Vec<Vec<Pt>> = shells.into_iter().map(|(r, _)| r).collect();
     let mut polys: Vec<Polygon> = shells
         .into_iter()
         .map(|s| Polygon {

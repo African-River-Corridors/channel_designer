@@ -19,5 +19,7 @@
   "widths",
   "limits",
   "meanders",
-  "bends"
+  "bends",
+  "footprint",
+  "pools"
 ]

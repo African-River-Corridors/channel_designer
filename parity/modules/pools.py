@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 from shapely.geometry import LineString
 
-from ..common import Rng, case as _case, frozen, rline, rnd, terrain_from
+from ..common import enc, from_json, Rng, case as _case, frozen, rline, rnd, terrain_from
 
 ENTRY_POINT = "pools"
 R = "initial case set (spec 0001, ticket 23)"
@@ -144,4 +144,17 @@ def cases():
         c(f"slope_sweep_{i:02d}", 2, "overall_bottom_slope", dict(
             z_raw=zz, spacing_m=rng.r3(10.0, 50.0), percentile=rng.r3(5.0, 60.0),
             perc_window_m=rng.r3(100.0, 2500.0), smooth_window_m=rng.r3(100.0, 4000.0)))
+    # ticket 30: the recursion's weirs fed back as an explicit cascade, so that the two placements
+    # can be checked against each other on one profile (crest = pool level, height H).
+    # A bed rising 1:1000 gives a cascade of three weirs.
+    steep = river(9000.0, slope=0.001)
+    recursion = dict(kind="recursion", weir_height_m=H, implantation_depth_m=d)
+    shared = [{"chainage_m": w["chainage_m"], "pool_mwl_m": w["crest_m"], "structure_height_m": H}
+              for w in adapter("place_weirs", from_json(enc(dict(profile=steep, place=recursion))))]
+    R30 = "ticket 30: explicit and recursive weir placement on a shared case"
+    levels_at = [0.0, 599.0, 600.0, 2000.0, 4698.0, 4700.0, 8000.0, 8761.0, 8762.0, 9000.0]
+    for kind, place in (("recursion", recursion), ("explicit", dict(kind="explicit", cascade=shared))):
+        out.append(_case(f"place_weirs/weirs_shared_{kind}", 1, "place_weirs", dict(profile=steep, place=place), R30))
+        out.append(_case(f"water_levels/levels_shared_{kind}", 1, "water_levels", dict(
+            weirs=dict(profile=steep, place=place), chainages=levels_at, depth_m=3.0), R30))
     return out
