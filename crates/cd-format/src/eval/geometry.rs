@@ -4,7 +4,7 @@
 use super::{EvalError, bad, f64_arg, f64_list, f64_or, float_json, list, ok, read_float};
 use cd_core::geom::offset::{self, Cap};
 use cd_core::geom::overlay::{self, Op};
-use cd_core::geom::{GeomError, Geometry, Polygon, Pt, linear, merge};
+use cd_core::geom::{GeomError, Geometry, Polygon, Pt, linear, merge, valid};
 use cd_core::synthetic::{self, RiverParams};
 use serde_json::{Value, json};
 
@@ -352,6 +352,28 @@ pub(super) fn geometry(function: &str, args: &Value) -> Result<Value, EvalError>
                 }
             };
             ok(geom_json(&overlay::overlay_geometry(&a, &b, op)))
+        }
+        "buffer_shape" => {
+            let distance = f64_arg(args, "distance")?;
+            let g = match geom_arg(args, "geom")? {
+                Geometry::LineString(l) => offset::buffer_line(
+                    &l,
+                    distance,
+                    int_or(args, "quad_segs", SHAPELY_QUAD_SEGS)?,
+                    cap_arg(args)?,
+                ),
+                g @ (Geometry::Polygon(_) | Geometry::MultiPolygon(_)) => {
+                    offset::buffer_polygons(&polys_of(g, "args.geom")?, distance)
+                }
+                _ => return Err(bad("`args.geom` must be a LineString or a polygon".into())),
+            }
+            .map_err(geom_err)?;
+            let valid = valid::is_valid(&polys_of(g.clone(), "the buffer")?);
+            ok(json!({"polygon": geom_json(&g), "valid": valid}))
+        }
+        "is_valid" => {
+            let ps = polys_of(geom_arg(args, "polygon")?, "args.polygon")?;
+            ok(Value::Bool(valid::is_valid(&ps)))
         }
         "polygon_area" => {
             let ps = polys_of(geom_arg(args, "polygon")?, "args.polygon")?;
