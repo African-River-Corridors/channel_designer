@@ -512,7 +512,11 @@ fn export_writes_the_quantity_table_and_the_options_with_the_screening_label() {
         "{text}"
     );
     assert!(
-        text.lines().skip(2).all(|l| l.ends_with(",fresh")),
+        // `volumes_status`, then the `notes` column (spec 0005: the water-aware rolling circle
+        // says "width only, no depth data").
+        text.lines()
+            .skip(2)
+            .all(|l| l.contains(",fresh,") || l.ends_with(",fresh")),
         "{text}"
     );
 

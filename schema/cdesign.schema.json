@@ -1,13 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/African-River-Corridors/channel_designer/schema/cdesign.schema.json",
-  "title": "Channel design document (.cdesign), format version 1",
+  "title": "Channel design document (.cdesign), format version 2",
   "description": "One screening study of one river reach for one vessel: its inputs, the choices made and the results of each stage. Each stage records a hash of what it depended on; a stage whose hash no longer matches is stale. Numbers are SI. Geometry is GeoJSON in the project CRS.",
   "type": "object",
   "required": ["format_version", "engine_version", "project", "inputs", "stages", "options"],
   "additionalProperties": false,
   "properties": {
-    "format_version": { "const": 1 },
+    "format_version": {
+      "description": "2 since spec 0005 (seed legs, fixed pieces, the water-aware rolling circle). A version 1 document opens and is moved to 2: its rolling circle records `use_water: false`, so its results do not change.",
+      "enum": [1, 2]
+    },
     "engine_version": { "type": "string", "minLength": 1 },
     "project": {
       "type": "object",
@@ -113,6 +116,21 @@
               }
             }
           ]
+        },
+        "seed_legs": {
+          "description": "Spec 0005: ordered lines joined into one design line before the rolling circle (`join_legs`). Optional.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/line" }
+        },
+        "fixed": {
+          "description": "Spec 0005: pieces the joined line must hold exactly. A pose is a point and a heading in degrees counter-clockwise from the project CRS's +x (east) axis. Optional.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "start_pose": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/pose" }] },
+            "end_pose": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/pose" }] },
+            "must_follow": { "type": "array", "items": { "$ref": "#/$defs/line" } }
+          }
         }
       }
     },
@@ -172,6 +190,15 @@
       }
     },
     "hash_or_null": { "type": ["string", "null"], "minLength": 64, "maxLength": 64 },
+    "pose": {
+      "type": "object",
+      "required": ["point", "heading_deg"],
+      "additionalProperties": false,
+      "properties": {
+        "point": { "$ref": "#/$defs/position" },
+        "heading_deg": { "type": "number" }
+      }
+    },
     "stage": {
       "type": "object",
       "required": ["settings", "results", "depends_on", "engine_version"],
@@ -192,6 +219,25 @@
           "description": "Settings of each alignment method, by method name. A setting left out takes its default.",
           "type": ["object", "null"],
           "properties": {
+            "rolling_circle": {
+              "type": "object",
+              "properties": {
+                "use_water": {
+                  "description": "Spec 0005: the water-aware rolling circle. Null (the default) means on when the inputs have a river polygon. A version 1 document records false when it opens, so its results do not change.",
+                  "type": ["boolean", "null"]
+                },
+                "clearance_m": {
+                  "description": "Spec 0005: clearance from the bank, metres, added to half the bottom width when the water is shrunk to navigable water. Default 0.",
+                  "type": "number",
+                  "minimum": 0
+                },
+                "r_pref_m": {
+                  "description": "Spec 0005: a preferred radius for the fairway fit, metres; bends tighter than it are penalised, never refused. Default none.",
+                  "type": ["number", "null"],
+                  "minimum": 0
+                }
+              }
+            },
             "reroute": {
               "type": "object",
               "properties": {

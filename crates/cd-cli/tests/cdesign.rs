@@ -367,8 +367,8 @@ fn exit_code_1_is_a_failed_check() {
     let dir = work_dir("exit1");
     let doc = build(&dir);
     let text = std::fs::read_to_string(&doc).unwrap().replacen(
-        "\"format_version\": 1",
         "\"format_version\": 2",
+        "\"format_version\": 3",
         1,
     );
     std::fs::write(&doc, text).unwrap();
@@ -613,11 +613,14 @@ fn align_adds_a_rolling_circle_option_and_replaces_it_when_run_again() {
         saved["options"][0]["checks"]["radius_ok"],
         res["option"]["checks"]["radius_ok"]
     );
-    // The exit code is the option's check: 0 when it holds R_min, 1 when it fails.
-    assert_eq!(
-        code(&o),
-        i32::from(!res["option"]["checks"]["radius_ok"].as_bool().unwrap())
-    );
+    // The exit code is the option's checks: 0 when all hold, 1 when one fails. The synthetic river
+    // has a river polygon, so the rolling circle is water-aware (spec 0005): at 40 m it fails
+    // `fits_in_water` at every apex.
+    let c = &res["option"]["checks"];
+    let failed = c["radius_ok"].as_bool() == Some(false)
+        || c["fits_in_water"]["ok"].as_bool() == Some(false);
+    assert!(c["fits_in_water"].is_object());
+    assert_eq!(code(&o), i32::from(failed));
     // Again, with another step: one option still, with the new setting.
     run(
         &["align", &doc, "--method", "rolling-circle", "--step", "20"],
@@ -648,4 +651,52 @@ fn align_with_sizing_stale_is_refused_and_names_the_size_command() {
     assert!(err(&o).contains("cdesign size"), "{}", err(&o));
     let o = run(&["align", &doc, "--method", "nonsense"], "");
     assert_eq!(code(&o), 2);
+}
+
+// --- spec 0005 (#100) ---------------------------------------------------------------------
+
+#[test]
+fn a_failed_fits_in_water_check_is_in_status_the_csv_and_the_geojson_and_exits_1() {
+    let dir = work_dir("fits_in_water");
+    let doc = build(&dir);
+    // The 40 m synthetic river: the water-aware rolling circle is too narrow at every apex.
+    let o = run(&["align", &doc, "--method", "rolling-circle", "--json"], "");
+    assert_eq!(code(&o), 1, "{}", err(&o));
+    assert!(err(&o).contains("fits_in_water"), "{}", err(&o));
+    let res: Value = serde_json::from_str(&out(&o)).unwrap();
+    let c = &res["option"]["checks"]["fits_in_water"];
+    assert_eq!(c["ok"], false);
+    assert!(c["stretches"].as_array().unwrap().len() >= 8);
+    assert!(
+        c["stretches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|s| s["reason"] == "too_narrow")
+    );
+    let st = run(&["status", &doc, "--json"], "");
+    let sj: Value = serde_json::from_str(&out(&st)).unwrap();
+    assert!(
+        sj["options"][0]["failed_checks"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("fits_in_water")),
+        "{sj}"
+    );
+    assert_eq!(sj["options"][0]["notes"], "width only, no depth data");
+    let human = run(&["status", &doc], "");
+    assert!(out(&human).contains("FAILS") && out(&human).contains("fits_in_water"));
+    let csv = run(&["export", &doc, "--csv"], "");
+    assert!(out(&csv).contains("fits_in_water"), "{}", out(&csv));
+    assert!(out(&csv).contains("width only, no depth data"));
+    let g = run(&["export", &doc, "--geojson"], "");
+    let fc: Value = serde_json::from_str(&out(&g)).unwrap();
+    let props = &fc["features"][0]["properties"];
+    assert!(
+        props["failed_checks"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("fits_in_water"))
+    );
+    assert_eq!(props["notes"], "width only, no depth data");
 }

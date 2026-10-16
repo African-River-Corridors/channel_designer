@@ -144,7 +144,9 @@ fn volumes_show_in_the_exports_with_their_status() {
     assert!(at("dredge_m3").parse::<f64>().is_ok() && at("tallest_face_m").parse::<f64>().is_ok());
     // A changed DEM file: the numbers stay, marked stale.
     let stale = s.export_csv(Some(b"another dem"));
-    assert!(stale.lines().nth(2).unwrap().ends_with(",stale"), "{stale}");
+    let stale_row: Vec<&str> = stale.lines().nth(2).unwrap().split(',').collect();
+    let stale_at = |name: &str| stale_row[header.iter().position(|h| *h == name).unwrap()];
+    assert_eq!(stale_at("volumes_status"), "stale", "{stale}");
     let fc: Value = serde_json::from_str(&s.export_geojson(false, Some(b"dem")).unwrap()).unwrap();
     assert_eq!(fc["features"][0]["properties"]["volumes_status"], "fresh");
     assert!(fc["features"][0]["properties"]["volumes"]["dredge_m3"].is_number());

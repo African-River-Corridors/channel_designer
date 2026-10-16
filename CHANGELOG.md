@@ -12,6 +12,15 @@ scenarios run on the base branch and on the pull request, and a result that move
 (ADR 0005) must have a bullet here, under this heading, saying what moved and why. Add the bullet in the
 pull request that moves the result.
 
+- **The water-aware rolling circle in the channel design document (#100, spec 0005).** Format version 2.
+  In a new document with a river polygon, the rolling circle is water-aware by default (`use_water`):
+  each bend takes the four-rung ladder of #97, and the option carries a `fits_in_water` check (with
+  its stretches and the note "width only, no depth data") that travels into `status`, the CSV (a
+  new last column, `notes`) and the GeoJSON. Its line can differ from the old rolling circle's
+  wherever a bend did not fit the water. Optional `seed_legs` and `fixed` inputs are joined first
+  (`join_legs`), with a `join_guard` check. A version 1 document opens as version 2 with
+  `use_water: false` recorded, so its results do not move, and fresh stages stay fresh. The
+  design-impact scenarios run the Python API, not documents, so they show no change.
 - **One radius reading (#95, spec 0005 Q11).** The least-cost re-route now reports
   `measured_min_radius_m`, `radius_check_chord_m` and `radius_ok` read on the chord
   (`min_radius_on_chord`, default R_min / 3), as the rolling circle already did. It used to report

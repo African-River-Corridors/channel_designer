@@ -10,13 +10,29 @@ use serde_json::{Value, json};
 /// The label every export carries.
 pub const SCREENING_LABEL: &str = "Screening — not for construction";
 
-/// The checks an option fails, by name. `R_min` when the minimum radius is under the ruleset's.
+/// The checks an option fails, by name. `R_min` when the minimum radius is under the ruleset's;
+/// `fits_in_water` when a water-aware option has an infeasible stretch, and `join_guard` when a
+/// join that held R_min failed after a later fit (spec 0005).
 pub fn failed_checks(option: &Value) -> Vec<&'static str> {
     let mut failed = Vec::new();
-    if option["checks"]["radius_ok"].as_bool() == Some(false) {
+    let c = &option["checks"];
+    if c["radius_ok"].as_bool() == Some(false) {
         failed.push("R_min");
     }
+    if c["fits_in_water"]["ok"].as_bool() == Some(false) {
+        failed.push("fits_in_water");
+    }
+    if c["join_guard"]["ok"].as_bool() == Some(false) {
+        failed.push("join_guard");
+    }
     failed
+}
+
+/// The note a water-aware option carries in every export: "width only, no depth data".
+pub fn water_note(option: &Value) -> Option<&'static str> {
+    option["checks"]["fits_in_water"]
+        .is_object()
+        .then_some(super::alignment::WIDTH_ONLY)
 }
 
 fn csv_field(s: &str) -> String {
@@ -60,7 +76,7 @@ impl Session {
         let mut out = format!("# {SCREENING_LABEL}\n");
         out.push_str(
             "option_id,option,method,dredge_m3,dry_cut_m3,total_m3,tallest_face_m,\
-             min_radius_m,r_min_m,radius_check_chord_m,radius_ok,failed_checks,volumes_status\n",
+             min_radius_m,r_min_m,radius_check_chord_m,radius_ok,failed_checks,volumes_status,notes\n",
         );
         let status = self.volumes_status_name(dem);
         for o in self.options_list() {
@@ -84,6 +100,7 @@ impl Session {
                     .map_or(String::new(), |b| b.to_string()),
                 csv_field(&failed.join(";")),
                 status.to_string(),
+                csv_field(water_note(&o).unwrap_or("")),
             ];
             out.push_str(&cols.join(","));
             out.push('\n');
@@ -140,6 +157,7 @@ impl Session {
                     "method": o["method"],
                     "checks": o["checks"],
                     "failed_checks": failed,
+                    "notes": water_note(&o),
                     "volumes": self.volumes_row(id),
                     "volumes_status": status,
                 },

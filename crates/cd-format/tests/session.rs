@@ -240,7 +240,7 @@ fn the_published_schema_is_what_the_session_prints() {
 fn open_refuses_text_that_is_not_json_and_names_each_schema_break() {
     assert!(matches!(Session::open("{"), Err(DesignError::Input(_))));
     let mut doc = imported().document().clone();
-    doc["format_version"] = json!(2);
+    doc["format_version"] = json!(3);
     doc["project"].as_object_mut().unwrap().remove("title");
     let Err(DesignError::Document(errs)) = Session::open(&doc.to_string()) else {
         panic!()

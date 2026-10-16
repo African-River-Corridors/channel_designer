@@ -1,5 +1,5 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "engine_version": "0.2.0",
   "project": {
     "title": "Synthetic river",
