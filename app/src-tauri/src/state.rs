@@ -5,6 +5,7 @@
 //! validation or default logic: every answer comes from [`Session`].
 
 use crate::run::{Outcome, RunControl, RunJob};
+use cd_core::volumes::sections::SectionVolumes;
 use cd_format::design::{AlignMethod, DemCheck, DesignError, Role, Session, Stage, StageStatus};
 use cd_format::geotiff::{Dem, read_bytes};
 use serde_json::{Value, json};
@@ -26,6 +27,52 @@ pub struct AppState {
     dem_file: Option<PathBuf>,
     /// The stage now running on a worker, if any.
     running: Option<(Stage, Arc<RunControl>)>,
+    /// The station walk last drawn, with the key it was made under (option and volumes inputs).
+    walk: Option<(String, Arc<SectionVolumes>)>,
+}
+
+/// A station walk to fetch or make off the main thread.
+pub struct WalkJob {
+    session: Session,
+    dem: Option<Arc<Dem>>,
+    epsg: Option<u32>,
+    option: String,
+    key: String,
+    cached: Option<Arc<SectionVolumes>>,
+}
+
+/// A station walk and the design it was made from, to draw from.
+#[derive(Debug)]
+pub struct Walked {
+    pub session: Session,
+    pub walk: Arc<SectionVolumes>,
+    key: String,
+}
+
+impl WalkJob {
+    /// The cached walk, or one made now on the DEM. A refusal is the session's reason.
+    pub fn run(self) -> Result<Walked, String> {
+        let walk = match self.cached {
+            Some(w) => w,
+            None => {
+                let dem = self
+                    .dem
+                    .ok_or("the sections need the DEM the volumes were run on: it is missing or has changed")?;
+                let sampler =
+                    cd_format::design::terrain::dem_sampler(&dem, self.epsg).map_err(message)?;
+                Arc::new(
+                    self.session
+                        .option_section_walk(&self.option, &sampler)
+                        .map_err(message)?,
+                )
+            }
+        };
+        Ok(Walked {
+            session: self.session,
+            walk,
+            key: self.key,
+        })
+    }
 }
 
 /// `target` relative to the folder `base`, using `..` where it must climb. Both are made absolute
@@ -61,6 +108,7 @@ impl AppState {
             dem_bytes: None,
             dem_file: None,
             running: None,
+            walk: None,
         }
     }
 
@@ -81,6 +129,7 @@ impl AppState {
             dem_bytes: dem_bytes.map(|b| Arc::new(b.to_vec())),
             dem_file,
             running: None,
+            walk: None,
         })
     }
 
@@ -258,6 +307,47 @@ impl AppState {
                 Err(message(e))
             }
         }
+    }
+
+    /// The DEM, only when it is the file whose hash the design recorded.
+    fn usable_dem(&self) -> Option<Arc<Dem>> {
+        match (
+            self.session
+                .dem_check(self.dem_bytes.as_deref().map(|b| b.as_slice())),
+            &self.dem,
+        ) {
+            (DemCheck::Matches, Some(d)) => Some(d.clone()),
+            _ => None,
+        }
+    }
+
+    /// Get ready to draw the sections of an option: the cached walk if the design has not changed
+    /// since, else a job that makes it.
+    pub fn begin_walk(&self, option: &str) -> WalkJob {
+        let key = format!(
+            "{option}|{}",
+            self.session.document()["stages"]["volumes"]["depends_on"]
+        );
+        // A kept walk holds only while the volumes are fresh on this design: a stale one has no walk to draw.
+        let fresh = self.session.stage_status(Stage::Volumes) == StageStatus::Fresh;
+        let cached = self
+            .walk
+            .as_ref()
+            .filter(|(k, _)| fresh && *k == key)
+            .map(|(_, w)| w.clone());
+        WalkJob {
+            session: self.session.clone(),
+            dem: self.usable_dem(),
+            epsg: self.project_epsg(),
+            option: option.to_string(),
+            key,
+            cached,
+        }
+    }
+
+    /// Keep a walk made off-thread for the next draw.
+    pub fn keep_walk(&mut self, walked: &Walked) {
+        self.walk = Some((walked.key.clone(), walked.walk.clone()));
     }
 
     /// Begin running a stage: a job over a copy of the design. The design itself changes only when
@@ -747,6 +837,39 @@ mod tests {
         );
         s.saved(Path::new("/nonexistent/x.cdesign"));
         assert!(s.refuse_unsaved_fetch().is_ok());
+    }
+
+    #[test]
+    fn the_sections_come_from_the_walk_the_volumes_summed_and_the_walk_is_kept_until_the_design_changes()
+     {
+        let (mut s, _dir) = ready();
+        run(&mut s, "alignment", Some("rolling_circle")).unwrap();
+        // Before volumes have run there is no walk to draw.
+        assert!(s.begin_walk("rolling-circle").run().is_err());
+        run(&mut s, "volumes", None).unwrap();
+        let first = s.begin_walk("rolling-circle").run().unwrap();
+        let ls = first
+            .session
+            .long_section("rolling-circle", &first.walk)
+            .unwrap();
+        let row = &s.snapshot()["document"]["stages"]["volumes"]["results"]["options"][0];
+        assert_eq!(
+            ls["chainage_m"].as_array().unwrap().len() as u64,
+            row["stations"].as_u64().unwrap()
+        );
+        s.keep_walk(&first);
+        // Kept: the next job already holds it. A new water level changes the volumes' inputs: it is dropped.
+        assert!(s.begin_walk("rolling-circle").cached.is_some());
+        assert!(s.begin_walk("other").cached.is_none());
+        s.set_water(37.0, None).unwrap();
+        assert!(s.begin_walk("rolling-circle").cached.is_none());
+        // And volumes are stale now, so there is no walk to make.
+        assert!(
+            s.begin_walk("rolling-circle")
+                .run()
+                .unwrap_err()
+                .contains("stale")
+        );
     }
 
     /// A temporary folder that goes away with the test.

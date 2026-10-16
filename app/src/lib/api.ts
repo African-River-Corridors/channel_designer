@@ -51,7 +51,7 @@ export interface Snapshot {
       dem: { path: string; sha256?: string } | null;
       water_level: { points: number[][] } | null;
     };
-    stages: Record<StageName, { settings: SizingSettings | null; results: ChannelShape | null }>;
+    stages: Record<StageName, { settings: SizingSettings | null; results: ChannelShape | null; depends_on?: string | null }>;
   };
   stages: { name: StageName; status: StageState }[];
   file_name: string;
@@ -165,3 +165,43 @@ export interface OptionTable {
   checks: CheckRow[];
 }
 export const optionTable = () => invoke<OptionTable>("option_table");
+
+/** The long section of one option as series along its chainage. A value the session lacks is null. */
+export interface LongSection {
+  screening: string;
+  option_id: string;
+  station_m: number;
+  chainage_m: number[];
+  bed_m: (number | null)[];
+  water_level_m: (number | null)[];
+  design_invert_m: (number | null)[];
+  cut_depth_m: (number | null)[];
+  dredge_area_m2: number[];
+  excav_area_m2: number[];
+  max_face_h_m: number[];
+  positions: LonLat[];
+}
+/** The cross-section at one station: offsets are negative left, positive right of the line. */
+export interface CrossSection {
+  screening: string;
+  chainage_m: number;
+  position: LonLat;
+  offsets_m: number[];
+  terrain_m: (number | null)[];
+  wet: boolean[];
+  cut_face_m: (number | null)[];
+  water_level_m: number;
+  design_invert_m: number;
+  half_width_m: number;
+  depth_m: number;
+  model: string;
+  dredge_area_m2: number;
+  excav_area_m2: number;
+  max_face_h_m: number;
+  bench_left: boolean;
+  bench_right: boolean;
+}
+/** These three reject with the session's reason (for example: volumes not run, or stale). */
+export const longSection = (option: string) => invoke<LongSection>("long_section", { option });
+export const crossSection = (option: string, chainage: number) => invoke<CrossSection>("cross_section", { option, chainage });
+export const stationNear = (option: string, lon: number, lat: number) => invoke<number>("station_near", { option, lon, lat });

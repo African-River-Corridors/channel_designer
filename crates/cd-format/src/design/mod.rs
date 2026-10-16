@@ -11,6 +11,7 @@ pub mod hillshade;
 pub mod map;
 pub mod optimise;
 pub mod schema;
+pub mod sections;
 pub mod session;
 pub mod table;
 pub mod terrain;

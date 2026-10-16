@@ -150,6 +150,52 @@ impl Session {
             ));
         }
 
+        let plan = self.section_plan(overrides)?;
+        let mut rows = Vec::new();
+        for o in &options {
+            let id = o["id"].as_str().unwrap_or("?");
+            let v = self.option_sections(&plan, o, terrain)?;
+            rows.push(json!({
+                "id": id,
+                "name": o["name"],
+                "dredge_m3": v.dredge_m3(),
+                "excav_m3": v.excav_m3(),
+                "total_m3": v.total_m3(),
+                "max_face_h_m": v.max_face_h_m(),
+                "stations": v.stations.len(),
+                // A failed check stays with the option's numbers.
+                "radius_ok": o["checks"]["radius_ok"],
+                "water_source": plan.water_source,
+            }));
+        }
+        let settings = plan.settings;
+        let st = &mut self.doc["stages"]["volumes"];
+        st["settings"] = settings;
+        st["results"] = json!({ "options": rows });
+        st["engine_version"] = json!(ENGINE_VERSION);
+        let h = self.dependency_hash(Stage::Volumes);
+        self.doc["stages"]["volumes"]["depends_on"] = json!(h);
+        Ok(())
+    }
+}
+
+/// What every option's station walk shares: the settings, the water, the sizing and the river.
+pub(super) struct SectionPlan {
+    pub(super) settings: Value,
+    profile: Vec<[f64; 2]>,
+    pub(super) water_source: &'static str,
+    centre: Vec<Pt>,
+    model: String,
+    shape: cd_core::rules::rulesets::ChannelShape,
+    depth: f64,
+    river: Vec<Polygon>,
+    fixed_hb: Option<f64>,
+}
+
+impl Session {
+    /// Read the volumes settings (the document's, then `overrides`), the water level, the sizing and
+    /// the river, once, for the station walk of every option.
+    pub(super) fn section_plan(&self, overrides: &Value) -> Result<SectionPlan, DesignError> {
         let mut settings = defaults();
         for source in [
             &self.doc["stages"]["volumes"]["settings"].clone(),
@@ -215,53 +261,54 @@ impl Session {
                 )
             })?),
         };
-        let from_shape = |xy: &[Pt]| widened_hb_from_shape(xy, &shape, WIDEN_RMAX);
-        let half_width = match fixed_hb {
+        Ok(SectionPlan {
+            settings,
+            profile,
+            water_source,
+            centre,
+            model,
+            shape,
+            depth,
+            river,
+            fixed_hb,
+        })
+    }
+
+    /// The station walk of one option: every cross-section, with its terrain, water level, design
+    /// invert and cut face. The volumes stage sums these; the app draws them.
+    pub(super) fn option_sections(
+        &self,
+        plan: &SectionPlan,
+        o: &Value,
+        terrain: Terrain,
+    ) -> Result<cd_core::volumes::sections::SectionVolumes, DesignError> {
+        let settings = &plan.settings;
+        let id = o["id"].as_str().unwrap_or("?");
+        let line: Vec<Pt> = all_positions(&o["line"]);
+        let wl = self.water_level_along(&plan.profile, &line, &plan.centre);
+        let level = Level::AtChainage(&wl);
+        let shape = &plan.shape;
+        let from_shape = |xy: &[Pt]| widened_hb_from_shape(xy, shape, WIDEN_RMAX);
+        let half_width = match plan.fixed_hb {
             Some(h) => HalfWidth::Fixed(h),
             None => HalfWidth::FromStations(&from_shape),
         };
-        let mut rows = Vec::new();
-        for o in &options {
-            let id = o["id"].as_str().unwrap_or("?");
-            let line: Vec<Pt> = all_positions(&o["line"]);
-            let wl = self.water_level_along(&profile, &line, &centre);
-            let level = Level::AtChainage(&wl);
-            let v = section_volumes(
-                &line,
-                terrain,
-                &river,
-                &level,
-                depth,
-                &half_width,
-                &model,
-                setting(&settings, "wet_slope")?,
-                setting(&settings, "station_m")?,
-                setting(&settings, "maxw_m")?,
-                setting(&settings, "dx_m")?,
-                None,
-                None,
-                cd_core::volumes::sections::DEFAULT_CHUNK,
-            )
-            .map_err(|e| DesignError::Input(format!("option `{id}`: {e}")))?;
-            rows.push(json!({
-                "id": id,
-                "name": o["name"],
-                "dredge_m3": v.dredge_m3(),
-                "excav_m3": v.excav_m3(),
-                "total_m3": v.total_m3(),
-                "max_face_h_m": v.max_face_h_m(),
-                "stations": v.stations.len(),
-                // A failed check stays with the option's numbers.
-                "radius_ok": o["checks"]["radius_ok"],
-                "water_source": water_source,
-            }));
-        }
-        let st = &mut self.doc["stages"]["volumes"];
-        st["settings"] = settings;
-        st["results"] = json!({ "options": rows });
-        st["engine_version"] = json!(ENGINE_VERSION);
-        let h = self.dependency_hash(Stage::Volumes);
-        self.doc["stages"]["volumes"]["depends_on"] = json!(h);
-        Ok(())
+        section_volumes(
+            &line,
+            terrain,
+            &plan.river,
+            &level,
+            plan.depth,
+            &half_width,
+            &plan.model,
+            setting(settings, "wet_slope")?,
+            setting(settings, "station_m")?,
+            setting(settings, "maxw_m")?,
+            setting(settings, "dx_m")?,
+            None,
+            None,
+            cd_core::volumes::sections::DEFAULT_CHUNK,
+        )
+        .map_err(|e| DesignError::Input(format!("option `{id}`: {e}")))
     }
 }
