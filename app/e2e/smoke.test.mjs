@@ -51,6 +51,15 @@ const vesselChoices = () =>
     return { values: [...select.options].map((o) => o.value), current: select.value };
   });
 
+/** Choose a vessel class. WebDriver sets the value; the change event is sent too, in case the driver did not. */
+async function chooseVessel(value) {
+  const select = await browser.$("select[aria-label='Vessel class']");
+  await select.selectByAttribute("value", value);
+  await browser.execute(() => {
+    document.querySelector("select[aria-label='Vessel class']").dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
 /** The worked example is sized for this class. After an open the form takes a moment to show it. */
 const EXAMPLE_VESSEL = "CEMT_IV";
 const formShowsExample = () => until("the form to show the example's vessel", async () => (await vesselChoices()).current === EXAMPLE_VESSEL);
@@ -102,11 +111,10 @@ describe("Channel Designer app smoke test", () => {
     const widthBefore = await text("bottom-width");
 
     // Change the vessel class: the channel shape changes, after the pause, with no button pressed.
-    const vessel = await browser.$("select[aria-label='Vessel class']");
     const { values, current } = await vesselChoices();
     const other = values.find((v) => v !== current && v.startsWith("CEMT"));
     assert.ok(other, `another CEMT class to choose among ${values.join(" | ")}`);
-    await vessel.selectByAttribute("value", other);
+    await chooseVessel(other);
     await until("the channel shape to change", async () => (await text("min-radius")) !== radiusBefore);
     assert.notEqual(await text("bottom-width"), widthBefore);
     assert.equal(await text("status-sizing"), "fresh", "the new sizing is already run");
@@ -134,10 +142,9 @@ describe("Channel Designer app smoke test", () => {
   it("asks before it throws away unsaved changes, and keeps them when the answer is no", async () => {
     await open(EXAMPLE, "synthetic-river.cdesign");
     await formShowsExample();
-    const vessel = await browser.$("select[aria-label='Vessel class']");
     const { values, current } = await vesselChoices();
     const other = values.find((v) => v !== current && v.startsWith("CEMT"));
-    await vessel.selectByAttribute("value", other);
+    await chooseVessel(other);
     await until("the edit to count as unsaved", async () => (await fileLabel()).includes("(unsaved)"));
     // Refuse the discard: nothing changes.
     answer("discard.txt", "no");
