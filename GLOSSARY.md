@@ -33,6 +33,10 @@ _Avoid_: route, rolled line, sailing line, fairway (as a line)
 The activity of finding a design line, and the stage that does it. Never a line itself.
 _Avoid_: route (as a noun)
 
+**Water level profile**:
+The water level along the river centreline, as points of river chainage and level, read linearly between
+points. A design line's station takes its level by projecting onto the river centreline (ADR 0006).
+
 **Navigable water**:
 The part of the water a design line may use: the water polygon shrunk by half the channel's
 straight bottom width plus a clearance from the bank, then smoothed.

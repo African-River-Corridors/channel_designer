@@ -65,6 +65,29 @@
               }
             }
           ]
+        },
+        "water_level": {
+          "description": "The water level as a profile along the river centreline (ADR 0006): points of [river chainage in metres, level in metres], read linearly between points and held flat beyond the first and last. Two points at one chainage make a step. A design line's station takes its level by projecting onto the river centreline. Optional: a document made before the profile has none.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["points"],
+              "additionalProperties": false,
+              "properties": {
+                "points": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": { "type": "number" }
+                  }
+                }
+              }
+            }
+          ]
         }
       }
     },

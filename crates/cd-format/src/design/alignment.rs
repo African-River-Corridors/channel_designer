@@ -65,8 +65,6 @@ impl AlignMethod {
                 "wet_weight": 1.0,
                 "dry_weight": 1.0,
                 "check_chord_m": null,
-                "water_level_start_m": null,
-                "water_surface_slope": 0.0,
             }),
         }
     }
@@ -202,12 +200,11 @@ impl Session {
                     exterior: ring,
                     holes: vec![],
                 }];
-                let wl0 = opt_num(&settings, "water_level_start_m")?.ok_or_else(|| {
+                let profile = self.input_water_profile().ok_or_else(|| {
                     DesignError::Input(
-                        "the re-route needs `water_level_start_m`: the water surface level at the start of the reach, m".into(),
+                        "the re-route needs a water level: set one with `cdesign import --water-level LEVEL` (a constant), `--water-slope` or `--water-table FILE`".into(),
                     )
                 })?;
-                let slope = num(&settings, "water_surface_slope")?;
                 let depth = shape["design_depth_m"].as_f64().unwrap_or(f64::NAN);
                 // The line it starts from: the rolling-circle option's, if there is one.
                 let start = self.doc["options"]
@@ -232,7 +229,9 @@ impl Session {
                     transect_step: 2.0,
                     daylight_m: None,
                 };
-                let grade = move |s: f64| wl0 - slope * s - depth;
+                let centre = self.river_centreline()?;
+                let level = self.water_level_along(&profile, &start, &centre);
+                let grade = move |s: f64| level(s) - depth;
                 let grid = route::build_cost_grid(&start, terrain, &river, &grade, &params)
                     .map_err(|e| DesignError::Input(e.message))?;
                 let r = route::optimise_route(

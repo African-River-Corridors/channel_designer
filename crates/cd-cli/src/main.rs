@@ -68,6 +68,16 @@ enum Command {
         /// A GeoTIFF DEM, referenced by relative path and SHA-256 (never copied into the file).
         #[arg(long, value_name = "FILE")]
         dem: Option<String>,
+        /// The water level in metres: a constant, or with --water-slope the level at the river's start.
+        #[arg(long, value_name = "METRES")]
+        water_level: Option<f64>,
+        /// The fall of the water per metre of river chainage (with --water-level).
+        #[arg(long, value_name = "M_PER_M")]
+        water_slope: Option<f64>,
+        /// The water level as a table: lines of `chainage_m,level_m` along the river centreline.
+        /// Two lines at one chainage make a step (a weir).
+        #[arg(long, value_name = "FILE")]
+        water_table: Option<String>,
         #[command(flatten)]
         out: Out,
     },
@@ -107,10 +117,10 @@ enum Command {
         /// Re-route: a GeoTIFF DEM (WGS84 or the project's UTM zone) for the terrain.
         #[arg(long, value_name = "FILE")]
         dem: Option<String>,
-        /// Re-route: the water surface level at the start of the reach, in metres.
+        /// Re-route: set the water level (the level at the river's start), in metres.
         #[arg(long, value_name = "METRES")]
         water_level: Option<f64>,
-        /// Re-route: the fall of the water surface per metre of chainage (default 0).
+        /// Re-route: the fall of the water per metre of river chainage (with --water-level).
         #[arg(long, value_name = "M_PER_M")]
         water_slope: Option<f64>,
         /// Re-route: the half-widths of the corridors to try, in metres, comma separated.
@@ -126,7 +136,7 @@ enum Command {
         /// A GeoTIFF DEM to record as the document's DEM and use.
         #[arg(long, value_name = "FILE")]
         dem: Option<String>,
-        /// The water level below the first weir, in metres (default: the re-route's start level).
+        /// The water level below the first weir, in metres (default: the water level at the line's start).
         #[arg(long, value_name = "METRES")]
         base_level: Option<f64>,
         /// Candidate weir chainages along the design line, in metres, comma separated
@@ -159,10 +169,10 @@ enum Command {
         /// The cut model: a or b (default a).
         #[arg(long, value_name = "MODEL")]
         model: Option<String>,
-        /// The water surface level at the start of the reach, in metres (default: the re-route's).
+        /// Set the water level (the level at the river's start), in metres.
         #[arg(long, value_name = "METRES")]
         water_level: Option<f64>,
-        /// The fall of the water surface per metre of chainage (default: the re-route's, else 0).
+        /// The fall of the water per metre of river chainage (with --water-level).
         #[arg(long, value_name = "M_PER_M")]
         water_slope: Option<f64>,
         /// The station spacing in metres (default 25).
@@ -238,6 +248,9 @@ fn main() -> ExitCode {
             centreline,
             polygon,
             dem,
+            water_level,
+            water_slope,
+            water_table,
             out,
         } => commands::import(
             &doc,
@@ -248,6 +261,11 @@ fn main() -> ExitCode {
                 ("river_polygon", polygon),
             ],
             dem,
+            commands::WaterFlags {
+                level: water_level,
+                slope: water_slope,
+                table: water_table,
+            },
             &out.output,
             out.json,
         ),

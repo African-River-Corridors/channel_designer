@@ -134,8 +134,8 @@ fn volumes_show_in_the_exports_with_their_status() {
     };
     s.set_dem("d.tif", b"dem", &dem);
     let flat = |xs: &[f64], _ys: &[f64]| vec![3.0; xs.len()];
-    s.run_volumes(&json!({"water_level_start_m": 0.0}), Some(&flat))
-        .unwrap();
+    s.set_water_profile(&[[0.0, 0.0]]).unwrap();
+    s.run_volumes(&Value::Null, Some(&flat)).unwrap();
     let csv = s.export_csv(Some(b"dem"));
     let header: Vec<&str> = csv.lines().nth(1).unwrap().split(',').collect();
     let row: Vec<&str> = csv.lines().nth(2).unwrap().split(',').collect();

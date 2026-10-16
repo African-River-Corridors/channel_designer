@@ -372,19 +372,12 @@ fn optimise_adds_the_lattice_option_and_volumes_measure_it() {
             "2.5",
         ],
         vec!["align", &doc, "--method", "rolling-circle"],
+        vec!["import", &doc, "--water-level", "0"],
     ] {
         assert_eq!(code(&run(&s)), 0, "{s:?}");
     }
     let o = run(&[
-        "optimise",
-        &doc,
-        "--json",
-        "--base-level",
-        "0",
-        "--sites",
-        "500",
-        "--lifts",
-        "0.5,1",
+        "optimise", &doc, "--json", "--sites", "500", "--lifts", "0.5,1",
     ]);
     assert!(code(&o) <= 1, "{}", err(&o));
     let res: Value = serde_json::from_str(&out(&o)).unwrap();
@@ -396,7 +389,7 @@ fn optimise_adds_the_lattice_option_and_volumes_measure_it() {
     let st: Value = serde_json::from_str(&out(&st)).unwrap();
     assert_eq!(st["stages"]["optimise"], "fresh");
 
-    let o = run(&["volumes", &doc, "--json", "--water-level", "0"]);
+    let o = run(&["volumes", &doc, "--json"]);
     assert!(code(&o) <= 1, "{}", err(&o));
     let v: Value = serde_json::from_str(&out(&o)).unwrap();
     let ids: Vec<&str> = v["options"]
@@ -406,16 +399,20 @@ fn optimise_adds_the_lattice_option_and_volumes_measure_it() {
         .map(|r| r["id"].as_str().unwrap())
         .collect();
     assert_eq!(ids, ["rolling-circle", "lattice"]);
-    assert_eq!(v["options"][1]["water"], "pools");
+    assert_eq!(v["options"][1]["water_source"], "optimise");
 }
 
 #[test]
-fn optimise_without_a_base_level_says_what_it_needs() {
+fn optimise_without_a_water_level_says_what_it_needs() {
     let dir = work_dir("optimise-need");
     let (doc, _) = build(&dir);
     let o = run(&["optimise", &doc]);
     assert_eq!(code(&o), 2);
-    assert!(err(&o).contains("base_level_m"), "{}", err(&o));
+    assert!(
+        err(&o).contains("water level") && err(&o).contains("--water-level"),
+        "{}",
+        err(&o)
+    );
 }
 
 // --- run and export (ticket 64) --------------------------------------------------------------
@@ -459,16 +456,8 @@ fn full_chain(dir: &Path) -> String {
             "2.5",
         ],
         vec!["align", &doc, "--method", "rolling-circle"],
-        vec![
-            "optimise",
-            &doc,
-            "--base-level",
-            "0",
-            "--sites",
-            "500",
-            "--lifts",
-            "0.5,1",
-        ],
+        vec!["import", &doc, "--water-level", "0"],
+        vec!["optimise", &doc, "--sites", "500", "--lifts", "0.5,1"],
         vec!["volumes", &doc, "--water-level", "0", "--model", "b"],
     ] {
         let o = run(&s);
