@@ -9,5 +9,10 @@
   "synthetic",
   "sections",
   "cut_model_grid",
-  "cut_model_extras"
+  "cut_model_extras",
+  "centreline",
+  "widths",
+  "limits",
+  "meanders",
+  "bends"
 ]

@@ -1,8 +1,10 @@
 //! The calculation core of channel_designer. Each module mirrors one Python module of the frozen
 //! reference (`parity/frozen_python`). No I/O.
 
+pub mod alignment;
 pub mod cut_model;
 pub mod geom;
+pub(crate) mod numpy;
 pub mod pyrepr;
 pub mod rules;
 pub mod synthetic;

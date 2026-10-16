@@ -8,6 +8,7 @@
 use cd_core::cut_model::{self as cm, PerSide};
 use serde_json::{Number, Value, json};
 
+mod alignment;
 mod geometry;
 mod terrain;
 mod volumes;
@@ -84,6 +85,11 @@ pub fn eval(entry_point: &str, input: &Value) -> Result<Value, EvalError> {
         "sections" => volumes::sections(function, args),
         "cut_model_grid" => volumes::cut_model_grid(function, args),
         "cut_model_extras" => volumes::cut_model_extras(function, args),
+        "centreline" => alignment::centreline(function, args),
+        "widths" => alignment::widths(function, args),
+        "limits" => alignment::limits(function, args),
+        "meanders" => alignment::meanders(function, args),
+        "bends" => alignment::bends(function, args),
         "geometry" => geometry::geometry(function, args),
         "synthetic" => geometry::synthetic(function, args),
         ep if ENTRY_POINTS.contains(&ep) => Err(EvalError::NotPorted(ep.into())),
