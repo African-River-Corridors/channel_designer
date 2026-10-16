@@ -136,3 +136,19 @@ impl Utm {
             .collect()
     }
 }
+
+impl Utm {
+    /// [`Utm::forward`] for many points, building the projection once.
+    pub fn forward_all(self, pts: &[[f64; 2]]) -> Result<Vec<[f64; 2]>, String> {
+        let geo = Proj::from_proj_string("+proj=longlat +datum=WGS84 +no_defs")
+            .map_err(|e| e.to_string())?;
+        let utm = Proj::from_proj_string(&self.proj_string()).map_err(|e| e.to_string())?;
+        pts.iter()
+            .map(|&[lon, lat]| {
+                let mut p = (lon.to_radians(), lat.to_radians(), 0.0);
+                proj4rs::transform::transform(&geo, &utm, &mut p).map_err(|e| e.to_string())?;
+                Ok([p.0, p.1])
+            })
+            .collect()
+    }
+}

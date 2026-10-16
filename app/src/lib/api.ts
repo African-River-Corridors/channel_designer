@@ -43,7 +43,7 @@ export interface Snapshot {
       right_bank: Line | null;
       centreline: Line | null;
       river_polygon: Polygon | null;
-      dem: { path: string } | null;
+      dem: { path: string; sha256?: string } | null;
     };
     stages: Record<StageName, { settings: SizingSettings | null; results: ChannelShape | null }>;
   };
@@ -103,3 +103,14 @@ export interface MapGeometry {
 }
 /** Rejects with the reason when the design has nothing to draw yet. */
 export const mapGeometry = () => invoke<MapGeometry>("map_geometry");
+
+/** The DEM hillshade for the offline map: a PNG data URL and its corners (top-left, top-right, bottom-right, bottom-left), or null with no DEM. */
+export interface Hillshade {
+  url: string;
+  corners: [LonLat, LonLat, LonLat, LonLat];
+  width: number;
+  height: number;
+}
+export const hillshade = () => invoke<Hillshade | null>("hillshade");
+/** A debug-build test hook: a replacement tile address. Null in release builds. */
+export const basemapTiles = () => invoke<string | null>("basemap_tiles");

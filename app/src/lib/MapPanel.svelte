@@ -4,13 +4,31 @@
   import "maplibre-gl/dist/maplibre-gl.css";
   import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
   import type * as GeoJSON from "geojson";
-  import type { MapGeometry } from "./api";
+  import type { Hillshade, MapGeometry } from "./api";
   import { ATTRIBUTION, BASEMAP_TILES, OPTION_COLOURS } from "./basemap";
 
-  let { geometry, selectedId = null }: { geometry: MapGeometry | null; selectedId?: string | null } = $props();
+  let {
+    geometry,
+    selectedId = null,
+    hillshade = null,
+    tiles = BASEMAP_TILES,
+    offline = $bindable(false),
+  }: {
+    geometry: MapGeometry | null;
+    selectedId?: string | null;
+    /** The DEM hillshade, shown in place of the imagery while the tiles cannot load. */
+    hillshade?: Hillshade | null;
+    /** The tile address. Only a test changes it. */
+    tiles?: string;
+    /** True while the basemap tiles are failing. The parent reads it to fetch the hillshade. */
+    offline?: boolean;
+  } = $props();
 
   // The worker is served with the app (never from a CDN), so the map starts offline too.
   maplibregl.setWorkerUrl(workerUrl);
+
+  /** A 1 x 1 transparent PNG. */
+  const BLANK = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
   let host: HTMLDivElement;
   let map: maplibregl.Map | undefined;
@@ -71,6 +89,19 @@
     }
   }
 
+  let shownShade: string | null = null;
+  /** Lay the hillshade under the vector layers, and show it only while the imagery is offline. */
+  function shade() {
+    if (!map || !ready) return;
+    const src = map.getSource("hillshade") as maplibregl.ImageSource;
+    if (hillshade && hillshade.url !== shownShade) {
+      shownShade = hillshade.url;
+      src.updateImage({ url: hillshade.url, coordinates: hillshade.corners });
+    }
+    map.setLayoutProperty("hillshade", "visibility", offline && hillshade ? "visible" : "none");
+    map.setLayoutProperty("basemap", "visibility", offline ? "none" : "visible");
+  }
+
   let fitted: string | null = null;
   function fit() {
     if (!map || !geometry?.bbox) return;
@@ -89,7 +120,7 @@
         style: {
           version: 8,
           sources: {
-            basemap: { type: "raster", tiles: [BASEMAP_TILES], tileSize: 256, maxzoom: 14, attribution: ATTRIBUTION },
+            basemap: { type: "raster", tiles: [tiles], tileSize: 256, maxzoom: 14, attribution: ATTRIBUTION },
           },
           layers: [{ id: "basemap", type: "raster", source: "basemap" }],
         },
@@ -104,7 +135,10 @@
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
     map.on("load", () => {
       const m = map!;
+      // A placeholder picture until the hillshade arrives; `setCoordinates` and `updateImage` replace it.
+      m.addSource("hillshade", { type: "image", url: BLANK, coordinates: [[0, 1], [1, 1], [1, 0], [0, 0]] });
       for (const id of ["polygon", "banks", "centre", "options", "bends", "ticks"]) m.addSource(id, { type: "geojson", data: empty });
+      m.addLayer({ id: "hillshade", type: "raster", source: "hillshade", paint: { "raster-fade-duration": 0 }, layout: { visibility: "none" } });
       m.addLayer({ id: "polygon", type: "fill", source: "polygon", paint: { "fill-color": "#2a6ebb", "fill-opacity": 0.18 } });
       m.addLayer({ id: "banks", type: "line", source: "banks", paint: { "line-color": "#ffffff", "line-width": 1.5 } });
       m.addLayer({ id: "centre", type: "line", source: "centre", paint: { "line-color": "#ffffff", "line-width": 1, "line-dasharray": [3, 3] } });
@@ -115,9 +149,18 @@
       m.addLayer({ id: "bends", type: "circle", source: "bends", paint: { "circle-radius": 9, "circle-color": "rgba(255,0,0,0.25)", "circle-stroke-color": "#ff2a2a", "circle-stroke-width": 3 } });
       ready = true;
     });
-    map.on("error", (e: unknown) => {
-      // A failed tile is expected offline; the offline fallback (a later ticket) answers it.
-      void e;
+    // Offline: tiles keep failing and none has loaded. One success puts the imagery back.
+    let failed = 0;
+    let loaded = 0;
+    map.on("error", (e) => {
+      if ((e as { sourceId?: string }).sourceId !== "basemap") return;
+      failed += 1;
+      if (failed >= 2 && loaded === 0) offline = true;
+    });
+    map.on("sourcedata", (e) => {
+      if (e.sourceId !== "basemap" || !("tile" in e) || !e.tile) return;
+      loaded += 1;
+      offline = false;
     });
   });
 
@@ -130,9 +173,16 @@
     draw();
     fit();
   });
+
+  $effect(() => {
+    void hillshade;
+    void offline;
+    void ready;
+    shade();
+  });
 </script>
 
-<div class="map" data-testid="plan-map">
+<div class="map" data-testid="plan-map" data-hillshade={offline && hillshade ? "shown" : "hidden"}>
   <div class="canvas" bind:this={host}></div>
   {#if failure}
     <p class="failure" role="alert" data-testid="map-failure">{failure}</p>
@@ -151,6 +201,11 @@
       <li><span class="swatch ring"></span>tight bend</li>
     {/if}
   </ul>
+  {#if offline}
+    <p class="offline" role="status" data-testid="offline-note">
+      Imagery offline{hillshade ? " — showing the DEM hillshade" : " — no DEM to show a hillshade from"}
+    </p>
+  {/if}
   <p class="attribution" data-testid="attribution">{ATTRIBUTION}</p>
 </div>
 
@@ -162,6 +217,7 @@
   .legend:empty { display: none; }
   .swatch { display: inline-block; width: 18px; height: 4px; margin-right: 6px; vertical-align: middle; }
   .swatch.ring { height: 10px; width: 10px; border: 2px solid #ff2a2a; border-radius: 50%; background: none; }
+  .offline { position: absolute; left: 8px; bottom: 28px; margin: 0; padding: 3px 8px; font-size: 12px; background: rgba(253, 241, 211, 0.95); color: #6b4a00; border: 1px solid var(--gold); border-radius: 3px; z-index: 2; }
   .fail { color: #b3261e; margin-left: 6px; }
   .hint, .failure { position: absolute; left: 50%; top: 40%; transform: translateX(-50%); margin: 0; padding: 8px 12px; background: rgba(255, 255, 255, 0.92); border-radius: 4px; z-index: 2; max-width: 80%; text-align: center; }
   .failure { color: #b3261e; }

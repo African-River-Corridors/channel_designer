@@ -6,6 +6,7 @@
 
 mod state;
 
+use base64::Engine;
 use cd_format::design::{Session, date_from_unix};
 use state::AppState;
 use std::path::{Path, PathBuf};
@@ -224,6 +225,40 @@ fn map_geometry(state: State<Shared>) -> Reply {
     lock(&state)?.map_geometry()
 }
 
+/// The offline map fallback: a hillshade of the DEM as a PNG data URL with the four corners it goes
+/// on, or `null` when the design has no DEM that can be read. Drawn on a worker thread, with the
+/// state unlocked while it is.
+#[tauri::command]
+async fn hillshade(state: State<'_, Shared>) -> Reply {
+    let dem = lock(&state)?.dem();
+    let Some(dem) = dem else {
+        return Ok(serde_json::Value::Null);
+    };
+    let shade = cd_format::design::hillshade::hillshade(&dem).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({
+        "url": format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(&shade.png)),
+        "corners": shade.corners,
+        "width": shade.width,
+        "height": shade.height,
+    }))
+}
+
+/// Smoke-test hook, debug builds only: `CD_TEST_TILE_URL` replaces the basemap tile address, so a
+/// test can make every tile request fail. Release builds always answer `null` (the real basemap).
+#[tauri::command]
+fn basemap_tiles() -> Option<String> {
+    #[cfg(debug_assertions)]
+    {
+        std::env::var("CD_TEST_TILE_URL")
+            .ok()
+            .filter(|u| !u.is_empty())
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        None
+    }
+}
+
 /// Rerun every stale stage.
 #[tauri::command]
 fn run_stale(window: Window, state: State<Shared>) -> Reply {
@@ -247,6 +282,8 @@ pub fn run() {
             set_sizing,
             run_stale,
             map_geometry,
+            hillshade,
+            basemap_tiles,
         ])
         .on_window_event(|window, event| {
             // The unsaved-changes guard on close: ask first, then close for real.

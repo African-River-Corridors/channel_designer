@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 import { remote } from "webdriverio";
 
 const here = import.meta.dirname;
@@ -43,6 +44,57 @@ const until = async (what, check, timeout = 15000) => {
 
 const text = async (testid) => (await browser.$(`[data-testid=${testid}]`)).getText();
 const fileLabel = () => text("file-label");
+
+
+/** A small uncompressed float32 GeoTIFF in WGS 84 / UTM 30N: 80 x 12 cells of 100 m over the example river, rolling hills. */
+function demTiff() {
+  const [w, h, cell, x0, y0] = [80, 12, 100, 499800, 600600];
+  const pixels = Buffer.alloc(w * h * 4);
+  for (let r = 0; r < h; r++)
+    for (let c = 0; c < w; c++) pixels.writeFloatLE(40 + 6 * Math.sin(c / 6) + 4 * Math.cos(r / 2), (r * w + c) * 4);
+  // One IFD; tag values that do not fit in four bytes live after it.
+  const entries = [];
+  const extra = [];
+  const IFD_AT = 8;
+  const nEntries = 13;
+  let extraAt = IFD_AT + 2 + nEntries * 12 + 4;
+  const put = (tag, type, count, value) => entries.push({ tag, type, count, value });
+  const putBlob = (tag, type, count, bytes) => {
+    const at = extraAt + extra.reduce((n, b) => n + b.length, 0);
+    extra.push(bytes);
+    entries.push({ tag, type, count, value: at });
+  };
+  const f64s = (...v) => Buffer.concat(v.map((x) => { const b = Buffer.alloc(8); b.writeDoubleLE(x); return b; }));
+  const u16s = (...v) => Buffer.concat(v.map((x) => { const b = Buffer.alloc(2); b.writeUInt16LE(x); return b; }));
+  const dataAt = extraAt + 24 + 48 + 16; // after the three blobs below
+  put(256, 4, 1, w);
+  put(257, 4, 1, h);
+  put(258, 3, 1, 32);
+  put(259, 3, 1, 1);
+  put(262, 3, 1, 1);
+  put(273, 4, 1, dataAt);
+  put(277, 3, 1, 1);
+  put(278, 4, 1, h);
+  put(279, 4, 1, pixels.length);
+  put(339, 3, 1, 3);
+  putBlob(33550, 12, 3, f64s(cell, cell, 0));
+  putBlob(33922, 12, 6, f64s(0, 0, 0, x0, y0, 0));
+  putBlob(34735, 3, 8, u16s(1, 1, 0, 1, 3072, 0, 1, 32630)); // ProjectedCSTypeGeoKey = EPSG:32630
+  const head = Buffer.alloc(IFD_AT + 2 + nEntries * 12 + 4);
+  head.write("II", 0);
+  head.writeUInt16LE(42, 2);
+  head.writeUInt32LE(IFD_AT, 4);
+  head.writeUInt16LE(nEntries, IFD_AT);
+  entries.sort((a, b) => a.tag - b.tag).forEach((e, i) => {
+    const o = IFD_AT + 2 + i * 12;
+    head.writeUInt16LE(e.tag, o);
+    head.writeUInt16LE(e.type, o + 2);
+    head.writeUInt32LE(e.count, o + 4);
+    if (e.type === 3 && e.count === 1) head.writeUInt16LE(e.value, o + 8);
+    else head.writeUInt32LE(e.value, o + 8);
+  });
+  return Buffer.concat([head, ...extra, pixels]);
+}
 
 /** The values of the vessel class list, and the one now chosen. */
 const vesselChoices = () =>
@@ -175,5 +227,21 @@ describe("Channel Designer app smoke test", () => {
         assert.ok(await shown(), `the attribution is visible after zoom step ${i + 1}`);
       }
     }
+  });
+  it("shows the DEM hillshade and an imagery-offline note when the tiles cannot load", async () => {
+    // run.sh points every tile request at a dead address. The design names a DEM beside it.
+    const dir = fs.mkdtempSync(path.join(WORK, "hillshade-"));
+    const tif = demTiff();
+    fs.writeFileSync(path.join(dir, "dem.tif"), tif);
+    const doc = JSON.parse(fs.readFileSync(EXAMPLE, "utf8"));
+    doc.inputs.dem = { path: "dem.tif", sha256: crypto.createHash("sha256").update(tif).digest("hex"), crs: "EPSG:32630", nodata: -9999 };
+    const file = path.join(dir, "with-dem.cdesign");
+    fs.writeFileSync(file, JSON.stringify(doc, null, 2));
+    await open(file, "with-dem.cdesign");
+    await until("the offline note", async () => (await (await browser.$("[data-testid=offline-note]")).isExisting()), 30000);
+    await until("the hillshade", async () => (await (await browser.$("[data-testid=plan-map]")).getAttribute("data-hillshade")) === "shown", 30000);
+    assert.match(await text("offline-note"), /Imagery offline/);
+    // The attribution stays up while the imagery is off.
+    assert.ok(await (await browser.$("[data-testid=attribution]")).isDisplayed());
   });
 });
