@@ -581,34 +581,150 @@ fn line_buffer_polygons(
     Ok(geos_oriented(depth::region(&[(ring, -1)])))
 }
 
-/// shapely `polygon.buffer(0)` (GEOS `BufferCurveSetBuilder::addPolygon` at distance zero): the
-/// rings as raw curves, each labelled by its signed area, resolved by depth. This repairs a
-/// bow-tie or a self-touching ring as GEOS does (keeping the parts of positive depth).
-pub fn buffer_polygons(polys: &[Polygon], distance: f64) -> Result<Geometry, GeomError> {
-    if distance != 0.0 {
-        return Err(GeomError::Unsupported(
-            "polygon buffer at a distance other than zero".into(),
-        ));
+/// shapely's default `quad_segs` (16; GEOS's own default is 8).
+pub const SHAPELY_QUAD_SEGS: i32 = 16;
+
+/// `OffsetCurveBuilder::computeRingBufferCurve`: the closed offset curve of a ring on one side,
+/// round joins, the input simplified first as GEOS does.
+fn ring_buffer_curve(ring: &[Pt], side: i32, d: f64, quad_segs: i32) -> Vec<Pt> {
+    let mut g = SegGen::new(quad_segs, Cap::Round, d);
+    let tol = if side == RIGHT {
+        -simplify_tolerance(d)
+    } else {
+        simplify_tolerance(d)
+    };
+    let simp = simplify(ring, tol);
+    let n = simp.len() - 1;
+    if n < 3 {
+        return Vec::new();
     }
+    g.init_side_segments(simp[n - 1], simp[0], side);
+    for (i, p) in simp.iter().enumerate().skip(1) {
+        g.add_next_segment(*p, i != 1);
+    }
+    g.close_ring();
+    g.into_coordinates()
+}
+
+/// GEOS `BufferCurveSetBuilder::isErodedCompletely`: a quick test that a ring vanishes when
+/// buffered by `d` (negative): its envelope is narrower than `2|d|`, or, for a triangle, its
+/// incircle is smaller than `|d|`.
+fn is_eroded_completely(ring: &[Pt], d: f64) -> bool {
+    if ring.len() < 4 {
+        return d < 0.0;
+    }
+    if ring.len() == 4 {
+        let (a, b, c) = (ring[0], ring[1], ring[2]);
+        let (la, lb, lc) = (dist(b, c), dist(a, c), dist(a, b));
+        let p = la + lb + lc;
+        let centre = [
+            (la * a[0] + lb * b[0] + lc * c[0]) / p,
+            (la * a[1] + lb * b[1] + lc * c[1]) / p,
+        ];
+        return linear::point_segment_distance(centre, a, b) < d.abs();
+    }
+    let (mut lo, mut hi) = ([f64::INFINITY; 2], [f64::NEG_INFINITY; 2]);
+    for p in ring {
+        for k in 0..2 {
+            lo[k] = lo[k].min(p[k]);
+            hi[k] = hi[k].max(p[k]);
+        }
+    }
+    let min_dim = (hi[0] - lo[0]).min(hi[1] - lo[1]);
+    d < 0.0 && 2.0 * d.abs() > min_dim
+}
+
+/// shapely `polygon.buffer(distance)` (round joins, shapely's default 16 segments a quarter
+/// circle). See [`buffer_polygons_q`].
+pub fn buffer_polygons(polys: &[Polygon], distance: f64) -> Result<Geometry, GeomError> {
+    Ok(geometry_of(buffer_polygons_q(
+        polys,
+        distance,
+        SHAPELY_QUAD_SEGS,
+    )))
+}
+
+/// The buffer of polygons at any distance, as polygons in GEOS's orientation (GEOS
+/// `BufferCurveSetBuilder::addPolygon` / `addRingSide`).
+///
+/// - At zero this is `buffer(0)`: the rings as raw curves, each labelled by its signed area,
+///   resolved by depth. This repairs a bow-tie or a self-touching ring as GEOS does.
+/// - A positive distance grows the polygons, with round joins of radius `distance` at convex
+///   corners; a negative one shrinks them (round joins at reflex corners). Each ring is offset to
+///   one side, keeps its label, and the curves are resolved by depth (the signed winding number),
+///   so a part narrower than `2|distance|` vanishes and a narrow waist splits.
+pub fn buffer_polygons_q(polys: &[Polygon], distance: f64, quad_segs: i32) -> Vec<Polygon> {
+    // `isCCWArea`: GEOS's signed area is negative for a counter-clockwise ring.
+    let ccw = |r: &[Pt]| super::overlay::ring_signed_area(r) < 0.0;
     let mut curves: Vec<depth::Curve> = Vec::new();
-    for p in polys {
-        let shell = remove_repeated(&p.exterior);
-        if shell.len() < 3 {
-            continue;
-        }
-        // `isCCWArea`: GEOS's signed area is negative for a counter-clockwise ring.
-        let ccw = |r: &[Pt]| super::overlay::ring_signed_area(r) < 0.0;
-        if shell.len() >= 4 {
-            curves.push((shell.clone(), if ccw(&shell) { 1 } else { -1 }));
-        }
-        for h in &p.holes {
-            let hole = remove_repeated(h);
-            if hole.len() >= 4 {
-                curves.push((hole.clone(), if ccw(&hole) { -1 } else { 1 }));
+    if distance == 0.0 {
+        for p in polys {
+            let shell = remove_repeated(&p.exterior);
+            if shell.len() < 3 {
+                continue;
+            }
+            if shell.len() >= 4 {
+                curves.push((shell.clone(), if ccw(&shell) { 1 } else { -1 }));
+            }
+            for h in &p.holes {
+                let hole = remove_repeated(h);
+                if hole.len() >= 4 {
+                    curves.push((hole.clone(), if ccw(&hole) { -1 } else { 1 }));
+                }
             }
         }
+        return geos_oriented(depth::region(&curves));
     }
-    Ok(geometry_of(geos_oriented(depth::region(&curves))))
+    let (off, side) = if distance < 0.0 {
+        (-distance, RIGHT)
+    } else {
+        (distance, LEFT)
+    };
+    let opposite = |s: i32| if s == LEFT { RIGHT } else { LEFT };
+    // `addRingSide`: a clockwise ring has the exterior on its left; a counter-clockwise one is
+    // offset to the other side. The label (interior side) does not change with the offset.
+    let mut add_ring = |ring: &[Pt], side: i32, is_shell: bool| {
+        if ring.len() < 4 {
+            return;
+        }
+        let is_ccw = ccw(ring);
+        let s = if is_ccw { opposite(side) } else { side };
+        let curve = ring_buffer_curve(ring, s, off, quad_segs);
+        if curve.len() < 4 {
+            return;
+        }
+        let interior_left = is_ccw == is_shell;
+        curves.push((curve, if interior_left { 1 } else { -1 }));
+    };
+    for p in polys {
+        let shell = remove_repeated(&p.exterior);
+        if shell.len() < 3 || (distance < 0.0 && is_eroded_completely(&shell, distance)) {
+            continue;
+        }
+        add_ring(&shell, side, true);
+        for h in &p.holes {
+            let hole = remove_repeated(h);
+            if distance > 0.0 && is_eroded_completely(&hole, -distance) {
+                continue;
+            }
+            add_ring(&hole, opposite(side), false);
+        }
+    }
+    geos_oriented(depth::region(&curves))
+}
+
+/// Morphological opening: shrink by `d` then grow by `d` (`d` > 0). Removes every part and sliver
+/// narrower than `2d` and rounds convex corners to radius `d`.
+pub fn open(polys: &[Polygon], d: f64, quad_segs: i32) -> Vec<Polygon> {
+    let shrunk = buffer_polygons_q(polys, -d, quad_segs);
+    buffer_polygons_q(&shrunk, d, quad_segs)
+}
+
+/// Morphological closing: grow by `d` then shrink by `d` (`d` > 0). Fills every notch and gap
+/// narrower than `2d` and rounds reflex corners to radius `d`.
+pub fn close(polys: &[Polygon], d: f64, quad_segs: i32) -> Vec<Polygon> {
+    let grown = buffer_polygons_q(polys, d, quad_segs);
+    buffer_polygons_q(&grown, -d, quad_segs)
 }
 
 /// GEOS `OffsetCurve` match distance factor.
@@ -832,5 +948,238 @@ mod tests {
         assert!(ring_is_simple(&square));
         let bow_tie = [[0.0, 0.0], [1.0, 1.0], [1.0, 0.0], [0.0, 1.0], [0.0, 0.0]];
         assert!(!ring_is_simple(&bow_tie));
+    }
+}
+
+#[cfg(test)]
+mod polygon_buffer_tests {
+    //! Label: sourced - hand calculation (inset squares, offsets of straight edges, widths)
+    use super::*;
+    use crate::geom::overlay::{contains_xy, polygon_area};
+    use crate::geom::valid::is_valid;
+
+    fn poly(ring: &[Pt]) -> Polygon {
+        let mut r = ring.to_vec();
+        r.push(ring[0]);
+        Polygon {
+            exterior: r,
+            holes: vec![],
+        }
+    }
+
+    fn square(x0: f64, y0: f64, s: f64) -> Vec<Pt> {
+        vec![[x0, y0], [x0 + s, y0], [x0 + s, y0 + s], [x0, y0 + s]]
+    }
+
+    fn area(ps: &[Polygon]) -> f64 {
+        ps.iter().map(polygon_area).sum()
+    }
+
+    fn boundary_distance(p: Pt, ring: &[Pt]) -> f64 {
+        ring.windows(2)
+            .map(|w| linear::point_segment_distance(p, w[0], w[1]))
+            .fold(f64::INFINITY, f64::min)
+    }
+
+    #[test]
+    fn shrinking_a_square_gives_the_inset_square_with_exact_corners() {
+        for ring in [square(0.0, 0.0, 100.0), {
+            let mut r = square(0.0, 0.0, 100.0);
+            r.reverse();
+            r
+        }] {
+            let out = buffer_polygons_q(&[poly(&ring)], -10.0, 16);
+            assert_eq!(out.len(), 1);
+            assert!(is_valid(&out));
+            let ext = &out[0].exterior;
+            assert_eq!(ext.len(), 5, "{ext:?}");
+            for c in [[10.0, 10.0], [90.0, 10.0], [90.0, 90.0], [10.0, 90.0]] {
+                let near = ext
+                    .iter()
+                    .map(|p| dist(*p, c))
+                    .fold(f64::INFINITY, f64::min);
+                assert!(near <= 1e-9, "corner {c:?} off by {near}");
+            }
+            assert!((area(&out) - 6400.0).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn growing_a_square_gives_round_corners_of_radius_d() {
+        let sq = poly(&square(0.0, 0.0, 100.0));
+        let out = buffer_polygons_q(std::slice::from_ref(&sq), 10.0, 16);
+        assert_eq!(out.len(), 1);
+        assert!(is_valid(&out));
+        let ext = &out[0].exterior;
+        // Every vertex lies at exactly d from the square: on an offset edge or on a corner arc.
+        for p in ext {
+            let e = (boundary_distance(*p, &sq.exterior) - 10.0).abs();
+            assert!(e <= 1e-9, "vertex {p:?} off by {e}");
+        }
+        // Four arcs of 16 segments each: 17 points an arc, plus the closing point.
+        assert_eq!(ext.len(), 4 * 17 + 1);
+        let on_arc = ext
+            .iter()
+            .filter(|p| (p[0] < 0.0 || p[0] > 100.0) && (p[1] < 0.0 || p[1] > 100.0))
+            .count();
+        assert_eq!(on_arc, 4 * 15);
+    }
+
+    #[test]
+    fn shrinking_a_part_narrower_than_2d_gives_nothing() {
+        // A 15 m wide strip turned 30 degrees, so the envelope test does not decide it.
+        let (c, s) = (libm::cos(30f64.to_radians()), libm::sin(30f64.to_radians()));
+        let rot = |x: f64, y: f64| [x * c - y * s, x * s + y * c];
+        let strip = poly(&[
+            rot(0.0, 0.0),
+            rot(300.0, 0.0),
+            rot(300.0, 15.0),
+            rot(0.0, 15.0),
+        ]);
+        assert!(!is_eroded_completely(&strip.exterior, -8.0));
+        let out = buffer_polygons_q(std::slice::from_ref(&strip), -8.0, 16);
+        assert!(out.is_empty(), "{out:?}");
+        assert!(matches!(
+            buffer_polygons(std::slice::from_ref(&strip), -8.0),
+            Ok(Geometry::Empty("Polygon"))
+        ));
+        // Just under half the width leaves a sliver.
+        assert_eq!(buffer_polygons_q(&[strip], -7.0, 16).len(), 1);
+    }
+
+    fn dumbbell(waist: f64) -> Polygon {
+        let h0 = 50.0 - waist / 2.0;
+        let h1 = 50.0 + waist / 2.0;
+        poly(&[
+            [0.0, 0.0],
+            [100.0, 0.0],
+            [100.0, h0],
+            [150.0, h0],
+            [150.0, 0.0],
+            [250.0, 0.0],
+            [250.0, 100.0],
+            [150.0, 100.0],
+            [150.0, h1],
+            [100.0, h1],
+            [100.0, 100.0],
+            [0.0, 100.0],
+        ])
+    }
+
+    #[test]
+    fn shrinking_a_narrow_waist_splits_the_polygon_in_two() {
+        let out = buffer_polygons_q(&[dumbbell(20.0)], -15.0, 16);
+        assert_eq!(out.len(), 2, "{out:?}");
+        assert!(is_valid(&out));
+        // Each part is the 70 m inset square plus a small bulge into the waist's mouth (round
+        // joins at the reflex corners).
+        assert!(area(&out) > 2.0 * 70.0 * 70.0);
+        assert!(contains_xy(&out, [86.0, 50.0]) && contains_xy(&out, [164.0, 50.0]));
+        assert!(!contains_xy(&out, [125.0, 50.0]) && !contains_xy(&out, [90.0, 50.0]));
+        // A shrink smaller than half the waist keeps one part.
+        assert_eq!(buffer_polygons_q(&[dumbbell(20.0)], -9.0, 16).len(), 1);
+    }
+
+    #[test]
+    fn open_removes_a_sliver_narrower_than_2d() {
+        // A square with a 6 m wide spike 40 m long on its right side.
+        let p = poly(&[
+            [0.0, 0.0],
+            [100.0, 0.0],
+            [100.0, 47.0],
+            [140.0, 47.0],
+            [140.0, 53.0],
+            [100.0, 53.0],
+            [100.0, 100.0],
+            [0.0, 100.0],
+        ]);
+        let out = open(&[p], 5.0, 16);
+        assert!(is_valid(&out));
+        assert!(!contains_xy(&out, [120.0, 50.0]));
+        assert!(contains_xy(&out, [50.0, 50.0]));
+        assert!(contains_xy(&out, [99.0, 50.0]));
+    }
+
+    #[test]
+    fn close_fills_a_notch_narrower_than_2d() {
+        // A square with a 6 m wide notch 50 m deep cut in from the top.
+        let p = poly(&[
+            [0.0, 0.0],
+            [100.0, 0.0],
+            [100.0, 100.0],
+            [53.0, 100.0],
+            [53.0, 50.0],
+            [47.0, 50.0],
+            [47.0, 100.0],
+            [0.0, 100.0],
+        ]);
+        assert!(!contains_xy(std::slice::from_ref(&p), [50.0, 75.0]));
+        let out = close(&[p], 5.0, 16);
+        assert!(is_valid(&out));
+        assert_eq!(out.len(), 1);
+        assert!(contains_xy(&out, [50.0, 75.0]));
+        // The notch's mouth keeps a dimple 1 m deep: the grown arcs at its corners meet at y = 104.
+        assert!(contains_xy(&out, [50.0, 98.5]));
+        assert!(!contains_xy(&out, [50.0, 99.5]));
+        // The outer corners stay square: closing only rounds reflex corners.
+        assert!(contains_xy(&out, [0.5, 0.5]));
+    }
+
+    #[test]
+    fn a_hole_shrinks_when_growing_and_grows_when_shrinking() {
+        let mut hole = square(40.0, 40.0, 20.0);
+        hole.reverse();
+        hole.push(hole[0]);
+        let mut p = poly(&square(0.0, 0.0, 100.0));
+        p.holes.push(hole);
+        let grown = buffer_polygons_q(std::slice::from_ref(&p), 5.0, 16);
+        assert!(is_valid(&grown));
+        assert_eq!(grown[0].holes.len(), 1);
+        assert!(contains_xy(&grown, [44.0, 44.0]));
+        assert!(!contains_xy(&grown, [50.0, 50.0]));
+        let filled = buffer_polygons_q(std::slice::from_ref(&p), 11.0, 16);
+        assert!(filled[0].holes.is_empty());
+        let shrunk = buffer_polygons_q(&[p], -5.0, 16);
+        assert!(is_valid(&shrunk));
+        assert!(!contains_xy(&shrunk, [37.0, 50.0]));
+        assert!(contains_xy(&shrunk, [33.0, 50.0]));
+    }
+}
+
+#[cfg(test)]
+mod river_buffer_tests {
+    //! Label: property
+    use super::*;
+    use crate::geom::overlay::polygon_area;
+    use crate::geom::valid::is_valid;
+    use crate::synthetic::{RiverParams, synthetic_river};
+
+    #[test]
+    fn shrinking_and_opening_the_300_m_synthetic_river_gives_one_valid_reach() {
+        let river = synthetic_river(RiverParams {
+            width_m: 300.0,
+            ..RiverParams::default()
+        })
+        .unwrap();
+        let water = std::slice::from_ref(&river.polygon);
+        let shrunk = buffer_polygons_q(water, -15.2, 16);
+        assert_eq!(shrunk.len(), 1);
+        assert!(is_valid(&shrunk));
+        assert!(polygon_area(&shrunk[0]) < polygon_area(&river.polygon));
+        for poly in [open(&shrunk, 25.0, 16), close(&shrunk, 25.0, 16)] {
+            assert_eq!(poly.len(), 1);
+            assert!(is_valid(&poly));
+        }
+    }
+
+    #[test]
+    fn shrinking_the_40_m_synthetic_river_by_15_m_leaves_a_valid_strip_under_10_m_wide() {
+        let river = synthetic_river(RiverParams::default()).unwrap();
+        let shrunk = buffer_polygons_q(std::slice::from_ref(&river.polygon), -15.2, 16);
+        assert!(is_valid(&shrunk));
+        // Width 40 - 2 x 15.2 = 9.6 m along the straight parts: area < 9.6 x centreline length.
+        let len: f64 = river.centreline.windows(2).map(|w| dist(w[0], w[1])).sum();
+        let a: f64 = shrunk.iter().map(polygon_area).sum();
+        assert!(a > 0.0 && a < 9.6 * len, "area {a} vs {}", 9.6 * len);
     }
 }
