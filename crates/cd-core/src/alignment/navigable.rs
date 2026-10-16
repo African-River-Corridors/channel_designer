@@ -113,6 +113,29 @@ impl<'a> Chained<'a> {
         [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]
     }
 
+    /// The part of the line from chainage `a` to `b` (clamped, `a <= b`), with interpolated ends.
+    pub fn slice(&self, a: f64, b: f64) -> Vec<Pt> {
+        let (a, b) = (a.clamp(0.0, self.length()), b.clamp(0.0, self.length()));
+        let mut out = vec![self.at(a)];
+        for (i, &c) in self.cum.iter().enumerate() {
+            if c > a && c < b {
+                out.push(self.line[i]);
+            }
+        }
+        out.push(self.at(b));
+        out
+    }
+
+    /// Points every `length / n` metres, `n = ceil(length / step)` (at least `min_segs`), ends
+    /// included.
+    pub fn resample(&self, step: f64, min_segs: usize) -> Vec<Pt> {
+        let len = self.length();
+        let n = ((len / step).ceil() as usize).max(min_segs);
+        (0..=n)
+            .map(|i| self.at(len * i as f64 / n as f64))
+            .collect()
+    }
+
     /// The unit direction at chainage `s`, read across `±half` metres (clamped to the line).
     pub fn direction(&self, s: f64, half: f64) -> Pt {
         let (p, q) = (self.at(s - half), self.at(s + half));
