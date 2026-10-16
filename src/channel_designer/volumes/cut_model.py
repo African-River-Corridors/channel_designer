@@ -32,6 +32,8 @@ because the model's credibility rests on them. Pure math + numpy; no DEM, no I/O
 """
 from __future__ import annotations
 
+from .. import _rust
+
 import math
 
 import numpy as np
@@ -61,29 +63,13 @@ WIDEN_RMAX = 2000.0             # no bend widening beyond this radius (treated a
 
 def normalise_model(name):
     """Canonical model id. Accepts "a", "b" and the long ids."""
-    return _MODEL_ALIASES.get(str(name).strip().lower(), str(name).strip().lower())
+    return _rust.call("cut_model_extras", "normalise_model", names=[str(name)])[0]
 
 
 def local_radii(xs, ys, stride=2):
     """Per-point bend radius (m) via 3-point Menger circumradius, then a short rolling mean
     (+-2 points, ~50 m at 25 m stations). Straight -> inf."""
-    n = len(xs); r = np.full(n, np.inf)
-    for i in range(n):
-        a = max(0, i - stride); c = min(n - 1, i + stride)
-        if c - a < 2:
-            continue
-        ax, ay = xs[a], ys[a]; bx, by = xs[i], ys[i]; cx, cy = xs[c], ys[c]
-        area = abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) * 0.5
-        if area < 1e-6:
-            continue
-        ab = math.hypot(bx - ax, by - ay); bc = math.hypot(cx - bx, cy - by); ca = math.hypot(ax - cx, ay - cy)
-        r[i] = ab * bc * ca / (4.0 * area)
-    out = r.copy()
-    for i in range(n):
-        w = [v for v in r[max(0, i - 2):i + 3] if np.isfinite(v)]
-        if w:
-            out[i] = sum(w) / len(w)
-    return out
+    return _rust.call("cut_model_extras", "local_radii", np.ndarray, xs=xs, ys=ys, stride=int(stride))
 
 
 def widened_hb(xy, loa, beam, radius_multiple, width_mult, c_c, rmax=WIDEN_RMAX):
@@ -93,24 +79,16 @@ def widened_hb(xy, loa, beam, radius_multiple, width_mult, c_c, rmax=WIDEN_RMAX)
     5.3.3, p101); half of dF_C is added per side. ``width_mult`` and ``c_c`` come from a
     ruleset (``rules.rulesets.RULESETS[...]``) — there is no default here on purpose.
     """
-    base = width_mult * beam / 2.0
-    rmin = radius_multiple * loa
-    R = local_radii(xy[:, 0], xy[:, 1])
-    hb = np.full(len(R), base)
-    for i, Ri in enumerate(R):
-        if np.isfinite(Ri) and 0 < Ri < rmax:
-            dfc = min(c_c * loa * loa / max(Ri, rmin), loa)
-            hb[i] = base + 0.5 * dfc
-    return hb
+    return _rust.call("cut_model", "widened_hb", np.ndarray, xy=xy, loa=loa, beam=beam,
+                      radius_multiple=radius_multiple, width_mult=width_mult, c_c=c_c, rmax=rmax)
 
 
 def widened_hb_from_shape(xy, shape, rmax=WIDEN_RMAX):
     """Per-station bottom half-width from a :class:`rules.rulesets.ChannelShape`."""
-    hb = shape.bottom_width_straight_m / 2.0
-    R = local_radii(xy[:, 0], xy[:, 1])
-    rmin = shape.min_bend_radius_m
-    return np.array([hb + 0.5 * shape.bend_widening_m(max(Ri, rmin))
-                     if np.isfinite(Ri) and 0 < Ri < rmax else hb for Ri in R])
+    from ..rules.rulesets import RULESETS
+    return _rust.call("cut_model_extras", "widened_hb_from_shape", np.ndarray, xy=xy,
+                      ruleset_id=shape.ruleset_id, vessel_standard_id=shape.vessel_standard_id, rmax=rmax,
+                      host_rulesets=[_rust.enc(r) for r in RULESETS.values()])
 
 
 def cut_model_a_face(o, side_bench, hb, grade, wl, depth, wet_slope=WET_SLOPE_H_PER_V):
@@ -121,18 +99,8 @@ def cut_model_a_face(o, side_bench, hb, grade, wl, depth, wet_slope=WET_SLOPE_H_
       False -> +inf (no cut above WL; natural bank left as-is);
       True  -> berm at WL, then a single 1.5H:1V face to daylight (no height cap).
     """
-    if o <= hb:
-        return grade                                   # flat bottom
-    r = o - hb
-    r_wl = wet_slope * depth                            # wet batter reaches WL here
-    if r <= r_wl:
-        return grade + r / wet_slope                    # submerged wet batter
-    if not side_bench:
-        return math.inf                                # zero cut above WL
-    r2 = r - r_wl                                       # horizontal beyond the WL point
-    if r2 <= BERM_M:
-        return wl                                       # berm at WL
-    return wl + (r2 - BERM_M) / ABOVE_SLOPE_H_PER_V   # benched face to daylight
+    return _rust.call("cut_model", "cut_model_a_face", float, o=o, side_bench=bool(side_bench), hb=hb, grade=grade,
+                      wl=wl, depth=depth, wet_slope=wet_slope)
 
 
 def cut_model_a_bench_gate(offsets, terrain, hb, wl, depth, sidewhich=None,
@@ -143,25 +111,9 @@ def cut_model_a_bench_gate(offsets, terrain, hb, wl, depth, sidewhich=None,
     by more than ``PRISM_INTRUDE_M`` horizontally? o_wl tracks ``wet_slope``. The single
     source of the above-WL bench decision — used by the volume integrator AND the drawings.
     """
-    o_wl = hb + wet_slope * depth                      # channel top half-width at WL
-    if sidewhich is None:
-        sidewhich = [(-1 if o < 0 else 1) for o in offsets]
-    bench = {1: False, -1: False}
-    for s in (1, -1):
-        min_o = None
-        for k in range(len(offsets)):
-            if sidewhich[k] != s:
-                continue
-            z = terrain[k]
-            if z is None or not np.isfinite(z):
-                continue
-            o = abs(offsets[k])
-            if o <= o_wl and z > wl:                    # terrain above WL inside the prism
-                if min_o is None or o < min_o:
-                    min_o = o
-        intrusion = 0.0 if min_o is None else (o_wl - min_o)
-        bench[s] = intrusion > PRISM_INTRUDE_M
-    return bench
+    r = _rust.call("cut_model", "cut_model_a_bench_gate", offsets=offsets, terrain=terrain, hb=hb, wl=wl,
+                   depth=depth, sidewhich=sidewhich, wet_slope=wet_slope)
+    return {1: bool(r["1"]), -1: bool(r["-1"])}
 
 
 def cut_model_b_daylight_limit(offsets, terrain, hb, grade, wl, depth, bench,
@@ -172,32 +124,10 @@ def cut_model_b_daylight_limit(offsets, terrain, hb, grade, wl, depth, bench,
     of natural ground AND stays clear for ``run_m`` metres; ``inf`` if it never does inside
     the rake. A DEM gap counts as daylit: a hole in the raster must not RE-OPEN the works.
     """
-    if sidewhich is None:
-        sidewhich = [(-1 if o < 0 else 1) for o in offsets]
-    if run_m is None:
-        run_m = DAYLIGHT_RUN_M
-    o_wl = hb + wet_slope * depth
-    limits = {1: math.inf, -1: math.inf}
-    for s in (1, -1):
-        idx = sorted([k for k in range(len(offsets)) if sidewhich[k] == s],
-                     key=lambda k: abs(offsets[k]))
-        run_start = None
-        for k in idx:
-            o = abs(offsets[k])
-            if o <= o_wl:                      # inside the prism: never terminates
-                continue
-            z = terrain[k]
-            f = cut_model_a_face(o, bench[s], hb, grade, wl, depth, wet_slope=wet_slope)
-            daylit = (z is None or not np.isfinite(z) or not np.isfinite(f) or z <= f)
-            if not daylit:
-                run_start = None
-                continue
-            if run_start is None:
-                run_start = o
-            if o - run_start >= run_m:
-                limits[s] = run_start
-                break
-    return limits
+    r = _rust.call("cut_model", "cut_model_b_daylight_limit", offsets=offsets, terrain=terrain, hb=hb,
+                   grade=grade, wl=wl, depth=depth, bench={str(k): bool(v) for k, v in bench.items()},
+                   sidewhich=sidewhich, wet_slope=wet_slope, run_m=run_m)
+    return {1: float(r["1"]), -1: float(r["-1"])}
 
 
 def cut_model_a_section_face(offsets, terrain, hb, grade, wl, depth,
@@ -209,18 +139,8 @@ def cut_model_a_section_face(offsets, terrain, hb, grade, wl, depth,
     limit). Passing the model matters: a drawing that hatches a wedge the volume model no
     longer takes is exactly the drawing-vs-model drift this function exists to prevent.
     """
-    bench = cut_model_a_bench_gate(offsets, terrain, hb, wl, depth, wet_slope=wet_slope)
-    limits = (cut_model_b_daylight_limit(offsets, terrain, hb, grade, wl, depth, bench,
-                                         wet_slope=wet_slope, run_m=run_m)
-              if normalise_model(model) == CUT_MODEL_B else None)
-    out = []
-    for off in offsets:
-        s = -1 if off < 0 else 1
-        if limits is not None and abs(off) > limits[s]:
-            out.append(None); continue
-        f = cut_model_a_face(abs(off), bench[s], hb, grade, wl, depth, wet_slope=wet_slope)
-        out.append(None if not np.isfinite(f) else round(float(f), 2))
-    return out
+    return _rust.call("cut_model_extras", "cut_model_a_section_face", offsets=offsets, terrain=terrain, hb=hb,
+                      grade=grade, wl=wl, depth=depth, wet_slope=wet_slope, model=model, run_m=run_m)
 
 
 def section_area(zs, xs, sidewhich, hb, grade, wl, depth, model, wet,
@@ -231,34 +151,10 @@ def section_area(zs, xs, sidewhich, hb, grade, wl, depth, model, wet,
     ``wet[k]`` True inside the present river (dredge) else dry (excavation).
     ``max_face_h`` is the tallest cut face ABOVE the waterline, m.
     """
-    mdl = normalise_model(model)
-    if mdl not in (CUT_MODEL, CUT_MODEL_B):
-        raise ValueError(f"unknown cut model {model!r}. Known: {CUT_MODEL!r} (A) and "
-                         f"{CUT_MODEL_B!r} (B).")
-    bench = cut_model_a_bench_gate(xs, zs, hb, wl, depth, sidewhich, wet_slope=wet_slope)
-    limits = (cut_model_b_daylight_limit(xs, zs, hb, grade, wl, depth, bench, sidewhich,
-                                         wet_slope=wet_slope, run_m=run_m)
-              if mdl == CUT_MODEL_B else None)
-    dredge = excav = 0.0
-    max_face_h = 0.0
-    for k in range(len(xs)):
-        z = zs[k]
-        if z is None or not np.isfinite(z):
-            continue
-        o = abs(xs[k]); s = sidewhich[k]
-        if limits is not None and o > limits[s]:
-            continue
-        f = cut_model_a_face(o, bench[s], hb, grade, wl, depth, wet_slope=wet_slope)
-        if not np.isfinite(f):
-            continue
-        cut = z - f
-        if cut <= 0:
-            continue
-        a = cut * dx
-        if wet[k]:
-            dredge += a
-        else:
-            excav += a
-        if z > wl and (z - wl) > max_face_h:
-            max_face_h = z - wl
-    return dredge, excav, max_face_h
+    r = _rust.call("cut_model", "section_area", zs=zs, xs=xs, sidewhich=sidewhich, hb=hb, grade=grade, wl=wl,
+                   depth=depth, model=model, wet=[bool(w) for w in wet], wet_slope=wet_slope, dx=dx, run_m=run_m)
+    return float(r[0]), float(r[1]), float(r[2])
+
+
+_rust.core_constants(__name__, "STATION_M", "MAXW_M", "DX_M", "WET_SLOPE_H_PER_V", "PRISM_CLEAR_M",
+                     "PRISM_INTRUDE_M", "BERM_M", "ABOVE_SLOPE_H_PER_V", "DAYLIGHT_RUN_M", "WIDEN_RMAX")

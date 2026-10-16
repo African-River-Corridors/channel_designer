@@ -14,6 +14,9 @@
 #   4. the oracle guard (the parity oracle changes only through `cargo xtask regen`, with a reason)
 #   5. pytest against the shipped package
 #
+# `cd-py` (the Python extension) is excluded from step 3 as well: PyO3's build script runs Python to find
+# the interpreter, which step 3 forbids. It has no Rust tests; clippy (step 2) and the Wheels workflow build it.
+#
 # The desktop app (`cd-app`, spec 0003) is excluded from steps 2 and 3: it needs Node and the Tauri
 # system libraries, and its own CI jobs (`app-linux`, `app-e2e`) build and test it.
 #
@@ -72,7 +75,7 @@ cargo_test_without_python() {
   done
   # Explicit `|| return 1`: `step` calls this function inside `||`, where bash ignores `set -e`,
   # so without it a failing cargo test would fall through and the step would report ok.
-  PATH="$shims:$PATH" CD_PYTHON="$shims/python3" cargo test --workspace --exclude cd-app --all-features || return 1
+  PATH="$shims:$PATH" CD_PYTHON="$shims/python3" cargo test --workspace --exclude cd-app --exclude cd-py --all-features || return 1
   if [ -e "$marker" ]; then
     echo "gates: cargo test called Python:" >&2
     cat "$marker" >&2

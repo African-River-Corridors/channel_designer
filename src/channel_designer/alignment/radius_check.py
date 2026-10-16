@@ -28,9 +28,7 @@ tolerance, not a design relaxation.
 """
 from __future__ import annotations
 
-import math
-
-import numpy as np
+from .. import _rust
 
 MAX_STRIDE_M = 10.0
 RADIUS_TOL = 0.02
@@ -38,30 +36,7 @@ RADIUS_TOL = 0.02
 
 def default_check_chord(r_min: float) -> float:
     """One vessel length at the package's default R_min = 3 × LOA (PIANC)."""
-    return float(r_min) / 3.0
-
-
-def _three_point_min(pts: np.ndarray, k: int) -> float:
-    """Minimum circumradius of ``(pts[i-k], pts[i], pts[i+k])`` over all ``i``; inf if none."""
-    if pts.shape[0] < 2 * k + 1:
-        return math.inf
-    A, B, C = pts[:-2 * k], pts[k:-k], pts[2 * k:]
-    a = np.hypot(*(B - C).T)
-    b = np.hypot(*(A - C).T)
-    c = np.hypot(*(A - B).T)
-    area = 0.5 * np.abs((B[:, 0] - A[:, 0]) * (C[:, 1] - A[:, 1])
-                        - (C[:, 0] - A[:, 0]) * (B[:, 1] - A[:, 1]))
-    with np.errstate(divide="ignore", invalid="ignore"):
-        R = np.where(area > 1e-9, a * b * c / (4.0 * area), np.inf)
-    return float(np.min(R))
-
-
-def _resample_exact(coords: np.ndarray, h: float) -> np.ndarray:
-    """Points every exactly ``h`` metres from the start; the remainder (< h) is dropped."""
-    seg = np.linalg.norm(np.diff(coords, axis=0), axis=1)
-    cum = np.concatenate(([0.0], np.cumsum(seg)))
-    t = np.arange(0.0, float(cum[-1]) + 1e-9, h)
-    return np.column_stack((np.interp(t, cum, coords[:, 0]), np.interp(t, cum, coords[:, 1])))
+    return _rust.call("radius_check", "default_check_chord", float, r_min=r_min)
 
 
 def min_radius_on_chord(line, chord_m: float) -> float:
@@ -69,24 +44,17 @@ def min_radius_on_chord(line, chord_m: float) -> float:
 
     Returns ``inf`` for a straight line, or a line shorter than the chord (no reading).
     """
-    if not (math.isfinite(chord_m) and chord_m > 0.0):
-        raise ValueError("chord_m must be finite and positive.")
-    coords = np.asarray(line.coords, dtype=float)
-    half = chord_m / 2.0
-    k = max(1, int(math.ceil(half / MAX_STRIDE_M)))
-    h = half / k
-    forward = _three_point_min(_resample_exact(coords, h), k)
-    backward = _three_point_min(_resample_exact(coords[::-1], h), k)
-    return min(forward, backward)
+    return _rust.call("radius_check", "min_radius_on_chord", float, line=line, chord_m=chord_m)
 
 
 def min_radius_on_vertices(pts, k: int = 1) -> float:
     """Minimum three-point radius (m) on a polyline's own vertices, arms ``k`` vertices long."""
-    if k < 1:
-        raise ValueError("k must be at least 1.")
-    return _three_point_min(np.asarray(pts, dtype=float), int(k))
+    return _rust.call("radius_check", "min_radius_on_vertices", float, pts=pts, k=int(k))
 
 
 def radius_ok(measured_m: float, r_min: float) -> bool:
     """True when ``measured_m`` holds ``r_min`` within the reading tolerance (False on NaN)."""
-    return bool(measured_m >= (1.0 - RADIUS_TOL) * r_min)
+    return _rust.call("radius_check", "radius_ok", bool, measured_m=measured_m, r_min=r_min)
+
+
+_rust.core_constants(__name__, "MAX_STRIDE_M", "RADIUS_TOL")

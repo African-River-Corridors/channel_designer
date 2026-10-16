@@ -11,10 +11,55 @@ use cd_core::geom::{Geometry, Polygon, Pt, linear};
 use cd_core::volumes::pools::Weir;
 use cd_core::volumes::raster::{self as rs, Affine, Raster, SlopeMode, VolumeParams};
 use serde_json::{Value, json};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+
+use crate::geotiff as cd_format_geotiff;
 
 /// `tif_from(spec)`: heights from the spec's terrain at the pixel centres, holes set to nodata
 /// (or NaN), stored as float32, with the transform `from_origin(x0, y_top, res, res)`.
-fn raster_from(spec: &Value) -> Result<Raster, EvalError> {
+fn raster_from(spec: &Value) -> Result<Arc<Raster>, EvalError> {
+    if let Some(path) = spec.get("path").and_then(Value::as_str) {
+        return raster_from_file(path);
+    }
+    raster_from_spec(spec).map(Arc::new)
+}
+
+type CacheEntry = (Option<std::time::SystemTime>, u64, Arc<Raster>);
+
+/// The DEMs read so far, by path. An entry is read again when the file's size or time changes,
+/// and dropped by `release_raster` (what `RasterTerrain.close()` calls).
+fn dem_cache() -> &'static Mutex<HashMap<String, CacheEntry>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, CacheEntry>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// A GeoTIFF file as the raster the integrator reads: float32 heights, the file's own nodata.
+fn raster_from_file(path: &str) -> Result<Arc<Raster>, EvalError> {
+    let meta = std::fs::metadata(path)
+        .map_err(|e| bad(format!("cannot read the GeoTIFF: {path}: {e}")))?;
+    let stamp = (meta.modified().ok(), meta.len());
+    let mut cache = dem_cache().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((t, n, r)) = cache.get(path)
+        && (*t, *n) == stamp
+    {
+        return Ok(Arc::clone(r));
+    }
+    let dem =
+        cd_format_geotiff::read_file(std::path::Path::new(path)).map_err(|e| bad(e.to_string()))?;
+    let [a, _, c, _, e, f] = dem.geotransform;
+    let r = Arc::new(Raster {
+        width: dem.width,
+        height: dem.height,
+        transform: Affine { a, c, e, f },
+        data: dem.data.iter().map(|&v| f64::from(v as f32)).collect(),
+        nodata: dem.nodata,
+    });
+    cache.insert(path.to_string(), (stamp.0, stamp.1, Arc::clone(&r)));
+    Ok(r)
+}
+
+fn raster_from_spec(spec: &Value) -> Result<Raster, EvalError> {
     let int = |k: &str| {
         arg(spec, k)?
             .as_u64()
@@ -178,6 +223,15 @@ fn grid<T>(
 pub(super) fn raster(function: &str, args: &Value) -> Result<Value, EvalError> {
     match function {
         "bilinear" | "raster_terrain" => ok(sampled(args)?),
+        "release_raster" => {
+            if let Some(p) = args.get("path").and_then(Value::as_str) {
+                dem_cache()
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(p);
+            }
+            ok(Value::Null)
+        }
         "layer_volumes" => ok(floats_json(&rs::layer_volumes(&f64_list(args, "vals")?))),
         "despike" => {
             let (z, w, h) = grid(args, "z", |v| read_float(v, "z"))?;

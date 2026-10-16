@@ -13,7 +13,8 @@ arbitrary local projected frame (x downstream→upstream).
 """
 from __future__ import annotations
 
-import math
+from . import _rust
+
 from dataclasses import dataclass
 from typing import Callable
 
@@ -46,9 +47,8 @@ def sine_generated_centreline(length_m: float = 6000.0, wavelength_m: float = 15
 
     Minimum radius of curvature is λ²/(4π²A) at the apexes (≈ 219 m for the defaults).
     """
-    x = np.arange(0.0, length_m + step_m, step_m)
-    y = amplitude_m * np.sin(2.0 * math.pi * x / wavelength_m)
-    return LineString(np.column_stack([x, y]))
+    return _rust.call("synthetic", "sine_generated_centreline", LineString, length_m=length_m,
+                      wavelength_m=wavelength_m, amplitude_m=amplitude_m, step_m=step_m)
 
 
 def synthetic_river(length_m: float = 6000.0, wavelength_m: float = 1500.0,
@@ -58,11 +58,13 @@ def synthetic_river(length_m: float = 6000.0, wavelength_m: float = 1500.0,
                     hill_height_m: float = 15.0, hill_at=(1875.0, 150.0),
                     hill_radius_m: float = 150.0) -> SyntheticRiver:
     """Build the synthetic river. All defaults are illustrative."""
-    line = sine_generated_centreline(length_m, wavelength_m, amplitude_m)
+    river = _rust.call("synthetic", "synthetic_river", length_m=length_m, wavelength_m=wavelength_m,
+                       amplitude_m=amplitude_m, width_m=width_m, bed_depth_m=bed_depth_m,
+                       floodplain_above_wl_m=floodplain_above_wl_m, bed_slope=bed_slope,
+                       water_level_at_mouth_m=water_level_at_mouth_m, hill_height_m=hill_height_m,
+                       hill_at=list(hill_at), hill_radius_m=hill_radius_m)["river"]
+    line, left, right, polygon = river["centreline"], river["left_bank"], river["right_bank"], river["polygon"]
     half = width_m / 2.0
-    left = line.offset_curve(half)
-    right = line.offset_curve(-half)
-    polygon = line.buffer(half, cap_style="flat")
     hx, hy = hill_at
 
     def terrain(xs, ys):

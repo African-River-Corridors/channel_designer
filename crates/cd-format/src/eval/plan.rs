@@ -224,6 +224,25 @@ pub(super) fn footprint(function: &str, args: &Value) -> Result<Value, EvalError
 
 /// `_profile`: the bed profile a spec describes.
 fn profile(spec: &Value) -> Result<BedProfile, EvalError> {
+    // A profile the host already has (`BedProfile` fields): used as it is.
+    if spec.get("z_overall").is_some() {
+        let pts = |name: &str| -> Result<Vec<Pt>, EvalError> {
+            list(spec, name)?
+                .iter()
+                .map(|p| match p.as_array().map(Vec::as_slice) {
+                    Some([x, y]) => Ok([read_float(x, name)?, read_float(y, name)?]),
+                    _ => Err(bad(format!("`{name}` entries must be [x, y]"))),
+                })
+                .collect()
+        };
+        return Ok(BedProfile {
+            s: f64_list(spec, "s")?,
+            z_raw: f64_list(spec, "z_raw")?,
+            z_overall: f64_list(spec, "z_overall")?,
+            points: pts("points")?,
+            line: line_arg(spec, "line")?,
+        });
+    }
     let d = ProfileParams::default();
     let p = ProfileParams {
         spacing_m: f64_or(spec, "spacing_m", d.spacing_m)?,

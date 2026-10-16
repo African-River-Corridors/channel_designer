@@ -28,7 +28,8 @@ Guards (each one is a silent failure in a looser version of this search):
 """
 from __future__ import annotations
 
-import math
+from .. import _rust
+
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Sequence
 
@@ -129,30 +130,15 @@ class CascadeSearch:
         return self.cascades[0] if self.cascades else None
 
 
+def _reach_arg(call, reach_cost: ReachCost):
+    """The reach cost as the core reads it: its own spec when it has one, else a callback."""
+    spec = getattr(reach_cost, "_core_spec", None)
+    return spec if spec is not None else call.reach(reach_cost)
+
+
 def cascade_levels(cfg: CascadeConfig) -> List[float]:
     """Every pool level the DP can reach: base + any sum of lifts, up to the cap."""
-    cap = float(cfg.level_cap_m)
-    base = round(float(cfg.base_level_m), _LEVEL_DECIMALS)
-    reach = {base}
-    frontier = {base}
-    while frontier:
-        nxt = set()
-        for r in frontier:
-            for L in cfg.lifts_m:
-                v = round(r + float(L), _LEVEL_DECIMALS)
-                if v <= cap + 1e-9 and v not in reach:
-                    nxt.add(v)
-        reach |= nxt
-        frontier = nxt
-    return sorted(reach)
-
-
-def _sites(cfg: CascadeConfig):
-    ids = list(cfg.site_ids) if cfg.site_ids is not None else [
-        f"S{i + 1}" for i in range(len(cfg.candidate_sites_m))]
-    rows = sorted(zip(cfg.candidate_sites_m, ids))
-    kept = [(float(c), i) for c, i in rows if float(cfg.start_m) < float(c) <= float(cfg.terminal_m)]
-    return kept, len(rows) - len(kept)
+    return _rust.call("cascade", "cascade_levels", list[float], cfg=cfg)
 
 
 def search_cascade(cfg: CascadeConfig, reach_cost: ReachCost,
@@ -162,78 +148,20 @@ def search_cascade(cfg: CascadeConfig, reach_cost: ReachCost,
     "Distinct endings" means distinct (last weir, top pool level) states, each with its own
     cheapest history — not the k cheapest cascades overall.
     """
-    sites, dropped = _sites(cfg)
-    S = [(float(cfg.start_m), "SOURCE")] + sites
-    lvls = cascade_levels(cfg)
-    LI = {v: i for i, v in enumerate(lvls)}
-    base = round(float(cfg.base_level_m), _LEVEL_DECIMALS)
-    INF = math.inf
-    dp = np.full((len(S), len(lvls)), INF)
-    par = np.full((len(S), len(lvls), 3), -1, dtype=int)     # (site, level, lift index)
-    dp[0, LI[base]] = 0.0
-    lifts = [float(L) for L in cfg.lifts_m]
-    s_cost = {L: float(structure_cost(L)) for L in lifts}
-    for j in range(1, len(S)):
-        for i in range(0, j):
-            if S[j][0] - S[i][0] < cfg.min_spacing_m:
-                continue
-            for hi, h in enumerate(lvls):
-                if dp[i, hi] == INF:
-                    continue
-                b = dp[i, hi] + float(reach_cost(S[i][0], S[j][0], h))
-                for li, L in enumerate(lifts):
-                    h2 = round(h + L, _LEVEL_DECIMALS)
-                    k = LI.get(h2)
-                    if k is None:
-                        continue
-                    c = b + s_cost[L]
-                    if c < dp[j, k]:
-                        dp[j, k] = c
-                        par[j, k] = (i, hi, li)
-    finals = []
-    for j in range(1, len(S)):
-        for hi, h in enumerate(lvls):
-            if dp[j, hi] == INF or h < cfg.terminal_min_level_m - 1e-9:
-                continue
-            finals.append((dp[j, hi] + float(reach_cost(S[j][0], cfg.terminal_m, h)), j, hi))
-    finals.sort()
-    out = []
-    for tot, j, hi in finals[:cfg.k_best]:
-        chain = []
-        cj, ch = j, hi
-        while cj > 0:
-            pi, ph, pl = par[cj, ch]
-            chain.append((S[cj][1], S[cj][0], lvls[ch], lifts[int(pl)]))
-            cj, ch = int(pi), int(ph)
-        chain.reverse()
-        out.append(_assemble(cfg, chain, reach_cost, s_cost, total=float(tot)))
-    return CascadeSearch(out, lvls, int(np.isfinite(dp).sum()), len(finals), dropped)
-
-
-def _assemble(cfg, chain, reach_cost, s_cost, total=None) -> Cascade:
-    weirs = [CascadeWeir(sid, km, lvl, lift, s_cost[lift]) for sid, km, lvl, lift in chain]
-    bounds = [(float(cfg.start_m), float(cfg.base_level_m))] + [(w.chainage_m, w.pool_level_m)
-                                                                 for w in weirs]
-    ends = [w.chainage_m for w in weirs] + [float(cfg.terminal_m)]
-    reaches = [CascadeReach(a, b, lvl, float(reach_cost(a, b, lvl)))
-               for (a, lvl), b in zip(bounds, ends)]
-    c = Cascade(0.0, weirs, reaches)
-    c.total_cost = c.reach_cost + c.structure_cost if total is None else total
-    return c
+    c = _rust.Call()
+    r = _rust.call("cascade", "search_cascade", _call=c, cfg=cfg, reach=_reach_arg(c, reach_cost),
+                   structure=c.scalar(structure_cost))
+    return _rust.decode(r["search"], CascadeSearch)
 
 
 def score_cascade(cfg: CascadeConfig, weirs: Sequence[tuple], reach_cost: ReachCost,
                   structure_cost: StructureCost) -> Cascade:
     """Cost of a FIXED cascade, ``weirs = [(chainage_m, lift_m), ...]``, under the same
     objective. The only fair way to compare two cascades is one objective, both scored."""
-    spec = sorted((float(c), float(L)) for c, L in weirs)
-    lvl = round(float(cfg.base_level_m), _LEVEL_DECIMALS)
-    chain = []
-    for n, (c, L) in enumerate(spec, 1):
-        lvl = round(lvl + L, _LEVEL_DECIMALS)
-        chain.append((f"W{n}", c, lvl, L))
-    s_cost = {L: float(structure_cost(L)) for _, L in spec}
-    return _assemble(cfg, chain, reach_cost, s_cost)
+    c = _rust.Call()
+    r = _rust.call("cascade", "score_cascade", _call=c, cfg=cfg, weirs=[list(w) for w in weirs],
+                   reach=_reach_arg(c, reach_cost), structure=c.scalar(structure_cost))
+    return _rust.decode(r["cascade"], Cascade)
 
 
 # =====================================================================================
@@ -321,4 +249,7 @@ def earthworks_reach_cost(table: LevelTable, wet_weight: float = 1.0,
     def cost(a: float, b: float, level: float) -> float:
         d, e = table.reach_volumes(a, b, level)
         return wet_weight * d + dry_weight * e
+    # The core prices this reach itself, from the table, without calling back into Python.
+    cost._core_spec = {"kind": "earthworks", "table": table, "wet_weight": wet_weight,
+                       "dry_weight": dry_weight}
     return cost

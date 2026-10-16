@@ -36,6 +36,8 @@ exceeds the LOA, a cut-through is indicated.
 """
 from __future__ import annotations
 
+from .. import _rust
+
 import math
 from dataclasses import dataclass, field
 from typing import Optional
@@ -43,7 +45,7 @@ from typing import Optional
 import numpy as np
 
 from vessel_designer.core.checks import Check
-from .methods import get_width_method
+from .methods import _core_methods, get_width_method
 
 
 # =============================================================================
@@ -51,26 +53,17 @@ from .methods import get_width_method
 # =============================================================================
 
 def under_keel_clearance(draft_m: float, ukc_fraction: float = 0.15, ukc_min_m: float = 0.5) -> float:
-    return max(ukc_min_m, ukc_fraction * draft_m)
+    return _rust.call("design", "under_keel_clearance", float, draft_m=draft_m, ukc_fraction=ukc_fraction, ukc_min_m=ukc_min_m)
 
 
 def required_depth(draft_m: float, ukc_fraction: float = 0.15, ukc_min_m: float = 0.5) -> float:
     """Channel depth (below min water level) needed to float a given laden draft."""
-    return draft_m + under_keel_clearance(draft_m, ukc_fraction, ukc_min_m)
+    return _rust.call("design", "required_depth", float, draft_m=draft_m, ukc_fraction=ukc_fraction, ukc_min_m=ukc_min_m)
 
 
 def max_draft_for_depth(depth_m: float, ukc_fraction: float = 0.15, ukc_min_m: float = 0.5) -> float:
     """Inverse: the deepest laden draft a given channel depth allows."""
-    if depth_m <= 0:
-        return 0.0
-    # fractional branch: depth = draft x (1 + ukc_fraction)
-    d_frac = depth_m / (1.0 + ukc_fraction)
-    if ukc_fraction * d_frac >= ukc_min_m:
-        return d_frac
-    # absolute-UKC branch: depth = draft + ukc_min
-    return max(0.0, depth_m - ukc_min_m)
-
-
+    return _rust.call("design", "max_draft_for_depth", float, depth_m=depth_m, ukc_fraction=ukc_fraction, ukc_min_m=ukc_min_m)
 
 
 # =============================================================================
@@ -139,9 +132,8 @@ class ChannelDesignParams:
 
 def resolve_design_depth(params: ChannelDesignParams) -> float:
     """Design depth = explicit override, else draft + under-keel clearance."""
-    if params.design_depth_m is not None:
-        return params.design_depth_m
-    return required_depth(params.draft_m, params.ukc_fraction, params.ukc_min_m)
+    c = _rust.Call()
+    return _rust.call("design", "resolve_design_depth", float, _call=c, params=params, **_core_methods(c, params.width_method))
 
 
 # =============================================================================
@@ -434,25 +426,18 @@ def _band_widths(total_loa: float, params: ChannelDesignParams) -> np.ndarray:
 
 def extra_width(radius: float, total_loa: float, params: ChannelDesignParams) -> float:
     """Banded bend-widening for a single radius (m). 0 if straight / above threshold."""
-    if not np.isfinite(radius) or radius <= 0.0:
-        return 0.0
-    if params.extra_width_coefficient <= 0.0 or total_loa <= 0.0:
-        return 0.0
-    if radius >= params.max_extra_width_radius:
-        return 0.0
-    edges = _band_edges(total_loa, params)
-    widths = _band_widths(total_loa, params)
-    limits = edges[1:]
-    i = int(np.searchsorted(limits, radius, side="right"))
-    i = min(max(i, 0), len(widths) - 1)
-    return float(widths[i])
+    c = _rust.Call()
+    return _rust.call("design", "extra_width", _call=c, radii=[radius], total_loa=total_loa, params=params,
+                      **_core_methods(c, params.width_method))[0]
 
 
 def min_bend_radius(total_loa: float, params: ChannelDesignParams) -> float:
     """Required (design) bend radius R2 = radius_multiple x total_loa — the target the
     centreline is straightened to (cut-throughs). Bends below it are widened; where the
     width exceeds the LOA, a cut-through is indicated."""
-    return params.radius_multiple * total_loa
+    c = _rust.Call()
+    return _rust.call("design", "min_bend_radius", float, _call=c, total_loa=total_loa, params=params,
+                      **_core_methods(c, params.width_method))
 
 
 def _extra_width_array(smoothed: np.ndarray, chainages: np.ndarray, total_length: float,
@@ -479,6 +464,20 @@ def _extra_width_array(smoothed: np.ndarray, chainages: np.ndarray, total_length
 # =============================================================================
 # Stage 0 / 1 / 2
 # =============================================================================
+
+_RESULT_ARRAYS = ("chainage_m", "radius_m", "smoothed_radius_m", "extra_width_m", "bottom_width_m",
+                  "top_width_m", "bed_level_m", "half_offset_m")
+
+
+def _decode_result(r: dict) -> ChannelDesignResult:
+    """A :class:`ChannelDesignResult` from the core's answer."""
+    kw = _rust.plain(r)
+    for name in _RESULT_ARRAYS:
+        kw[name] = np.asarray(kw[name], dtype=float)
+    kw["radius_ok"] = np.asarray(kw["radius_ok"], dtype=bool)
+    kw["checks"] = [Check(**ck) for ck in kw["checks"]]
+    return ChannelDesignResult(**kw)
+
 
 @dataclass
 class CurvatureProfile:
@@ -654,9 +653,11 @@ def apply_beam(curv: CurvatureProfile, loa: LoaProfile, beam: float,
 
 def compute(inputs: ChannelDesignInputs) -> ChannelDesignResult:
     """Single-scenario channel design (Stage 0 -> 1 -> 2)."""
-    curv = _compute_curvature(inputs.centreline_points, inputs.params)
-    loa = precompute_loa(curv, inputs.total_loa, inputs.params)
-    return apply_beam(curv, loa, inputs.beam, inputs.params)
+    c = _rust.Call()
+    r = _rust.call("design", "compute", _call=c, total_loa=inputs.total_loa, beam=inputs.beam,
+                   centreline_points=inputs.centreline_points, params=inputs.params,
+                   **_core_methods(c, inputs.params.width_method))
+    return _decode_result(r["result"])
 
 
 def compute_scenario_grid(centreline_points, loa_values, beam_values,
@@ -668,22 +669,11 @@ def compute_scenario_grid(centreline_points, loa_values, beam_values,
     stage runs once (Stage 1), then each beam is applied (Stage 2). Returns a JSON-friendly
     dict keyed ``loa{L}_beam{B}``.
     """
-    params = params or ChannelDesignParams()
-    curv = _compute_curvature(centreline_points, params)
-    depth = resolve_design_depth(params)
-    scenarios = {}
-    for loa_val in loa_values:
-        loa = precompute_loa(curv, float(loa_val), params)
-        for beam_val in beam_values:
-            res = apply_beam(curv, loa, float(beam_val), params)
-            scenarios[f"loa{_tag(loa_val)}_beam{_tag(beam_val)}"] = res.to_dict(n_samples=n_samples)
-    return {
-        "design_depth_m": depth,
-        "total_length_m": curv.total_length,
-        "loa_values": [float(v) for v in loa_values],
-        "beam_values": [float(v) for v in beam_values],
-        "scenarios": scenarios,
-    }
+    c = _rust.Call()
+    p = params if params is not None else ChannelDesignParams()
+    return _rust.call("design", "compute_scenario_grid", _call=c, centreline_points=centreline_points,
+                      loa_values=list(loa_values), beam_values=list(beam_values), params=p,
+                      n_samples=n_samples, **_core_methods(c, p.width_method))
 
 
 # =============================================================================

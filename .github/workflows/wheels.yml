@@ -1,0 +1,131 @@
+name: Wheels
+
+# One abi3 wheel per platform (macOS, Windows, Linux), and a job that proves a Windows `pip install` of
+# the wheel needs no compiler (#11, ticket 35). Runs on pull requests that touch the build, and by hand.
+on:
+  pull_request:
+    paths:
+      - "crates/**"
+      - "src/**"
+      - "pyproject.toml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/wheels.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: wheels-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build the abi3 wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --release --out dist
+          manylinux: auto
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.os }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  sdist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  # The proof for #11: install the built wheel on a Windows machine with no compiler on the PATH.
+  install-without-a-compiler:
+    needs: [build, sdist]
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheel-windows-latest
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: sdist
+      - name: Take every compiler off the PATH, and check that none is left
+        shell: pwsh
+        run: |
+          $drop = 'cargo|rust|Visual Studio|MSBuild|mingw|msys|LLVM|cmake|strawberry'
+          $tools = 'cl', 'gcc', 'cc', 'link', 'rustc', 'cargo', 'cmake'
+          # Drop a folder by name, and any folder that holds a compiler (whatever it is called).
+          $kept = ($env:PATH -split ';') | Where-Object {
+            $dir = $_
+            $dir -and ($dir -notmatch $drop) -and -not ($tools | Where-Object { Test-Path (Join-Path $dir "$_.exe") })
+          }
+          "PATH=" + ($kept -join ';') | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $env:PATH = $kept -join ';'
+          foreach ($tool in $tools) {
+            if (Get-Command $tool -ErrorAction SilentlyContinue) { throw "$tool is still on the PATH" }
+          }
+          Write-Output "no compiler on the PATH"
+      - name: Negative control 1 - no C compiler resolves
+        shell: pwsh
+        run: |
+          foreach ($tool in 'gcc', 'cc', 'cl', 'clang', 'rustc', 'cargo') {
+            where.exe $tool 2>$null
+            if ($LASTEXITCODE -eq 0) { throw "$tool resolves on the PATH" }
+          }
+          $global:LASTEXITCODE = 0
+          Write-Output "gcc, cc, cl, clang, rustc and cargo all fail to resolve"
+      - name: Install the wheel from the folder, binary packages only
+        shell: pwsh
+        run: |
+          # `--only-binary :all:` makes pip refuse any source build: a compiler is never needed.
+          python -m pip install --only-binary :all: --no-deps --no-index --find-links dist channel_designer
+          python -m pip install --only-binary :all: numpy shapely
+          # vessel_designer is pure Python, installed from git (its sdist builds without a compiler).
+          python -m pip install "vessel_designer @ git+https://github.com/African-River-Corridors/open-vessel-concept-drawings@v0.2.2"
+      - name: Use it
+        shell: pwsh
+        run: |
+          python -c "import channel_designer._core as c, json; print('core', c.__version__, len(c.entry_points()), 'entry points'); out = json.loads(c.eval('rulesets', json.dumps({'fn': 'channel_shape', 'args': {'ruleset_id': 'PIANC-B', 'vessel_standard_id': 'CEMT_IV', 'draught_m': 2.5}}))); assert abs(out['ok']['bottom_width_straight_m'] - 30.4) < 1e-9; from channel_designer.rules import channel_shape; print(channel_shape('PIANC-B', 'CEMT_IV').design_depth_m)"
+      - name: Negative control 2 - a source build fails in this same environment
+        shell: pwsh
+        run: |
+          # The wheel installed above. The sdist needs rustc and a linker, so with --no-binary it must fail.
+          python -m pip install --no-binary channel_designer --no-deps --no-index --force-reinstall (Get-ChildItem sdist\*.tar.gz).FullName
+          if ($LASTEXITCODE -eq 0) { throw "the source build succeeded, so the environment is not compiler-free" }
+          $global:LASTEXITCODE = 0
+          Write-Output "the source build failed, as it must; the wheel install passed"
+      - name: The wheel still works after the failed source build
+        shell: pwsh
+        run: |
+          python -m pip install --only-binary :all: --no-deps --no-index --force-reinstall --find-links dist channel_designer
+          python -c "import channel_designer._core as c; print(c.__version__)"

@@ -31,16 +31,17 @@ despiking a DEM is the caller's job before that.
 """
 from __future__ import annotations
 
+from .. import _rust
+
 import heapq
+import dataclasses
 import math
 import time
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
-from shapely import contains_xy
-from shapely.geometry import LineString, Point
-from shapely.ops import substring
+from shapely.geometry import LineString
 
 from ..volumes.sections import TerrainSampler
 
@@ -173,18 +174,14 @@ def build_terrain_grid(terrain: TerrainSampler, river_polygon, corridor, cell_m:
     Ground outside the corridor is kept (a side slope may daylight there); ``valid`` is
     known ground INSIDE the corridor, which is where the heuristic samples.
     """
-    xmin, ymin, xmax, ymax = corridor.bounds
-    xmin -= margin_m; ymin -= margin_m; xmax += margin_m; ymax += margin_m
-    W = int(math.ceil((xmax - xmin) / cell_m)) + 1
-    H = int(math.ceil((ymax - ymin) / cell_m)) + 1
-    xs = xmin + np.arange(W) * cell_m
-    ys = ymax - np.arange(H) * cell_m
-    X, Y = np.meshgrid(xs, ys)
-    z = np.asarray(terrain(X.ravel(), Y.ravel()), dtype=float).reshape(H, W)
-    wet = contains_xy(river_polygon, X.ravel(), Y.ravel()).reshape(H, W)
-    inside = contains_xy(corridor, X.ravel(), Y.ravel()).reshape(H, W)
-    return TerrainGrid(ground=z, wet=wet, valid=np.isfinite(z) & inside,
-                       x0=float(xmin), y0=float(ymax), cell_m=float(cell_m))
+    c = _rust.Call()
+    r = _rust.call("lattice", "build_terrain_grid", _call=c,
+                   grid={"terrain": c.terrain(terrain), "river_polygon": river_polygon, "corridor": corridor,
+                         "cell_m": cell_m, "margin_m": margin_m})
+    return TerrainGrid(ground=np.asarray(_rust.plain(r["ground"]), dtype=float),
+                       wet=np.asarray(r["wet"], dtype=bool), valid=np.asarray(r["valid"], dtype=bool),
+                       x0=float(_rust.plain(r["x0"])), y0=float(_rust.plain(r["y0"])),
+                       cell_m=float(_rust.plain(r["cell_m"])))
 
 
 # =====================================================================================
@@ -260,27 +257,11 @@ class FieldScorer:
 def lattice_primitives(cfg: LatticeConfig) -> list:
     """Left/right arcs at ``r_min × radius_multiples`` turning exactly one heading bin, plus
     one straight of ``straight_len_m``. Dicts: R, sign, pts (s, x, y, heading), end, arc_len."""
-    prims = []
-    bs = 2.0 * math.pi / cfg.n_heading
-    for m in cfg.radius_multiples:
-        R = cfg.r_min_m * float(m)
-        arc_len = R * bs
-        n = max(2, int(round(arc_len / cfg.arc_step_m)))
-        for sgn in (+1, -1):
-            k = sgn / R
-            pts = [(arc_len * i / n, math.sin(k * arc_len * i / n) / k,
-                    (1 - math.cos(k * arc_len * i / n)) / k, k * arc_len * i / n)
-                   for i in range(1, n + 1)]
-            prims.append(dict(R=R, sign=sgn, pts=pts,
-                              end=(math.sin(k * arc_len) / k, (1 - math.cos(k * arc_len)) / k,
-                                   k * arc_len),
-                              arc_len=arc_len))
-    L = float(cfg.straight_len_m)
-    n = max(2, int(round(L / cfg.arc_step_m)))
-    prims.append(dict(R=math.inf, sign=0,
-                      pts=[(L * i / n, L * i / n, 0.0, 0.0) for i in range(1, n + 1)],
-                      end=(L, 0.0, 0.0), arc_len=L))
-    return prims
+    out = []
+    for p in _rust.call("lattice", "lattice_primitives", cfg=cfg):
+        out.append(dict(R=p["R"], sign=p["sign"], pts=[tuple(q) for q in p["pts"]], end=tuple(p["end"]),
+                        arc_len=p["arc_len"]))
+    return out
 
 
 def _unit_straight(length: float) -> dict:
@@ -310,16 +291,10 @@ def min_cost_per_metre(grid: TerrainGrid, scorer: FieldScorer, n_heading: int, l
                        stride_m: float = 24.0, max_samples: int = 4000) -> float:
     """The cheapest per-metre straight cost anywhere in the corridor (0 if none is valid).
     Straight cost is symmetric under a half turn, so half the heading bins are swept."""
-    _, _, xs, ys, _ = _valid_points(grid, stride_m, max_samples)
-    unit = _unit_straight(length_m)
-    bs = 2.0 * math.pi / n_heading
-    best = math.inf
-    for x, y in zip(xs, ys):
-        for b in range(max(1, n_heading // 2)):
-            c, ok = scorer.score(unit, (x, y, b * bs))
-            if ok:
-                best = min(best, c / length_m)
-    return best if math.isfinite(best) else 0.0
+    c = _rust.Call()
+    return _rust.call("lattice", "min_cost_per_metre", float, _call=c, grid=grid, grade_m=scorer.grade,
+                      hb_m=scorer.hb, section=_section_arg(c, scorer.spec), n_heading=int(n_heading),
+                      length_m=length_m, stride_m=stride_m, max_samples=int(max_samples))
 
 
 def reverse_dijkstra_heuristic(grid: TerrainGrid, scorer: FieldScorer, goal_xy, n_heading: int,
@@ -396,149 +371,42 @@ class LatticeResult:
     diagnostics: dict = field(default_factory=dict)
 
 
-def _bin(theta: float, n: int) -> int:
-    return int(round((theta % (2 * math.pi)) / (2 * math.pi) * n)) % n
+def _section_arg(call, spec: SectionSpec) -> dict:
+    """A :class:`SectionSpec` as the core reads it: a half-width function becomes a callback."""
+    d = _rust.enc({**{f.name: getattr(spec, f.name) for f in dataclasses.fields(spec)}, "half_width": 0.0})
+    hw = spec.half_width
+    d["half_width"] = call.scalar(hw) if callable(hw) else hw
+    return d
 
 
-def _arc_points(x0, y0, th0, R, sgn, arc_len, n=10):
-    out = []
-    if sgn == 0 or R is None or math.isinf(R):
-        for k in range(1, n + 1):
-            s = arc_len * k / n
-            out.append((x0 + s * math.cos(th0), y0 + s * math.sin(th0), th0))
-        return out
-    kap = sgn / R
-    ct, st = math.cos(th0), math.sin(th0)
-    for k in range(1, n + 1):
-        s = arc_len * k / n
-        lx = math.sin(kap * s) / kap
-        ly = (1 - math.cos(kap * s)) / kap
-        out.append((x0 + ct * lx - st * ly, y0 + st * lx + ct * ly, th0 + kap * s))
-    return out
+def _decode_result(r: dict, seconds: float) -> LatticeResult:
+    """A :class:`LatticeResult` from the core's answer (the core keeps no clock)."""
+    r = _rust.plain(r)
+    return LatticeResult(
+        converged=bool(r["converged"]), line=r["line"], cost=r["cost"],
+        prim_seq=[tuple(p) for p in r["prim_seq"]],
+        start_pose=None if r["start_pose"] is None else tuple(r["start_pose"]),
+        goal_pose=None if r["goal_pose"] is None else tuple(r["goal_pose"]),
+        end_err_m=r["end_err_m"], expansions=int(r["expansions"]), n_states=int(r["n_states"]),
+        seconds=seconds, hit_cap=bool(r["hit_cap"]), timed_out=bool(r["timed_out"]),
+        diagnostics=r["diagnostics"])
+
+
+def _decode_pool(r: dict, seconds: float) -> PoolAlignment:
+    res = _decode_result(r["result"], seconds)
+    p = _rust.plain({k: v for k, v in r.items() if k != "result"})
+    return PoolAlignment(start_m=p["start_m"], end_m=p["end_m"], water_level_m=p["water_level_m"],
+                         grade_m=p["grade_m"], result=res, baseline_cost=p["baseline_cost"])
 
 
 def solve_lattice(grid: TerrainGrid, start_pose: Pose, goal_pose: Pose, grade_m: float,
                   section: SectionSpec, cfg: LatticeConfig) -> LatticeResult:
     """A* from ``start_pose`` to ``goal_pose`` over the lattice. See the module docstring."""
-    t0 = time.time()
-    prims = lattice_primitives(cfg)
-    scorers: dict = {}
-    for p in prims:
-        hb = section.half_width_at(p["R"]) + section.footprint_corr_m
-        key = round(hb, 4)
-        if key not in scorers:
-            scorers[key] = FieldScorer(grid, grade_m, hb, section)
-        p["scorer"] = scorers[key]
-    straight_scorer = prims[-1]["scorer"]
-
-    gx0, gy0, gth = goal_pose
-    diag: dict = {}
-    if cfg.heuristic == "c_min":
-        c_min = min_cost_per_metre(grid, straight_scorer, cfg.n_heading, cfg.pitch_m)
-        diag["c_min_per_m"] = c_min
-
-        def h(x, y):
-            return c_min * math.hypot(x - gx0, y - gy0)
-    elif cfg.heuristic == "reverse_dijkstra":
-        h = reverse_dijkstra_heuristic(grid, straight_scorer, (gx0, gy0), cfg.n_heading,
-                                       cfg.pitch_m, cfg.pitch_m)
-    else:
-        def h(x, y):
-            return 0.0
-    w = cfg.heuristic_weight
-
-    bs = 2.0 * math.pi / cfg.n_heading
-    head_tol = cfg.goal_head_tol_bins * bs
-
-    def key(x, y, th, insign):
-        return (int(round(x / cfg.pitch_m)), int(round(y / cfg.pitch_m)),
-                _bin(th, cfg.n_heading), insign)
-
-    def is_goal(x, y, th):
-        if math.hypot(x - gx0, y - gy0) > cfg.goal_pos_tol_m:
-            return False
-        return abs(((th - gth + math.pi) % (2 * math.pi)) - math.pi) <= head_tol
-
-    xmin, ymin, xmax, ymax = grid.bounds
-    m = cfg.bounds_margin_m
-    sk = key(*start_pose, 0)
-    g = {sk: 0.0}
-    pose = {sk: tuple(start_pose)}
-    prev = {sk: None}
-    prev_prim = {sk: None}
-    pq = [(w * h(start_pose[0], start_pose[1]), 0.0, sk)]
-    expanded = 0
-    best = None
-    res = LatticeResult(start_pose=tuple(start_pose), goal_pose=tuple(goal_pose))
-    while pq:
-        _, gc, k = heapq.heappop(pq)
-        if gc > g.get(k, math.inf) + 1e-9:
-            continue
-        x, y, th = pose[k]
-        if is_goal(x, y, th):
-            best = k
-            break
-        expanded += 1
-        if expanded >= cfg.max_expand:
-            res.hit_cap = True
-            break
-        if cfg.wall_cap_s is not None and expanded % 1000 == 0 and time.time() - t0 > cfg.wall_cap_s:
-            res.timed_out = True
-            break
-        insign = k[3]
-        ct, st = math.cos(th), math.sin(th)
-        for p in prims:
-            sgn = p["sign"]
-            if insign != 0 and sgn != 0 and sgn == -insign:
-                continue                          # no arc straight into the opposite arc
-            ex, ey, eth = p["end"]
-            nx = x + ct * ex - st * ey
-            ny = y + st * ex + ct * ey
-            if not (xmin - m <= nx <= xmax + m and ymin - m <= ny <= ymax + m):
-                continue
-            c, ok = p["scorer"].score(p, (x, y, th))
-            if not ok:
-                continue
-            ng = gc + c
-            hn = h(nx, ny)
-            if ng + hn > cfg.prune_bound:
-                continue
-            nk = key(nx, ny, th + eth, sgn)
-            if ng < g.get(nk, math.inf) - 1e-6:
-                g[nk] = ng
-                pose[nk] = (nx, ny, th + eth)
-                prev[nk] = k
-                prev_prim[nk] = (p["R"], sgn, p["arc_len"])
-                heapq.heappush(pq, (ng + w * hn, ng, nk))
-
-    res.expansions = expanded
-    res.n_states = len(g)
-    res.diagnostics = diag
-    if best is None:
-        res.seconds = time.time() - t0
-        return res
-    chain = []
-    k = best
-    while k is not None:
-        chain.append(k)
-        k = prev[k]
-    chain.reverse()
-    seq = [prev_prim[kk] for kk in chain[1:]]
-    # Forward-integrate the exact primitive sequence from the true start pose: tangent-
-    # continuous by construction, and the geometry the costs were computed on.
-    cx, cy, cth = start_pose
-    dense = [(cx, cy)]
-    for R, sgn, al in seq:
-        pts = _arc_points(cx, cy, cth, R, sgn, al)
-        dense.extend((p[0], p[1]) for p in pts)
-        cx, cy, cth = pts[-1]
-    res.converged = True
-    res.cost = g[best]
-    res.line = LineString(dense)
-    res.prim_seq = [(None if math.isinf(R) else R, sgn, al) for R, sgn, al in seq]
-    res.end_err_m = math.hypot(cx - gx0, cy - gy0)
-    res.seconds = time.time() - t0
-    return res
+    c = _rust.Call()
+    t0 = time.perf_counter()
+    r = _rust.call("lattice", "solve_lattice", _call=c, grid=grid, start_pose=list(start_pose),
+                   goal_pose=list(goal_pose), grade_m=grade_m, section=_section_arg(c, section), cfg=cfg)
+    return _decode_result(r, time.perf_counter() - t0)
 
 
 # =====================================================================================
@@ -547,9 +415,7 @@ def solve_lattice(grid: TerrainGrid, start_pose: Pose, goal_pose: Pose, grade_m:
 
 def heading_at(line: LineString, s: float, arm_m: float = 20.0) -> float:
     """Tangent bearing (rad) at chainage ``s``."""
-    a = line.interpolate(max(0.0, s - arm_m))
-    b = line.interpolate(min(line.length, s + arm_m))
-    return math.atan2(b.y - a.y, b.x - a.x)
+    return _rust.call("lattice", "heading_at", chainages=[s], arm_m=arm_m)[0]
 
 
 @dataclass
@@ -560,22 +426,6 @@ class PoolAlignment:
     grade_m: float
     result: LatticeResult
     baseline_cost: float          # the baseline segment under the same scorer (straight width)
-
-
-def _segment_cost(seg: LineString, grid: TerrainGrid, grade: float, section: SectionSpec) -> float:
-    hb = section.half_width_at(math.inf) + section.footprint_corr_m
-    sc = FieldScorer(grid, grade, hb, section)
-    total = 0.0
-    coords = np.asarray(seg.coords)
-    for (x0, y0), (x1, y1) in zip(coords[:-1], coords[1:]):
-        L = math.hypot(x1 - x0, y1 - y0)
-        if L <= 0:
-            continue
-        n = max(1, int(round(L / 2.0)))
-        prim = dict(pts=[(L * k / n, L * k / n, 0.0, 0.0) for k in range(1, n + 1)], arc_len=L)
-        c, ok = sc.score(prim, (x0, y0, math.atan2(y1 - y0, x1 - x0)))
-        total += c if ok else 0.0
-    return total
 
 
 def optimise_pool(baseline: LineString, terrain: TerrainSampler, river_polygon,
@@ -590,22 +440,13 @@ def optimise_pool(baseline: LineString, terrain: TerrainSampler, river_polygon,
     buffer around ``corridor_line`` (e.g. the natural river) between the projections of the
     two end points, when given.
     """
-    if not 0.0 <= start_m < end_m <= baseline.length:
-        raise ValueError("need 0 <= start_m < end_m <= baseline.length")
-    seg = substring(baseline, start_m, end_m)
-    corridor = seg.buffer(corridor_half_m)
-    if corridor_line is not None:
-        a = corridor_line.project(Point(seg.coords[0]))
-        b = corridor_line.project(Point(seg.coords[-1]))
-        corridor = corridor.union(substring(corridor_line, min(a, b), max(a, b)).buffer(corridor_half_m))
-    grid = build_terrain_grid(terrain, river_polygon, corridor, cell_m=cell_m)
-    grade = float(water_level_m) - float(depth_m)
-    p0 = baseline.interpolate(start_m); p1 = baseline.interpolate(end_m)
-    start = (p0.x, p0.y, heading_at(baseline, start_m))
-    goal = (p1.x, p1.y, heading_at(baseline, end_m))
-    res = solve_lattice(grid, start, goal, grade, section, cfg)
-    return PoolAlignment(start_m, end_m, float(water_level_m), grade, res,
-                         _segment_cost(seg, grid, grade, section))
+    c = _rust.Call()
+    t0 = time.perf_counter()
+    r = _rust.call("lattice", "optimise_pool", _call=c, baseline=baseline, terrain=c.terrain(terrain),
+                   river_polygon=river_polygon, start_m=start_m, end_m=end_m, water_level_m=water_level_m,
+                   depth_m=depth_m, section=_section_arg(c, section), cfg=cfg, corridor_line=corridor_line,
+                   corridor_half_m=corridor_half_m, cell_m=cell_m)
+    return _decode_pool(r, time.perf_counter() - t0)
 
 
 @dataclass
@@ -631,27 +472,12 @@ def optimise_pools(baseline: LineString, terrain: TerrainSampler, river_polygon,
     Each spliced segment joins the baseline within ``cfg.goal_pos_tol_m`` at its far end; the
     join is a straight step of at most that length.
     """
-    out_pools = []
-    pieces = []
-    cursor = 0.0
-    for a, b, wl in sorted(pools):
-        pa = optimise_pool(baseline, terrain, river_polygon, a, b, water_level_m=wl,
-                           depth_m=depth_m, section=section, cfg=cfg,
-                           corridor_line=corridor_line, corridor_half_m=corridor_half_m,
-                           cell_m=cell_m)
-        out_pools.append(pa)
-        use = pa.result.converged and not (keep_if_dearer and pa.result.cost > pa.baseline_cost)
-        if not use:
-            continue
-        if a > cursor:
-            pieces.append(list(substring(baseline, cursor, a).coords))
-        pieces.append(list(pa.result.line.coords))
-        cursor = b
-    if cursor < baseline.length:
-        pieces.append(list(substring(baseline, cursor, baseline.length).coords))
-    coords = []
-    for pc in pieces:
-        for xy in pc:
-            if not coords or math.hypot(xy[0] - coords[-1][0], xy[1] - coords[-1][1]) > 1e-9:
-                coords.append(tuple(xy))
-    return PoolsResult(LineString(coords), out_pools)
+    c = _rust.Call()
+    t0 = time.perf_counter()
+    r = _rust.call("lattice", "optimise_pools", _call=c, baseline=baseline, terrain=c.terrain(terrain),
+                   river_polygon=river_polygon, pools=[list(p) for p in pools], depth_m=depth_m,
+                   section=_section_arg(c, section), cfg=cfg, corridor_line=corridor_line,
+                   corridor_half_m=corridor_half_m, cell_m=cell_m, keep_if_dearer=bool(keep_if_dearer))
+    seconds = time.perf_counter() - t0
+    return PoolsResult(line=_rust.plain(r["line"]),
+                       pools=[_decode_pool(p, seconds / max(1, len(r["pools"]))) for p in r["pools"]])

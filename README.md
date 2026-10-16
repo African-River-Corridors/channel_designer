@@ -28,18 +28,34 @@ Pricing is out of scope. The package measures quantities; what they cost is your
 Python 3.12 or later.
 
 ```
+pip install channel_designer
+```
+
+From 0.2.0 the calculations run in a Rust core (`channel_designer._core`) that ships inside the
+package. Each release has one **abi3 wheel** per platform (Windows, macOS, Linux), so
+`pip install` needs **no compiler and no Rust**. The same wheel runs on every Python from 3.12.
+CI proves it: the `Wheels` workflow installs the wheel on a Windows machine with no compiler on
+the `PATH`, and refuses any source build (`--only-binary :all:`).
+
+Installing from source (a checkout or the git URL) builds the core with
+[maturin](https://www.maturin.rs/), so it **does** need a Rust toolchain ([rustup.rs](https://rustup.rs)):
+
+```
 pip install "channel_designer @ git+https://github.com/African-River-Corridors/channel_designer"
 ```
+
+Your scripts do not change. The 0.2.0 functions and classes have the names, arguments and results of
+0.1.x; see [CHANGELOG.md](CHANGELOG.md) for the few things that moved, and what is deprecated.
 
 Optional extras:
 
 | Extra | Adds | For |
 |---|---|---|
-| `[dem]` | rasterio, scipy, affine | reading a raster DEM (`volumes.raster.RasterTerrain`, `compute_chainage_volumes`) |
+| `[dem]` | rasterio, scipy, affine | nothing the package needs any more: the core reads GeoTIFFs itself. Kept so existing install commands work. |
 | `[drawings]` | technical_drawings_for_agents | cross-section sheets (`channel_designer.drawings`) |
 | `[dev]` | pytest | running the tests |
 
-For example `pip install "channel_designer[dem,drawings] @ git+https://github.com/African-River-Corridors/channel_designer"`.
+For example `pip install "channel_designer[drawings]"`.
 Calling a drawing function without `[drawings]` raises an `ImportError` that says what to install.
 
 ## Worked example
@@ -93,7 +109,7 @@ bank lines as shapely `LineString`s, the wetted area as a `Polygon`, and a terra
 GeoTIFF DEM in the same CRS:
 
 ```
-from channel_designer.volumes.raster import RasterTerrain   # needs [dem]
+from channel_designer.volumes.raster import RasterTerrain
 with RasterTerrain("my_dem.tif") as terrain:
     v = section_volumes(line, terrain, river_polygon, water_level, depth, half_width)
 ```

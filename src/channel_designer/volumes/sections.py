@@ -14,25 +14,15 @@ Quantities only — m², m³, metres of face height.
 """
 from __future__ import annotations
 
+from .. import _rust
+
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-from shapely import contains_xy
 from shapely.geometry import LineString
 
-from .cut_model import (
-    CUT_MODEL,
-    CUT_MODEL_B,
-    DX_M,
-    MAXW_M,
-    STATION_M,
-    WET_SLOPE_H_PER_V,
-    cut_model_a_bench_gate,
-    cut_model_a_section_face,
-    normalise_model,
-    section_area,
-)
+from .cut_model import CUT_MODEL, DX_M, MAXW_M, STATION_M, WET_SLOPE_H_PER_V
 
 TerrainSampler = Callable[[np.ndarray, np.ndarray], np.ndarray]
 LevelLike = Union[float, Callable[[float], float]]
@@ -93,21 +83,11 @@ class SectionVolumes:
         return out
 
 
-def _level(v: LevelLike) -> Callable[[float], float]:
-    if callable(v):
-        return v
-    f = float(v)
-    return lambda _s: f
-
-
 def station_frame(line: LineString, station_m: float = STATION_M):
     """(chainages, xy, headings) every ``station_m`` along ``line``."""
-    n = int(line.length // station_m) + 1
-    dsl = np.linspace(0, line.length, n)
-    xy = np.array([(line.interpolate(d).x, line.interpolate(d).y) for d in dsl])
-    dxy = np.gradient(xy, axis=0)
-    th = np.arctan2(dxy[:, 1], dxy[:, 0])
-    return dsl, xy, th
+    r = _rust.call("sections", "station_frame", line=line, station_m=station_m)
+    return (np.asarray(r["chainages"], dtype=float), np.asarray(r["xy"], dtype=float).reshape(-1, 2),
+            np.asarray(r["headings"], dtype=float))
 
 
 def section_volumes(line: LineString, terrain: TerrainSampler, river_polygon,
@@ -125,57 +105,23 @@ def section_volumes(line: LineString, terrain: TerrainSampler, river_polygon,
     ``wl`` is the pool water level, a float or ``wl(s)``; grade = wl − depth.
     ``tag(s)`` optionally labels each station (e.g. "complex"/"straight") for ``by_tag``.
     """
-    mdl = normalise_model(model)
-    if mdl not in (CUT_MODEL, CUT_MODEL_B):
-        raise ValueError(f"unknown cut model {model!r}; use 'a' or 'b'")
-    wl_at = _level(wl)
-    dsl, xy, th = station_frame(line, station_m)
-    if callable(hb):
-        hb_st = np.asarray(hb(xy), dtype=float)
-    else:
-        hb_arr = np.asarray(hb, dtype=float)
-        hb_st = np.full(len(xy), float(hb_arr)) if hb_arr.ndim == 0 else hb_arr
-    if hb_st.shape != (len(xy),):
-        raise ValueError(f"hb must give one half-width per station ({len(xy)}); got {hb_st.shape}")
-
-    offs = np.arange(-maxw_m, maxw_m + 0.1 * dx_m, dx_m)
-    sidewhich = [(-1 if o < 0 else 1) for o in offs]
-    m = len(offs)
-    out = SectionVolumes(station_m=station_m)
-    for a in range(0, len(xy), chunk):
-        b = min(a + chunk, len(xy))
-        idx = list(range(a, b))
-        nx = -np.sin(th[idx]); ny = np.cos(th[idx])
-        AX = (xy[idx, 0][:, None] + offs[None, :] * nx[:, None]).ravel()
-        AY = (xy[idx, 1][:, None] + offs[None, :] * ny[:, None]).ravel()
-        Z = np.asarray(terrain(AX, AY), dtype=float).reshape(len(idx), m)
-        W = contains_xy(river_polygon, AX, AY).reshape(len(idx), m)
-        for j, i in enumerate(idx):
-            s = float(dsl[i])
-            wl_i = float(wl_at(s)); grade = wl_i - depth
-            z = Z[j]
-            zl = [None if not np.isfinite(v) else float(v) for v in z]
-            wet = [bool(zl[k] is not None and W[j, k]) for k in range(m)]
-            dr, ex, fh = section_area(zl, offs, sidewhich, hb_st[i], grade, wl_i, depth, mdl,
-                                      wet, wet_slope=wet_slope, dx=dx_m, run_m=daylight_run_m)
-            bench = cut_model_a_bench_gate(offs, zl, hb_st[i], wl_i, depth, sidewhich,
-                                           wet_slope=wet_slope)
-            face = cut_model_a_section_face(offs, zl, hb_st[i], grade, wl_i, depth,
-                                            wet_slope=wet_slope, model=mdl,
-                                            run_m=daylight_run_m)
-            out.stations.append(CrossSection(
-                chainage_m=s, x=float(xy[i, 0]), y=float(xy[i, 1]), heading_rad=float(th[i]),
-                offsets=offs, terrain=z.copy(), wet=W[j].copy(), hb=float(hb_st[i]),
-                wl=wl_i, grade=grade, depth=float(depth), model=mdl,
-                cutface=np.array([np.nan if f is None else f for f in face], dtype=float),
-                dredge_area_m2=float(dr), excav_area_m2=float(ex), max_face_h_m=float(fh),
-                bench_left=bool(bench[-1]), bench_right=bool(bench[1]),
-                tag=(tag(s) if tag is not None else ""),
-            ))
-    return out
+    c = _rust.Call()
+    r = _rust.call("sections", "section_volumes", _call=c, line=line, terrain=c.terrain(terrain),
+                   river_polygon=river_polygon, wl=c.scalar(wl) if callable(wl) else wl, depth=depth,
+                   hb=c.stations(hb) if callable(hb) else hb, model=model, wet_slope=wet_slope,
+                   station_m=station_m, maxw_m=maxw_m, dx_m=dx_m, daylight_run_m=daylight_run_m,
+                   tag=c.text(tag) if tag is not None else None, chunk=int(chunk), detail_stations="all")
+    stations = []
+    for st, detail in zip(r["stations"], r["detail"]):
+        st = _rust.plain(st)
+        stations.append(CrossSection(
+            **st, offsets=np.asarray(_rust.plain(detail["offsets"]), dtype=float),
+            terrain=np.asarray(_rust.plain(detail["terrain"]), dtype=float),
+            wet=np.asarray(detail["wet"], dtype=bool),
+            cutface=np.asarray(_rust.plain(detail["cutface"]), dtype=float)))
+    return SectionVolumes(stations=stations, station_m=float(_rust.plain(r["station_m"])))
 
 
 def trapezoid_area(hb: float, depth: float, side_slope: float) -> float:
     """Wet cross-section area of a trapezoidal channel (m²): (bottom + top) / 2 × depth."""
-    top = 2.0 * hb + 2.0 * side_slope * depth
-    return 0.5 * (2.0 * hb + top) * depth
+    return _rust.call("sections", "trapezoid_area", float, hb=hb, depth=depth, side_slope=side_slope)
