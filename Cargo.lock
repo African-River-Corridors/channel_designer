@@ -23,6 +23,7 @@ name = "cd-format"
 version = "0.1.0"
 dependencies = [
  "cd-core",
+ "libm",
  "serde_json",
 ]
 

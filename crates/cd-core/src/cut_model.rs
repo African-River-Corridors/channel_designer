@@ -337,3 +337,65 @@ pub fn section_area(
     }
     Ok((dredge, excav, max_face_h))
 }
+
+/// Per-station bottom half-width from a [`ChannelShape`](crate::rules::rulesets::ChannelShape).
+pub fn widened_hb_from_shape(
+    xy: &[[f64; 2]],
+    shape: &crate::rules::rulesets::ChannelShape,
+    rmax: f64,
+) -> Vec<f64> {
+    let hb = shape.bottom_width_straight_m / 2.0;
+    let xs: Vec<f64> = xy.iter().map(|p| p[0]).collect();
+    let ys: Vec<f64> = xy.iter().map(|p| p[1]).collect();
+    let rmin = shape.min_bend_radius_m;
+    local_radii(&xs, &ys, 2)
+        .into_iter()
+        .map(|ri| {
+            if ri.is_finite() && 0.0 < ri && ri < rmax {
+                hb + 0.5 * shape.bend_widening_m(py_max(ri, rmin))
+            } else {
+                hb
+            }
+        })
+        .collect()
+}
+
+/// Per-offset cut-face elevation for ONE transverse profile (for drawings). `None` where there is
+/// no cut face: no cut above the water level, or beyond the Model B limit. The model matters: a
+/// drawing that hatches a wedge the volume model no longer takes is the drift this guards.
+#[allow(clippy::too_many_arguments)]
+pub fn cut_model_a_section_face(
+    offsets: &[f64],
+    terrain: &[f64],
+    hb: f64,
+    grade: f64,
+    wl: f64,
+    depth: f64,
+    wet_slope: f64,
+    model: &str,
+    run_m: Option<f64>,
+) -> Vec<Option<f64>> {
+    let bench = cut_model_a_bench_gate(offsets, terrain, hb, wl, depth, None, wet_slope);
+    let limits = (normalise_model(model) == CUT_MODEL_B).then(|| {
+        cut_model_b_daylight_limit(
+            offsets, terrain, hb, grade, wl, depth, bench, None, wet_slope, run_m,
+        )
+    });
+    offsets
+        .iter()
+        .map(|&off| {
+            let s: i8 = if off < 0.0 { -1 } else { 1 };
+            if let Some(l) = &limits
+                && off.abs() > l.get(s)
+            {
+                return None;
+            }
+            let f = cut_model_a_face(off.abs(), bench.get(s), hb, grade, wl, depth, wet_slope);
+            if f.is_finite() {
+                Some(ovcd_core::pyfmt::round_to(f, 2))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
