@@ -135,3 +135,33 @@ export const runStage = (stage: StageName, method?: RunMethod) => invoke<RunResu
 export const cancelRun = () => invoke<boolean>("cancel_run");
 /** Fetch a Copernicus DEM beside the saved design. */
 export const fetchDem = () => invoke<Snapshot>("fetch_dem");
+
+/** One row of the option comparison table. A number the session does not have is null. */
+export interface OptionRow {
+  id: string;
+  name: string;
+  method: string;
+  dredge_m3: number | null;
+  dry_cut_m3: number | null;
+  total_m3: number | null;
+  tallest_face_m: number | null;
+  min_radius_m: number | null;
+  r_min_m: number | null;
+  radius_ok: boolean | null;
+  failed_checks: string[];
+}
+export interface CheckRow {
+  option_id: string;
+  option: string;
+  check: string;
+  passed: boolean;
+  detail: string;
+}
+/** The table and checks list; rows and checks arrive with failures first. */
+export interface OptionTable {
+  screening: string;
+  volumes_status: "not run" | "fresh" | "stale";
+  rows: OptionRow[];
+  checks: CheckRow[];
+}
+export const optionTable = () => invoke<OptionTable>("option_table");

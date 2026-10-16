@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import * as api from "./lib/api";
-  import type { Choices, Hillshade, InputRole, MapGeometry, RunMethod, Snapshot, StageName } from "./lib/api";
+  import type { Choices, Hillshade, InputRole, MapGeometry, OptionTable, RunMethod, Snapshot, StageName } from "./lib/api";
+  import BottomPanel from "./lib/BottomPanel.svelte";
+  import { OPTION_COLOURS } from "./lib/basemap";
   import { BASEMAP_TILES } from "./lib/basemap";
   import MapPanel from "./lib/MapPanel.svelte";
   import LeftPanel from "./lib/LeftPanel.svelte";
@@ -12,6 +14,7 @@
   let error = $state<string | null>(null);
   let geometry = $state<MapGeometry | null>(null);
   let selectedId = $state<string | null>(null);
+  let table = $state<OptionTable | null>(null);
   let offline = $state(false);
   let hillshade = $state<Hillshade | null>(null);
   let tiles = $state<string | null>(null);
@@ -136,6 +139,25 @@
     }
   }
 
+  // The option table and checks list come from the session too, and refresh with every change.
+  $effect(() => {
+    void snap?.document;
+    api.optionTable().then(
+      (t) => {
+        table = t;
+        // Keep the selection while its option exists; otherwise select the first row (a failure, if any).
+        if (!t.rows.some((r) => r.id === selectedId)) selectedId = t.rows[0]?.id ?? null;
+      },
+      () => (table = null),
+    );
+  });
+
+  /** An option's map colour: its place in the design's list, which is the order the map draws. */
+  const colourOf = (id: string) => {
+    const i = geometry?.options.findIndex((o) => o.id === id) ?? -1;
+    return OPTION_COLOURS[(i < 0 ? 0 : i) % OPTION_COLOURS.length];
+  };
+
   // The hillshade is drawn once by the Rust side, and only when the imagery is offline. A new DEM
   // reference clears it.
   $effect(() => {
@@ -249,7 +271,7 @@
     </section>
     <div class="handle h" role="separator" aria-orientation="horizontal" onpointerdown={drag("y")}></div>
     <section class="bottom">
-      <p class="slot">The option comparison table and the checks list arrive with the later tickets of spec 0003.</p>
+      <BottomPanel {table} {colourOf} {selectedId} onSelect={(id) => (selectedId = id)} />
     </section>
   </div>
 
@@ -272,6 +294,5 @@
   .handle.h { grid-column: 3; grid-row: 2; cursor: row-resize; background: var(--line); }
   .bottom { grid-column: 3; grid-row: 3; }
   .handle:hover { background: var(--gold); }
-  .slot { color: var(--dim); padding: 16px; font-style: italic; }
   footer { padding: 4px 10px; background: var(--navy); color: var(--cream); font-size: 12px; letter-spacing: 0.04em; }
 </style>

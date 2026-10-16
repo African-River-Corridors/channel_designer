@@ -35,6 +35,8 @@
   let ready = $state(false);
   let failure = $state<string | null>(null);
   let labels: maplibregl.Marker[] = [];
+  /** The option the map has drawn as selected: what a test reads to know the map followed the table. */
+  let drawn = $state<string | null>(null);
 
   const empty = { type: "FeatureCollection", features: [] } as GeoJSON.FeatureCollection;
   const feature = (geometry: GeoJSON.Geometry, properties: GeoJSON.GeoJsonProperties = {}): GeoJSON.Feature => ({
@@ -53,6 +55,7 @@
         colour: OPTION_COLOURS[i % OPTION_COLOURS.length],
         selected: o.id === selected,
         failed: !o.radius_ok,
+        dim: selected != null && o.id !== selected,
       }),
     );
     const bends = (g?.options ?? []).flatMap((o) =>
@@ -77,6 +80,7 @@
     (map.getSource("options") as maplibregl.GeoJSONSource).setData(fc(s.options));
     (map.getSource("bends") as maplibregl.GeoJSONSource).setData(fc(s.bends));
     (map.getSource("ticks") as maplibregl.GeoJSONSource).setData(fc(s.ticks));
+    drawn = selectedId;
     // Chainage labels are HTML markers: the map needs no glyph server, so it works offline too.
     labels.forEach((m) => m.remove());
     labels = [];
@@ -144,7 +148,7 @@
       m.addLayer({ id: "centre", type: "line", source: "centre", paint: { "line-color": "#ffffff", "line-width": 1, "line-dasharray": [3, 3] } });
       // A casing under each option keeps its colour readable on any imagery.
       m.addLayer({ id: "options-casing", type: "line", source: "options", paint: { "line-color": "#000000", "line-opacity": 0.6, "line-width": ["case", ["get", "selected"], 8, 5] } });
-      m.addLayer({ id: "options", type: "line", source: "options", paint: { "line-color": ["get", "colour"], "line-width": ["case", ["get", "selected"], 5, 3] } });
+      m.addLayer({ id: "options", type: "line", source: "options", paint: { "line-color": ["get", "colour"], "line-width": ["case", ["get", "selected"], 5, 3], "line-opacity": ["case", ["get", "dim"], 0.55, 1] } });
       m.addLayer({ id: "ticks", type: "circle", source: "ticks", paint: { "circle-radius": 3, "circle-color": "#ffffff", "circle-stroke-color": "#000000", "circle-stroke-width": 1 } });
       m.addLayer({ id: "bends", type: "circle", source: "bends", paint: { "circle-radius": 9, "circle-color": "rgba(255,0,0,0.25)", "circle-stroke-color": "#ff2a2a", "circle-stroke-width": 3 } });
       ready = true;
@@ -182,7 +186,7 @@
   });
 </script>
 
-<div class="map" data-testid="plan-map" data-hillshade={offline && hillshade ? "shown" : "hidden"}>
+<div class="map" data-testid="plan-map" data-hillshade={offline && hillshade ? "shown" : "hidden"} data-selected={drawn ?? ""}>
   <div class="canvas" bind:this={host}></div>
   {#if failure}
     <p class="failure" role="alert" data-testid="map-failure">{failure}</p>

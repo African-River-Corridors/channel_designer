@@ -220,6 +220,12 @@ fn set_sizing(
     finish(&window, &guard)
 }
 
+/// The option comparison table and the checks list: failed options first, numbers kept.
+#[tauri::command]
+fn option_table(state: State<Shared>) -> Reply {
+    Ok(lock(&state)?.option_table())
+}
+
 /// The plan map's geometry in WGS84 (banks, centreline, options with tight bends and ticks).
 #[tauri::command]
 fn map_geometry(state: State<Shared>) -> Reply {
@@ -460,6 +466,7 @@ pub fn run() {
             set_sizing,
             run_stale,
             map_geometry,
+            option_table,
             hillshade,
             load_input,
             set_water,
