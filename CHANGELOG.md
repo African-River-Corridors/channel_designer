@@ -12,6 +12,8 @@ scenarios run on the base branch and on the pull request, and a result that move
 (ADR 0005) must have a bullet here, under this heading, saying what moved and why. Add the bullet in the
 pull request that moves the result. Nothing has moved yet in this section.
 
+- Cut Model volumes in the Rust core rise: the berm at the waterline is 2.5 m, not 2.0 m (demonstration of the check, not a real change).
+
 ## 0.2.0
 
 The calculations now run in a Rust core. The Python API is the same: the same names, arguments and
