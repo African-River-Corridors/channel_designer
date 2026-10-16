@@ -1,15 +1,16 @@
-//! Joined legs and the join guard (spec 0005 R2-Q2, R2-Q4, L5, L7, L8).
+//! Joined legs (spec 0005 R2-Q4, L7; ADR 0007) and the join guard (R2-Q2, L8).
 //!
-//! `join_legs` joins ordered seed legs into one design line. At each join it puts the largest
-//! fillet, from a ceiling down to R_min, whose arc keeps the channel (widened for that radius)
-//! inside the water. Where no fillet fits, a fairway-fit window replaces the corner; its half
-//! length grows with the turn angle (L5). Fixed pieces (a start pose, an end pose, must-follow
-//! segments) are then held by one fairway fit over the whole line.
+//! `join_legs` joins ordered seed legs into one design line with **one corridor per route**: the
+//! legs, end to end, are the seed of a single fairway fit (a minimum-curvature corridor solve)
+//! over the whole route, with its fixed pieces (a start pose, an end pose, must-follow segments).
+//! A join is then just a bend inside the corridor: there are no fillets to splice and no corners
+//! where pieces meet. Each join is read, by position (L7), on the final line: it holds R_min when
+//! the radius on the chord holds through its window and no infeasible stretch touches it.
 //!
-//! Joins are found by position, never by chainage, after any step that changes the line's length
-//! (L7). **The join guard** (R2-Q2, L8): after any later fit, each join that held R_min is read
-//! again; if it fails, that window is refit with more weight on a gentle bend; if it still fails,
-//! the result names the join in `guard_failed` (the option's failed `join_guard` check).
+//! **The join guard** (`guard_joins`) is kept for lines changed after a fit: each join that held
+//! R_min is read again; if it fails, that window is refit with more weight on a gentle bend; if it
+//! still fails, the join is named (the option's failed `join_guard` check). `join_legs` itself
+//! needs no guard, since nothing fits the line after its one corridor solve.
 //!
 //! The same machinery closes the straight steps between optimised pools tangentially
 //! (`tangent_joins`, `optimise_pools_tangent`).
@@ -18,10 +19,8 @@ use super::PyError;
 use super::fairway_fit::{
     FitParams, Fixed, Pose, fairway_fit, fairway_fit_in_water, merge_stretches,
 };
-use super::fillet::fillet;
-use super::navigable::{Chained, Stretch, navigable_water, width_check};
+use super::navigable::{Chained, Stretch};
 use super::radius_check::{default_check_chord, min_radius_on_chord, radius_ok};
-use crate::geom::grid::EdgeGrid;
 use crate::geom::{Polygon, Pt, linear};
 use crate::rules::rulesets::ChannelShape;
 
@@ -29,21 +28,17 @@ use crate::rules::rulesets::ChannelShape;
 #[derive(Debug, Clone, PartialEq)]
 pub struct JoinParams {
     pub r_min: f64,
-    /// The largest fillet tried (m); default 8 R_min.
-    pub r_ceiling_m: f64,
     /// The chord radius is read on (default R_min/3).
     pub chord_m: f64,
     pub clearance_m: f64,
     pub smooth_m: f64,
-    /// Half length of a fairway-fit window, per radian of turn, as a multiple of R_min (L5:
-    /// 2 gives about 2.6 km for a 90° join at R_min 420 m).
+    /// Half length of a join's window, per radian of turn, as a multiple of R_min (L5: 2 gives
+    /// about 2.6 km for a 90° join at R_min 420 m). A join is read over half of it.
     pub blend_per_rad: f64,
-    /// How closely the largest fillet radius is found (m).
-    pub radius_step_m: f64,
     /// Turns smaller than this (radians) are not joins.
     pub min_turn_rad: f64,
     /// The weight on a gentle bend when the guard refits a window (the preferred-radius
-    /// penalty of the fairway fit).
+    /// weight of the fairway fit).
     pub guard_weight: f64,
 }
 
@@ -51,12 +46,10 @@ impl JoinParams {
     pub fn new(r_min: f64) -> Self {
         JoinParams {
             r_min,
-            r_ceiling_m: 8.0 * r_min,
             chord_m: default_check_chord(r_min),
             clearance_m: 0.0,
             smooth_m: 0.0,
             blend_per_rad: 2.0,
-            radius_step_m: 0.5,
             min_turn_rad: 3f64.to_radians(),
             guard_weight: 100.0,
         }
@@ -68,9 +61,10 @@ impl JoinParams {
 pub enum JoinMethod {
     /// Under the minimum turn: left as it is.
     Straight,
-    /// A fillet of this radius (m).
+    /// A fillet of this radius (m). `join_legs` no longer makes fillets (ADR 0007); the variant
+    /// stays so a recorded join still reads.
     Fillet(f64),
-    /// No fillet fits: a fairway-fit window.
+    /// A bend inside the route's corridor (the fairway fit).
     FairwayFit,
 }
 
@@ -90,7 +84,8 @@ pub struct JoinResult {
     pub joins: Vec<Join>,
     pub infeasible: Vec<Stretch>,
     /// Joins that held R_min, failed after a later fit, and stayed failed after the guard's
-    /// refit: the failed `join_guard` check.
+    /// refit: the failed `join_guard` check. Always empty from `join_legs`, whose one corridor
+    /// solve is the last fit.
     pub guard_failed: Vec<Pt>,
     pub measured_min_radius_m: f64,
     pub radius_check_chord_m: f64,
@@ -112,83 +107,78 @@ pub fn join_legs(
         .ruleset()
         .validate()
         .map_err(|e| PyError::value(e.raw_message().to_string()))?;
-    let mut line: Vec<Pt> = Vec::new();
+    let mut seed: Vec<Pt> = Vec::new();
     let mut at: Vec<Pt> = Vec::new();
     for (k, leg) in legs.iter().enumerate() {
         for &p in leg {
-            if line.last() != Some(&p) {
-                line.push(p);
+            if seed.last() != Some(&p) {
+                seed.push(p);
             }
         }
         if k + 1 < legs.len() {
             at.push(leg[leg.len() - 1]);
         }
     }
-    let mut ctx = Ctx::new(water, shape, params);
-    let mut joins = Vec::new();
-    for (k, &p) in at.iter().enumerate() {
-        // The room either side: up to the neighbouring joins (by position) or the line's ends.
-        let s = linear::project(&line, p);
-        // A neighbouring join shares the room between them; a line end gives all of it.
-        let room_in = match k {
-            0 => s,
-            _ => (s - linear::project(&line, at[k - 1])) / 2.0,
-        };
-        let room_out = match at.get(k + 1) {
-            None => linear::length(&line) - s,
-            Some(q) => (linear::project(&line, *q) - s) / 2.0,
-        };
-        let (j, new_line) = ctx.join(&line, s, room_in, room_out, p)?;
-        line = new_line;
-        joins.push(j);
-    }
-    let mut infeasible = Vec::new();
-    let mut guard_failed = Vec::new();
-    let has_fixed =
-        fixed.start_pose.is_some() || fixed.end_pose.is_some() || !fixed.must_follow.is_empty();
-    if has_fixed {
-        let fit = fairway_fit_in_water(
-            &line,
-            water,
-            shape,
-            params.clearance_m,
-            params.smooth_m,
-            fixed,
-            &ctx.fit_params(),
-        )?;
-        let (guarded, failed) = guard_joins(&fit.line, &joins, water, shape, params)?;
-        line = guarded;
-        guard_failed = failed;
-        infeasible = fit.infeasible;
-    }
-    // The checks on the final line, inside each join's window, added to the fit's.
-    let fin = Chained::new(&line);
-    let mut found = width_check(&line, water, shape, params.r_min, params.chord_m)?;
-    let straight = ctx.nav_for(f64::INFINITY)?.clone();
-    let status = |s: f64| {
-        (!straight.covers(fin.at(s), 0.05)).then_some(super::navigable::StretchReason::TooNarrow)
-    };
-    found.extend(super::fairway_fit::stretches(
-        &fin,
-        fin.length(),
-        5.0,
-        &status,
-    ));
-    for j in &joins {
-        let s = linear::project(&line, j.at);
-        let h = ctx.window_half(j.turn_rad);
-        found
-            .iter()
-            .filter(|st| st.end_chainage_m > s - h && st.start_chainage_m < s + h)
-            .for_each(|st| infeasible.push(st.clone()));
-    }
-    let infeasible = merge_stretches(&line, infeasible);
+    // The turn at each join, read on the seed across the room either side (up to the
+    // neighbouring joins, by position, or the line's ends).
+    let c = Chained::new(&seed);
+    let turns: Vec<f64> = at
+        .iter()
+        .enumerate()
+        .map(|(k, &p)| {
+            let s = linear::project(&seed, p);
+            let room_in = match k {
+                0 => s,
+                _ => (s - linear::project(&seed, at[k - 1])) / 2.0,
+            };
+            let room_out = match at.get(k + 1) {
+                None => c.length() - s,
+                Some(q) => (linear::project(&seed, *q) - s) / 2.0,
+            };
+            let arm = 25.0_f64.min(room_in / 2.0).min(room_out / 2.0).max(1.0);
+            super::fillet::turn_angle(c.direction(s - arm, arm), c.direction(s + arm, arm))
+        })
+        .collect();
+    let ctx = Ctx::new(params);
+    // One corridor for the whole route.
+    let fit = fairway_fit_in_water(
+        &seed,
+        water,
+        shape,
+        params.clearance_m,
+        params.smooth_m,
+        fixed,
+        &ctx.fit_params(),
+    )?;
+    let line = fit.line;
+    let infeasible = merge_stretches(&line, fit.infeasible);
+    let joins = at
+        .iter()
+        .zip(&turns)
+        .map(|(&p, &turn)| {
+            let s = linear::project(&line, p);
+            let h = ctx.window_half(turn) / 2.0;
+            let clear = !infeasible
+                .iter()
+                .any(|st| st.end_chainage_m > s - h && st.start_chainage_m < s + h);
+            Join {
+                at: p,
+                turn_rad: turn,
+                method: if turn.abs() < params.min_turn_rad {
+                    JoinMethod::Straight
+                } else {
+                    JoinMethod::FairwayFit
+                },
+                held_r_min: clear && ctx.holds(&line, p, turn),
+            }
+        })
+        .collect();
     let measured = min_radius_on_chord(&line, params.chord_m)?;
     Ok(JoinResult {
         line,
         joins,
         infeasible,
-        guard_failed,
+        guard_failed: vec![],
         measured_min_radius_m: measured,
         radius_check_chord_m: params.chord_m,
         radius_ok: radius_ok(measured, params.r_min),
@@ -206,7 +196,7 @@ pub fn guard_joins(
     shape: &ChannelShape,
     params: &JoinParams,
 ) -> Result<(Vec<Pt>, Vec<Pt>), PyError> {
-    let ctx = Ctx::new(water, shape, params);
+    let ctx = Ctx::new(params);
     let mut line = line.to_vec();
     let mut failed = Vec::new();
     for j in joins.iter().filter(|j| j.held_r_min) {
@@ -242,22 +232,14 @@ pub fn guard_joins(
     Ok((line, failed))
 }
 
-/// Shared state: the water, the settings, and navigable water per radius.
+/// The settings, and the readings made with them.
 struct Ctx<'a> {
-    water: &'a [Polygon],
-    shape: &'a ChannelShape,
     p: &'a JoinParams,
-    nav: Vec<(f64, EdgeGrid)>,
 }
 
 impl<'a> Ctx<'a> {
-    fn new(water: &'a [Polygon], shape: &'a ChannelShape, p: &'a JoinParams) -> Self {
-        Ctx {
-            water,
-            shape,
-            p,
-            nav: Vec::new(),
-        }
+    fn new(p: &'a JoinParams) -> Self {
+        Ctx { p }
     }
 
     fn fit_params(&self) -> FitParams {
@@ -269,26 +251,6 @@ impl<'a> Ctx<'a> {
     /// Half length of a join's fairway-fit window (L5).
     fn window_half(&self, turn: f64) -> f64 {
         (self.p.blend_per_rad * self.p.r_min * turn.abs()).max(self.p.r_min)
-    }
-
-    fn nav_for(&mut self, r: f64) -> Result<&EdgeGrid, PyError> {
-        if let Some(i) = self.nav.iter().position(|(rr, _)| *rr == r) {
-            return Ok(&self.nav[i].1);
-        }
-        let half = self.shape.bottom_width_at_m(r) / 2.0;
-        let polys = navigable_water(self.water, half, self.p.clearance_m, self.p.smooth_m)?;
-        self.nav.push((r, EdgeGrid::new(&polys)));
-        Ok(&self.nav.last().unwrap().1)
-    }
-
-    /// Whether a fillet piece keeps a channel widened for `r` in the water.
-    fn fits(&mut self, piece: &[Pt], r: f64) -> Result<bool, PyError> {
-        let grid = self.nav_for(r)?;
-        let c = Chained::new(piece);
-        let n = (c.length() / 5.0).ceil() as usize;
-        let inside = (0..=n).all(|i| grid.covers(c.at((i as f64 * 5.0).min(c.length())), 0.05));
-        Ok(inside
-            && width_check(piece, self.water, self.shape, self.p.r_min, self.p.chord_m)?.is_empty())
     }
 
     /// Whether the radius read on the chord holds through a join's window on `line`.
@@ -318,95 +280,6 @@ impl<'a> Ctx<'a> {
             end_pose: (s1 < c.length()).then(|| pose(s1)),
             must_follow: vec![],
         }
-    }
-
-    /// One join at chainage `s` of `line`, with `room_in` and `room_out` metres either side.
-    fn join(
-        &mut self,
-        line: &[Pt],
-        s: f64,
-        room_in: f64,
-        room_out: f64,
-        at: Pt,
-    ) -> Result<(Join, Vec<Pt>), PyError> {
-        let c = Chained::new(line);
-        let arm = 25.0_f64.min(room_in / 2.0).min(room_out / 2.0).max(1.0);
-        let d_in = c.direction(s - arm, arm);
-        let d_out = c.direction(s + arm, arm);
-        let turn = super::fillet::turn_angle(d_in, d_out);
-        if turn.abs() < self.p.min_turn_rad {
-            let held = self.holds(line, at, turn);
-            return Ok((
-                Join {
-                    at,
-                    turn_rad: turn,
-                    method: JoinMethod::Straight,
-                    held_r_min: held,
-                },
-                line.to_vec(),
-            ));
-        }
-        let (s0, s1) = ((s - room_in).max(0.0), (s + room_out).min(c.length()));
-        let (r_min, r_ceiling, step) = (self.p.r_min, self.p.r_ceiling_m, self.p.radius_step_m);
-        let mut try_r = |r: f64| -> Result<Option<Vec<Pt>>, PyError> {
-            let Some(f) = fillet(&c, s0, s1, r, 10.0, 5.0) else {
-                return Ok(None);
-            };
-            Ok(self.fits(&f, r)?.then_some(f))
-        };
-        let best = if let Some(f) = try_r(r_ceiling)? {
-            Some((r_ceiling, f))
-        } else if let Some(f) = try_r(r_min)? {
-            // Largest radius that fits: bisection between R_min (fits) and the ceiling (not).
-            let (mut lo, mut hi, mut best) = (r_min, r_ceiling, f);
-            while hi - lo > step {
-                let mid = (lo + hi) / 2.0;
-                match try_r(mid)? {
-                    Some(f) => {
-                        lo = mid;
-                        best = f;
-                    }
-                    None => hi = mid,
-                }
-            }
-            Some((lo, best))
-        } else {
-            None
-        };
-        if let Some((r, f)) = best {
-            return Ok((
-                Join {
-                    at,
-                    turn_rad: turn,
-                    method: JoinMethod::Fillet(r),
-                    held_r_min: true,
-                },
-                splice(&c, s0, s1, &f),
-            ));
-        }
-        // No fillet fits: a fairway-fit window, its length growing with the turn (L5).
-        let h = self.window_half(turn);
-        let (w0, w1) = ((s - h).max(0.0), (s + h).min(c.length()));
-        let fit = fairway_fit_in_water(
-            &c.slice(w0, w1),
-            self.water,
-            self.shape,
-            self.p.clearance_m,
-            self.p.smooth_m,
-            &self.poses(&c, w0, w1),
-            &self.fit_params(),
-        )?;
-        let out = splice(&c, w0, w1, &fit.line);
-        let held = fit.infeasible.is_empty() && self.holds(&out, at, turn);
-        Ok((
-            Join {
-                at,
-                turn_rad: turn,
-                method: JoinMethod::FairwayFit,
-                held_r_min: held,
-            },
-            out,
-        ))
     }
 }
 
@@ -475,8 +348,7 @@ pub fn tangent_joins(
             }),
             must_follow: vec![],
         };
-        let mut fp = FitParams::new(r_min);
-        fp.levels.retain(|l| l.spacing_m <= 50.0);
+        let fp = FitParams::new(r_min);
         let fit = fairway_fit(&piece, &[open], &fixed, &fp)?;
         line = splice(&c, s0, s1, &fit.line);
     }
@@ -576,18 +448,42 @@ mod tests {
         (r, f)
     }
 
+    /// The largest step of curvature (1/m) between stations 10 m apart, read through points 10 m
+    /// either side, on a line with continuous curvature (as in the fairway fit's tests). A
+    /// fillet's ends read about 1/R across two stations.
+    const KINK_STEP: f64 = 0.05 / R_MIN;
+
+    /// The basin's seed with the corner replaced by a fillet of radius `r` (tangent to both legs).
+    fn filleted(r: f64) -> Vec<Pt> {
+        let seed = vec![[0.0, -1500.0], [0.0, 0.0], [1500.0, 0.0]];
+        let c = Chained::new(&seed);
+        let f = fillet_between([0.0, -r], [0.0, 1.0], [r, 0.0], [1.0, 0.0], r, 5.0).unwrap();
+        splice(&c, 1500.0 - r, 1500.0 + r, &f)
+    }
+
     #[test]
-    fn the_open_basin_gets_one_fillet_at_the_largest_radius_it_allows() {
+    fn the_open_basin_is_one_smooth_corridor_at_least_as_wide_as_its_largest_fillet() {
         let (r, _) = basin_join(200.0);
-        let want = basin_radius(200.0);
-        assert!((want - 639.3).abs() < 0.1, "{want}");
+        let fillet_r = basin_radius(200.0);
+        assert!((fillet_r - 639.3).abs() < 0.1, "{fillet_r}");
         assert_eq!(r.joins.len(), 1);
-        let JoinMethod::Fillet(got) = r.joins[0].method else {
-            panic!("{:?}", r.joins[0]);
-        };
-        assert!((got - want).abs() < 1.0, "fillet {got} vs {want}");
-        assert!(got >= R_MIN && r.joins[0].held_r_min);
+        assert_eq!(r.joins[0].method, JoinMethod::FairwayFit);
+        assert!(r.joins[0].held_r_min && r.guard_failed.is_empty());
         assert!(r.radius_ok && r.infeasible.is_empty(), "{:?}", r.infeasible);
+        // Free to use the open water around the join, the corridor's tightest bend is at least
+        // the largest fillet's.
+        assert!(
+            radius_ok(r.measured_min_radius_m, fillet_r),
+            "{} vs {fillet_r}",
+            r.measured_min_radius_m
+        );
+        // One smooth line through the join: no step in curvature.
+        let step = crate::alignment::fairway_fit::max_curvature_step(&r.line, 10.0, 10.0);
+        assert!(step <= KINK_STEP, "{step:.2e}");
+        // The check fails on the largest fillet itself: a corner in curvature at each end.
+        let step =
+            crate::alignment::fairway_fit::max_curvature_step(&filleted(fillet_r), 10.0, 10.0);
+        assert!(step > KINK_STEP, "{step:.2e}");
     }
 
     #[test]
@@ -614,8 +510,7 @@ mod tests {
         let (r, f) = basin_join(200.0);
         let water = core::slice::from_ref(&f.water);
         let p = JoinParams::new(R_MIN);
-        let sh = shape();
-        let ctx = Ctx::new(water, &sh, &p);
+        let ctx = Ctx::new(&p);
         let bad = tightened(&r.line);
         // The tightening is real: without the guard the join no longer holds R_min.
         assert!(!ctx.holds(&bad, r.joins[0].at, r.joins[0].turn_rad));
@@ -648,8 +543,7 @@ mod tests {
         assert!(cs.local_radius(old_s + 300.0, p.chord_m) > 1e6);
         let (guarded, failed) = guard_joins(&short, &r.joins, water, &shape(), &p).unwrap();
         assert!(failed.is_empty());
-        let sh = shape();
-        let ctx = Ctx::new(water, &sh, &p);
+        let ctx = Ctx::new(&p);
         assert!(ctx.holds(&guarded, r.joins[0].at, r.joins[0].turn_rad));
         assert!(!ctx.holds(&short, r.joins[0].at, r.joins[0].turn_rad));
     }

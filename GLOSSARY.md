@@ -44,8 +44,8 @@ _Avoid_: fairway (as an area in code), wet area
 
 **Fairway fit**:
 The step that fits a smooth design line inside navigable water between fixed poses, never tighter
-than R_min. It is a rung of the water-aware rolling circle and the fallback of a leg join, not a
-method of its own.
+than R_min where the water allows: a minimum-curvature corridor solve (ADR 0007). It is a rung of
+the water-aware rolling circle and the whole of a leg join, not a method of its own.
 
 **Infeasible stretch**:
 A stretch of a design line where no line that meets R_min fits inside navigable water. It is
