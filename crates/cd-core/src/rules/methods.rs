@@ -324,29 +324,8 @@ fn pianc_opts(options: &Options) -> Result<PiancOpts, RuleError> {
     })
 }
 
-/// Python's `sum()` of floats, starting from the int 0. CPython 3.12 sums floats with Neumaier
-/// compensation, so a plain left-to-right fold differs in the last bit (and `round(..., 2)` of
-/// the result can then differ). The reference is printed by 3.12.
 fn py_sum(xs: &[f64]) -> f64 {
-    let mut sum = 0.0_f64;
-    let mut comp = 0.0_f64;
-    for &x in xs {
-        if !x.is_finite() {
-            sum += x;
-            continue;
-        }
-        let t = sum + x;
-        if sum.abs() >= x.abs() {
-            comp += (sum - t) + x;
-        } else {
-            comp += (x - t) + sum;
-        }
-        sum = t;
-    }
-    if comp != 0.0 && comp.is_finite() {
-        sum += comp;
-    }
-    sum
+    crate::py_sum(xs.iter().copied())
 }
 
 fn pianc_straight(_loa_m: f64, beam_m: f64, options: &Options) -> Result<f64, RuleError> {
