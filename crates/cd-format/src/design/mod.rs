@@ -7,4 +7,4 @@ pub mod schema;
 pub mod session;
 
 pub use geojson::Role;
-pub use session::{DesignError, ImportReport, Session, Stage, StageStatus, Status};
+pub use session::{DesignError, ImportReport, Session, Stage, StageStatus, Status, date_from_unix};

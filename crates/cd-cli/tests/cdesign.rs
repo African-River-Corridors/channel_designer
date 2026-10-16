@@ -423,3 +423,67 @@ fn exit_code_2_is_a_usage_or_input_error() {
         err(&o)
     );
 }
+
+#[test]
+fn run_reruns_a_stale_stage_and_leaves_fresh_ones_alone() {
+    let dir = work_dir("run");
+    let doc = build(&dir);
+    let fresh = std::fs::read_to_string(&doc).unwrap();
+    let o = run(&["run", &doc, "--json"], "");
+    assert_eq!(code(&o), 0);
+    assert_eq!(
+        serde_json::from_str::<Value>(&out(&o)).unwrap(),
+        json!({"ok": true, "ran": []})
+    );
+    assert_eq!(
+        std::fs::read_to_string(&doc).unwrap(),
+        fresh,
+        "a fresh design is written back unchanged"
+    );
+    // Edit the vessel in the settings, as the app does before a run: sizing is stale, run reruns it.
+    let edited = fresh.replacen(
+        r#""vessel_standard_id": "CEMT_IV",
+        "draught_m""#,
+        r#""vessel_standard_id": "CEMT_Va",
+        "draught_m""#,
+        1,
+    );
+    std::fs::write(&doc, edited).unwrap();
+    let o = run(&["run", &doc, "--json"], "");
+    assert_eq!(
+        serde_json::from_str::<Value>(&out(&o)).unwrap(),
+        json!({"ok": true, "ran": ["sizing"]})
+    );
+    let saved: Value = serde_json::from_str(&std::fs::read_to_string(&doc).unwrap()).unwrap();
+    assert_eq!(
+        saved["stages"]["sizing"]["results"]["vessel_standard_id"],
+        "CEMT_Va"
+    );
+    let s = run(&["status", &doc, "--json"], "");
+    assert_eq!(
+        serde_json::from_str::<Value>(&out(&s)).unwrap()["stages"]["sizing"],
+        "fresh"
+    );
+}
+
+/// `examples/synthetic-river.cdesign` is the worked example the app opens in its smoke test: the
+/// synthetic river (UTM 30N), sized for CEMT IV on PIANC-B at 2.5 m. It is what the commands
+/// `new`, `import` and `size` write. To rewrite it after a deliberate change:
+/// `CDESIGN_UPDATE_EXAMPLE=1 cargo test -p cd-cli the_worked_example`.
+#[test]
+fn the_worked_example_file_is_what_the_commands_produce() {
+    let dir = work_dir("example");
+    let doc = build(&dir);
+    let made = std::fs::read_to_string(&doc).unwrap();
+    let example =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/synthetic-river.cdesign");
+    if std::env::var_os("CDESIGN_UPDATE_EXAMPLE").is_some() {
+        std::fs::write(&example, &made).unwrap();
+    }
+    let committed = std::fs::read_to_string(&example).expect("examples/synthetic-river.cdesign");
+    assert_eq!(
+        committed, made,
+        "run with CDESIGN_UPDATE_EXAMPLE=1 to rewrite the example"
+    );
+    assert_eq!(code(&run(&["validate", example.to_str().unwrap()], "")), 0);
+}

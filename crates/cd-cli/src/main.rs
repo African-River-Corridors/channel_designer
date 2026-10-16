@@ -83,6 +83,13 @@ enum Command {
         #[command(flatten)]
         out: Out,
     },
+    /// Rerun every stale stage, in order.
+    Run {
+        /// The channel design. `-` is stdin.
+        doc: String,
+        #[command(flatten)]
+        out: Out,
+    },
     /// Check a channel design against the schema and its own rules.
     Validate {
         /// The channel design. `-` is stdin.
@@ -140,6 +147,7 @@ fn main() -> ExitCode {
             draught,
             out,
         } => commands::size(&doc, &ruleset, &vessel, draught, &out.output, out.json),
+        Command::Run { doc, out } => commands::run(&doc, &out.output, out.json),
         Command::Validate { doc, json } => commands::validate(&doc, json),
         Command::Status { doc, json } => commands::status(&doc, json),
         Command::Schema => commands::schema(),
