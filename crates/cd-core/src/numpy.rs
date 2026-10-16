@@ -128,6 +128,100 @@ pub(crate) fn searchsorted_right(a: &[f64], v: f64) -> usize {
     a.partition_point(|&x| x <= v)
 }
 
+// --- added for the alignment port (ticket 27) ---
+
+use crate::geom::Pt;
+
+/// `np.linalg.norm` of a 2-vector: `sqrt(x*x + y*y)`.
+pub(crate) fn norm(dx: f64, dy: f64) -> f64 {
+    (dx * dx + dy * dy).sqrt()
+}
+
+/// `concatenate(([0], cumsum(norm(diff(points), axis=1))))`: chainage at each point.
+pub(crate) fn chainages(points: &[Pt]) -> Vec<f64> {
+    let mut out = Vec::with_capacity(points.len());
+    let mut acc = 0.0;
+    out.push(0.0);
+    for w in points.windows(2) {
+        acc += norm(w[1][0] - w[0][0], w[1][1] - w[0][1]);
+        out.push(acc);
+    }
+    out
+}
+
+/// Python `a // b` for floats (CPython `float_floor_div`).
+pub(crate) fn py_floordiv(a: f64, b: f64) -> f64 {
+    let m = a % b;
+    let mut div = (a - m) / b;
+    if m != 0.0 && ((b < 0.0) != (m < 0.0)) {
+        div -= 1.0;
+    }
+    if div == 0.0 {
+        return 0.0f64.copysign(a / b);
+    }
+    let mut f = div.floor();
+    if div - f > 0.5 {
+        f += 1.0;
+    }
+    f
+}
+
+/// `np.unwrap(p)` with the default period 2π.
+pub(crate) fn unwrap(p: &[f64]) -> Vec<f64> {
+    use core::f64::consts::PI;
+    let mut out = p.to_vec();
+    let mut correction = 0.0;
+    for i in 1..p.len() {
+        let dd = p[i] - p[i - 1];
+        let mut ddmod = np_mod(dd + PI, 2.0 * PI) - PI;
+        if ddmod == -PI && dd > 0.0 {
+            ddmod = PI;
+        }
+        let mut ph = ddmod - dd;
+        if dd.abs() < PI {
+            ph = 0.0;
+        }
+        correction += ph;
+        out[i] = p[i] + correction;
+    }
+    out
+}
+
+/// order, of `a[j] * (1 / n)` over the overlapping `j`.
+pub(crate) fn box_convolve(a: &[f64], n: usize, same: bool) -> Vec<f64> {
+    let w = 1.0 / n as f64;
+    let len = a.len() as isize;
+    let (count, first) = if same {
+        (a.len().max(n), ((n - 1) / 2) as isize - (n - 1) as isize)
+    } else {
+        (a.len().max(n) - a.len().min(n) + 1, 0)
+    };
+    (0..count as isize)
+        .map(|i| {
+            let mut s = 0.0;
+            for j in (i + first)..(i + first + n as isize) {
+                if (0..len).contains(&j) {
+                    s += a[j as usize] * w;
+                }
+            }
+            s
+        })
+        .collect()
+}
+
+/// `np.sign`: -1, 0 or +1 (NaN stays NaN).
+pub(crate) fn sign(x: f64) -> f64 {
+    if x > 0.0 {
+        1.0
+    } else if x < 0.0 {
+        -1.0
+    } else {
+        x
+    }
+}
+
+// --- added for the route port (ticket 29) ---
+
 /// `np.arange(start, stop, step)` for floats: `ceil((stop - start) / step)` values. numpy fills
 /// them as `start + i * delta`, where `delta = (start + step) - start` (which is not always
 /// `step`, to the last bit).
@@ -173,4 +267,34 @@ pub(crate) fn argmin(xs: &[f64]) -> usize {
         }
     }
     best
+}
+
+#[cfg(test)]
+mod alignment_tests {
+    //! Label: sourced - numpy 2.x and CPython 3.12 results for the same inputs
+    use super::*;
+
+    #[test]
+    fn floor_division_and_modulo_follow_python() {
+        assert_eq!(py_floordiv(7.0, 2.0), 3.0);
+        assert_eq!(py_floordiv(-7.0, 2.0), -4.0);
+        assert_eq!(py_floordiv(0.3, 0.1), 2.0);
+        assert_eq!(np_mod(-1.0, 3.0), 2.0);
+    }
+
+    #[test]
+    fn unwrap_removes_a_jump_of_two_pi() {
+        let u = unwrap(&[3.0, -3.0]);
+        assert!((u[1] - (-3.0 + 2.0 * core::f64::consts::PI)).abs() < 1e-15);
+    }
+
+    #[test]
+    fn box_convolve_same_and_valid_lengths() {
+        let a = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        assert_eq!(box_convolve(&a, 5, true).len(), 6);
+        assert_eq!(box_convolve(&a, 5, false).len(), 2);
+        assert!((box_convolve(&a, 3, false)[0] - 2.0).abs() < 1e-15);
+        // numpy: np.convolve([1, 2, 3, 4, 5, 6], np.ones(4) / 4, "same")[0] == (1 + 2) / 4
+        assert_eq!(box_convolve(&a, 4, true)[0], 0.75);
+    }
 }

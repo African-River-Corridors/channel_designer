@@ -15,5 +15,10 @@
   "cut_model_extras",
   "cascade",
   "route",
-  "lattice"
+  "lattice",
+  "centreline",
+  "widths",
+  "limits",
+  "meanders",
+  "bends"
 ]
