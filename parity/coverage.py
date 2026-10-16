@@ -21,6 +21,7 @@ NO_ERROR_CASES = {
     "primitives": "no function raises on its own; bad inputs (zero bins, zero radius) divide by zero",
     "bends": "no function raises: an infeasible bend is a result (`e = inf`), not an error",
     "raster": "no refusal of its own; a corridor off the raster raises rasterio's WindowError",
+    "geometry": "shapely itself: its refusals carry GEOS wording, not the package's",
     "synthetic": "no function raises",
 }
 

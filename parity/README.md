@@ -26,7 +26,8 @@ Rules: `rulesets`, `methods`, `design`, `simple`, `width_profile`. Alignment: `r
 `loops`, `primitives`, `centreline`, `widths`, `limits`, `meanders`, `bends`, `rolling_circle`,
 `route`. Volumes: `cut_model`, `cut_model_extras` (the rest of `cut_model.py`), `cut_model_grid`,
 `sections`, `footprint`, `pools`, `raster`. Optimise: `cascade`, `lattice`. Others: `terrain_profile`,
-`synthetic`. Drawings are spec 0004's.
+`synthetic`, and `geometry` (the shapely operations the package uses, one function each; no Python
+file of its own). Drawings are spec 0004's.
 
 A case calls one public function by name, with its keyword arguments. Where the Python function takes
 an object (a `CostGrid`, a `LevelTable`, a `Weir` list), the case carries the data and the module's
@@ -56,7 +57,9 @@ when Python raises. Floats are shortest round-trip text. NaN and infinity are th
 `"float:nan"`, `"float:inf"` and `"float:-inf"`, in inputs and in results. In a list of heights,
 `null` (Python `None`) means "no ground" and reads as NaN. A dict with integer keys uses the keys
 as text (`"1"`, `"-1"`). A shapely geometry is `{"geom": "LineString", "coords": [[x, y], ...]}` (also
-`Point`, `Polygon` with `exterior` and `holes`, `MultiLineString`, `MultiPolygon`). A terrain sampler
+`Point`, `Polygon` with `exterior` and `holes`, `MultiLineString`, `MultiPolygon`, `MultiPoint`,
+`GeometryCollection`; an empty point, multipoint or collection is `{"geom": ..., "empty": true}`).
+Polygon results are compared normalised (ADR 0005). A terrain sampler
 is a spec: `synthetic_river`, `plane`, `hills`, `valley`, `wrong_shape`. Coordinates in case inputs are
 rounded to the millimetre where a module says so (`rnd`): the rounded numbers are the case.
 
