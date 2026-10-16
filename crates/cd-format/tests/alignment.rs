@@ -74,8 +74,13 @@ fn coords(o: &Value) -> Vec<Pt> {
 fn the_rolling_circle_option_equals_rolling_circle_called_directly() {
     let line = river_line();
     let mut s = design(&line, "CEMT_IV");
-    s.align(AlignMethod::RollingCircle, &Value::Null, None)
-        .unwrap();
+    // Without water: today's rolling circle (the water-aware one is in tests/water_aware.rs).
+    s.align(
+        AlignMethod::RollingCircle,
+        &json!({"use_water": false}),
+        None,
+    )
+    .unwrap();
     let r_min = s.document()["stages"]["sizing"]["results"]["min_bend_radius_m"]
         .as_f64()
         .unwrap();

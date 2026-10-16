@@ -16,6 +16,9 @@ use serde_json::{Value, json};
 /// The engine version written into documents and stages.
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// The document format version this engine writes (2 since spec 0005; it opens 1 and moves it).
+pub const FORMAT_VERSION: i64 = 2;
+
 /// The UTC calendar date, `YYYY-MM-DD`, of a Unix time in seconds. The session has no clock: a caller
 /// reads one and passes the seconds here when it needs a date to write into a new document.
 pub fn date_from_unix(secs: u64) -> String {
@@ -179,7 +182,7 @@ impl Session {
         Session {
             water_sampling: Default::default(),
             doc: json!({
-                "format_version": 1,
+                "format_version": FORMAT_VERSION,
                 "engine_version": ENGINE_VERSION,
                 "project": {"title": title, "created": created, "crs": null, "source_crs": {}},
                 "inputs": {
@@ -205,12 +208,40 @@ impl Session {
         };
         if s.doc["inputs"].is_object() && s.validate_schema_only().is_empty() {
             s.migrate_water_settings();
+            s.migrate_to_v2();
         }
         let errors = s.validate();
         if errors.is_empty() {
             Ok(s)
         } else {
             Err(DesignError::Document(errors))
+        }
+    }
+
+    /// A version 1 document (before spec 0005) becomes version 2. Its rolling circle records
+    /// `use_water: false`, so a rerun gives the results it already holds; a stage that was fresh
+    /// stays fresh (its hash is taken again over the recorded setting).
+    fn migrate_to_v2(&mut self) {
+        if self.doc["format_version"] != 1 {
+            return;
+        }
+        let fresh: Vec<Stage> = Stage::ALL
+            .iter()
+            .copied()
+            .filter(|st| self.stage_status(*st) == StageStatus::Fresh)
+            .collect();
+        self.doc["format_version"] = json!(FORMAT_VERSION);
+        let settings = &mut self.doc["stages"]["alignment"]["settings"];
+        if !settings.is_object() {
+            *settings = json!({});
+        }
+        if !settings["rolling_circle"].is_object() {
+            settings["rolling_circle"] = json!({});
+        }
+        settings["rolling_circle"]["use_water"] = json!(false);
+        for st in fresh {
+            let h = self.dependency_hash(st);
+            self.doc["stages"][st.name()]["depends_on"] = json!(h);
         }
     }
 

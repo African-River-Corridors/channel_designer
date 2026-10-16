@@ -1,5 +1,7 @@
 //! The `cdesign` subcommands. File, stdin, stdout and clock access live here.
 
+use cd_format::design::alignment::WIDTH_ONLY;
+use cd_format::design::export::{failed_checks, water_note};
 use cd_format::design::geopackage;
 use cd_format::design::{
     AlignMethod, DemCheck, DesignError, Role, Session, Stage, StageStatus, Terrain,
@@ -511,15 +513,34 @@ pub fn align(
         .cloned()
         .unwrap_or(Value::Null);
     let c = &option["checks"];
-    let ok = c["radius_ok"].as_bool().unwrap_or(false);
-    let human = format!(
+    let failed = failed_checks(&option);
+    let ok = failed.is_empty();
+    let mut human = format!(
         "{}: minimum radius {:.0} m on a {:.0} m chord against R_min {:.0} m: {}",
         option["name"].as_str().unwrap_or(method.name()),
         c["measured_min_radius_m"].as_f64().unwrap_or(f64::NAN),
         c["radius_check_chord_m"].as_f64().unwrap_or(f64::NAN),
         c["r_min_m"].as_f64().unwrap_or(f64::NAN),
-        if ok { "ok" } else { "FAILS R_min" }
+        if c["radius_ok"].as_bool() == Some(true) {
+            "ok"
+        } else {
+            "FAILS R_min"
+        }
     );
+    if let Some(st) = c["fits_in_water"]["stretches"].as_array() {
+        human.push_str(&format!(
+            "\nfits in water ({}): {}",
+            WIDTH_ONLY,
+            if st.is_empty() {
+                "ok".to_string()
+            } else {
+                format!("FAILS at {} stretch(es)", st.len())
+            }
+        ));
+    }
+    if c["join_guard"]["ok"].as_bool() == Some(false) {
+        human.push_str("\njoin guard: FAILS");
+    }
     say(
         dest == "-",
         json_mode,
@@ -531,7 +552,7 @@ pub fn align(
         Ok(())
     } else {
         Err(Failure {
-            message: "the option fails R_min".into(),
+            message: format!("the option fails: {}", failed.join(", ")),
             code: 1,
         })
     }
@@ -1015,6 +1036,24 @@ pub fn status(doc: &str, json_mode: bool) -> Result {
     if !stale.is_empty() {
         human.push(format!("stale: {}", stale.join(", ")));
     }
+    // Each option's failed checks (spec 0002, spec 0005), and the water-aware note.
+    let options: Vec<Value> = session.document()["options"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|o| {
+            let failed = failed_checks(o);
+            let note = water_note(o);
+            if !failed.is_empty() {
+                human.push(format!(
+                    "option {}: FAILS {}",
+                    o["id"].as_str().unwrap_or("?"),
+                    failed.join(", ")
+                ));
+            }
+            json!({"id": o["id"], "failed_checks": failed, "notes": note})
+        })
+        .collect();
     let mut stages = serde_json::Map::new();
     for (s, status) in &st.stages {
         stages.insert(
@@ -1033,6 +1072,7 @@ pub fn status(doc: &str, json_mode: bool) -> Result {
         json!({
             "stages": Value::Object(stages),
             "stale": stale,
+            "options": options,
             "warnings": session.dem_warning(bytes.as_deref()).into_iter().collect::<Vec<_>>(),
         }),
     );
