@@ -10,5 +10,6 @@
   "sections",
   "cut_model_grid",
   "cut_model_extras",
-  "cascade"
+  "cascade",
+  "lattice"
 ]
