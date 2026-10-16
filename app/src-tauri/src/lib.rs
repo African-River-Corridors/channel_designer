@@ -220,6 +220,48 @@ fn set_sizing(
     finish(&window, &guard)
 }
 
+/// Make or fetch the station walk of an option off the main thread, and remember it.
+async fn walked(state: &State<'_, Shared>, option: String) -> Result<state::Walked, String> {
+    let job = lock(state)?.begin_walk(&option);
+    let walked = tauri::async_runtime::spawn_blocking(move || job.run())
+        .await
+        .map_err(|e| e.to_string())??;
+    lock(state)?.keep_walk(&walked);
+    Ok(walked)
+}
+
+/// The long section of an option: bed, water level, design invert and cut depth along its chainage.
+#[tauri::command]
+async fn long_section(state: State<'_, Shared>, option: String) -> Reply {
+    let w = walked(&state, option.clone()).await?;
+    w.session
+        .long_section(&option, &w.walk)
+        .map_err(|e| e.to_string())
+}
+
+/// The cross-section at the station nearest to a chainage.
+#[tauri::command]
+async fn cross_section(state: State<'_, Shared>, option: String, chainage: f64) -> Reply {
+    let w = walked(&state, option).await?;
+    w.session
+        .cross_section(&w.walk, chainage)
+        .map_err(|e| e.to_string())
+}
+
+/// The chainage of the station nearest to a point picked on the map.
+#[tauri::command]
+async fn station_near(
+    state: State<'_, Shared>,
+    option: String,
+    lon: f64,
+    lat: f64,
+) -> Result<f64, String> {
+    let w = walked(&state, option).await?;
+    w.session
+        .station_near(&w.walk, lon, lat)
+        .map_err(|e| e.to_string())
+}
+
 /// The option comparison table and the checks list: failed options first, numbers kept.
 #[tauri::command]
 fn option_table(state: State<Shared>) -> Reply {
@@ -467,6 +509,9 @@ pub fn run() {
             run_stale,
             map_geometry,
             option_table,
+            long_section,
+            cross_section,
+            station_near,
             hillshade,
             load_input,
             set_water,

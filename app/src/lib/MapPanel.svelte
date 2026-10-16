@@ -12,6 +12,8 @@
     selectedId = null,
     hillshade = null,
     tiles = BASEMAP_TILES,
+    stationPosition = null,
+    onPick,
     offline = $bindable(false),
   }: {
     geometry: MapGeometry | null;
@@ -20,6 +22,10 @@
     hillshade?: Hillshade | null;
     /** The tile address. Only a test changes it. */
     tiles?: string;
+    /** Where the section station is, as `[lon, lat]`: a marker follows it. */
+    stationPosition?: [number, number] | null;
+    /** A click on the map: the point under it. */
+    onPick?: (lon: number, lat: number) => void;
     /** True while the basemap tiles are failing. The parent reads it to fetch the hillshade. */
     offline?: boolean;
   } = $props();
@@ -35,6 +41,7 @@
   let ready = $state(false);
   let failure = $state<string | null>(null);
   let labels: maplibregl.Marker[] = [];
+  let stationMarker: maplibregl.Marker | undefined;
   /** The option the map has drawn as selected: what a test reads to know the map followed the table. */
   let drawn = $state<string | null>(null);
 
@@ -93,6 +100,25 @@
     }
   }
 
+  /** Move the station marker, or take it off the map. */
+  function placeStation() {
+    if (!map || !ready) return;
+    if (!stationPosition) {
+      stationMarker?.remove();
+      stationMarker = undefined;
+      return;
+    }
+    if (!stationMarker) {
+      const el = document.createElement("div");
+      el.className = "station-marker";
+      el.dataset.testid = "station-marker";
+      stationMarker = new maplibregl.Marker({ element: el }).setLngLat(stationPosition).addTo(map);
+    } else {
+      stationMarker.setLngLat(stationPosition);
+    }
+    stationMarker.getElement().dataset.position = stationPosition.map((v) => v.toFixed(6)).join(",");
+  }
+
   let shownShade: string | null = null;
   /** Lay the hillshade under the vector layers, and show it only while the imagery is offline. */
   function shade() {
@@ -137,6 +163,7 @@
     }
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
+    map.on("click", (e) => onPick?.(e.lngLat.lng, e.lngLat.lat));
     map.on("load", () => {
       const m = map!;
       // A placeholder picture until the hillshade arrives; `setCoordinates` and `updateImage` replace it.
@@ -176,6 +203,12 @@
     void ready;
     draw();
     fit();
+  });
+
+  $effect(() => {
+    void stationPosition;
+    void ready;
+    placeStation();
   });
 
   $effect(() => {
@@ -225,5 +258,6 @@
   .fail { color: #b3261e; margin-left: 6px; }
   .hint, .failure { position: absolute; left: 50%; top: 40%; transform: translateX(-50%); margin: 0; padding: 8px 12px; background: rgba(255, 255, 255, 0.92); border-radius: 4px; z-index: 2; max-width: 80%; text-align: center; }
   .failure { color: #b3261e; }
+  :global(.station-marker) { width: 16px; height: 16px; border-radius: 50%; background: #14325a; border: 3px solid #fff; box-shadow: 0 0 0 2px #14325a, 0 1px 4px rgba(0,0,0,.6); pointer-events: none; }
   :global(.tick-label) { font-size: 10px; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; white-space: nowrap; }
 </style>

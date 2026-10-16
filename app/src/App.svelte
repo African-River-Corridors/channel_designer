@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import * as api from "./lib/api";
-  import type { Choices, Hillshade, InputRole, MapGeometry, OptionTable, RunMethod, Snapshot, StageName } from "./lib/api";
+  import type { Choices, CrossSection as CrossSectionData, Hillshade, InputRole, LongSection as LongSectionData, MapGeometry, OptionTable, RunMethod, Snapshot, StageName } from "./lib/api";
+  import CrossSection from "./lib/CrossSection.svelte";
+  import LongSection from "./lib/LongSection.svelte";
   import BottomPanel from "./lib/BottomPanel.svelte";
   import { OPTION_COLOURS } from "./lib/basemap";
   import { BASEMAP_TILES } from "./lib/basemap";
@@ -15,6 +17,11 @@
   let geometry = $state<MapGeometry | null>(null);
   let selectedId = $state<string | null>(null);
   let table = $state<OptionTable | null>(null);
+  let longSection = $state<LongSectionData | null>(null);
+  let crossSection = $state<CrossSectionData | null>(null);
+  let sectionNote = $state<string | null>(null);
+  /** The station: a chainage on the selected option's line, set by the slider, a plot click or a map click. */
+  let station = $state<number | null>(null);
   let offline = $state(false);
   let hillshade = $state<Hillshade | null>(null);
   let tiles = $state<string | null>(null);
@@ -124,6 +131,16 @@
     if (next) snap = next;
   }
 
+  /** New and Open start a different study: its first option (a failing one, if any) is selected, not the old selection. */
+  async function openDoc(action: () => Promise<Snapshot | null>) {
+    await flush();
+    const next = await guard(action);
+    if (!next) return;
+    selectedId = null;
+    station = null;
+    snap = next;
+  }
+
   function onKey(e: KeyboardEvent) {
     if (!(e.metaKey || e.ctrlKey)) return;
     const k = e.key.toLowerCase();
@@ -132,10 +149,10 @@
       fileAction(e.shiftKey ? api.saveAs : api.save);
     } else if (k === "o") {
       e.preventDefault();
-      fileAction(api.openFile);
+      openDoc(api.openFile);
     } else if (k === "n") {
       e.preventDefault();
-      fileAction(api.newFile);
+      openDoc(api.newFile);
     }
   }
 
@@ -151,6 +168,64 @@
       () => (table = null),
     );
   });
+
+  // The long section of the selected option, drawn from the station walk the volumes summed. It is
+  // asked for again whenever the design or the selection changes; a refusal says why instead.
+  let sectionRequest = 0;
+  $effect(() => {
+    const id = selectedId;
+    void snap?.document;
+    const mine = ++sectionRequest;
+    if (!id) {
+      longSection = null;
+      crossSection = null;
+      return;
+    }
+    api.longSection(id).then(
+      (ls) => {
+        if (mine !== sectionRequest) return;
+        longSection = ls;
+        sectionNote = null;
+        if (station == null || station > ls.chainage_m[ls.chainage_m.length - 1]) station = ls.chainage_m[0];
+      },
+      (e) => {
+        if (mine !== sectionRequest) return;
+        longSection = null;
+        crossSection = null;
+        sectionNote = String(e);
+      },
+    );
+  });
+
+  // The cross-section at the station, latest request wins.
+  let crossRequest = 0;
+  $effect(() => {
+    const id = selectedId;
+    const at = station;
+    void longSection;
+    if (!id || at == null || !longSection) return;
+    const mine = ++crossRequest;
+    api.crossSection(id, at).then(
+      (cs) => {
+        if (mine === crossRequest) crossSection = cs;
+      },
+      () => {},
+    );
+  });
+
+  /** The slider moves between the stations the session drew. */
+  let stationIndex = $derived(longSection && station != null ? longSection.chainage_m.findIndex((c) => c >= station! - 1e-9) : 0);
+  function slide(i: number) {
+    if (longSection) station = longSection.chainage_m[i];
+  }
+  function pickChainage(c: number) {
+    if (longSection) station = longSection.chainage_m.reduce((best, x) => (Math.abs(x - c) < Math.abs(best - c) ? x : best));
+  }
+  async function pickPoint(lon: number, lat: number) {
+    if (!selectedId || !longSection) return;
+    const c = await guard(() => api.stationNear(selectedId!, lon, lat));
+    if (c != null) station = c;
+  }
 
   /** An option's map colour: its place in the design's list, which is the order the map draws. */
   const colourOf = (id: string) => {
@@ -234,8 +309,8 @@
 
 <div class="shell">
   <header>
-    <button onclick={() => fileAction(api.newFile)}>New</button>
-    <button onclick={() => fileAction(api.openFile)}>Open</button>
+    <button onclick={() => openDoc(api.newFile)}>New</button>
+    <button onclick={() => openDoc(api.openFile)}>Open</button>
     <button onclick={() => fileAction(api.save)}>Save</button>
     <button onclick={() => fileAction(api.saveAs)}>Save as</button>
     <button disabled={!anyStale || busy !== null} onclick={runStale} title="Rerun every stale stage, in order">Run stale</button>
@@ -267,7 +342,35 @@
     <section class="left"><LeftPanel {snap} {choices} {onSizing} {busy} {samples} {dropTarget} onRun={run} onCancel={cancel} onLoad={(r) => load(r)} onFetch={fetchDem} onWater={water} /></section>
     <div class="handle v" role="separator" aria-orientation="vertical" onpointerdown={drag("x")}></div>
     <section class="main">
-      {#if tiles}<MapPanel {geometry} {selectedId} {hillshade} {tiles} bind:offline />{/if}
+      <div class="mapbox">
+        {#if tiles}<MapPanel {geometry} {selectedId} {hillshade} {tiles} stationPosition={crossSection?.position ?? null} onPick={pickPoint} bind:offline />{/if}
+      </div>
+      <div class="sections" data-testid="sections">
+        <div class="longbox">
+          {#if longSection}
+            <LongSection data={longSection} {station} colour={selectedId ? colourOf(selectedId) : "#14325a"} onPick={pickChainage} />
+          {:else}
+            <p class="slot" data-testid="section-note">{sectionNote ?? "Run volumes to see the long section."}</p>
+          {/if}
+        </div>
+        <div class="crossbox">
+          <label class="slider">
+            Station
+            <input
+              type="range"
+              data-testid="station-slider"
+              aria-label="Station"
+              min="0"
+              max={Math.max((longSection?.chainage_m.length ?? 1) - 1, 0)}
+              step="1"
+              disabled={!longSection}
+              value={stationIndex < 0 ? 0 : stationIndex}
+              oninput={(e) => slide(Number(e.currentTarget.value))}
+            />
+          </label>
+          <div class="csbody"><CrossSection section={crossSection} colour={selectedId ? colourOf(selectedId) : "#14325a"} /></div>
+        </div>
+      </div>
     </section>
     <div class="handle h" role="separator" aria-orientation="horizontal" onpointerdown={drag("y")}></div>
     <section class="bottom">
@@ -290,7 +393,15 @@
   .body > section { overflow: auto; min-width: 0; min-height: 0; }
   .left { grid-column: 1; grid-row: 1 / 4; }
   .handle.v { grid-column: 2; grid-row: 1 / 4; cursor: col-resize; background: var(--line); }
-  .main { grid-column: 3; grid-row: 1; overflow: hidden; }
+  .main { grid-column: 3; grid-row: 1; overflow: hidden; display: grid; grid-template-rows: minmax(120px, 1fr) minmax(150px, 40%); }
+  .mapbox { min-height: 0; position: relative; }
+  .sections { display: grid; grid-template-columns: 1fr minmax(260px, 42%); min-height: 0; border-top: 1px solid var(--line); }
+  .longbox, .crossbox { min-width: 0; min-height: 0; overflow: hidden; }
+  .crossbox { border-left: 1px solid var(--line); display: flex; flex-direction: column; }
+  .csbody { flex: 1; min-height: 0; }
+  .slider { display: flex; gap: 8px; align-items: center; padding: 4px 8px; font-size: 12px; color: var(--dim); }
+  .slider input { flex: 1; }
+  .slot { color: var(--dim); font-style: italic; margin: 8px 10px; font-size: 13px; }
   .handle.h { grid-column: 3; grid-row: 2; cursor: row-resize; background: var(--line); }
   .bottom { grid-column: 3; grid-row: 3; }
   .handle:hover { background: var(--gold); }

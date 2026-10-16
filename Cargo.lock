@@ -348,6 +348,7 @@ version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "cd-cli",
+ "cd-core",
  "cd-format",
  "serde_json",
  "tauri",

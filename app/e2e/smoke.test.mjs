@@ -327,7 +327,49 @@ describe("Channel Designer app smoke test", () => {
     // The failing option starts selected; selecting the other row moves the map's selection.
     const mapSelected = async () => (await (await browser.$("[data-testid=plan-map]")).getAttribute("data-selected")) ?? "";
     await until("the map to select the failing option", async () => (await mapSelected()) === "reroute", 30000);
-    await (await browser.$("[data-testid=option-row][data-option=rolling-circle]")).click();
+    // The panel is short: scroll the row into view, then click it.
+    const row = await browser.$("[data-testid=option-row][data-option=rolling-circle]");
+    await row.scrollIntoView();
+    await browser.execute((el) => el.click(), row);
     await until("the map to follow the table", async () => (await mapSelected()) === "rolling-circle", 30000);
+  });
+  it("moves the cross-section and the map marker with the station slider, from the volumes' own station walk", async () => {
+    await open(designWithDem("sections-"), "with-dem.cdesign");
+    await formShowsExample();
+    await (await browser.$("[data-testid=run-alignment]")).click();
+    await until("alignment to be fresh", async () => (await text("status-alignment")) === "fresh", 60000);
+    await (await browser.$("[data-testid=water-level]")).setValue("38");
+    await (await browser.$("[data-testid=set-water]")).click();
+    await (await browser.$("[data-testid=run-volumes]")).click();
+    await until("volumes to be fresh", async () => (await text("status-volumes")) === "fresh", 120000);
+    // The long section of the selected option, and a cross-section at its first station.
+    await until("the long section", async () => Number(await (await browser.$("[data-testid=long-section]")).getAttribute("data-stations")) > 2, 60000);
+    const stations = Number(await (await browser.$("[data-testid=long-section]")).getAttribute("data-stations"));
+    await until("the cross-section", async () => (await (await browser.$("[data-testid=cross-section]")).getAttribute("data-chainage")) !== "", 60000);
+    const slideTo = (i) =>
+      browser.execute((i) => {
+        const el = document.querySelector("[data-testid=station-slider]");
+        el.value = String(i);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      }, i);
+    const snapshotOf = () =>
+      browser.execute(() => ({
+        chainage: document.querySelector("[data-testid=cross-section]").dataset.chainage,
+        terrain: document.querySelector("[data-testid=cs-terrain]")?.getAttribute("d") ?? "",
+        marker: document.querySelector(".station-marker")?.dataset.position ?? null,
+      }));
+    await slideTo(0);
+    await until("the first station", async () => (await snapshotOf()).chainage === "0");
+    await until("the map marker", async () => (await snapshotOf()).marker !== null, 30000);
+    const first = await snapshotOf();
+    await slideTo(Math.floor(stations / 2));
+    await until("the cross-section to change", async () => (await snapshotOf()).chainage !== first.chainage, 30000);
+    await until("the marker to move", async () => (await snapshotOf()).marker !== first.marker, 30000);
+    const middle = await snapshotOf();
+    assert.notEqual(middle.terrain, first.terrain, "a different station has a different ground profile");
+    // Edit the vessel: the volumes go stale, and the sections say so rather than showing old numbers.
+    const { values, current } = await vesselChoices();
+    await chooseVessel(values.find((v) => v !== current && v.startsWith("CEMT")));
+    await until("the sections to be withdrawn", async () => (await (await browser.$("[data-testid=section-note]")).isExisting()), 30000);
   });
 });
