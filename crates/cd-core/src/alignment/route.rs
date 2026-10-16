@@ -276,6 +276,30 @@ pub fn dp_optimise(
     station_step: f64,
     offset_step: f64,
 ) -> Result<(Vec<usize>, f64), PyError> {
+    dp_optimise_fair(
+        offsets,
+        centres,
+        cost,
+        r_min,
+        station_step,
+        offset_step,
+        0.0,
+    )
+}
+
+/// [`dp_optimise`] with a fairness weight (spec 0005 Q9): each step also costs
+/// `fairness_weight` × the squared change of heading (radians) at the station, so that where cut
+/// is equal (open water) the smoother path wins. At 0 the term is never added, so the result is
+/// exactly `dp_optimise`'s.
+pub fn dp_optimise_fair(
+    offsets: &[f64],
+    centres: &[Pt],
+    cost: &[Vec<f64>],
+    r_min: f64,
+    station_step: f64,
+    offset_step: f64,
+    fairness_weight: f64,
+) -> Result<(Vec<usize>, f64), PyError> {
     let ds = station_step;
     let heading_budget = ds / r_min;
     let beta = baseline_turn_angles(centres);
@@ -326,7 +350,11 @@ pub fn dp_optimise(
                     continue;
                 }
                 for jn in jn_lo as usize..=jn_hi as usize {
-                    let cand = base_val + cost[i][jn];
+                    let mut cand = base_val + cost[i][jn];
+                    if fairness_weight != 0.0 {
+                        let turn = phi_lut[d0 + jn - jc] - phi_prev + bi;
+                        cand += fairness_weight * turn * turn;
+                    }
                     if cand < ndp[jc * k + jn] {
                         ndp[jc * k + jn] = cand;
                         nb[jc * k + jn] = jp as i32;
@@ -481,6 +509,17 @@ pub fn solve_at_corridor(
     corridor_half: f64,
     r_min: f64,
 ) -> Result<(Vec<f64>, i64, f64, f64), PyError> {
+    solve_at_corridor_fair(grid, cost, corridor_half, r_min, 0.0)
+}
+
+/// [`solve_at_corridor`] with the DP's fairness weight ([`dp_optimise_fair`]).
+pub fn solve_at_corridor_fair(
+    grid: &CostGrid,
+    cost: &[Vec<f64>],
+    corridor_half: f64,
+    r_min: f64,
+    fairness_weight: f64,
+) -> Result<(Vec<f64>, i64, f64, f64), PyError> {
     let offsets = &grid.offsets;
     let (o_lo, o_hi) = offset_bounds(&grid.centres, r_min);
     let mut g: Vec<Vec<f64>> = cost.to_vec();
@@ -492,13 +531,14 @@ pub fn solve_at_corridor(
             }
         }
     }
-    let (path, _) = dp_optimise(
+    let (path, _) = dp_optimise_fair(
         offsets,
         &grid.centres,
         &g,
         r_min,
         grid.station_step,
         grid.offset_step,
+        fairness_weight,
     )?;
     let beta = baseline_turn_angles(&grid.centres);
     let chosen: Vec<f64> = path.iter().map(|&j| offsets[j]).collect();
@@ -523,6 +563,9 @@ pub struct RouteParams {
     pub dry_weight: f64,
     pub corridor_sweep: Vec<f64>,
     pub check_chord_m: Option<f64>,
+    /// Weight on the squared change of heading between stations in the DP (spec 0005 Q9).
+    /// Default 0: today's results.
+    pub fairness_weight: f64,
 }
 
 /// Least-cost lateral re-route over a cost grid (the caller builds it, with `corridor_half` set to
@@ -548,7 +591,8 @@ pub fn optimise_route(grid: &CostGrid, p: &RouteParams) -> Result<RouteResult, P
     let mut best: Option<Best> = None;
     let mut sweep = Vec::new();
     for &ch in &p.corridor_sweep {
-        let (sm, passes, rmin, sav) = solve_at_corridor(grid, &cost, ch, p.r_min)?;
+        let (sm, passes, rmin, sav) =
+            solve_at_corridor_fair(grid, &cost, ch, p.r_min, p.fairness_weight)?;
         sweep.push((ch, sav, rmin));
         let pts = build_line_from_offsets(&grid.centres, &grid.normals, &sm);
         let measured = min_radius_on_vertices(&pts, k as i64)?;
@@ -662,6 +706,7 @@ mod tests {
             dry_weight: 1.0,
             corridor_sweep: vec![40.0, 80.0],
             check_chord_m: None,
+            fairness_weight: 0.0,
         };
         let r = optimise_route(&grid, &p).unwrap();
         assert_eq!(
@@ -677,6 +722,99 @@ mod tests {
             optimise_route(&grid, &bad).unwrap_err().message,
             "check_chord_m must be finite and positive."
         );
+    }
+
+    /// Bending energy of a polyline: Σ (turn angle)² / (mean arm length), a discrete ∫κ² ds.
+    fn bending_energy(pts: &[Pt]) -> f64 {
+        pts.windows(3)
+            .map(|w| {
+                let (a, b) = (
+                    [w[1][0] - w[0][0], w[1][1] - w[0][1]],
+                    [w[2][0] - w[1][0], w[2][1] - w[1][1]],
+                );
+                let t = libm::atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1]);
+                let l = (libm::hypot(a[0], a[1]) + libm::hypot(b[0], b[1])) / 2.0;
+                t * t / l
+            })
+            .sum()
+    }
+
+    #[test]
+    fn in_the_open_basin_a_fairness_weight_gives_a_smoother_line_at_the_same_cut() {
+        // Label: property. Open water everywhere (bed 10 m below grade): every path cuts nothing,
+        // so at weight 0 the DP keeps the first of equal paths, here the seed's own digitising
+        // jitter (±15 m every 100 m along both legs); with a weight it takes a smoother one.
+        let f = crate::synthetic::open_basin_90(1500.0, 600.0);
+        let mut rng = crate::synthetic::fixtures::SplitMix::new(5);
+        let mut line: Vec<Pt> = (0..15)
+            .map(|i| [15.0 * rng.signed_unit(), -1500.0 + 100.0 * i as f64])
+            .collect();
+        line[0][0] = 0.0;
+        line.push([0.0, 0.0]);
+        line.extend((1..=15).map(|i| [100.0 * i as f64, 15.0 * rng.signed_unit()]));
+        line.last_mut().unwrap()[1] = 0.0;
+        let bed = |xs: &[f64], _: &[f64]| vec![-10.0; xs.len()];
+        let gp = GridParams {
+            bottom_width: 30.4,
+            depth: 3.0,
+            side_slope: 3.0,
+            corridor_half: 160.0,
+            station_step: 50.0,
+            offset_step: 10.0,
+            transect_step: 2.0,
+            daylight_m: None,
+        };
+        let grid =
+            build_cost_grid(&line, &bed, core::slice::from_ref(&f.water), &|_| 0.0, &gp).unwrap();
+        assert!(grid.vol.iter().flatten().all(|v| *v == 0.0));
+        let run = |w: f64| {
+            optimise_route(
+                &grid,
+                &RouteParams {
+                    r_min: 255.0,
+                    wet_weight: 1.0,
+                    dry_weight: 1.0,
+                    corridor_sweep: vec![160.0],
+                    check_chord_m: None,
+                    fairness_weight: w,
+                },
+            )
+            .unwrap()
+        };
+        let (plain, fair) = (run(0.0), run(1.0));
+        let path_cut = |r: &RouteResult| -> f64 {
+            r.offsets
+                .iter()
+                .enumerate()
+                .map(|(i, o)| {
+                    let k = grid.offsets.iter().position(|x| (x - o).abs() < 1e-6);
+                    k.map_or(0.0, |k| grid.vol[i][k])
+                })
+                .sum()
+        };
+        assert_eq!(path_cut(&plain), 0.0);
+        assert_eq!(path_cut(&fair), 0.0);
+        let (e0, e1) = (bending_energy(&plain.line), bending_energy(&fair.line));
+        assert!(e1 < e0, "bending energy {e1} not below {e0}");
+        // Weight 0 is today's DP exactly.
+        let today = dp_optimise(
+            &grid.offsets,
+            &grid.centres,
+            &grid.weighted(1.0, 1.0),
+            255.0,
+            50.0,
+            10.0,
+        );
+        let zero = dp_optimise_fair(
+            &grid.offsets,
+            &grid.centres,
+            &grid.weighted(1.0, 1.0),
+            255.0,
+            50.0,
+            10.0,
+            0.0,
+        );
+        assert_eq!(today.unwrap(), zero.unwrap());
     }
 
     #[test]
@@ -711,6 +849,7 @@ mod tests {
             dry_weight: 1.0,
             corridor_sweep: vec![40.0],
             check_chord_m: None,
+            fairness_weight: 0.0,
         };
         let res = optimise_route(&grid, &p).unwrap();
         assert!((min_radius_on_vertices(&res.line, 1).unwrap() - r).abs() < 1e-6);

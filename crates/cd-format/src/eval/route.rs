@@ -249,6 +249,7 @@ pub(super) fn route(function: &str, args: &Value) -> Result<Value, EvalError> {
                 dry_weight: f64_or(args, "dry_weight", 1.0)?,
                 corridor_sweep: sweep,
                 check_chord_m: opt_f64(args, "check_chord_m")?,
+                fairness_weight: f64_or(args, "fairness_weight", 0.0)?,
             };
             match rt::optimise_route(&grid, &params) {
                 Err(e) => value_error_of(e),

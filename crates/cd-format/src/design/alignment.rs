@@ -65,6 +65,7 @@ impl AlignMethod {
                 "wet_weight": 1.0,
                 "dry_weight": 1.0,
                 "check_chord_m": null,
+                "fairness_weight": 0.0,
             }),
         }
     }
@@ -242,6 +243,7 @@ impl Session {
                         dry_weight: num(&settings, "dry_weight")?,
                         corridor_sweep: sweep,
                         check_chord_m: opt_num(&settings, "check_chord_m")?,
+                        fairness_weight: fairness_weight(&settings)?,
                     },
                 )
                 .map_err(|e| DesignError::Input(e.message))?;
@@ -309,5 +311,19 @@ impl Session {
             self.align(m, &Value::Null, terrain)?;
         }
         Ok(())
+    }
+}
+
+/// The re-route's fairness weight: a number at or above 0, 0 when absent (a document from
+/// before spec 0005).
+fn fairness_weight(settings: &Value) -> Result<f64, DesignError> {
+    match &settings["fairness_weight"] {
+        Value::Null => Ok(0.0),
+        v => match v.as_f64() {
+            Some(w) if w.is_finite() && w >= 0.0 => Ok(w),
+            _ => Err(DesignError::Input(
+                "the setting `fairness_weight` must be a number at or above 0".into(),
+            )),
+        },
     }
 }
