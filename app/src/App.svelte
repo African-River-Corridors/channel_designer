@@ -131,6 +131,16 @@
     if (next) snap = next;
   }
 
+  /** New and Open start a different study: its first option (a failing one, if any) is selected, not the old selection. */
+  async function openDoc(action: () => Promise<Snapshot | null>) {
+    await flush();
+    const next = await guard(action);
+    if (!next) return;
+    selectedId = null;
+    station = null;
+    snap = next;
+  }
+
   function onKey(e: KeyboardEvent) {
     if (!(e.metaKey || e.ctrlKey)) return;
     const k = e.key.toLowerCase();
@@ -139,10 +149,10 @@
       fileAction(e.shiftKey ? api.saveAs : api.save);
     } else if (k === "o") {
       e.preventDefault();
-      fileAction(api.openFile);
+      openDoc(api.openFile);
     } else if (k === "n") {
       e.preventDefault();
-      fileAction(api.newFile);
+      openDoc(api.newFile);
     }
   }
 
@@ -299,8 +309,8 @@
 
 <div class="shell">
   <header>
-    <button onclick={() => fileAction(api.newFile)}>New</button>
-    <button onclick={() => fileAction(api.openFile)}>Open</button>
+    <button onclick={() => openDoc(api.newFile)}>New</button>
+    <button onclick={() => openDoc(api.openFile)}>Open</button>
     <button onclick={() => fileAction(api.save)}>Save</button>
     <button onclick={() => fileAction(api.saveAs)}>Save as</button>
     <button disabled={!anyStale || busy !== null} onclick={runStale} title="Rerun every stale stage, in order">Run stale</button>
