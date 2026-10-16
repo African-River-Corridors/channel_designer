@@ -157,10 +157,10 @@ fn quickstart_matches_the_frozen_python() {
         );
         volumes_check(name, &reference["volumes"][name], &v);
         stdout.push(format!(
-            "{name:>14}: dredge {} m3   dry cut {} m3   tallest face {} m",
+            "{name:>14}: dredge {} m3   dry cut {} m3   tallest face {:>4} m",
             right_comma(f(&v["dredge_m3"]), 9),
             right_comma(f(&v["excav_m3"]), 9),
-            format!("{:>4}", fixed(f(&v["max_face_h_m"]), 1)),
+            fixed(f(&v["max_face_h_m"]), 1),
         ));
     }
     same_line(
