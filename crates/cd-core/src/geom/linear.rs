@@ -254,8 +254,21 @@ pub fn line_line_distance(a: &[Pt], b: &[Pt]) -> f64 {
 pub fn line_intersection(a: &[Pt], b: &[Pt]) -> (Vec<Pt>, Vec<Vec<Pt>>) {
     let mut points: Vec<Pt> = Vec::new();
     let mut parts: Vec<Vec<Pt>> = Vec::new();
+    // A segment of `b` whose box misses the box of all of `a` meets nothing: skip it up front, so
+    // a small `a` (a circle) against a long `b` costs one pass over `b`, not one per segment of `a`.
+    let (mut lo, mut hi) = ([f64::INFINITY; 2], [f64::NEG_INFINITY; 2]);
+    for p in a {
+        for k in 0..2 {
+            lo[k] = lo[k].min(p[k]);
+            hi[k] = hi[k].max(p[k]);
+        }
+    }
+    let near: Vec<&[Pt]> = b
+        .windows(2)
+        .filter(|t| (0..2).all(|k| t[0][k].min(t[1][k]) <= hi[k] && t[0][k].max(t[1][k]) >= lo[k]))
+        .collect();
     for s in a.windows(2) {
-        for t in b.windows(2) {
+        for t in &near {
             match segment_intersection(s[0], s[1], t[0], t[1]) {
                 SegHit::None => {}
                 SegHit::Point { p, .. } => {

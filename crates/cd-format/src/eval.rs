@@ -8,6 +8,7 @@
 use cd_core::cut_model::{self as cm, PerSide};
 use serde_json::{Number, Value, json};
 
+mod alignment;
 mod cascade;
 mod geometry;
 mod lattice;
@@ -83,6 +84,9 @@ pub fn eval(entry_point: &str, input: &Value) -> Result<Value, EvalError> {
         "rulesets" | "methods" | "design" | "simple" | "width_profile" => {
             crate::eval_rules::dispatch(entry_point, function, args)
         }
+        "radius_check" => alignment::radius_check(function, args),
+        "loops" => alignment::loops(function, args),
+        "rolling_circle" => alignment::rolling_circle(function, args),
         "cascade" => cascade::cascade(function, args),
         "lattice" => lattice::lattice(function, args),
         "sections" => volumes::sections(function, args),
