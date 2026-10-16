@@ -34,6 +34,10 @@ const vesselChoices = () =>
     return { values: [...select.options].map((o) => o.value), current: select.value };
   });
 
+/** The worked example is sized for this class. After an open the form takes a moment to show it. */
+const EXAMPLE_VESSEL = "CEMT_IV";
+const formShowsExample = () => until("the form to show the example's vessel", async () => (await vesselChoices()).current === EXAMPLE_VESSEL);
+
 /** Click a header button, after the dialog answer is in place. */
 async function click(label) {
   await (await browser.$(`button=${label}`)).click();
@@ -73,6 +77,7 @@ describe("Channel Designer app smoke test", () => {
 
   it("opens the worked example, changes the vessel, sees the channel shape change, saves and reopens", async () => {
     await open(EXAMPLE, "synthetic-river.cdesign");
+    await formShowsExample();
     assert.equal(await text("project-crs"), "WGS 84 / UTM zone 30N");
     assert.equal(await text("status-sizing"), "fresh");
     assert.equal(await text("status-alignment"), "not run");
@@ -111,6 +116,7 @@ describe("Channel Designer app smoke test", () => {
 
   it("asks before it throws away unsaved changes, and keeps them when the answer is no", async () => {
     await open(EXAMPLE, "synthetic-river.cdesign");
+    await formShowsExample();
     const vessel = await browser.$("select[aria-label='Vessel class']");
     const { values, current } = await vesselChoices();
     const other = values.find((v) => v !== current && v.startsWith("CEMT"));
