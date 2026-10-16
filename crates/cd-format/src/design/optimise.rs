@@ -41,6 +41,7 @@ fn defaults() -> Value {
         "cut_model": CUT_MODEL,
         "station_m": 25.0,
         "maxw_m": 200.0,
+        "half_width_m": null,
         "side_slope": 3.0,
         "rake_half_m": 250.0,
         "rake_step_m": 4.0,
@@ -140,7 +141,15 @@ impl Session {
         )
         .map_err(|e| DesignError::Input(e.raw_message().to_string()))?;
         let (depth, r_min) = (shape.design_depth_m, shape.min_bend_radius_m);
-        let half_width = shape.bottom_width_straight_m / 2.0;
+        // The bottom half-width: the sizing's, unless the settings fix one.
+        let half_width = match &settings["half_width_m"] {
+            Value::Null => shape.bottom_width_straight_m / 2.0,
+            v => v.as_f64().filter(|h| *h > 0.0).ok_or_else(|| {
+                DesignError::Input(
+                    "the setting `half_width_m` must be a positive number of metres or null".into(),
+                )
+            })?,
+        };
 
         let baseline: Vec<Pt> = self.doc["options"]
             .as_array()
