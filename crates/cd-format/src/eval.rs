@@ -12,6 +12,7 @@ mod alignment;
 mod cascade;
 mod geometry;
 mod lattice;
+mod river;
 mod terrain;
 mod volumes;
 
@@ -92,6 +93,11 @@ pub fn eval(entry_point: &str, input: &Value) -> Result<Value, EvalError> {
         "sections" => volumes::sections(function, args),
         "cut_model_grid" => volumes::cut_model_grid(function, args),
         "cut_model_extras" => volumes::cut_model_extras(function, args),
+        "centreline" => river::centreline(function, args),
+        "widths" => river::widths(function, args),
+        "limits" => river::limits(function, args),
+        "meanders" => river::meanders(function, args),
+        "bends" => river::bends(function, args),
         "geometry" => geometry::geometry(function, args),
         "synthetic" => geometry::synthetic(function, args),
         ep if ENTRY_POINTS.contains(&ep) => Err(EvalError::NotPorted(ep.into())),
