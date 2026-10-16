@@ -28,19 +28,33 @@ ticket whose blockers are all closed, and no other. For each ticket:
    **Build notes** are one closing comment on the ticket: what was built, the commands run and their
    result, anything not done, and the PR link. Check the comment with the embargo one-liner first. The
    PR body stays the home of the evidence for each ticked criterion.
-6. **Mutation run, after the merge.** Start `cargo xtask mutants` on the merged change in the
-   background and move on. Its findings are reviewed later. The builder does not wait for it and does
-   not fix them in the same ticket. A surviving mutant that changes a public output becomes a
-   fix-forward ticket (a sub-issue of #20, labelled `ready-for-agent`); the fix adds a parity case,
-   regenerated with the reason "kills mutant ...".
+There is no mutation test and no per-ticket reviewer before a merge, and none after it either: see
+below.
 
-There is no mutation test and no per-ticket reviewer before a merge.
+## Mutation testing is a separate hardening pass (since 2026-10-16)
+
+Builders do **not** run mutation tests during the build, before or after a merge. Parallel post-merge
+runs competed with the builders and CI for the same machine, and none of their findings blocked a
+ticket. Mutation testing runs as its own pass once the features of a spec are done and accepted:
+
+- **When:** after the spec's feature tickets are merged and the maintainer is happy with them, and
+  after that per release, on modules that have stopped changing.
+- **How:** one run at a time, scoped to the modules under review (`cargo xtask mutants`), never in
+  parallel with a build.
+- **Output:** each surviving mutant that can change a public output becomes a fix-forward ticket
+  (a sub-issue of the spec, labelled `ready-for-agent`). The fix adds a parity case regenerated with
+  the reason "kills mutant ...". A survivor that cannot change an output gets a one-line equivalence
+  argument in the pass report, not a ticket.
+- Never stop another session's run by process name; use its process ID.
+
+`cargo xtask mutants` stays in the repo for this pass. The harness's own check that the mutation task
+works (from #22) is unchanged.
 
 ## Stop and report
 
 The builder stops and reports to the coordinator at:
 
-- about 30% of the weekly token quota for this spec;
+- 60% of the account's weekly token quota (set by the maintainer on 2026-10-16);
 - any change to the tolerances (ADR 0005) or to the oracle guard;
 - a ticket whose acceptance criteria cannot be met as written.
 
