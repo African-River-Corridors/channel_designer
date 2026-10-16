@@ -3,6 +3,7 @@
 pub mod design;
 mod eval;
 mod eval_rules;
+pub mod geotiff;
 pub mod parity;
 pub mod search;
 
