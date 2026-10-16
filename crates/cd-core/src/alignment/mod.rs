@@ -6,6 +6,7 @@ pub mod centreline;
 pub mod limits;
 pub mod loops;
 pub mod meanders;
+pub mod navigable;
 pub mod radius_check;
 pub mod rolling_circle;
 pub mod route;

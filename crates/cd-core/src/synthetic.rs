@@ -8,7 +8,12 @@
 
 use crate::geom::offset::{self, Cap};
 use crate::geom::{GeomError, Geometry, Polygon, Pt, linear};
+
+pub mod fixtures;
 use core::f64::consts::PI;
+pub use fixtures::{
+    WaterFixture, fixed_tail, narrowing_reach, open_basin_90, open_basin_max_radius, straight_canal,
+};
 
 /// The parameters of `synthetic_river`, with the Python defaults.
 #[derive(Debug, Clone, PartialEq)]

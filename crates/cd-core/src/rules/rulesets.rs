@@ -105,6 +105,24 @@ impl Ruleset {
     }
 }
 
+impl Ruleset {
+    /// Refuse a ruleset that gives no bend-widened width (spec 0005 R2-Q3): the water-aware
+    /// checks test each station at its measured local radius, so the ruleset must widen a bend.
+    /// A `"china"` ruleset always does (dB = L^2/(2R + B)); a `"pianc"` one needs `c_c > 0`.
+    /// `register` does not call this, so a ruleset registered before spec 0005 still loads.
+    pub fn validate(&self) -> Result<(), RuleError> {
+        if self.family == "pianc" && !(self.c_c.is_finite() && self.c_c > 0.0) {
+            return value_err(format!(
+                "ruleset {} gives no bend-widened width (c_c = {}); the water-aware width \
+                 check needs one",
+                repr_str(&self.ruleset_id),
+                self.c_c
+            ));
+        }
+        Ok(())
+    }
+}
+
 // PIANC WG 141 (2019), free-flowing river, single-lane.
 //   width  Table 5.7 (p109). Table 5.7 prints 2.8*B for quality C but carries a 3.0*B minimum
 //          "for security reasons" spanning C and B, so C is 3.0, not 2.8.
@@ -446,6 +464,11 @@ pub struct ChannelShape {
 }
 
 impl ChannelShape {
+    /// The ruleset the shape was built from.
+    pub fn ruleset(&self) -> &Ruleset {
+        &self.ruleset
+    }
+
     pub fn bend_widening_m(&self, radius_m: f64) -> f64 {
         bend_widening(&self.ruleset, self.loa_m, self.beam_m, radius_m)
     }
