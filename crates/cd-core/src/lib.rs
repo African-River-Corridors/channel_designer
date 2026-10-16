@@ -3,6 +3,7 @@
 
 pub mod cut_model;
 pub mod geom;
+pub mod optimise;
 pub mod pyrepr;
 pub mod rules;
 pub mod synthetic;
