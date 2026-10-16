@@ -12,3 +12,5 @@ mutants.out.old/
 # the desktop app (spec 0003)
 node_modules/
 app/src-tauri/gen/
+src/channel_designer/_core*.so
+src/channel_designer/_core*.pyd

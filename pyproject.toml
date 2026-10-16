@@ -1,6 +1,6 @@
 [project]
 name = "channel_designer"
-version = "0.1.0"
+version = "0.2.0"
 description = "Navigation channel design for inland waterways: width, bend and depth rules (PIANC, Chinese GB 50139), alignment, and cut and dredge volumes."
 requires-python = ">=3.12"
 license = "Apache-2.0"
@@ -31,14 +31,17 @@ Repository = "https://github.com/African-River-Corridors/channel_designer"
 Issues = "https://github.com/African-River-Corridors/channel_designer/issues"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
 
-[tool.hatch.metadata]
-allow-direct-references = true
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/channel_designer"]
+# The package is the pure-Python layer in src/channel_designer plus the Rust extension
+# channel_designer._core (crates/cd-py), built as one abi3 wheel per platform: a user's `pip install`
+# needs no compiler (#11).
+[tool.maturin]
+python-source = "src"
+module-name = "channel_designer._core"
+manifest-path = "crates/cd-py/Cargo.toml"
+features = ["extension-module"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
