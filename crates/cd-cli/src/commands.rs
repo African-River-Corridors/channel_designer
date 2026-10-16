@@ -692,6 +692,22 @@ pub fn volumes(doc: &str, flags: VolumesFlags, output: &Option<String>, json_mod
     }
 }
 
+pub fn export(doc: &str, geojson: bool, csv: bool, wgs84: bool, output: Option<&str>) -> Result {
+    if !geojson && !csv {
+        return Err(input_error("choose an export: --geojson or --csv"));
+    }
+    let (session, bytes) = open_with_dem(doc)?;
+    // Volumes numbers that no longer hold are exported with their status, never as fresh.
+    let text = if geojson {
+        session
+            .export_geojson(wgs84, bytes.as_deref())
+            .map_err(from_design)?
+    } else {
+        session.export_csv(bytes.as_deref())
+    };
+    write(output.unwrap_or("-"), &text)
+}
+
 pub fn run(doc: &str, output: &Option<String>, json_mode: bool) -> Result {
     let (mut session, bytes) = open_with_dem(doc)?;
     // The DEM is used only when it is the file whose hash was recorded.

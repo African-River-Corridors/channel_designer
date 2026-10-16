@@ -174,6 +174,24 @@ enum Command {
         #[command(flatten)]
         out: Out,
     },
+    /// Export the design line options as GeoJSON, or the quantity table as CSV. Every export says
+    /// "Screening — not for construction", and an option that fails a check says so.
+    Export {
+        /// The channel design. `-` is stdin.
+        doc: String,
+        /// GeoJSON: the options as lines, in the project CRS (or WGS84 with --wgs84).
+        #[arg(long, conflicts_with = "csv")]
+        geojson: bool,
+        /// CSV: one row per option, with dredge, dry cut, tallest face and failed checks.
+        #[arg(long)]
+        csv: bool,
+        /// With --geojson: write longitude and latitude instead of the project CRS.
+        #[arg(long, requires = "geojson")]
+        wgs84: bool,
+        /// Write the export here instead of stdout.
+        #[arg(short = 'o', long = "output", value_name = "FILE")]
+        output: Option<String>,
+    },
     /// Rerun every stale stage, in order.
     Run {
         /// The channel design. `-` is stdin.
@@ -312,6 +330,13 @@ fn main() -> ExitCode {
             &out.output,
             out.json,
         ),
+        Command::Export {
+            doc,
+            geojson,
+            csv,
+            wgs84,
+            output,
+        } => commands::export(&doc, geojson, csv, wgs84, output.as_deref()),
         Command::Run { doc, out } => commands::run(&doc, &out.output, out.json),
         Command::Validate { doc, json } => commands::validate(&doc, json),
         Command::Status { doc, json } => commands::status(&doc, json),

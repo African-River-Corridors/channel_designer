@@ -2,6 +2,7 @@
 
 pub mod alignment;
 pub mod crs;
+pub mod export;
 pub mod geojson;
 pub mod geopackage;
 pub mod hash;
