@@ -136,9 +136,13 @@ impl<'a> Chained<'a> {
             .collect()
     }
 
-    /// The unit direction at chainage `s`, read across `±half` metres (clamped to the line).
+    /// The unit direction at chainage `s`, read across `±half` metres. A window that runs off an
+    /// end of the line is moved back onto it, so an end still reads the line's own direction.
     pub fn direction(&self, s: f64, half: f64) -> Pt {
-        let (p, q) = (self.at(s - half), self.at(s + half));
+        let len = self.length();
+        let w = (2.0 * half).min(len);
+        let a = (s - half).clamp(0.0, (len - w).max(0.0));
+        let (p, q) = (self.at(a), self.at(a + w));
         let (dx, dy) = (q[0] - p[0], q[1] - p[1]);
         let l = (dx * dx + dy * dy).sqrt();
         if l > 0.0 {
