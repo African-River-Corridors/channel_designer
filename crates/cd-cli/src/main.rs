@@ -65,6 +65,9 @@ enum Command {
         /// The river polygon, as a GeoJSON polygon.
         #[arg(long, value_name = "FILE")]
         polygon: Option<String>,
+        /// A GeoTIFF DEM, referenced by relative path and SHA-256 (never copied into the file).
+        #[arg(long, value_name = "FILE")]
+        dem: Option<String>,
         #[command(flatten)]
         out: Out,
     },
@@ -116,6 +119,32 @@ enum Command {
         #[command(flatten)]
         out: Out,
     },
+    /// Work out dredge, dry cut and tallest face for every design line option, on the DEM.
+    Volumes {
+        /// The channel design. `-` is stdin.
+        doc: String,
+        /// A GeoTIFF DEM to record as the document's DEM and use. Needed the first time, or to
+        /// accept a DEM file that has changed.
+        #[arg(long, value_name = "FILE")]
+        dem: Option<String>,
+        /// The cut model: a or b (default a).
+        #[arg(long, value_name = "MODEL")]
+        model: Option<String>,
+        /// The water surface level at the start of the reach, in metres (default: the re-route's).
+        #[arg(long, value_name = "METRES")]
+        water_level: Option<f64>,
+        /// The fall of the water surface per metre of chainage (default: the re-route's, else 0).
+        #[arg(long, value_name = "M_PER_M")]
+        water_slope: Option<f64>,
+        /// The station spacing in metres (default 25).
+        #[arg(long, value_name = "METRES")]
+        station: Option<f64>,
+        /// The half-width of each cross-section in metres (default 200).
+        #[arg(long, value_name = "METRES")]
+        maxw: Option<f64>,
+        #[command(flatten)]
+        out: Out,
+    },
     /// Rerun every stale stage, in order.
     Run {
         /// The channel design. `-` is stdin.
@@ -161,6 +190,7 @@ fn main() -> ExitCode {
             right_bank,
             centreline,
             polygon,
+            dem,
             out,
         } => commands::import(
             &doc,
@@ -170,6 +200,7 @@ fn main() -> ExitCode {
                 ("centreline", centreline),
                 ("river_polygon", polygon),
             ],
+            dem,
             &out.output,
             out.json,
         ),
@@ -202,6 +233,28 @@ fn main() -> ExitCode {
                 water_level,
                 water_slope,
                 corridors,
+            },
+            &out.output,
+            out.json,
+        ),
+        Command::Volumes {
+            doc,
+            dem,
+            model,
+            water_level,
+            water_slope,
+            station,
+            maxw,
+            out,
+        } => commands::volumes(
+            &doc,
+            commands::VolumesFlags {
+                dem,
+                model,
+                water_level,
+                water_slope,
+                station,
+                maxw,
             },
             &out.output,
             out.json,
