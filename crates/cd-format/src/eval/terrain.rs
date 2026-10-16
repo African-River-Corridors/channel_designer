@@ -33,6 +33,15 @@ fn river_params(p: &Value) -> Result<RiverParams, EvalError> {
     })
 }
 
+/// The synthetic river for the `params` object of a spec (`None` or `null`: the defaults).
+pub(super) fn river_from(params: Option<&Value>) -> Result<synthetic::SyntheticRiver, EvalError> {
+    let params = match params {
+        Some(p) if !p.is_null() => river_params(p)?,
+        _ => RiverParams::default(),
+    };
+    synthetic::synthetic_river(params).map_err(|e| bad(e.to_string()))
+}
+
 /// The sampler that a terrain spec names.
 pub(super) fn terrain_from(spec: &Value) -> Result<Sampler, EvalError> {
     let kind = spec
