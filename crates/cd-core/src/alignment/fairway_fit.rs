@@ -9,7 +9,9 @@
 //!   side (half an LOA at the default chord);
 //! - minimises the summed squared curvature of `p`, as a convex QP in the offsets
 //!   ([`corridor::min_sum_squares_in_box`], Clarabel); rows where the curvature is over 1/R_min
-//!   weigh more, which pushes towards the line whose tightest bend is widest;
+//!   weigh more, which pushes towards the line whose tightest bend is widest. The input's own
+//!   tightest radius inside the water is a floor on the preferred radius, so a bend the water
+//!   already holds is never traded for less total bending (#132);
 //! - re-linearises: the solution, resampled, is the next pass's reference line.
 //!
 //! Nothing is ever snapped to an edge: the boxes are limits of the QP, and a point with no
@@ -68,7 +70,7 @@ pub struct FitParams {
     /// The chord the reported radius is read on (default R_min/3, one LOA when R_min = 3 LOA).
     pub chord_m: f64,
     /// A preferred radius: rows tighter than it weigh `1 + pref_weight` times more. Off by
-    /// default.
+    /// default; the fit raises it to the input's tightest radius inside navigable water.
     pub r_pref_m: Option<f64>,
     /// The extra weight on rows tighter than the preferred radius.
     pub pref_weight: f64,
@@ -241,7 +243,15 @@ pub fn fairway_fit(
 
     let seed_len = linear::length(&emit(&nodes, &fixed.must_follow));
     smooth_free(&mut nodes, params.chord_m / 2.0, h);
-    solve_corridor(&mut nodes, &grid, params, &mut notes);
+    // The input's tightest bend inside the water is a floor on the preferred radius. Above R_min
+    // the tightness weight is all but flat, so the QP would trade a sharper peak for less total
+    // bending; the ramp makes rows tighter than a line the water already holds weigh more.
+    let mut solve = params.clone();
+    let r_in = input_min_radius(line, &grid, params);
+    if r_in.is_finite() {
+        solve.r_pref_m = Some(params.r_pref_m.map_or(r_in, |r| r.max(r_in)));
+    }
+    solve_corridor(&mut nodes, &grid, &solve, &mut notes);
     let out = emit(&nodes, &fixed.must_follow);
     if linear::length(&out) > params.max_growth * seed_len {
         notes.push(format!(
@@ -268,6 +278,18 @@ pub fn fairway_fit(
         radius_ok: radius_ok(measured, params.r_min),
         notes,
     })
+}
+
+/// The input's tightest radius on the chord, at stations every `check_step_m` inside navigable
+/// water. Infinity for a straight input or one with no station in the water.
+fn input_min_radius(line: &[Pt], grid: &EdgeGrid, params: &FitParams) -> f64 {
+    let c = Chained::new(line);
+    let step = params.check_step_m;
+    (0..=(c.length() / step) as usize)
+        .map(|i| i as f64 * step)
+        .filter(|&s| grid.covers(c.at(s), params.inside_tol_m))
+        .map(|s| c.local_radius(s, params.chord_m))
+        .fold(f64::INFINITY, f64::min)
 }
 
 /// The fairway fit from the water itself: builds navigable water (half the straight bottom width
@@ -1340,6 +1362,7 @@ mod property_tests {
 pub(crate) mod corridor_fixtures {
     //! Synthetic fixtures for the corridor solve's acceptance checks (#126).
     use crate::geom::{Polygon, Pt};
+    use crate::synthetic::fixtures::SplitMix;
 
     /// **A wide 90° bend.** A river `width_m` wide: its centreline runs east 1500 m to the origin,
     /// turns left on an arc of radius 600 m about (0, 600), and runs north 1500 m from (600,
@@ -1379,6 +1402,40 @@ pub(crate) mod corridor_fixtures {
         )
     }
 
+    /// **A creek with narrow stretches.** A sine centreline (`synthetic::sine_generated_centreline`,
+    /// two wavelengths) whose width steps every 150 m between 45 and 100 m, drawn from `seed`.
+    /// Returns the water and the centreline (the seed).
+    pub fn stepped_creek(seed: u64) -> (Polygon, Vec<Pt>) {
+        let mut rng = SplitMix::new(seed);
+        let lam = 1800.0 + 600.0 * rng.signed_unit();
+        let amp = 200.0 + 60.0 * rng.signed_unit();
+        let c = crate::synthetic::sine_generated_centreline(2.0 * lam, lam, amp, 10.0);
+        let ws: Vec<f64> = (0..=(2.0 * lam / 150.0) as usize)
+            .map(|_| 72.5 + 27.5 * rng.signed_unit())
+            .collect();
+        let nr = super::normals(&c);
+        let half = |p: Pt| ws[((p[0] / 150.0).max(0.0) as usize).min(ws.len() - 1)] / 2.0;
+        let mut ring: Vec<Pt> = c
+            .iter()
+            .zip(&nr)
+            .map(|(p, n)| [p[0] - half(*p) * n[0], p[1] - half(*p) * n[1]])
+            .collect();
+        ring.extend(
+            c.iter()
+                .zip(&nr)
+                .rev()
+                .map(|(p, n)| [p[0] + half(*p) * n[0], p[1] + half(*p) * n[1]]),
+        );
+        ring.push(ring[0]);
+        (
+            Polygon {
+                exterior: ring,
+                holes: vec![],
+            },
+            c,
+        )
+    }
+
     /// **An offset narrow strip.** A reach 60 m wide along y = 0 (x 0 to 1000), a strip under
     /// 20 m wide rising to a second reach 60 m wide along y = 80 (x 1500 to 2500). Shrunk by
     /// half a 30.4 m bottom width, the strip has no navigable width. Returns the water and the
@@ -1414,7 +1471,7 @@ mod corridor_tests {
     //! Label: property (#126 acceptance: bend placement, no sharpening, fixed tail, no navigable
     //! width; each check shown failing on a corrupted input). Known answers: the centreline seed
     //! lies in the middle of the water (position 0.5, nothing in the outer third).
-    use super::corridor_fixtures::{offset_strip, wide_bend};
+    use super::corridor_fixtures::{offset_strip, stepped_creek, wide_bend};
     use super::*;
     use crate::synthetic::fixtures::SplitMix;
     use crate::synthetic::{RiverParams, WaterFixture, fixed_tail, synthetic_river};
@@ -1630,6 +1687,30 @@ mod corridor_tests {
         bad.extend(c.slice(s + 10.0, c.length()));
         let e = not_sharper(&bad, &river.centreline, &grid, p.chord_m).unwrap_err();
         assert!(e.contains("sharper"), "{e}");
+    }
+
+    #[test]
+    fn a_creek_with_narrow_stretches_is_never_fitted_sharper_than_its_input() {
+        // Creeks whose inputs bend at 740-950 m, well above R_min, in water 45-100 m wide. With a
+        // flat weight above R_min the QP traded the input's peak for less total bending: 880 m
+        // against 949 m (seed 1008), 696 m against 738 m, 743 m against 776 m.
+        let p = FitParams::new(R_MIN);
+        for seed in [1008u64, 1002, 1026] {
+            let (water, centre) = stepped_creek(seed);
+            for k in 0..2u64 {
+                let (w, c) = if k == 0 {
+                    (water.clone(), centre.clone())
+                } else {
+                    turned(seed + k, &water, &centre)
+                };
+                let nv = nav(&w);
+                let r = fairway_fit(&c, &nv, &Fixed::default(), &p).unwrap();
+                let grid = EdgeGrid::new(&nv);
+                not_sharper(&r.line, &c, &grid, p.chord_m)
+                    .map_err(|e| format!("seed {seed} variant {k}: {e}"))
+                    .unwrap();
+            }
+        }
     }
 
     #[test]

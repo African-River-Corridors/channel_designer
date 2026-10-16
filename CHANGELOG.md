@@ -10,6 +10,10 @@ versions follow [Semantic Versioning](https://semver.org/).
 - The fairway fit's corridor QP is scaled before it is solved. On a seed with a sharp corner at the default 10 m
   spacing, the interior-point solver stalled on pass 1 (InsufficientProgress) and the fit returned the lightly
   smoothed seed (a 90 deg dog-leg in 800 m water: R 84 m, `radius_ok` false). Scaled, the same case reads 735 m.
+- The fairway fit no longer fits a bend sharper than its input where the input lies in navigable water (#132).
+  Above R_min the tightness weight was flat, so the QP traded the input's peak for less total bending (a creek
+  with narrow stretches: 880 m against an input of 949 m). The input's tightest radius inside the water is now
+  a floor on the preferred radius.
 
 ### Added
 
@@ -22,6 +26,11 @@ Every pull request is checked for design impact (`tools/design_impact.py`, CI jo
 scenarios run on the base branch and on the pull request, and a result that moves by more than 1e-9
 (ADR 0005) must have a bullet here, under this heading, saying what moved and why. Add the bullet in the
 pull request that moves the result.
+
+- **The fairway fit prefers the input's tightest radius (#132).** Every fit whose input bends inside
+  navigable water now carries a preferred radius of at least that bend's radius, so rows tighter than
+  the input weigh more (a soft weight, not a hard limit). Fitted lines move wherever the old fit was close to or sharper
+  than its input; on 60 synthetic creeks the tightest bend widens by 2–29 % (20 % on average).
 
 - **The water-aware rolling circle in the channel design document (#100, spec 0005).** Format version 2.
   In a new document with a river polygon, the rolling circle is water-aware by default (`use_water`):

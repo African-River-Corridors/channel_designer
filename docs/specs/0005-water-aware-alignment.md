@@ -134,8 +134,9 @@ New synthetic fixtures, for the known-answer tests:
     narrowest within half a chord either side (half an LOA at the default chord), 1 m inside the edge;
   - a convex QP (`fairway_fit::corridor`, Clarabel) minimises the summed squared second derivative
     inside the boxes. Rows tighter than R_min weigh up to 10⁴ times more (a weight that rises at once
-    and falls slowly between passes), and the optional preferred radius adds a smooth ramp, never a
-    step. The best pass is kept;
+    and falls slowly between passes), and the preferred radius adds a smooth ramp, never a step. The
+    preferred radius is at least the input's tightest radius inside navigable water, so a bend the
+    water already holds is not fitted sharper (#132). The best pass is kept;
   - fixed poses hold their point, the next point along the heading and a ghost one spacing behind;
     must-follow segments are zero-offset points in the same corridor and are copied exactly. Dubins
     pieces (`dubins_paths`) of radius R_min shape the seed at posed ends (L1);
