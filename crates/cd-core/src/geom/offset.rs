@@ -5,12 +5,12 @@
 //! Round joins only (the package uses no other).
 //!
 //! For a line whose buffer curve does not cross itself, GEOS's noding finds nothing to split and
-//! its polygon builder returns the raw curve as the shell, with the same start and direction. That
-//! is the case built here. A curve that crosses itself (an offset wider than the bend, a closing
-//! segment at a sharp inside turn) needs noding and overlay, and returns
-//! [`GeomError::NeedsGeneralBuffer`] (ticket 43).
+//! its polygon builder returns the raw curve as the shell, with the same start and direction, so
+//! the shell is the raw curve as it stands. A curve that crosses itself (an offset wider than the
+//! bend, a closing segment at a sharp inside turn) is noded and resolved by depth (`depth`), and so
+//! is the `buffer(0)` repair of a polygon.
 
-use super::{GeomError, Geometry, Polygon, Pt, dist, linear, orientation};
+use super::{GeomError, Geometry, Polygon, Pt, depth, dist, linear, orientation};
 use super::{SegHit, segment_intersection};
 use core::f64::consts::{FRAC_PI_2, PI};
 
@@ -522,11 +522,6 @@ fn line_buffer_ring(
     if ring.len() < 4 {
         return Ok(None);
     }
-    if !ring_is_simple(&ring) {
-        return Err(GeomError::NeedsGeneralBuffer(
-            "the buffer curve of the line crosses itself".into(),
-        ));
-    }
     Ok(Some(ring))
 }
 
@@ -537,13 +532,83 @@ pub fn buffer_line(
     quad_segs: i32,
     cap: Cap,
 ) -> Result<Geometry, GeomError> {
-    Ok(match line_buffer_ring(line, distance, quad_segs, cap)? {
-        Some(ring) => Geometry::Polygon(Polygon {
+    Ok(geometry_of(line_buffer_polygons(
+        line, distance, quad_segs, cap,
+    )?))
+}
+
+/// One polygon, several, or the empty polygon.
+fn geometry_of(mut polys: Vec<Polygon>) -> Geometry {
+    match polys.len() {
+        0 => Geometry::Empty("Polygon"),
+        1 => Geometry::Polygon(polys.remove(0)),
+        _ => Geometry::MultiPolygon(polys),
+    }
+}
+
+/// Rings as GEOS's buffer gives them: shells clockwise, holes counter-clockwise (the reverse of
+/// `depth::region`'s interior-on-the-left rings).
+fn geos_oriented(polys: Vec<Polygon>) -> Vec<Polygon> {
+    polys
+        .into_iter()
+        .map(|mut p| {
+            p.exterior.reverse();
+            p.holes.iter_mut().for_each(|h| h.reverse());
+            p
+        })
+        .collect()
+}
+
+/// The buffer of a line as polygons in GEOS's orientation. A raw curve that does not cross itself
+/// is the shell as it stands; one that does (an offset wider than the bend, a closing segment at a
+/// sharp inside turn) is noded and resolved by depth (`depth::region`).
+fn line_buffer_polygons(
+    line: &[Pt],
+    distance: f64,
+    quad_segs: i32,
+    cap: Cap,
+) -> Result<Vec<Polygon>, GeomError> {
+    let Some(ring) = line_buffer_ring(line, distance, quad_segs, cap)? else {
+        return Ok(vec![]);
+    };
+    if ring_is_simple(&ring) {
+        return Ok(vec![Polygon {
             exterior: ring,
             holes: vec![],
-        }),
-        None => Geometry::Empty("Polygon"),
-    })
+        }]);
+    }
+    // The raw curve runs clockwise: its interior is on its right.
+    Ok(geos_oriented(depth::region(&[(ring, -1)])))
+}
+
+/// shapely `polygon.buffer(0)` (GEOS `BufferCurveSetBuilder::addPolygon` at distance zero): the
+/// rings as raw curves, each labelled by its signed area, resolved by depth. This repairs a
+/// bow-tie or a self-touching ring as GEOS does (keeping the parts of positive depth).
+pub fn buffer_polygons(polys: &[Polygon], distance: f64) -> Result<Geometry, GeomError> {
+    if distance != 0.0 {
+        return Err(GeomError::Unsupported(
+            "polygon buffer at a distance other than zero".into(),
+        ));
+    }
+    let mut curves: Vec<depth::Curve> = Vec::new();
+    for p in polys {
+        let shell = remove_repeated(&p.exterior);
+        if shell.len() < 3 {
+            continue;
+        }
+        // `isCCWArea`: GEOS's signed area is negative for a counter-clockwise ring.
+        let ccw = |r: &[Pt]| super::overlay::ring_signed_area(r) < 0.0;
+        if shell.len() >= 4 {
+            curves.push((shell.clone(), if ccw(&shell) { 1 } else { -1 }));
+        }
+        for h in &p.holes {
+            let hole = remove_repeated(h);
+            if hole.len() >= 4 {
+                curves.push((hole.clone(), if ccw(&hole) { -1 } else { 1 }));
+            }
+        }
+    }
+    Ok(geometry_of(geos_oriented(depth::region(&curves))))
 }
 
 /// GEOS `OffsetCurve` match distance factor.
@@ -581,14 +646,29 @@ pub fn offset_curve(line: &[Pt], distance: f64, quad_segs: i32) -> Result<Geomet
     if raw.is_empty() {
         return Ok(Geometry::Empty("LineString"));
     }
-    let Some(mut ring) = line_buffer_ring(line, distance.abs(), quad, Cap::Round)? else {
+    // `getBufferOriented`: the largest polygon of the buffer, reversed for a right offset.
+    let polys = line_buffer_polygons(line, distance.abs(), quad, Cap::Round)?;
+    let mut best: Option<&Polygon> = None;
+    for p in &polys {
+        if best.is_none_or(|b| super::overlay::polygon_area(p) > super::overlay::polygon_area(b)) {
+            best = Some(p);
+        }
+    }
+    let Some(poly) = best else {
         return Ok(Geometry::Empty("LineString"));
     };
+    let mut rings: Vec<Vec<Pt>> = core::iter::once(&poly.exterior)
+        .chain(&poly.holes)
+        .cloned()
+        .collect();
     if distance < 0.0 {
-        ring.reverse();
+        rings.iter_mut().for_each(|r| r.reverse());
     }
     let match_distance = distance.abs() / MATCH_DISTANCE_FACTOR;
-    let mut sections = curve_sections(&ring, &raw, match_distance);
+    let mut sections: Vec<(f64, Vec<Pt>)> = rings
+        .iter()
+        .flat_map(|r| curve_sections(r, &raw, match_distance))
+        .collect();
     Ok(match sections.len() {
         0 => Geometry::Empty("LineString"),
         1 => Geometry::LineString(sections.remove(0).1),
@@ -734,13 +814,16 @@ mod tests {
     }
 
     #[test]
-    fn a_curve_that_folds_needs_the_general_buffer() {
-        // A hairpin far tighter than the buffer distance.
+    fn a_hairpin_tighter_than_the_buffer_gives_one_polygon_without_holes() {
+        // The flat-capped strips along the two long legs overlap ([0, 100] x [-20, 25]); the bend
+        // adds the round outer corner beyond x = 100.
         let line = [[0.0, 0.0], [100.0, 0.0], [100.0, 5.0], [0.0, 5.0]];
-        assert!(matches!(
-            buffer_line(&line, 20.0, 8, Cap::Flat),
-            Err(GeomError::NeedsGeneralBuffer(_))
-        ));
+        let Ok(Geometry::Polygon(p)) = buffer_line(&line, 20.0, 8, Cap::Flat) else {
+            panic!("expected one polygon");
+        };
+        assert!(p.holes.is_empty());
+        let a = crate::geom::overlay::polygon_area(&p);
+        assert!(a > 100.0 * 45.0 && a < 120.0 * 45.0, "{a}");
     }
 
     #[test]
