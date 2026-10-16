@@ -214,7 +214,7 @@ fn xy_list(args: &Value, name: &str) -> Result<Vec<Pt>, EvalError> {
         .collect()
 }
 
-fn polygons_of(v: &Value) -> Result<Vec<Polygon>, EvalError> {
+pub(super) fn polygons_of(v: &Value) -> Result<Vec<Polygon>, EvalError> {
     match geom_from(v, "river_polygon")? {
         Geometry::Polygon(p) => Ok(vec![p]),
         Geometry::MultiPolygon(ps) => Ok(ps),
@@ -265,7 +265,7 @@ pub(super) fn sections(function: &str, args: &Value) -> Result<Value, EvalError>
     }
 }
 
-fn line_of(args: &Value) -> Result<Vec<Pt>, EvalError> {
+pub(super) fn line_of(args: &Value) -> Result<Vec<Pt>, EvalError> {
     match geom_from(arg(args, "line")?, "line")? {
         Geometry::LineString(l) => Ok(l),
         _ => Err(bad("`line` must be a line string".into())),
