@@ -7,6 +7,7 @@ pub mod export;
 pub mod geojson;
 pub mod geopackage;
 pub mod hash;
+pub mod hillshade;
 pub mod map;
 pub mod optimise;
 pub mod schema;

@@ -5,8 +5,10 @@
 //! validation or default logic: every answer comes from [`Session`].
 
 use cd_format::design::{DesignError, Session, Stage, StageStatus};
+use cd_format::geotiff::{Dem, read_bytes};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct AppState {
@@ -15,6 +17,8 @@ pub struct AppState {
     dirty: bool,
     /// Warnings from the last open: for example a DEM that is missing or has changed.
     warnings: Vec<String>,
+    /// The DEM the document names, when the shell found it next to the document and it reads.
+    dem: Option<Arc<Dem>>,
 }
 
 fn message(e: DesignError) -> String {
@@ -29,6 +33,7 @@ impl AppState {
             path: None,
             dirty: false,
             warnings: Vec::new(),
+            dem: None,
         }
     }
 
@@ -42,6 +47,7 @@ impl AppState {
             path: Some(path.to_path_buf()),
             dirty: false,
             warnings,
+            dem: dem_bytes.and_then(|b| read_bytes(b).ok()).map(Arc::new),
         })
     }
 
@@ -117,6 +123,11 @@ impl AppState {
     /// The plan map's geometry in WGS84, from the session.
     pub fn map_geometry(&self) -> Result<Value, String> {
         self.session.map_geometry().map_err(message)
+    }
+
+    /// The DEM, to draw the offline hillshade from. `None` when there is none to read.
+    pub fn dem(&self) -> Option<Arc<Dem>> {
+        self.dem.clone()
     }
 
     /// The `.cdesign` text to write.
@@ -340,5 +351,31 @@ mod tests {
         );
         missing.saved(Path::new("b"));
         assert_eq!(missing.snapshot()["warnings"], json!([]));
+    }
+
+    #[test]
+    fn the_dem_next_to_the_document_is_kept_for_the_hillshade_when_it_reads() {
+        let tif = std::fs::read(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../crates/cd-format/tests/fixtures/dem/f32_geographic.tif"),
+        )
+        .unwrap();
+        let with = AppState::open(Path::new("a"), &worked_example(), Some(&tif)).unwrap();
+        let dem = with.dem().expect("a DEM that reads is kept");
+        let shade = cd_format::design::hillshade::hillshade(&dem).unwrap();
+        assert!(shade.png.starts_with(b"\x89PNG"));
+        // No file, or a file that is not a GeoTIFF: no DEM, and no error.
+        assert!(
+            AppState::open(Path::new("a"), &worked_example(), None)
+                .unwrap()
+                .dem()
+                .is_none()
+        );
+        assert!(
+            AppState::open(Path::new("a"), &worked_example(), Some(b"not a tiff"))
+                .unwrap()
+                .dem()
+                .is_none()
+        );
     }
 }
