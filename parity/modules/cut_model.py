@@ -144,6 +144,51 @@ def cases():
                     dict(xy=[[0.0, 0.0], [25.0, 0.0]], loa=loa, beam=beam, radius_multiple=3.0,
                          width_mult=3.2, c_c=0.5)))
 
+    # Ground EXACTLY at the water level (ticket 44). Mutation testing of ticket 22 showed that no case had
+    # ground level equal to the water level, so the strict `z > wl` could become `z >= wl` unseen.
+    # Every value is a whole number or a short binary fraction, so the comparison is exact in Python
+    # and in Rust (no knife edge from rounding).
+    wl_reason = "kills mutant `z > wl` -> `z >= wl` in {fn} (ground exactly at the water level), ticket 44"
+    xs_wl = frange(-40.0, 40.0, 1.0)
+
+    def at_wl_profile(on_wl, others=WL - 5.0):
+        """Ground well below the water level, except the given offsets, which sit exactly on it."""
+        return [WL if abs(o) in on_wl else others for o in xs_wl]
+
+    for tag, on_wl in [("single_point", {15.0}), ("flat_run", {14.0, 15.0, 16.0, 17.0, 18.0})]:
+        zs_wl = at_wl_profile(on_wl)
+        out.append(case(f"cut_model_a_bench_gate/named/ground_at_wl_{tag}", 1,
+                        "cut_model_a_bench_gate",
+                        dict(offsets=xs_wl, terrain=zs_wl, hb=HB, wl=WL, depth=DEPTH,
+                             sidewhich=sides(xs_wl)),
+                        wl_reason.format(fn="cut_model_a_bench_gate")))
+        out.append(case(f"section_area/named/ground_at_wl_{tag}_model_a", 1, "section_area",
+                        dict(zs=zs_wl, xs=xs_wl, sidewhich=sides(xs_wl), model="a",
+                             wet=[False] * len(xs_wl), **G),
+                        wl_reason.format(fn="section_area")))
+        out.append(case(f"section_area/named/ground_at_wl_{tag}_model_b", 1, "section_area",
+                        dict(zs=zs_wl, xs=xs_wl, sidewhich=sides(xs_wl), model="b",
+                             wet=[False] * len(xs_wl), **G),
+                        wl_reason.format(fn="section_area")))
+    # Ground just above the water level on a flat run (the same profile, one centimetre up): the
+    # neighbouring case on the other side of the comparison.
+    zs_up = [WL + 0.5 if abs(o) in {15.0} else WL - 5.0 for o in xs_wl]
+    out.append(case("cut_model_a_bench_gate/named/ground_just_above_wl_single_point", 1,
+                    "cut_model_a_bench_gate",
+                    dict(offsets=xs_wl, terrain=zs_up, hb=HB, wl=WL, depth=DEPTH,
+                         sidewhich=sides(xs_wl)),
+                    wl_reason.format(fn="cut_model_a_bench_gate")))
+    # Intrusion of exactly PRISM_INTRUDE_M (2 m): hb 8, depth 4, slope 3 -> o_wl 20; ground above the
+    # water level from offset 18. `intrusion > 2.0` is false, `>= 2.0` would be true.
+    xs_e = frange(-40.0, 40.0, 1.0)
+    zs_e = [WL + 3.0 if abs(o) >= 18.0 and abs(o) <= 20.0 else WL - 5.0 for o in xs_e]
+    out.append(case("cut_model_a_bench_gate/named/intrusion_exactly_two_metres", 1,
+                    "cut_model_a_bench_gate",
+                    dict(offsets=xs_e, terrain=zs_e, hb=8.0, wl=WL, depth=4.0,
+                         sidewhich=sides(xs_e)),
+                    "kills mutant `intrusion > PRISM_INTRUDE_M` -> `>=` in cut_model_a_bench_gate "
+                    "(intrusion exactly 2 m), ticket 44"))
+
     # Tier 2: seeded sweep.
     rng = random.Random(SEED)
     r = rng.random
