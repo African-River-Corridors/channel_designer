@@ -437,10 +437,11 @@ impl AppState {
     /// Record that the design was written to `path`.
     pub fn saved(&mut self, path: &Path) {
         self.path = Some(path.to_path_buf());
-        // The DEM path is stored relative to the document: say it again from the new folder.
-        if let (Some(file), Some(bytes), Some(dem)) = (&self.dem_file, &self.dem_bytes, &self.dem) {
+        // The DEM path is stored relative to the document: say it again from the new folder. Only the
+        // path changes; the DEM's hash stays, so no stage goes stale.
+        if let Some(file) = &self.dem_file {
             let rel = relative_to(path.parent().unwrap_or(Path::new(".")), file);
-            self.session.set_dem(&rel, bytes, dem);
+            self.session.set_dem_path(&rel);
         }
         self.dirty = false;
         self.warnings.clear();
@@ -926,6 +927,26 @@ mod tests {
                 .contains("run the alignment stage")
         );
         assert_eq!(s.export_csv().lines().count(), 2);
+    }
+
+    #[test]
+    fn saving_to_another_folder_keeps_the_run_stages_fresh() {
+        let (mut s, dir) = ready();
+        run(&mut s, "alignment", Some("rolling_circle")).unwrap();
+        run(&mut s, "volumes", None).unwrap();
+        let sub = dir.path().join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        s.saved(&sub.join("moved.cdesign"));
+        assert_eq!(
+            s.snapshot()["document"]["inputs"]["dem"]["path"],
+            "../dem.tif"
+        );
+        assert_eq!(stage_status(&s, "volumes"), "fresh");
+        // And the saved file reopens fresh, with the DEM found at the new relative path.
+        let text = s.save_text();
+        let dem = std::fs::read(dir.path().join("dem.tif")).unwrap();
+        let again = AppState::open(&sub.join("moved.cdesign"), &text, Some(&dem)).unwrap();
+        assert_eq!(stage_status(&again, "volumes"), "fresh");
     }
 
     /// A temporary folder that goes away with the test.
