@@ -131,7 +131,7 @@ pub struct ImportReport {
 /// One channel design.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Session {
-    doc: Value,
+    pub(super) doc: Value,
 }
 
 fn empty_stage() -> Value {
@@ -250,7 +250,7 @@ impl Session {
 
     /// What a stage depended on, hashed: the inputs, the project CRS, and the settings and results
     /// of the stage and of every stage before it.
-    fn dependency_hash(&self, stage: Stage) -> String {
+    pub(super) fn dependency_hash(&self, stage: Stage) -> String {
         let st = |s: Stage| &self.doc["stages"][s.name()];
         let part = |s: Stage| json!({"settings": st(s)["settings"], "results": st(s)["results"]});
         let upto = |s: Stage| Stage::ALL.iter().take_while(|x| **x != s).count();
@@ -374,6 +374,7 @@ impl Session {
         }
         match stage {
             Stage::Sizing => self.run_sizing(),
+            Stage::Alignment => self.rerun_alignment(),
             other => Err(DesignError::NotAvailable(format!(
                 "the {} stage is not available yet",
                 other.name()

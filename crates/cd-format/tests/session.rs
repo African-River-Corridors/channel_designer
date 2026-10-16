@@ -207,7 +207,7 @@ fn a_zone_that_differs_from_the_designs_is_refused() {
 fn a_stage_that_is_not_built_yet_says_so() {
     let mut s = imported();
     assert!(matches!(
-        s.run_stage(Stage::Alignment),
+        s.run_stage(Stage::Optimise),
         Err(DesignError::NotAvailable(_))
     ));
 }
