@@ -1106,6 +1106,29 @@ mod tests {
         assert!(r.infeasible.is_empty(), "{:?}", r.infeasible);
         assert!(r.radius_ok, "{}", r.measured_min_radius_m);
     }
+
+    #[test]
+    fn a_right_angle_seed_in_wide_water_is_fitted_at_the_default_spacing() {
+        // An L-shaped channel 800 m wide and a seed with a 90 deg corner. A 420 m line fits with
+        // room to spare. Before the QP was scaled, pass 1 stalled (InsufficientProgress) at the
+        // default 10 m spacing and the smoothed seed came back at R 84 m.
+        let water = vec![Polygon {
+            exterior: vec![
+                [-400.0, -400.0],
+                [1900.0, -400.0],
+                [1900.0, 1900.0],
+                [1100.0, 1900.0],
+                [1100.0, 400.0],
+                [-400.0, 400.0],
+                [-400.0, -400.0],
+            ],
+            holes: vec![],
+        }];
+        let seed = [[0.0, 0.0], [1500.0, 0.0], [1500.0, 1500.0]];
+        let r = fairway_fit(&seed, &water, &Fixed::default(), &FitParams::new(420.0)).unwrap();
+        assert!(r.radius_ok, "{} {:?}", r.measured_min_radius_m, r.notes);
+        assert!(r.notes.is_empty(), "{:?}", r.notes);
+    }
 }
 
 #[cfg(test)]
