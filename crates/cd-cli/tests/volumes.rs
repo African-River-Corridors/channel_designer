@@ -417,3 +417,136 @@ fn optimise_without_a_base_level_says_what_it_needs() {
     assert_eq!(code(&o), 2);
     assert!(err(&o).contains("base_level_m"), "{}", err(&o));
 }
+
+// --- run and export (ticket 64) --------------------------------------------------------------
+
+/// The chain `new -> import -> size -> align -> optimise -> volumes` on a short straight line.
+fn full_chain(dir: &Path) -> String {
+    let (c, p) = river_inputs(dir);
+    let line = [[SHIFT[0], SHIFT[1]], [SHIFT[0] + 1000.0, SHIFT[1]]];
+    std::fs::write(
+        &c,
+        format!(
+            r#"{{"type":"LineString"{UTM30},"coordinates":{}}}"#,
+            json!(line)
+        ),
+    )
+    .unwrap();
+    let doc = dir.join("chain.cdesign").to_str().unwrap().to_string();
+    let dem = dir.join("river-dem.tif");
+    write_dem(&dem, 0.0);
+    let dem = dem.to_str().unwrap();
+    for s in [
+        vec!["new", &doc, "--title", "Chain", "--date", "2026-10-16"],
+        vec![
+            "import",
+            &doc,
+            "--centreline",
+            &c,
+            "--polygon",
+            &p,
+            "--dem",
+            dem,
+        ],
+        vec![
+            "size",
+            &doc,
+            "--ruleset",
+            "PIANC-B",
+            "--vessel",
+            "CEMT_IV",
+            "--draught",
+            "2.5",
+        ],
+        vec!["align", &doc, "--method", "rolling-circle"],
+        vec![
+            "optimise",
+            &doc,
+            "--base-level",
+            "0",
+            "--sites",
+            "500",
+            "--lifts",
+            "0.5,1",
+        ],
+        vec!["volumes", &doc, "--water-level", "0", "--model", "b"],
+    ] {
+        let o = run(&s);
+        assert!(code(&o) <= 1, "{s:?}: {}", err(&o));
+    }
+    doc
+}
+
+#[test]
+fn the_chain_gives_the_same_document_as_run_on_the_same_inputs_and_settings() {
+    let dir = work_dir("chain-run");
+    let doc = full_chain(&dir);
+    let chain = std::fs::read_to_string(&doc).unwrap();
+    // The same file with every result cleared, as when the settings are edited and nothing has run.
+    let mut v: Value = serde_json::from_str(&chain).unwrap();
+    for stage in ["sizing", "alignment", "optimise", "volumes"] {
+        for k in ["results", "depends_on", "engine_version"] {
+            v["stages"][stage][k] = Value::Null;
+        }
+    }
+    v["options"] = json!([]);
+    let again = dir.join("again.cdesign");
+    std::fs::write(
+        &again,
+        format!("{}\n", serde_json::to_string_pretty(&v).unwrap()),
+    )
+    .unwrap();
+    let o = run(&["run", again.to_str().unwrap(), "--json"]);
+    assert!(code(&o) <= 1, "{}", err(&o));
+    let ran: Value = serde_json::from_str(&out(&o)).unwrap();
+    assert_eq!(
+        ran["ran"],
+        json!(["sizing", "alignment", "optimise", "volumes"])
+    );
+    assert_eq!(std::fs::read_to_string(&again).unwrap(), chain);
+}
+
+#[test]
+fn export_writes_the_quantity_table_and_the_options_with_the_screening_label() {
+    let dir = work_dir("export");
+    let doc = full_chain(&dir);
+    let csv = run(&["export", &doc, "--csv"]);
+    assert_eq!(code(&csv), 0, "{}", err(&csv));
+    let text = out(&csv);
+    assert_eq!(
+        text.lines().next().unwrap(),
+        "# Screening — not for construction"
+    );
+    assert!(text.lines().nth(1).unwrap().contains("failed_checks"));
+    assert!(
+        text.contains("\nrolling-circle,") && text.contains("\nlattice,"),
+        "{text}"
+    );
+    assert!(
+        text.lines().skip(2).all(|l| l.ends_with(",fresh")),
+        "{text}"
+    );
+
+    let g = run(&["export", &doc, "--geojson"]);
+    let fc: Value = serde_json::from_str(&out(&g)).unwrap();
+    assert_eq!(fc["screening"], "Screening — not for construction");
+    assert_eq!(fc["features"].as_array().unwrap().len(), 2);
+    let file = dir.join("wgs84.geojson");
+    let w = run(&[
+        "export",
+        &doc,
+        "--geojson",
+        "--wgs84",
+        "-o",
+        file.to_str().unwrap(),
+    ]);
+    assert_eq!(code(&w), 0, "{}", err(&w));
+    let fc: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let c0 = &fc["features"][0]["geometry"]["coordinates"][0];
+    assert!((-3.0..=-2.9).contains(&c0[0].as_f64().unwrap()), "{c0}");
+
+    // The export never rewrites the document, and says what it needs.
+    let none = run(&["export", &doc]);
+    assert_eq!(code(&none), 2);
+    assert!(err(&none).contains("--geojson"), "{}", err(&none));
+}
