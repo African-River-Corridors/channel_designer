@@ -31,6 +31,25 @@ pull request that moves the result.
   on the line: a corner between stations reads tighter on the chord, while a smooth excursion can
   read wider on a long chord than on its station vertices. The pool lattice (`LatticeResult`) and
   the pools result (`PoolsResult`) gain the same three fields. Rolling-circle results do not move.
+- **The fairway fit is a minimum-curvature corridor solve (#126, ADR 0007).** The elastic band
+  inside `fairway_fit` is replaced by the racing line inside navigable water (a convex QP on lateral
+  offsets, solved by Clarabel, re-linearised), and `join_legs` builds one corridor per route instead
+  of fillets and the join guard. What moved: every result of `fairway_fit`, `fairway_fit_in_water`,
+  the water-aware rolling circle's rung 3, `join_legs`, `guard_joins`, `tangent_joins` and
+  `optimise_pools_tangent`. Why: on real routes the band stayed in the middle of the water, made
+  narrow bends sharper than its input (281 m to 12 m) and left kinks at fixed tails. On the
+  synthetic fixtures now: a 200 m bend in 200 m water is taken wide (39-49 % of its bending length
+  in the outer third of the navigable width; the centreline has none); the narrow creek is never
+  fitted sharper than its input (input 220 m; fitted 271, 301 and 340 m at 40, 46 and 60 m width);
+  a fixed tail is met with continuous curvature; a stretch with no navigable width is reported and
+  passed without a kink; the open 90° basin's join is one smooth line whose tightest bend is 674 m
+  (it was a 639 m fillet with a curvature step at each end). `join_legs` now reports each turning
+  join as `FairwayFit` (never `Fillet`) and its `guard_failed` is always empty. API: `FitParams`
+  loses the band's settings (`levels`, `length_weight`, `max_jump_spacings`, `admm_rho`,
+  `admm_iters`) and gains the corridor's (`spacing_m`, `passes`, `converged_m`, `reach_m`,
+  `fold_share`, `reweight_cap`, `free_cap_m`, `pull_weight`); `FitLevel` is gone; `JoinParams` loses
+  `r_ceiling_m` and `radius_step_m`. The fixed scenarios of this check do not call these functions
+  (#100 wires them into the document and CLI), so no scenario moves.
 
 ## 0.2.0
 

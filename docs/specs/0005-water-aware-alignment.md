@@ -5,6 +5,10 @@ Status: **approved by the maintainer, 2026-10-16.** Decisions: `docs/design/2026
 0002 (#58, the channel design document and the alignment stage). **It changes engineering results**, so
 every result-changing ticket waits for the port to close (#37) and for the design-impact check (#36).
 
+**Amended 2026-10-16 (#126, ADR 0007):** the fairway fit is a minimum-curvature corridor solve, not
+an elastic band, and `join_legs` builds one corridor per route instead of fillets and the join guard.
+The sections below are updated to match; the research line records what was added.
+
 ## Problem statement
 
 A design line must keep a vessel inside the water and never turn tighter than R_min. Today no method
@@ -29,9 +33,11 @@ in this repo can see the water:
    shrunk by half the straight bottom width plus a clearance (metres, default 0), then smoothed by
    opening and closing. A per-station check then tests the channel at its measured local radius,
    using the ruleset's bend-widened width.
-2. **The fairway fit.** A smoothing step that fits a design line inside navigable water between two
-   fixed poses, never tighter than R_min, minimising bending energy. It is free to be longer than the
-   input. It reports every stretch where no compliant line fits.
+2. **The fairway fit.** A minimum-curvature corridor solve (ADR 0007): the line inside navigable
+   water, between fixed poses and through must-follow segments, that minimises its summed squared
+   curvature, pushed away from bends tighter than R_min. It is free to be longer than the input. It
+   reports every stretch where no compliant line fits, and passes through it with continuous
+   curvature.
 3. **A water-aware rolling circle.** When a water polygon is given, each bend takes the first rung
    that works:
    1. **inside arc** at R_min, as today, if the bend-widened channel fits in the water;
@@ -41,10 +47,10 @@ in this repo can see the water:
    4. **infeasible**: the line that breaks the rules least, and a failed check for that stretch.
 
    Without a water polygon, the rolling circle gives exactly today's results.
-4. **Joined legs and fixed pieces.** `join_legs` joins ordered seed legs: a fillet of at least R_min
-   where one fits inside the water, otherwise a fairway-fit window whose blend length grows with the
-   turn angle. A fixed start pose, end pose and must-follow segments are held exactly. A join that
-   held R_min must still hold it after any later fit (the join guard).
+4. **Joined legs and fixed pieces.** `join_legs` joins ordered seed legs with one corridor per route:
+   the legs, end to end, seed one fairway fit over the whole route. A join is a bend inside the
+   corridor, with no fillet and no splice. A fixed start pose, end pose and must-follow segments are
+   held exactly. The join guard stays for lines changed after a fit (`guard_joins`).
 5. **One radius reading.** Every reported radius, on every method and result, is read on the chord
    (`min_radius_on_chord`, default chord R_min/3).
 6. **A fairness weight on the least-cost re-route,** default 0.
@@ -71,8 +77,9 @@ than R_min.
 New synthetic fixtures, for the known-answer tests:
 
 - **Straight canal:** the fit returns the straight line.
-- **Open 90° basin:** two straight legs meet at 90° in open water. `join_legs` returns one fillet. Its
-  radius is the largest the basin allows, and it is at least R_min.
+- **Open 90° basin:** two straight legs meet at 90° in open water. `join_legs` returns one smooth line
+  through the join, with no curvature step, and its tightest bend is at least the largest fillet the
+  basin allows (639.3 m), so at least R_min.
 - **Narrowing reach:** a channel that narrows below the bottom width over a known stretch. That stretch,
   and only that stretch, is reported infeasible.
 - **Fixed tail:** a seed line that must merge tangentially into a fixed segment. The merge is tangent
@@ -119,25 +126,28 @@ New synthetic fixtures, for the known-answer tests:
   and a reason (`too_narrow`, `r_min_not_possible`).
 - **Rulesets.** `validate` refuses a ruleset that gives no bend-widened width (R2-Q3). The default
   widening formula is unchanged.
-- **`alignment::fairway_fit` — the fairway fit (new).** A coarse-to-fine elastic band (point spacing
-  about 200 → 100 → 50 → 25 m; L2):
-  - each step moves points down the gradient of bending energy (discrete fourth differences), plus a
-    weak length term and the optional preferred-radius penalty max(0, κ − 1/R_pref)² (Q3). There is
-    no second-difference step (L6);
-  - after each step, points are projected back inside navigable water, and no projection moves a
-    point further than a set cap (L4);
-  - curvature is clamped to 1/R_min by projection, never by a soft cost;
-  - fixed poses are met by a Dubins piece (`dubins_paths`) of radius ≥ R_min, so the line meets them
-    tangentially (L1). Must-follow segments are copied exactly and the band works only between them;
-  - where the band can't hold the line inside navigable water at R_min, it keeps the
-    least-violating line and returns the stretch.
-- **`alignment::join` — joined legs (new).** `join_legs(legs, water, fixed, params) -> JoinResult`.
-  At each join: the largest fillet radius, from a set ceiling down to R_min, whose arc stays in
-  navigable water; if none fits, a fairway-fit window whose blend length grows with the turn angle
-  (L5). Joins are found by position, never by chainage, after any step that changes length (L7).
-  **Join guard (R2-Q2, L8):** after any later fit, each join that held R_min is re-read; if it fails,
-  that window is refit with more weight; if it still fails, the result carries a failed check. The
-  same function serves tangent joins between optimised pools (#6).
+- **`alignment::fairway_fit` — the fairway fit (new; ADR 0007).** A minimum-curvature corridor
+  solve:
+  - the line is a reference line moved along its normals by offsets `a`; the first reference is the
+    seed, smoothed, and each pass's solution, resampled every 10 m, is the next (up to 16 passes);
+  - ray casts along each normal to the edge of navigable water give a box on each offset, the
+    narrowest within half a chord either side (half an LOA at the default chord), 1 m inside the edge;
+  - a convex QP (`fairway_fit::corridor`, Clarabel) minimises the summed squared second derivative
+    inside the boxes. Rows tighter than R_min weigh up to 10⁴ times more (a weight that rises at once
+    and falls slowly between passes), and the optional preferred radius adds a smooth ramp, never a
+    step. The best pass is kept;
+  - fixed poses hold their point, the next point along the heading and a ghost one spacing behind;
+    must-follow segments are zero-offset points in the same corridor and are copied exactly. Dubins
+    pieces (`dubins_paths`) of radius R_min shape the seed at posed ends (L1);
+  - nothing is snapped: a point outside the water is pulled softly towards water within one chord,
+    and a point with no navigable width is free, so the line passes with continuous curvature and the
+    stretch is reported.
+- **`alignment::join` — joined legs (new; ADR 0007).** `join_legs(legs, water, fixed, params) ->
+  JoinResult`: one fairway fit over the whole route, seeded by the legs end to end. Each join is read
+  by position (L7) on the final line: it holds R_min when the chord reading holds through its window
+  and no infeasible stretch touches it. **Join guard (R2-Q2, L8):** `guard_joins` re-reads joins on a
+  line changed after a fit, refits a failing window with more weight, and names a join that still
+  fails. The same machinery serves tangent joins between optimised pools (#6).
 - **`alignment::rolling_circle` — water-aware.** A new optional `water` argument. Without it, the
   code path and results are today's. With it, the four-rung ladder in the Solution, bend by bend. The
   result gains `rungs` (which rung each bend took) and `infeasible: Vec<Stretch>`.
@@ -169,7 +179,8 @@ New synthetic fixtures, for the known-answer tests:
 
 ### Dependencies
 
-- `dubins_paths` (MIT, 3.x) in `cd-core`. No other new crate. The A* stays in the crate (Q8).
+- `dubins_paths` (MIT, 3.x) in `cd-core`. The A* stays in the crate (Q8).
+- `clarabel` (Apache-2.0, pure Rust, =0.11.1) in `cd-core`, for the corridor QP (ADR 0007).
 
 ## Testing decisions
 
@@ -201,7 +212,8 @@ After #37 there is no Python reference. The oracle for this spec is (Q6):
 - **State lattices** (Pivtoraiko, Knepper and Kelly, JFR 2009, doi:10.1002/rob.20285): motion
   primitives with a minimum turning radius. Our pool lattice is one.
 - **Elastic bands** (Quinlan and Khatib, ICRA 1993, doi:10.1109/ROBOT.1993.291936): tension plus
-  obstacle repulsion. The fairway fit's smoother. CHOMP and TEB are heavier alternatives.
+  obstacle repulsion. The fairway fit's first smoother, replaced by ADR 0007. CHOMP and TEB are
+  heavier alternatives.
 - **Dubins** (Am. J. Math. 1957, doi:10.2307/2372560): shortest joins between two poses at bounded
   curvature. **Clothoid G1 fitting** (Bertolazzi and Frego, MMA 2014, doi:10.1002/mma.3114): curvature-
   continuous joins, if ever needed.
@@ -210,6 +222,12 @@ After #37 there is no Python reference. The oracle for this spec is (Q6):
   (doi:10.1016/j.conengprac.2017.01.007): medial axis, then curvature-continuous smoothing.
 - **Inland waterway guidance** (PIANC InCom WG 141, 2019) sets width, depth and bend radius by class,
   but gives no method for placing the line.
+- **Minimum-curvature racing lines** (added with #126): Heilmeier et al., "Minimum curvature trajectory
+  planning and control for an autonomous race car", Vehicle System Dynamics 58(10), 2020,
+  doi:10.1080/00423114.2019.1631455. A reference line, normals, lateral offsets inside track bounds,
+  summed squared curvature as a QP, re-linearised. TUM's `global_racetrajectory_optimization` and
+  `trajectory_planning_helpers` (LGPL-3.0) implement it; read for the method, never vendored. The
+  first research line missed this family; it is the fairway fit since ADR 0007.
 
 **Crates checked:**
 
@@ -221,11 +239,13 @@ After #37 there is no Python reference. The oracle for this spec is (Q6):
 | Polygon buffer | `geo` 0.33 `Buffer`, `i_overlay` 9.1 | MIT/Apache, active | Fallback only (Q7) |
 | Arc-exact offsets | `cavalier_contours` 0.9 | MIT/Apache, active | Not needed now |
 | Hybrid A*, elastic band | none usable | — | Write ourselves |
+| Convex QP (corridor solve, #126) | `clarabel` 0.11 | Apache-2.0, pure Rust, active | **Adopt** (ADR 0007) |
 
 **What we reuse:** Dubins pieces, the in-crate A*, the crate's geometry kernel, and the radius check.
-**What we build:** navigable water, the bending-energy band, the fillet search, the join guard and the
-rolling-circle ladder. A project-side prototype proved the band's design on real multi-leg lines; its
-lessons are L1–L8 in the grill note.
+**What we build:** navigable water, the corridor solve around Clarabel (ADR 0007; it replaced the
+bending-energy band and the fillet joins), the join guard and the rolling-circle ladder. A
+project-side prototype tested the band's design on real multi-leg lines (and later measured its
+faults, #126); its lessons are L1–L8 in the grill note.
 
 ## Tickets
 
@@ -241,6 +261,7 @@ Each ticket is a sub-issue of the spec issue (#91). "Blocked by" uses GitHub's n
 | T6 (#97) | Water-aware rolling circle: the four-rung ladder (closes #5) | T5 (#96) | Yes, with water only |
 | T7 (#98) | `join_legs` with the join guard (closes #6) | T5 (#96) | Yes (new function) |
 | T8 (#99) | Fairness weight on the least-cost re-route, default 0 | #36, #37 | No at default |
+| #126 | The fairway fit as a minimum-curvature corridor solve; one corridor per route in `join_legs` (ADR 0007) | T5, T7 | Yes (fairway fit, rung 3, `join_legs`) |
 | T9 (#100) | `.cdesign` and CLI: `seed_legs`, `fixed`, the new settings, `fits_in_water` and `join_guard` checks in every export | T6, T7 | Yes (schema version) |
 
 T1 and T2 start now (Q13). T2 lands before #37 only with the same fix mirrored in the frozen Python
