@@ -757,6 +757,167 @@ pub fn volumes(doc: &str, flags: VolumesFlags, output: &Option<String>, json_mod
     }
 }
 
+/// Largest number of tiles one `fetch-dem` will take: a reach this wide wants a DEM of its own.
+const MAX_TILES: usize = 16;
+
+pub fn fetch_dem(doc: &str, margin: f64, mirror: Option<&str>, json_mode: bool) -> Result {
+    fetch_dem_with(doc, margin, mirror, json_mode, &crate::fetch::Mirror)
+}
+
+/// `fetch-dem` with the fetcher given, so a test can serve a recorded response.
+pub fn fetch_dem_with(
+    doc: &str,
+    margin: f64,
+    mirror: Option<&str>,
+    json_mode: bool,
+    fetcher: &dyn crate::fetch::Fetcher,
+) -> Result {
+    use cd_format::design::dem_source::{
+        COPERNICUS_NOTICE, DEFAULT_MIRROR, SOURCE_NAME, mosaic, tiles_for, write_geotiff,
+    };
+    if doc == "-" {
+        return Err(input_error(
+            "fetch-dem writes files next to the document: give a file, not `-`",
+        ));
+    }
+    if !(margin.is_finite() && margin >= 0.0) {
+        return Err(input_error(
+            "--margin must be a number of metres, 0 or more",
+        ));
+    }
+    let mut session = open(doc)?;
+    let mirror = mirror.unwrap_or(DEFAULT_MIRROR);
+    let bbox = session.extent_wgs84(margin).map_err(from_design)?;
+    let tiles = tiles_for(bbox);
+    if tiles.len() > MAX_TILES {
+        return Err(input_error(format!(
+            "the reach needs {} tiles; fetch-dem takes at most {MAX_TILES}. Give a DEM of your own",
+            tiles.len()
+        )));
+    }
+    let dir = doc_dir(doc);
+    let stem = Path::new(doc)
+        .file_stem()
+        .map_or("design".to_string(), |s| s.to_string_lossy().into_owned());
+    let tiles_dir_name = format!("{stem}-dem");
+    let tiles_dir = dir.join(&tiles_dir_name);
+    let recorded = session.dem_source_tiles();
+
+    // Look at every file first, so a refusal changes nothing.
+    let mut plan = Vec::new();
+    for t in &tiles {
+        let rel = format!("{tiles_dir_name}/{}.tif", t.name());
+        let path = dir.join(&rel);
+        let found = match std::fs::read(&path) {
+            Ok(b) => Some(b),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(input_error(format!("cannot read {rel}: {e}"))),
+        };
+        if let Some(b) = &found {
+            let have = cd_format::design::hash::sha256_hex(b);
+            match recorded.iter().find(|r| r.name == t.name()) {
+                Some(r) if r.sha256 == have => {}
+                Some(r) => {
+                    return Err(input_error(format!(
+                        "{rel} exists and its hash ({have}) differs from the one recorded ({}). \
+                         Refusing to overwrite it: move it away, or restore the file.",
+                        r.sha256
+                    )));
+                }
+                None => {
+                    return Err(input_error(format!(
+                        "{rel} exists but the channel design has no record of it. \
+                         Refusing to overwrite it: move it away first."
+                    )));
+                }
+            }
+        }
+        plan.push((*t, rel, path, found));
+    }
+
+    let mut records = Vec::new();
+    let mut dems = Vec::new();
+    let mut fetched = 0;
+    for (t, rel, path, found) in plan {
+        let bytes = match found {
+            Some(b) => b,
+            None => {
+                let b = fetcher.get(t, mirror).map_err(input_error)?;
+                std::fs::create_dir_all(&tiles_dir).map_err(|e| {
+                    input_error(format!("cannot create {}: {e}", tiles_dir.display()))
+                })?;
+                std::fs::write(&path, &b)
+                    .map_err(|e| input_error(format!("cannot write {rel}: {e}")))?;
+                fetched += 1;
+                b
+            }
+        };
+        dems.push((read_dem(&bytes, &rel)?, bytes.clone()));
+        records.push(crate::fetch::record(t, mirror, &rel, &bytes));
+    }
+
+    // One tile is the DEM as it is. Tiles on one grid are joined into one file, with no resampling.
+    let (dem_rel, dem_bytes, dem) = if dems.len() == 1 {
+        let (d, b) = dems.remove(0);
+        (records[0].file.clone(), b, d)
+    } else {
+        let joined = mosaic(&dems.iter().map(|(d, _)| d.clone()).collect::<Vec<_>>())
+            .map_err(input_error)?;
+        let bytes = write_geotiff(&joined).map_err(input_error)?;
+        let rel = format!("{stem}-dem.tif");
+        let path = dir.join(&rel);
+        if let Ok(existing) = std::fs::read(&path) {
+            let have = cd_format::design::hash::sha256_hex(&existing);
+            let want = session.document()["inputs"]["dem"]["sha256"].as_str();
+            if have != cd_format::design::hash::sha256_hex(&bytes) && want != Some(have.as_str()) {
+                return Err(input_error(format!(
+                    "{rel} exists and is not the file this channel design recorded. \
+                     Refusing to overwrite it: move it away first."
+                )));
+            }
+        }
+        std::fs::write(&path, &bytes)
+            .map_err(|e| input_error(format!("cannot write {rel}: {e}")))?;
+        (rel, bytes, joined)
+    };
+    session.set_dem(&dem_rel, &dem_bytes, &dem);
+    session.set_dem_source(&records).map_err(from_design)?;
+
+    let notice = format!(
+        "{SOURCE_NAME}\n\n{COPERNICUS_NOTICE}\n\nTiles:\n{}\n",
+        records
+            .iter()
+            .map(|r| format!(
+                "  {}  sha256 {}  {} bytes  {}",
+                r.file, r.sha256, r.bytes, r.url
+            ))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    std::fs::create_dir_all(&tiles_dir)
+        .map_err(|e| input_error(format!("cannot create {}: {e}", tiles_dir.display())))?;
+    write(&tiles_dir.join("NOTICE.txt").to_string_lossy(), &notice)?;
+    write(doc, &session.to_text())?;
+    let human = format!(
+        "{} tile(s) for the reach, {} downloaded; DEM: {dem_rel}\n{COPERNICUS_NOTICE}",
+        records.len(),
+        fetched
+    );
+    say(
+        false,
+        json_mode,
+        &human,
+        json!({
+            "ok": true, "dem": dem_rel, "downloaded": fetched,
+            "tiles": records.iter().map(|r| json!({
+                "name": r.name, "file": r.file, "sha256": r.sha256, "bytes": r.bytes, "url": r.url,
+            })).collect::<Vec<_>>(),
+            "licence": COPERNICUS_NOTICE,
+        }),
+    );
+    Ok(())
+}
+
 pub fn export(doc: &str, geojson: bool, csv: bool, wgs84: bool, output: Option<&str>) -> Result {
     if !geojson && !csv {
         return Err(input_error("choose an export: --geojson or --csv"));
