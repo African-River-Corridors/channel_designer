@@ -327,7 +327,10 @@ describe("Channel Designer app smoke test", () => {
     // The failing option starts selected; selecting the other row moves the map's selection.
     const mapSelected = async () => (await (await browser.$("[data-testid=plan-map]")).getAttribute("data-selected")) ?? "";
     await until("the map to select the failing option", async () => (await mapSelected()) === "reroute", 30000);
-    await (await browser.$("[data-testid=option-row][data-option=rolling-circle]")).click();
+    // The panel is short: scroll the row into view, then click it.
+    const row = await browser.$("[data-testid=option-row][data-option=rolling-circle]");
+    await row.scrollIntoView();
+    await browser.execute((el) => el.click(), row);
     await until("the map to follow the table", async () => (await mapSelected()) === "rolling-circle", 30000);
   });
   it("moves the cross-section and the map marker with the station slider, from the volumes' own station walk", async () => {
