@@ -4,6 +4,7 @@
 pub mod loops;
 pub mod radius_check;
 pub mod rolling_circle;
+pub mod route;
 
 /// A refusal the Python raises: its exception type and its message, as the frozen driver records
 /// them (`{"error": {"type": ..., "message": ...}}`).
@@ -18,6 +19,13 @@ impl PyError {
     pub fn value(message: impl Into<String>) -> Self {
         PyError {
             kind: "ValueError",
+            message: message.into(),
+        }
+    }
+
+    pub fn runtime(message: impl Into<String>) -> Self {
+        PyError {
+            kind: "RuntimeError",
             message: message.into(),
         }
     }

@@ -151,7 +151,7 @@ fn line_arg(args: &Value, name: &str) -> Result<Vec<Pt>, EvalError> {
     }
 }
 
-fn polys_of(g: Geometry, what: &str) -> Result<Vec<Polygon>, EvalError> {
+pub(super) fn polys_of(g: Geometry, what: &str) -> Result<Vec<Polygon>, EvalError> {
     match g {
         Geometry::Polygon(p) if p.exterior.is_empty() => Ok(vec![]),
         Geometry::Polygon(p) => Ok(vec![p]),

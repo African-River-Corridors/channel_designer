@@ -127,3 +127,50 @@ pub(crate) fn searchsorted_left(a: &[f64], v: f64) -> usize {
 pub(crate) fn searchsorted_right(a: &[f64], v: f64) -> usize {
     a.partition_point(|&x| x <= v)
 }
+
+/// `np.arange(start, stop, step)` for floats: `ceil((stop - start) / step)` values. numpy fills
+/// them as `start + i * delta`, where `delta = (start + step) - start` (which is not always
+/// `step`, to the last bit).
+pub(crate) fn arange(start: f64, stop: f64, step: f64) -> Vec<f64> {
+    let n = ((stop - start) / step).ceil();
+    if n.is_nan() || n <= 0.0 {
+        return Vec::new();
+    }
+    let n = n as usize;
+    let delta = (start + step) - start;
+    (0..n)
+        .map(|i| match i {
+            0 => start,
+            1 => start + step,
+            _ => start + i as f64 * delta,
+        })
+        .collect()
+}
+
+/// `ndarray.min()` of floats: NaN if any value is NaN. Panics on an empty slice, as numpy raises.
+pub(crate) fn np_min(xs: &[f64]) -> f64 {
+    let mut m = xs[0];
+    for &x in xs {
+        if x.is_nan() {
+            return f64::NAN;
+        }
+        if x < m {
+            m = x;
+        }
+    }
+    m
+}
+
+/// `np.argmin`: the first index of the least value (the first NaN, if there is one).
+pub(crate) fn argmin(xs: &[f64]) -> usize {
+    let mut best = 0;
+    for (i, &x) in xs.iter().enumerate() {
+        if x.is_nan() {
+            return i;
+        }
+        if x < xs[best] {
+            best = i;
+        }
+    }
+    best
+}
