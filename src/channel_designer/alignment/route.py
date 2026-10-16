@@ -203,11 +203,16 @@ def optimise_route(line: LineString, terrain: TerrainSampler, river_polygon, gra
                    station_step: float = 100.0, offset_step: float = 10.0,
                    transect_step: float = 2.0, daylight_m: Optional[float] = None,
                    grid: Optional[CostGrid] = None,
-                   check_chord_m: Optional[float] = None) -> RouteResult:
+                   check_chord_m: Optional[float] = None,
+                   fairness_weight: float = 0.0) -> RouteResult:
     """Least-cost lateral re-route of ``line``. See the module docstring for the method.
 
     Wide excursions force sharp reconnection curves that the radius enforcement then smooths
     away, so a moderate corridor usually wins; the sweep finds it.
+
+    ``fairness_weight`` (default 0, off) adds that weight × the squared change of heading
+    between stations to the search's cost, so that where two lines cut the same (open water)
+    the smoother one wins.
 
     ``radius_ok`` on the result is False when the returned line is tighter than ``r_min``.
     It is read on the line's own station vertices, ``k`` stations each side, so the chord is
@@ -223,4 +228,4 @@ def optimise_route(line: LineString, terrain: TerrainSampler, river_polygon, gra
                       depth=depth, side_slope=side_slope, r_min=r_min, wet_weight=wet_weight,
                       dry_weight=dry_weight, corridor_sweep=list(corridor_sweep), station_step=station_step,
                       offset_step=offset_step, transect_step=transect_step, daylight_m=daylight_m,
-                      grid=grid, check_chord_m=check_chord_m)
+                      grid=grid, check_chord_m=check_chord_m, fairness_weight=fairness_weight)

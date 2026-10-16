@@ -122,6 +122,10 @@ enum Command {
         /// Re-route: the half-widths of the corridors to try, in metres, comma separated.
         #[arg(long, value_name = "LIST")]
         corridors: Option<String>,
+        /// Re-route: the fairness weight, on the squared change of heading between stations
+        /// (default 0: off). Prefers the smoother of two lines that cut the same.
+        #[arg(long, value_name = "WEIGHT")]
+        fairness_weight: Option<f64>,
         #[command(flatten)]
         out: Out,
     },
@@ -296,6 +300,7 @@ fn main() -> ExitCode {
             water_level,
             water_slope,
             corridors,
+            fairness_weight,
             out,
         } => commands::align(
             &doc,
@@ -308,6 +313,7 @@ fn main() -> ExitCode {
                 water_level,
                 water_slope,
                 corridors,
+                fairness_weight,
             },
             &out.output,
             out.json,

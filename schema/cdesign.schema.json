@@ -122,7 +122,7 @@
       "additionalProperties": false,
       "properties": {
         "sizing": { "$ref": "#/$defs/sizing_stage" },
-        "alignment": { "$ref": "#/$defs/stage" },
+        "alignment": { "$ref": "#/$defs/alignment_stage" },
         "optimise": { "$ref": "#/$defs/stage" },
         "volumes": { "$ref": "#/$defs/stage" }
       }
@@ -178,6 +178,32 @@
       "additionalProperties": false,
       "properties": {
         "settings": { "type": ["object", "null"] },
+        "results": { "type": ["object", "null"] },
+        "depends_on": { "$ref": "#/$defs/hash_or_null" },
+        "engine_version": { "type": ["string", "null"] }
+      }
+    },
+    "alignment_stage": {
+      "type": "object",
+      "required": ["settings", "results", "depends_on", "engine_version"],
+      "additionalProperties": false,
+      "properties": {
+        "settings": {
+          "description": "Settings of each alignment method, by method name. A setting left out takes its default.",
+          "type": ["object", "null"],
+          "properties": {
+            "reroute": {
+              "type": "object",
+              "properties": {
+                "fairness_weight": {
+                  "description": "Weight on the squared change of heading between stations in the least-cost re-route (spec 0005). 0, the default, gives the re-route without it.",
+                  "type": "number",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
         "results": { "type": ["object", "null"] },
         "depends_on": { "$ref": "#/$defs/hash_or_null" },
         "engine_version": { "type": ["string", "null"] }
