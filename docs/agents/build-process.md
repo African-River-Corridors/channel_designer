@@ -82,6 +82,10 @@ closed. Tickets that depend on it wait.
   is printed by the frozen Python (`cargo xtask regenerate`, with a recorded reason), or worked out and
   cited.
 - Tolerances are the ones in ADR 0005 and live in one constants file. Changing one stops the build.
+- **Any check that compares numbers against the frozen Python compares by the ADR 0005 tolerance, never
+  byte for byte.** The frozen Python prints different last bits on macOS (where it is generated) and on
+  Linux (CI), so a byte check passes locally and fails in CI. This has happened twice (#23, #34). Prove
+  each new check both ways in its PR: it passes on last-bit differences and fails on a real error.
 - This repo is public. Check every issue, PR body and comment with the embargo one-liner in
   `issue-tracker.md`, and run the release guard with `--history` before every push. Write "closes #N" or
   "fixes #N" only for the ticket the PR really closes. New files need `git add -N` before the guard
