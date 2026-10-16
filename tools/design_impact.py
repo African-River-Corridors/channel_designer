@@ -9,8 +9,8 @@ examples, a grid of rulesets and vessel classes, a footprint and a Model A secti
 no data files.
 
 `compare` reads the results of the base branch and of the pull request and says what moved. A number
-moved when it differs by more than the ADR 0005 tolerance (1e-9 relative and absolute, the same one
-the Rust port was held to); anything that is not a float (a count, a name, a flag) must match exactly.
+moved when it differs by more than the ADR 0005 tolerance (1e-9 relative and absolute, the one the
+Rust port was held to before the Reference Results were deleted); anything that is not a float (a count, a name, a flag) must match exactly.
 It prints a report and exits:
 
 - 0 and "no design impact" when nothing moved;

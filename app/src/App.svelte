@@ -1,13 +1,31 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import * as api from "./lib/api";
-  import type { Choices, Snapshot } from "./lib/api";
+  import type { Choices, Hillshade, MapGeometry, Snapshot } from "./lib/api";
+  import { BASEMAP_TILES } from "./lib/basemap";
+  import MapPanel from "./lib/MapPanel.svelte";
   import LeftPanel from "./lib/LeftPanel.svelte";
 
   // Display state only: the channel design, its stage status and its results all come from Rust.
   let snap = $state<Snapshot | null>(null);
   let choices = $state<Choices | null>(null);
   let error = $state<string | null>(null);
+  let geometry = $state<MapGeometry | null>(null);
+  let selectedId = $state<string | null>(null);
+  let offline = $state(false);
+  let hillshade = $state<Hillshade | null>(null);
+  let tiles = $state<string | null>(null);
+  let shadeFor: string | null = null;
+
+  // The map redraws from the session's geometry whenever the design changes. A design with
+  // nothing to draw yet (no CRS, no inputs) just shows the empty map.
+  $effect(() => {
+    void snap?.document;
+    api.mapGeometry().then(
+      (g) => (geometry = g),
+      () => (geometry = null),
+    );
+  });
 
   let leftWidth = $state(340);
   let bottomHeight = $state(200);
@@ -66,8 +84,26 @@
     }
   }
 
+  // The hillshade is drawn once by the Rust side, and only when the imagery is offline. A new DEM
+  // reference clears it.
+  $effect(() => {
+    const key = snap?.document.inputs.dem ? `${snap.document.inputs.dem.path}:${snap.document.inputs.dem.sha256}` : null;
+    if (key !== shadeFor) {
+      shadeFor = null;
+      hillshade = null;
+    }
+    if (offline && shadeFor === null) {
+      shadeFor = key ?? "";
+      api.hillshade().then(
+        (h) => (hillshade = h),
+        () => (hillshade = null),
+      );
+    }
+  });
+
   onMount(() => {
     guard(async () => {
+      tiles = (await api.basemapTiles()) ?? BASEMAP_TILES;
       choices = await api.sizingChoices();
       snap = await api.snapshot();
     });
@@ -124,7 +160,7 @@
     <section class="left"><LeftPanel {snap} {choices} {onSizing} /></section>
     <div class="handle v" role="separator" aria-orientation="vertical" onpointerdown={drag("x")}></div>
     <section class="main">
-      <p class="slot">The plan map, long section and cross-section arrive with the later tickets of spec 0003.</p>
+      {#if tiles}<MapPanel {geometry} {selectedId} {hillshade} {tiles} bind:offline />{/if}
     </section>
     <div class="handle h" role="separator" aria-orientation="horizontal" onpointerdown={drag("y")}></div>
     <section class="bottom">
@@ -147,7 +183,7 @@
   .body > section { overflow: auto; min-width: 0; min-height: 0; }
   .left { grid-column: 1; grid-row: 1 / 4; }
   .handle.v { grid-column: 2; grid-row: 1 / 4; cursor: col-resize; background: var(--line); }
-  .main { grid-column: 3; grid-row: 1; }
+  .main { grid-column: 3; grid-row: 1; overflow: hidden; }
   .handle.h { grid-column: 3; grid-row: 2; cursor: row-resize; background: var(--line); }
   .bottom { grid-column: 3; grid-row: 3; }
   .handle:hover { background: var(--gold); }

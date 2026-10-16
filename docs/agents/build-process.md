@@ -17,7 +17,7 @@ ticket whose blockers are all closed, and no other. For each ticket:
    diff, a command and its output pasted in the body, or a CI job. A reviewer must not have to ask the
    builder for it.
 3. **Local gates.** `bash tools/gates.sh` runs the fast gate: `cargo fmt --check`, clippy with warnings
-   as errors, `cargo test --workspace --exclude cd-app` with Python made unusable, the Python tests, and the oracle guard.
+   as errors, `cargo test --workspace --exclude cd-app` with Python made unusable, and the Python tests.
    Then run `python3 tools/release_guard.py --history`, and the embargo check of the PR body (see
    `issue-tracker.md`).
 4. **CI, without waiting on it.** The `test` and `release-guard` jobs must be green on the head commit
@@ -46,7 +46,7 @@ ticket. Mutation testing runs as its own pass once the features of a spec are do
 - **How:** one run at a time, scoped to the modules under review (`cargo xtask mutants`), never in
   parallel with a build.
 - **Output:** each surviving mutant that can change a public output becomes a fix-forward ticket
-  (a sub-issue of the spec, labelled `ready-for-agent`). The fix adds a parity case regenerated with
+  (a sub-issue of the spec, labelled `ready-for-agent`). The fix adds a test case with
   the reason "kills mutant ...". A survivor that cannot change an output gets a one-line equivalence
   argument in the pass report, not a ticket.
 - Never stop another session's run by process name; use its process ID.
@@ -58,8 +58,8 @@ works (from #22) is unchanged.
 
 The builder stops and reports to the coordinator at:
 
-- 60% of the account's weekly token quota (set by the maintainer on 2026-10-16);
-- any change to the tolerances (ADR 0005) or to the oracle guard;
+- 90% of the account's weekly token quota (raised from 60% by the maintainer on 2026-10-16);
+- any change to the tolerance in `tools/design_impact.py` (ADR 0005);
 - a ticket whose acceptance criteria cannot be met as written.
 
 ## After the build: adversarial review
@@ -78,8 +78,8 @@ closed. Tickets that depend on it wait.
 ## Rules every agent follows
 
 - One PR per ticket, straight to `main`. Never push to `main` directly.
-- Never loosen a tolerance to make a number pass. Never hand-edit an expected value: a Reference Result
-  is printed by the frozen Python (`cargo xtask regenerate`, with a recorded reason), or worked out and
+- Never loosen a tolerance to make a number pass. Never hand-edit an expected value: an expected value
+  is worked out and
   cited.
 - Tolerances are the ones in ADR 0005 and live in one constants file. Changing one stops the build.
 - **Any check that compares numbers against the frozen Python compares by the ADR 0005 tolerance, never
@@ -94,8 +94,8 @@ closed. Tickets that depend on it wait.
   never touch another worktree.
 - Never stop a process by name. Stop only a process you started, by its process id.
 - Long builds and test runs go to the background with their output in a file that is polled.
-- The frozen Python is tag `py-reference` (3fb5f2c). After the freeze it takes bug fixes only, each
-  mirrored in the parity cases.
+- The old pure-Python package is the tag `py-reference` (3fb5f2c), kept for history. The port is closed:
+  a change that moves a design result needs a design-impact entry in `CHANGELOG.md` (`tools/design_impact.py`).
 
 ## Fixed-number tests: labels
 

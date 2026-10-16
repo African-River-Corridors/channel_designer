@@ -1,5 +1,5 @@
 //! The `raster` entry point (ticket 33): the bilinear sampler and the raster volume integrator, on
-//! rasters built from the case spec as `parity/modules/raster.py` (`tif_from`) builds them.
+//! rasters built from a spec: a synthetic terrain, or a GeoTIFF path.
 
 use super::geometry::geom_from;
 use super::terrain::terrain_from;

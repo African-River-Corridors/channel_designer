@@ -1,7 +1,7 @@
 //! The `cascade` entry point (ticket 31): the weir cascade search, and the level table behind its
 //! earthworks cost.
 //!
-//! Cost callables are specs, as in `parity/modules/cascade.py`: a reach cost is `bumpy` (a
+//! Cost callables are specs (or callbacks into the host): a reach cost is `bumpy` (a
 //! trapezoid of a Gaussian bump over 9 points, times `exp(-decay * level)`) or `earthworks` (a
 //! level table); a structure cost is `power` (`fixed + coeff * lift ** power`).
 

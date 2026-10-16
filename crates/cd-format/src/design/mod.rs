@@ -2,10 +2,13 @@
 
 pub mod alignment;
 pub mod crs;
+pub mod dem_source;
 pub mod export;
 pub mod geojson;
 pub mod geopackage;
 pub mod hash;
+pub mod hillshade;
+pub mod map;
 pub mod optimise;
 pub mod schema;
 pub mod session;

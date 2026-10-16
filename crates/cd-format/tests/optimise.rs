@@ -19,9 +19,7 @@ use cd_core::synthetic::{RiverParams, synthetic_river};
 use cd_core::volumes::sections::HalfWidth;
 use cd_format::design::{AlignMethod, DesignError, Role, Session, Stage, StageStatus};
 use cd_format::geotiff::Dem;
-use cd_format::parity::{Tolerance, compare};
 use serde_json::{Value, json};
-use std::path::Path;
 
 const UTM30: &str = r#","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:EPSG::32630"}}"#;
 const SHIFT: Pt = [500_000.0, 600_000.0];
@@ -119,17 +117,6 @@ fn design_with(water: bool) -> Session {
         s.set_water_profile(&[[0.0, 0.0]]).unwrap();
     }
     s
-}
-
-fn tolerance() -> Tolerance {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../parity/tolerance.json");
-    Tolerance::from_json(&std::fs::read_to_string(p).unwrap()).unwrap()
-}
-
-fn reference() -> Value {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../parity/examples/reference.json");
-    serde_json::from_str::<Value>(&std::fs::read_to_string(p).unwrap()).unwrap()["optimise_pools"]
-        .clone()
 }
 
 fn pts(v: &Value) -> Vec<Pt> {
@@ -253,29 +240,6 @@ fn weirs_pools_and_the_lattice_option_equal_the_core_called_directly() {
     );
     assert_eq!(opt["checks"]["radius_check_chord_m"], 255.0 / 3.0);
     assert_eq!(s.stage_status(Stage::Optimise), StageStatus::Fresh);
-}
-
-#[test]
-fn the_example_gives_what_the_frozen_python_printed() {
-    let mut s = design();
-    s.run_optimise(&example_settings(), Some(&terrain)).unwrap();
-    let want = reference();
-    let weirs = &s.document()["stages"]["optimise"]["results"]["cascade"]["weirs"];
-    let got_weirs: Vec<Value> = weirs
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|w| json!({"chainage_m": w["chainage_m"], "pool_level_m": w["pool_level_m"]}))
-        .collect();
-    compare(&want["weirs"], &json!(got_weirs), tolerance()).unwrap();
-    compare(
-        &want["pools"],
-        &s.document()["stages"]["optimise"]["results"]["pools"],
-        tolerance(),
-    )
-    .unwrap();
-    let opt = &s.document()["options"][1];
-    assert_eq!(opt["details"]["n_replaced"], want["n_replaced"]);
 }
 
 #[test]

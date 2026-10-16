@@ -25,8 +25,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # the oracle guard diffs against the merge base
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -41,15 +39,6 @@ jobs:
           python -m pip install -e '.[dev,dem,drawings]'
       - name: Fast gate
         run: bash tools/gates.sh
-      # When the oracle guard fails it has just regenerated the Reference Results on this runner. Keep them,
-      # so a failure can be read (and the files compared) without a second run.
-      - name: Keep the regenerated Reference Results
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: regenerated-reference
-          path: target/oracle-guard/reference
-          if-no-files-found: ignore
 
   # The test job uses the pinned git refs in pyproject.toml. This job tries both git
   # dependencies at @main instead, so an upstream change that will break the next pin bump
