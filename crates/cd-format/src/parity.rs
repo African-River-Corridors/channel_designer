@@ -6,9 +6,14 @@
 //! - An integer never matches a float, so a Python `int` result stays an `int`.
 //! - NaN and infinity are the tagged strings `"float:nan"`, `"float:inf"`, `"float:-inf"`, and so
 //!   match exactly.
+//! - A polygon (an object with `"geom": "Polygon"` or `"MultiPolygon"`) is compared normalised
+//!   (ADR 0005): the same kind and number of polygons and holes, area within `polygon_area_rel`,
+//!   and every vertex of each within `polygon_vertex_m` of the other's boundary. A ring may start at
+//!   another vertex.
 //!
 //! Deleted with the Reference Results when the port is complete (ticket 37).
 
+use cd_core::geom::{Polygon, polycmp};
 use serde_json::Value;
 
 /// Parity tolerances, read from `parity/tolerance.json` (ADR 0005). They live in that one file and
@@ -86,6 +91,11 @@ fn walk(path: &str, expected: &Value, actual: &Value, tol: Tolerance, diffs: &mu
                 walk(&format!("{path}[{i}]"), ev, av, tol, diffs);
             }
         }
+        (Value::Object(e), Value::Object(a)) if is_polygon(e) => {
+            if let Err(why) = same_polygon(expected, actual, tol) {
+                diffs.push(format!("{path}: {why}"));
+            }
+        }
         (Value::Object(e), Value::Object(a)) => {
             for (k, ev) in e {
                 match a.get(k) {
@@ -103,6 +113,59 @@ fn walk(path: &str, expected: &Value, actual: &Value, tol: Tolerance, diffs: &mu
             }
         }
     }
+}
+
+fn is_polygon(o: &serde_json::Map<String, Value>) -> bool {
+    matches!(
+        o.get("geom").and_then(Value::as_str),
+        Some("Polygon" | "MultiPolygon")
+    )
+}
+
+fn ring(v: &Value) -> Option<Vec<[f64; 2]>> {
+    v.as_array()?
+        .iter()
+        .map(|p| Some([p.get(0)?.as_f64()?, p.get(1)?.as_f64()?]))
+        .collect()
+}
+
+fn polygon(v: &Value) -> Option<Polygon> {
+    let holes = match v.get("holes") {
+        None => vec![],
+        Some(h) => h.as_array()?.iter().map(ring).collect::<Option<_>>()?,
+    };
+    Some(Polygon {
+        exterior: ring(v.get("exterior")?)?,
+        holes,
+    })
+}
+
+/// The polygons of a JSON (multi)polygon; an empty one has none.
+fn polygons(v: &Value) -> Option<Vec<Polygon>> {
+    let ps = match v.get("geom")?.as_str()? {
+        "Polygon" => vec![polygon(v)?],
+        _ => v
+            .get("polygons")?
+            .as_array()?
+            .iter()
+            .map(polygon)
+            .collect::<Option<_>>()?,
+    };
+    Some(ps.into_iter().filter(|p| !p.exterior.is_empty()).collect())
+}
+
+/// ADR 0005's normalised polygon check.
+fn same_polygon(expected: &Value, actual: &Value, tol: Tolerance) -> Result<(), String> {
+    if expected.get("geom") != actual.get("geom") {
+        return Err(format!(
+            "expected a {}, got {}",
+            expected["geom"],
+            actual.get("geom").unwrap_or(&Value::Null)
+        ));
+    }
+    let e = polygons(expected).ok_or("expected polygon is malformed")?;
+    let a = polygons(actual).ok_or("actual polygon is malformed")?;
+    polycmp::same_shape(&e, &a, tol.polygon_area_rel, tol.polygon_vertex_m)
 }
 
 #[cfg(test)]
@@ -199,5 +262,39 @@ mod tests {
             }
         );
         assert!(Tolerance::from_json(r#"{"rel": 1e-09}"#).is_err());
+    }
+
+    fn square(dx: f64, start: usize) -> Value {
+        let mut pts = vec![
+            [dx, 0.0],
+            [100.0 + dx, 0.0],
+            [100.0 + dx, 100.0],
+            [dx, 100.0],
+        ];
+        pts.rotate_left(start);
+        pts.push(pts[0]);
+        json!({"geom": "Polygon", "exterior": pts, "holes": []})
+    }
+
+    #[test]
+    fn a_polygon_moved_by_2e_6_m_fails_the_normalised_check() {
+        let diffs = compare(&square(0.0, 0), &square(2e-6, 0), TOL).unwrap_err();
+        assert!(diffs[0].contains("from the other shape"), "{diffs:?}");
+    }
+
+    #[test]
+    fn a_ring_that_starts_at_another_vertex_passes_the_normalised_check() {
+        assert!(ok(square(0.0, 0), square(0.0, 2)));
+        // The same rings as plain lists of points are compared strictly, and differ.
+        assert!(!ok(
+            square(0.0, 0)["exterior"].clone(),
+            square(0.0, 2)["exterior"].clone()
+        ));
+    }
+
+    #[test]
+    fn a_polygon_is_not_a_multipolygon() {
+        let multi = json!({"geom": "MultiPolygon", "polygons": [square(0.0, 0)]});
+        assert!(!ok(square(0.0, 0), multi));
     }
 }

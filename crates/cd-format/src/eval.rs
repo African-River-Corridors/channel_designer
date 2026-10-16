@@ -8,6 +8,8 @@
 use cd_core::cut_model::{self as cm, PerSide};
 use serde_json::{Number, Value, json};
 
+mod geometry;
+
 /// Why `eval` could not produce a result. A Python `ValueError` is not an `EvalError`: it is a
 /// normal result, `{"error": {"type": "ValueError", "message": ...}}`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +46,7 @@ pub const ENTRY_POINTS: &[&str] = &[
     "cut_model_grid",
     "design",
     "footprint",
+    "geometry",
     "lattice",
     "limits",
     "loops",
@@ -76,6 +79,8 @@ pub fn eval(entry_point: &str, input: &Value) -> Result<Value, EvalError> {
         "rulesets" | "methods" | "design" | "simple" | "width_profile" => {
             crate::eval_rules::dispatch(entry_point, function, args)
         }
+        "geometry" => geometry::geometry(function, args),
+        "synthetic" => geometry::synthetic(function, args),
         ep if ENTRY_POINTS.contains(&ep) => Err(EvalError::NotPorted(ep.into())),
         ep => Err(EvalError::UnknownEntryPoint(ep.into())),
     }

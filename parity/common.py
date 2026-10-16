@@ -7,7 +7,8 @@ Encoding rules (spec 0001, ADR 0005), the same in case inputs and in Reference R
 - a shapely geometry is an object with a "geom" key (`encode_geom` / `decode_geom`):
   `{"geom": "LineString", "coords": [[x, y], ...]}`, `{"geom": "Point", "coords": [x, y]}`,
   `{"geom": "Polygon", "exterior": [...], "holes": [[...], ...]}`,
-  `{"geom": "MultiLineString", "lines": [[...], ...]}`,
+  `{"geom": "MultiLineString", "lines": [[...], ...]}`, `{"geom": "MultiPoint", "coords": [...]}`,
+  `{"geom": "GeometryCollection", "geoms": [...]}`, and `{"geom": <kind>, "empty": true}`,
   `{"geom": "MultiPolygon", "polygons": [{"exterior": ..., "holes": ...}, ...]}`;
 - a terrain sampler `terrain(xs, ys) -> z` is a spec, `{"kind": ..., ...}` (`terrain_from`):
   "synthetic_river" (the `synthetic_river` keyword arguments), "plane" (`z0`, `gx`, `gy`) and
@@ -29,7 +30,8 @@ from pathlib import Path
 
 import numpy as np
 import shapely
-from shapely.geometry import (LineString, MultiLineString, MultiPolygon, Point, Polygon)
+from shapely.geometry import (GeometryCollection, LineString, MultiLineString, MultiPoint, MultiPolygon,
+                              Point, Polygon)
 
 PARITY = Path(__file__).resolve().parent
 sys.path.insert(0, str(PARITY / "frozen_python"))
@@ -58,6 +60,8 @@ def encode_geom(g):
     """A shapely geometry as its JSON object."""
     if isinstance(g, LineString):
         return {"geom": "LineString", "coords": _ring(g.coords)}
+    if isinstance(g, Point) and g.is_empty:
+        return {"geom": "Point", "empty": True}
     if isinstance(g, Point):
         return {"geom": "Point", "coords": [float(g.x), float(g.y)]}
     if isinstance(g, Polygon):
@@ -68,11 +72,19 @@ def encode_geom(g):
         return {"geom": "MultiPolygon", "polygons": [_poly_json(p) for p in g.geoms]}
     if g.is_empty:
         return {"geom": g.geom_type, "empty": True}
+    if isinstance(g, MultiPoint):
+        return {"geom": "MultiPoint", "coords": [[float(p.x), float(p.y)] for p in g.geoms]}
+    if isinstance(g, GeometryCollection):
+        return {"geom": "GeometryCollection", "geoms": [encode_geom(p) for p in g.geoms]}
     raise TypeError(f"no JSON form for geometry {g.geom_type}")
 
 
 def decode_geom(d: dict):
     kind = d["geom"]
+    if d.get("empty"):
+        return {"Point": Point, "LineString": LineString, "Polygon": Polygon, "MultiPoint": MultiPoint,
+                "MultiLineString": MultiLineString, "MultiPolygon": MultiPolygon,
+                "GeometryCollection": GeometryCollection}[kind]()
     if kind == "LineString":
         return LineString(d["coords"])
     if kind == "Point":
@@ -81,6 +93,10 @@ def decode_geom(d: dict):
         return Polygon(d["exterior"], d.get("holes", []))
     if kind == "MultiLineString":
         return MultiLineString(d["lines"])
+    if kind == "MultiPoint":
+        return MultiPoint(d["coords"])
+    if kind == "GeometryCollection":
+        return GeometryCollection([decode_geom(g) for g in d["geoms"]])
     if kind == "MultiPolygon":
         return MultiPolygon([Polygon(p["exterior"], p.get("holes", [])) for p in d["polygons"]])
     raise ValueError(f"unknown geometry kind {kind!r}")
