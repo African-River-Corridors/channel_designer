@@ -27,6 +27,13 @@ const until = (what, check, timeout = 15000) =>
 const text = async (testid) => (await browser.$(`[data-testid=${testid}]`)).getText();
 const fileLabel = () => text("file-label");
 
+/** The values of the vessel class list, and the one now chosen. */
+const vesselChoices = () =>
+  browser.execute(() => {
+    const select = document.querySelector("select[aria-label='Vessel class']");
+    return { values: [...select.options].map((o) => o.value), current: select.value };
+  });
+
 /** Click a header button, after the dialog answer is in place. */
 async function click(label) {
   await (await browser.$(`button=${label}`)).click();
@@ -74,11 +81,9 @@ describe("Channel Designer app smoke test", () => {
 
     // Change the vessel class: the channel shape changes, after the pause, with no button pressed.
     const vessel = await browser.$("select[aria-label='Vessel class']");
-    const options = await vessel.$$("option");
-    const labels = await Promise.all(options.map((o) => o.getText()));
-    const current = await vessel.getValue();
-    const other = (await Promise.all(options.map((o) => o.getAttribute("value")))).find((v) => v !== current && v.startsWith("CEMT"));
-    assert.ok(other, `another CEMT class to choose among ${labels.join(" | ")}`);
+    const { values, current } = await vesselChoices();
+    const other = values.find((v) => v !== current && v.startsWith("CEMT"));
+    assert.ok(other, `another CEMT class to choose among ${values.join(" | ")}`);
     await vessel.selectByAttribute("value", other);
     await until("the channel shape to change", async () => (await text("min-radius")) !== radiusBefore);
     assert.notEqual(await text("bottom-width"), widthBefore);
@@ -107,9 +112,8 @@ describe("Channel Designer app smoke test", () => {
   it("asks before it throws away unsaved changes, and keeps them when the answer is no", async () => {
     await open(EXAMPLE, "synthetic-river.cdesign");
     const vessel = await browser.$("select[aria-label='Vessel class']");
-    const current = await vessel.getValue();
-    const options = await vessel.$$("option");
-    const other = (await Promise.all(options.map((o) => o.getAttribute("value")))).find((v) => v !== current && v.startsWith("CEMT"));
+    const { values, current } = await vesselChoices();
+    const other = values.find((v) => v !== current && v.startsWith("CEMT"));
     await vessel.selectByAttribute("value", other);
     await until("the edit to count as unsaved", async () => (await fileLabel()).includes("(unsaved)"));
     // Refuse the discard: nothing changes.
