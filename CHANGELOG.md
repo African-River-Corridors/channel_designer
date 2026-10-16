@@ -29,6 +29,13 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 - `owd.alignment.fairway.fairway_fit`: the Python wrapper of the corridor solve (poses, must-follow
   segments, any `FitParams` field by name).
+- No-cut zones on the least-cost route: `optimise_route(..., no_cut=[NoCutZone(from_m, to_m, bank)],
+  bank_line=river_centreline)` and the same on `build_cost_grid`. No dry ground is dug on that bank over
+  that chainage (a town, a landholding, a permit that will not come); dredging is still allowed. The bank
+  is read on `bank_line` (default: the baseline), so a re-route across the inside of a bend is judged
+  against the river, not against itself. The grid gains `protected` (the dry cut on a protected bank per
+  cell), the search refuses those cells and skips a corridor with no clear path, and the result reports
+  `protected_cut_m3` and `no_cut_ok`. With no zones every call, grid and result is unchanged.
 
 ### Design impact
 
