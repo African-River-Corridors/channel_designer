@@ -112,7 +112,7 @@ impl Session {
 
     /// The river centreline the methods start from: the imported one, or the smoothed line midway
     /// between the two banks.
-    fn base_line(&self) -> Result<Vec<Pt>, DesignError> {
+    pub(super) fn base_line(&self) -> Result<Vec<Pt>, DesignError> {
         let inp = &self.doc["inputs"];
         if let Some(c) = pts_of(&inp["centreline"]) {
             return Ok(c);

@@ -204,12 +204,13 @@ fn a_zone_that_differs_from_the_designs_is_refused() {
 }
 
 #[test]
-fn a_stage_that_is_not_built_yet_says_so() {
+fn a_stage_that_cannot_run_yet_says_what_it_needs_a_dem() {
     let mut s = imported();
-    assert!(matches!(
-        s.run_stage(Stage::Optimise),
-        Err(DesignError::NotAvailable(_))
-    ));
+    let e = s.run_stage(Stage::Optimise).unwrap_err();
+    assert!(
+        matches!(&e, DesignError::Input(m) if m.contains("needs a DEM")),
+        "{e}"
+    );
 }
 
 #[test]

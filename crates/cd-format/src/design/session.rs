@@ -398,10 +398,7 @@ impl Session {
             Stage::Sizing => self.run_sizing(),
             Stage::Alignment => self.rerun_alignment(terrain),
             Stage::Volumes => self.run_volumes(&Value::Null, terrain),
-            other => Err(DesignError::NotAvailable(format!(
-                "the {} stage is not available yet",
-                other.name()
-            ))),
+            Stage::Optimise => self.run_optimise(&Value::Null, terrain),
         }
     }
 

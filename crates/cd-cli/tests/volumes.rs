@@ -329,3 +329,91 @@ fn run_reruns_a_stale_volumes_stage() {
         json!(["volumes"])
     );
 }
+
+// --- the optimise stage (ticket 63) ---------------------------------------------------------
+
+#[test]
+fn optimise_adds_the_lattice_option_and_volumes_measure_it() {
+    let dir = work_dir("optimise");
+    let (c, p) = river_inputs(&dir);
+    // A short straight design line along the river's first kilometre.
+    let line = [[SHIFT[0], SHIFT[1]], [SHIFT[0] + 1000.0, SHIFT[1]]];
+    std::fs::write(
+        &c,
+        format!(
+            r#"{{"type":"LineString"{UTM30},"coordinates":{}}}"#,
+            json!(line)
+        ),
+    )
+    .unwrap();
+    let doc = dir.join("pools.cdesign").to_str().unwrap().to_string();
+    let dem = dir.join("river-dem.tif");
+    write_dem(&dem, 0.0);
+    for s in [
+        vec!["new", &doc, "--title", "Pools", "--date", "2026-10-16"],
+        vec![
+            "import",
+            &doc,
+            "--centreline",
+            &c,
+            "--polygon",
+            &p,
+            "--dem",
+            dem.to_str().unwrap(),
+        ],
+        vec![
+            "size",
+            &doc,
+            "--ruleset",
+            "PIANC-B",
+            "--vessel",
+            "CEMT_IV",
+            "--draught",
+            "2.5",
+        ],
+        vec!["align", &doc, "--method", "rolling-circle"],
+    ] {
+        assert_eq!(code(&run(&s)), 0, "{s:?}");
+    }
+    let o = run(&[
+        "optimise",
+        &doc,
+        "--json",
+        "--base-level",
+        "0",
+        "--sites",
+        "500",
+        "--lifts",
+        "0.5,1",
+    ]);
+    assert!(code(&o) <= 1, "{}", err(&o));
+    let res: Value = serde_json::from_str(&out(&o)).unwrap();
+    assert_eq!(res["option"]["method"], "lattice");
+    assert!(!res["pools"].as_array().unwrap().is_empty());
+    let saved = read_doc(&doc);
+    assert_eq!(saved["options"].as_array().unwrap().len(), 2);
+    let st = run(&["status", &doc, "--json"]);
+    let st: Value = serde_json::from_str(&out(&st)).unwrap();
+    assert_eq!(st["stages"]["optimise"], "fresh");
+
+    let o = run(&["volumes", &doc, "--json", "--water-level", "0"]);
+    assert!(code(&o) <= 1, "{}", err(&o));
+    let v: Value = serde_json::from_str(&out(&o)).unwrap();
+    let ids: Vec<&str> = v["options"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["rolling-circle", "lattice"]);
+    assert_eq!(v["options"][1]["water"], "pools");
+}
+
+#[test]
+fn optimise_without_a_base_level_says_what_it_needs() {
+    let dir = work_dir("optimise-need");
+    let (doc, _) = build(&dir);
+    let o = run(&["optimise", &doc]);
+    assert_eq!(code(&o), 2);
+    assert!(err(&o).contains("base_level_m"), "{}", err(&o));
+}
