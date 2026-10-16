@@ -1,13 +1,13 @@
 //! The `sections`, `cut_model_grid` and `cut_model_extras` entry points (ticket 26).
 
 use super::geometry::geom_from;
-use super::terrain::terrain_from;
+use super::terrain::{river_from, terrain_from};
 use super::{
     EvalError, arg, bad, f64_arg, f64_list, f64_or, float_json, floats_json, list, ok, opt_f64,
     read_float,
 };
 use cd_core::cut_model::{self as cm, CUT_MODEL};
-use cd_core::geom::{Geometry, Polygon, Pt};
+use cd_core::geom::{Geometry, Polygon, Pt, linear};
 use cd_core::pyrepr::repr_str;
 use cd_core::rules::rulesets::{RulesetRegistry, channel_shape};
 use cd_core::volumes::cut_model_grid::{self as grid, HalfWidths, Mask, Matrix};
@@ -278,15 +278,62 @@ fn section_volumes(args: &Value) -> Result<Value, EvalError> {
     let river = polygons_of(arg(args, "river_polygon")?)?;
     let depth = f64_arg(args, "depth")?;
 
-    // wl: a number, or {"kind": "linear", "wl0", "slope"}
+    // wl: a number, or a spec: {"kind": "linear", "wl0", "slope"}, {"kind": "synthetic_water_level",
+    // "params"} (`river.water_level`), or {"kind": "pool_levels", "line", "pools"} (the pool level
+    // at the baseline chainage nearest this line's chainage `s`, as examples/optimise_pools.py).
     let wl_spec = arg(args, "wl")?;
-    let linear = match wl_spec {
-        Value::Object(_) => Some((f64_arg(wl_spec, "wl0")?, f64_arg(wl_spec, "slope")?)),
+    let wl_fn: Option<Box<dyn Fn(f64) -> f64>> = match wl_spec {
+        Value::Object(_) => {
+            let kind = wl_spec
+                .get("kind")
+                .and_then(Value::as_str)
+                .unwrap_or("linear");
+            match kind {
+                "linear" => {
+                    let (w0, k) = (f64_arg(wl_spec, "wl0")?, f64_arg(wl_spec, "slope")?);
+                    Some(Box::new(move |s| w0 + k * s))
+                }
+                "synthetic_water_level" => {
+                    let river = river_from(wl_spec.get("params"))?;
+                    Some(Box::new(move |s| river.water_level(s)))
+                }
+                "pool_levels" => {
+                    let base = match geom_from(arg(wl_spec, "line")?, "wl.line")? {
+                        Geometry::LineString(l) => l,
+                        _ => return Err(bad("`wl.line` must be a line string".into())),
+                    };
+                    let pools: Vec<(f64, f64)> = list(wl_spec, "pools")?
+                        .iter()
+                        .map(|p| match p.as_array().map(Vec::as_slice) {
+                            Some([a, _b, l]) => {
+                                Ok((read_float(a, "pool")?, read_float(l, "pool")?))
+                            }
+                            _ => Err(bad("a pool is [start, end, level]".into())),
+                        })
+                        .collect::<Result<_, _>>()?;
+                    let section_line = line.clone();
+                    Some(Box::new(move |s| {
+                        let at = linear::interpolate(&section_line, s).unwrap_or([f64::NAN; 2]);
+                        let sp = linear::project(&base, at);
+                        let x = linear::interpolate(&base, sp).map_or(f64::NAN, |p| p[0]);
+                        pools
+                            .iter()
+                            .filter(|(a, _)| *a <= x)
+                            .map(|(_, l)| *l)
+                            .fold(None, |m: Option<f64>, l| match m {
+                                Some(m) if m >= l => Some(m),
+                                _ => Some(l),
+                            })
+                            .unwrap_or(0.0)
+                    }))
+                }
+                other => return Err(bad(format!("unknown water-level kind `{other}`"))),
+            }
+        }
         _ => None,
     };
-    let wl_fn = move |s: f64| linear.map_or(0.0, |(w0, k)| w0 + k * s);
-    let wl = match linear {
-        Some(_) => Level::AtChainage(&wl_fn),
+    let wl = match &wl_fn {
+        Some(f) => Level::AtChainage(&**f),
         None => Level::Fixed(read_float(wl_spec, "wl")?),
     };
 
