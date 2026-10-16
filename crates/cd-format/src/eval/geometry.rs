@@ -1,5 +1,5 @@
 //! The `geometry` and `synthetic` entry points (ticket 24), and the JSON form of a geometry
-//! (`parity/common.py`, `encode_geom` / `decode_geom`).
+//! (`_rust.py`, `encode_geom` / `decode_geom`).
 
 use super::{EvalError, bad, f64_arg, f64_list, f64_or, float_json, list, ok, read_float};
 use cd_core::geom::offset::{self, Cap};
@@ -204,7 +204,7 @@ fn sort_key(p: Pt) -> (i64, i64) {
 
 // --- the entry points -------------------------------------------------------------------------
 
-/// The `geometry` entry point: one shapely operation per function (`parity/modules/geometry.py`).
+/// The `geometry` entry point: one shapely operation per function.
 pub(super) fn geometry(function: &str, args: &Value) -> Result<Value, EvalError> {
     match function {
         "line_length" => ok(float_json(linear::length(&line_arg(args, "line")?))),

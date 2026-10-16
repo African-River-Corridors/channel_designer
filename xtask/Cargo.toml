@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Developer tasks: regenerate Reference Results, oracle guard, mutation report, gates."
+description = "Developer tasks: mutation report, gates."
 publish = false
 version.workspace = true
 edition.workspace = true

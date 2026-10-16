@@ -1,4 +1,4 @@
-//! Terrain samplers as case specs (`parity/common.py`, `terrain_from`): `synthetic_river`,
+//! Terrain samplers as case specs (the specs the tests and examples use): `synthetic_river`,
 //! `plane`, `hills`, `valley` and `wrong_shape`. A sampler maps points to heights, NaN where
 //! unknown.
 

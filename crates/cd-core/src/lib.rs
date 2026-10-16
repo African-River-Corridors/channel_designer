@@ -1,5 +1,5 @@
 //! The calculation core of channel_designer. Each module mirrors one Python module of the frozen
-//! reference (`parity/frozen_python`). No I/O.
+//! reference (the Python package at the tag `py-reference`). No I/O.
 
 pub mod alignment;
 /// Python-style number formatting, for the text of messages and printed results.

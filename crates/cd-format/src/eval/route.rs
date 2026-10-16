@@ -1,4 +1,4 @@
-//! The `route` entry point (ticket 29): the adapter of `parity/modules/route.py`, over
+//! The `route` entry point (ticket 29): the seam for `alignment/route.py`, over
 //! `cd_core::alignment::route`.
 
 use super::geometry::{geom_from, geom_json, polys_of, pts};

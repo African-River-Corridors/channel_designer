@@ -1042,12 +1042,3 @@ pub fn status(doc: &str, json_mode: bool) -> Result {
 pub fn schema() -> Result {
     write("-", Session::schema_text())
 }
-
-pub fn eval(entry_point: &str) -> Result {
-    let text = read("-")?;
-    let input: Value =
-        serde_json::from_str(&text).map_err(|e| input_error(format!("stdin is not JSON: {e}")))?;
-    let output = cd_format::eval(entry_point, &input).map_err(|e| input_error(e.to_string()))?;
-    println!("{output}");
-    Ok(())
-}
