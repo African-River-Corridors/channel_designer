@@ -34,6 +34,19 @@ WEIGHTS, not prices: 1.0 / 1.0 minimises volume. Pricing is out of scope for thi
 
 Inputs are plain: a baseline ``LineString``, a terrain sampler ``terrain(xs, ys) -> z`` (NaN
 where unknown), the present river polygon, and a design grade (float or ``grade(s)``).
+
+NO-CUT ZONES. ``no_cut`` takes :class:`NoCutZone` items: no dry ground may be dug on one bank
+over a stretch of chainage (a town, a landholding, a permit that will not come). Dredging below
+the river's water is still allowed there. Zones are read on ``bank_line``, normally the river's
+own centreline (the baseline when it is not given): a dry ground point is on the protected bank
+when its nearest point on ``bank_line`` is in the zone's chainage and it is on the zone's side.
+It is not the side of the baseline: a re-route across the inside of a bend has dry ground on both
+of its sides, and all of it is the inner bank. The grid records each cell's dry cut on
+a protected bank (``CostGrid.protected``); the search refuses every cell that digs there, skips a
+corridor that leaves no clear path, and ranks a clean line first. The smoothing after the search
+can move the line back onto a bank, so the result reports ``protected_cut_m3`` (grid-approx) and
+``no_cut_ok``: check it, as you check ``radius_ok``. A protected stretch usually pushes the line
+across the inside of a bend, so give the search a baseline that can go there: roll it first.
 """
 from __future__ import annotations
 
@@ -54,6 +67,22 @@ DEFAULT_CORRIDOR_SWEEP = (40, 60, 80, 120, 160, 220, 300)
 
 
 @dataclass
+class NoCutZone:
+    """No dry ground is dug on ``bank`` between chainages ``from_m`` and ``to_m`` of the bank line.
+
+    ``bank`` is ``"left"`` or ``"right"``, looking along the bank line (the river centreline, or
+    the baseline) from its first vertex to its last.
+    """
+    from_m: float
+    to_m: float
+    bank: str
+
+    def __post_init__(self):
+        if self.bank not in ("left", "right"):
+            raise ValueError('a no-cut zone\'s bank must be "left" or "right"')
+
+
+@dataclass
 class CostGrid:
     offsets: np.ndarray          # (K,) lateral offsets, m (+ = left of the baseline)
     stations_m: np.ndarray       # (N,) chainage on the baseline, m
@@ -64,6 +93,7 @@ class CostGrid:
     wet: np.ndarray              # (N, K) the in-river (dredge) part of ``vol``
     station_step: float
     offset_step: float
+    protected: Optional[np.ndarray] = None   # (N, K) dry cut on a protected bank, m³; None = no zones
 
     @property
     def dry(self) -> np.ndarray:
@@ -85,6 +115,8 @@ class RouteResult:
     measured_min_radius_m: float = np.nan       # minimum radius of ``line`` on the chord
     radius_check_chord_m: float = np.nan        # NOMINAL chord, 2 × k × station_step, m
     radius_ok: bool = False                     # measured holds ``r_min`` (2 % reading tol)
+    protected_cut_m3: float = 0.0               # grid-approx dry cut on a protected bank
+    no_cut_ok: bool = True                      # ``protected_cut_m3 == 0``
 
 
 def _grade_arg(call, grade: GradeLike):
@@ -96,8 +128,12 @@ def build_cost_grid(line: LineString, terrain: TerrainSampler, river_polygon, gr
                     *, bottom_width: float, depth: float, side_slope: float,
                     corridor_half: float = 300.0, station_step: float = 100.0,
                     offset_step: float = 10.0, transect_step: float = 2.0,
-                    daylight_m: Optional[float] = None) -> CostGrid:
+                    daylight_m: Optional[float] = None,
+                    no_cut: Optional[Sequence[NoCutZone]] = None,
+                    bank_line: Optional[LineString] = None) -> CostGrid:
     """Transect-approximation cut volume for every (station, offset).
+
+    ``no_cut`` (see the module docstring) fills ``protected``; without it ``protected`` is None.
 
     ``side_slope`` is H per V. The transect reaches ``corridor_half + daylight_m`` each side.
     ``daylight_m`` defaults to ``bottom_width/2 + side_slope × depth`` — where the template
@@ -109,8 +145,16 @@ def build_cost_grid(line: LineString, terrain: TerrainSampler, river_polygon, gr
     r = _rust.call("route", "build_cost_grid", CostGrid, _call=c, line=line, terrain=c.terrain(terrain),
                    river_polygon=river_polygon, grade=_grade_arg(c, grade), bottom_width=bottom_width, depth=depth,
                    side_slope=side_slope, corridor_half=corridor_half, station_step=station_step,
-                   offset_step=offset_step, transect_step=transect_step, daylight_m=daylight_m)
+                   offset_step=offset_step, transect_step=transect_step, daylight_m=daylight_m,
+                   **_no_cut_kw(no_cut, bank_line))
     return r
+
+
+def _no_cut_kw(no_cut, bank_line) -> dict:
+    """``no_cut`` for the core; nothing at all when there are no zones, so the call is unchanged."""
+    if not no_cut:
+        return {}
+    return {"no_cut": [NoCutZone(z.from_m, z.to_m, z.bank) for z in no_cut], "bank_line": bank_line}
 
 
 def radii(pts) -> np.ndarray:
@@ -203,7 +247,9 @@ def optimise_route(line: LineString, terrain: TerrainSampler, river_polygon, gra
                    station_step: float = 100.0, offset_step: float = 10.0,
                    transect_step: float = 2.0, daylight_m: Optional[float] = None,
                    grid: Optional[CostGrid] = None,
-                   check_chord_m: Optional[float] = None) -> RouteResult:
+                   check_chord_m: Optional[float] = None,
+                   no_cut: Optional[Sequence[NoCutZone]] = None,
+                   bank_line: Optional[LineString] = None) -> RouteResult:
     """Least-cost lateral re-route of ``line``. See the module docstring for the method.
 
     Wide excursions force sharp reconnection curves that the radius enforcement then smooths
@@ -216,6 +262,9 @@ def optimise_route(line: LineString, terrain: TerrainSampler, river_polygon, gra
     at least 1). The chord is NOMINAL, measured along the baseline: offsets stretch segments,
     so the real chord at a corner can be longer. A resampled check on one LOA can read well
     below a ``radius_ok`` route line at a corner between stations (see docs/known-issues.md).
+
+    ``no_cut`` protects banks (see the module docstring); with a prebuilt ``grid``, build it with
+    the zones instead. ``no_cut_ok`` on the result is False when the line still digs one.
     """
     c = _rust.Call()
     return _rust.call("route", "optimise_route", RouteResult, _call=c, line=line, terrain=c.terrain(terrain),
@@ -223,4 +272,4 @@ def optimise_route(line: LineString, terrain: TerrainSampler, river_polygon, gra
                       depth=depth, side_slope=side_slope, r_min=r_min, wet_weight=wet_weight,
                       dry_weight=dry_weight, corridor_sweep=list(corridor_sweep), station_step=station_step,
                       offset_step=offset_step, transect_step=transect_step, daylight_m=daylight_m,
-                      grid=grid, check_chord_m=check_chord_m)
+                      grid=grid, check_chord_m=check_chord_m, **_no_cut_kw(no_cut, bank_line))
