@@ -2,6 +2,7 @@
 
 pub mod crs;
 pub mod geojson;
+pub mod geopackage;
 pub mod hash;
 pub mod schema;
 pub mod session;

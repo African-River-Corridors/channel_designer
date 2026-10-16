@@ -423,3 +423,112 @@ fn exit_code_2_is_a_usage_or_input_error() {
         err(&o)
     );
 }
+
+// --- GeoPackage (ticket 66) -----------------------------------------------------------------
+
+fn gdal_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../cd-format/tests/data/gdal")
+}
+
+#[test]
+fn the_same_river_from_a_geopackage_and_from_geojson_gives_the_same_document() {
+    let dir = work_dir("gpkg");
+    let g = gdal_dir();
+    let gpkg = g.join("river.gpkg");
+    let gpkg = gpkg.to_str().unwrap();
+    let a = dir.join("a.cdesign").to_str().unwrap().to_string();
+    let b = dir.join("b.cdesign").to_str().unwrap().to_string();
+    for d in [&a, &b] {
+        run(&["new", d, "--title", "River", "--date", "2026-10-16"], "");
+    }
+    let (l, r, p) = (
+        format!("{gpkg}#left_bank"),
+        format!("{gpkg}#right_bank"),
+        format!("{gpkg}#river_polygon"),
+    );
+    let o = run(
+        &[
+            "import",
+            &a,
+            "--left-bank",
+            &l,
+            "--right-bank",
+            &r,
+            "--polygon",
+            &p,
+        ],
+        "",
+    );
+    assert_eq!(code(&o), 0, "{}", err(&o));
+    let o = run(
+        &[
+            "import",
+            &b,
+            "--left-bank",
+            g.join("left.geojson").to_str().unwrap(),
+            "--right-bank",
+            g.join("right.geojson").to_str().unwrap(),
+            "--polygon",
+            g.join("polygon.geojson").to_str().unwrap(),
+        ],
+        "",
+    );
+    assert_eq!(code(&o), 0, "{}", err(&o));
+    assert_eq!(
+        std::fs::read_to_string(&a).unwrap(),
+        std::fs::read_to_string(&b).unwrap()
+    );
+}
+
+#[test]
+fn a_geopackage_with_several_layers_asks_for_one() {
+    let dir = work_dir("gpkg-layers");
+    let doc = dir.join("a.cdesign").to_str().unwrap().to_string();
+    run(
+        &["new", &doc, "--title", "River", "--date", "2026-10-16"],
+        "",
+    );
+    let gpkg = gdal_dir().join("river.gpkg");
+    let o = run(&["import", &doc, "--left-bank", gpkg.to_str().unwrap()], "");
+    assert_eq!(code(&o), 2);
+    assert!(
+        err(&o).contains("FILE#LAYER") && err(&o).contains("left_bank"),
+        "{}",
+        err(&o)
+    );
+}
+
+/// The release binary has no dynamic SQLite dependency: SQLite is compiled in. The check lists
+/// the shared libraries of the built `cdesign` (`otool -L` on macOS, `ldd` on Linux). A debug and a
+/// release build link SQLite the same way (the `bundled` feature), and CI builds the debug one.
+#[test]
+fn the_binary_has_no_dynamic_sqlite_dependency() {
+    let exe = env!("CARGO_BIN_EXE_cdesign");
+    let (tool, args): (&str, &[&str]) = if cfg!(target_os = "macos") {
+        ("otool", &["-L"])
+    } else if cfg!(target_os = "linux") {
+        ("ldd", &[])
+    } else {
+        eprintln!("no dependency lister for this platform; the check is made on macOS and Linux");
+        return;
+    };
+    let o = Command::new(tool)
+        .args(args)
+        .arg(exe)
+        .output()
+        .expect("the lister runs");
+    assert!(
+        o.status.success(),
+        "{tool} failed: {}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let listing = String::from_utf8_lossy(&o.stdout).to_lowercase();
+    assert!(
+        listing.lines().count() > 1,
+        "the lister printed nothing: {listing}"
+    );
+    assert!(
+        !listing.contains("sqlite"),
+        "cdesign links a SQLite library:\n{listing}"
+    );
+}
