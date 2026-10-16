@@ -4,8 +4,7 @@
 //!
 //! Exit codes: 0 success; 1 a failed check or a stale-stage refusal; 2 a usage or input error.
 
-mod commands;
-mod fetch;
+use cd_cli::commands;
 
 use clap::{Args, Parser, Subcommand};
 use std::process::ExitCode;

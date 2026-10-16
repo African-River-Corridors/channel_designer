@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import * as api from "./lib/api";
-  import type { Choices, Hillshade, MapGeometry, Snapshot } from "./lib/api";
+  import type { Choices, Hillshade, InputRole, MapGeometry, RunMethod, Snapshot, StageName } from "./lib/api";
   import { BASEMAP_TILES } from "./lib/basemap";
   import MapPanel from "./lib/MapPanel.svelte";
   import LeftPanel from "./lib/LeftPanel.svelte";
@@ -26,6 +26,58 @@
       () => (geometry = null),
     );
   });
+
+  // A stage running on a worker: which, and how many DEM points it has read so far.
+  let busy = $state<StageName | null>(null);
+  let samples = $state(0);
+  let notice = $state<string | null>(null);
+  let dropTarget = $state<InputRole | null>(null);
+
+  async function run(stage: StageName, method?: RunMethod): Promise<boolean> {
+    await flush();
+    busy = stage;
+    samples = 0;
+    notice = null;
+    const next = await guard(() => api.runStage(stage, method));
+    busy = null;
+    if (!next) return false;
+    snap = next;
+    if (next.run.outcome === "cancelled") {
+      notice = `The ${stage} run was cancelled. The design is as it was.`;
+      return false;
+    }
+    return true;
+  }
+
+  async function cancel() {
+    await guard(() => api.cancelRun());
+  }
+
+  /** Rerun the stale stages in order, each on the worker; stop at the first that does not finish. */
+  async function runStale() {
+    for (const s of snap?.stages ?? []) {
+      if (s.status !== "stale") continue;
+      if (!(await run(s.name))) return;
+    }
+  }
+
+  async function load(role: InputRole, path?: string) {
+    await fileAction(() => api.loadInput(role, path));
+  }
+
+  async function water(level: string, fall: string) {
+    await fileAction(() => api.setWater(level, fall));
+  }
+
+  async function fetchDem() {
+    await fileAction(api.fetchDem);
+  }
+
+  /** The row under a window position given in physical pixels, for drag and drop. */
+  function rowAt(x: number, y: number): InputRole | null {
+    const el = document.elementFromPoint(x / window.devicePixelRatio, y / window.devicePixelRatio);
+    return (el?.closest("[data-drop-role]")?.getAttribute("data-drop-role") as InputRole | null) ?? null;
+  }
 
   let leftWidth = $state(340);
   let bottomHeight = $state(200);
@@ -102,11 +154,38 @@
   });
 
   onMount(() => {
+    const undo: (() => void)[] = [];
+    // Outside the Tauri window (a browser, a test) these have nothing to listen to.
+    import("@tauri-apps/api/event")
+      .then(({ listen }) => listen<number>("stage-progress", (e) => (samples = e.payload)))
+      .then((un) => undo.push(un))
+      .catch(() => {});
+    import("@tauri-apps/api/webview")
+      .then(({ getCurrentWebview }) =>
+        getCurrentWebview().onDragDropEvent((e) => {
+          const p = e.payload;
+          if (p.type === "leave") dropTarget = null;
+          else if (p.type === "over") dropTarget = rowAt(p.position.x, p.position.y);
+          else if (p.type === "drop") {
+            const role = rowAt(p.position.x, p.position.y);
+            dropTarget = null;
+            const file = p.paths[0];
+            if (!file) return;
+            // A GeoTIFF is the DEM wherever it lands; vector data must land on its own row.
+            if (/\.tiff?$/i.test(file)) load("dem", file);
+            else if (role) load(role, file);
+            else error = "Drop the file on the row it belongs to: left bank, right bank, river polygon or centreline.";
+          }
+        }),
+      )
+      .then((un) => undo.push(un))
+      .catch(() => {});
     guard(async () => {
       tiles = (await api.basemapTiles()) ?? BASEMAP_TILES;
       choices = await api.sizingChoices();
       snap = await api.snapshot();
     });
+    return () => undo.forEach((u) => u());
   });
 
   function drag(axis: "x" | "y") {
@@ -137,7 +216,7 @@
     <button onclick={() => fileAction(api.openFile)}>Open</button>
     <button onclick={() => fileAction(api.save)}>Save</button>
     <button onclick={() => fileAction(api.saveAs)}>Save as</button>
-    <button disabled={!anyStale} onclick={() => fileAction(api.runStale)} title="Rerun every stale stage">Run stale</button>
+    <button disabled={!anyStale || busy !== null} onclick={runStale} title="Rerun every stale stage, in order">Run stale</button>
     <span class="grow"></span>
     {#if snap}
       <span class="meta" data-testid="file-label">{snap.file_name}{snap.dirty ? " (unsaved)" : ""}</span>
@@ -152,12 +231,18 @@
       <button onclick={() => (error = null)}>Dismiss</button>
     </div>
   {/if}
+  {#if notice}
+    <div class="banner warn" role="status" data-testid="notice">
+      {notice}
+      <button onclick={() => (notice = null)}>Dismiss</button>
+    </div>
+  {/if}
   {#each snap?.warnings ?? [] as w}
     <div class="banner warn" role="status" data-testid="warning">{w}</div>
   {/each}
 
   <div class="body" style:grid-template-columns="{leftWidth}px 6px 1fr" style:grid-template-rows="1fr 6px {bottomHeight}px">
-    <section class="left"><LeftPanel {snap} {choices} {onSizing} /></section>
+    <section class="left"><LeftPanel {snap} {choices} {onSizing} {busy} {samples} {dropTarget} onRun={run} onCancel={cancel} onLoad={(r) => load(r)} onFetch={fetchDem} onWater={water} /></section>
     <div class="handle v" role="separator" aria-orientation="vertical" onpointerdown={drag("x")}></div>
     <section class="main">
       {#if tiles}<MapPanel {geometry} {selectedId} {hillshade} {tiles} bind:offline />{/if}
