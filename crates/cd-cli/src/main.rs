@@ -119,6 +119,35 @@ enum Command {
         #[command(flatten)]
         out: Out,
     },
+    /// Choose weir sites and pool levels, and add a design line option through the pools (the lattice).
+    Optimise {
+        /// The channel design. `-` is stdin.
+        doc: String,
+        /// A GeoTIFF DEM to record as the document's DEM and use.
+        #[arg(long, value_name = "FILE")]
+        dem: Option<String>,
+        /// The water level below the first weir, in metres (default: the re-route's start level).
+        #[arg(long, value_name = "METRES")]
+        base_level: Option<f64>,
+        /// Candidate weir chainages along the design line, in metres, comma separated
+        /// (default: every 500 m).
+        #[arg(long, value_name = "LIST")]
+        sites: Option<String>,
+        /// The lifts a weir may have, in metres, comma separated (default 0.5,1).
+        #[arg(long, value_name = "LIST")]
+        lifts: Option<String>,
+        /// The weight of dredging in the cost (default 1).
+        #[arg(long)]
+        wet_weight: Option<f64>,
+        /// The weight of dry cut in the cost (default 1).
+        #[arg(long)]
+        dry_weight: Option<f64>,
+        /// The cut model: a or b (default a).
+        #[arg(long, value_name = "MODEL")]
+        model: Option<String>,
+        #[command(flatten)]
+        out: Out,
+    },
     /// Work out dredge, dry cut and tallest face for every design line option, on the DEM.
     Volumes {
         /// The channel design. `-` is stdin.
@@ -233,6 +262,30 @@ fn main() -> ExitCode {
                 water_level,
                 water_slope,
                 corridors,
+            },
+            &out.output,
+            out.json,
+        ),
+        Command::Optimise {
+            doc,
+            dem,
+            base_level,
+            sites,
+            lifts,
+            wet_weight,
+            dry_weight,
+            model,
+            out,
+        } => commands::optimise(
+            &doc,
+            commands::OptimiseFlags {
+                dem,
+                base_level,
+                sites,
+                lifts,
+                wet_weight,
+                dry_weight,
+                model,
             },
             &out.output,
             out.json,

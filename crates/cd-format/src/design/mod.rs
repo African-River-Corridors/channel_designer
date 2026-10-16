@@ -5,6 +5,7 @@ pub mod crs;
 pub mod geojson;
 pub mod geopackage;
 pub mod hash;
+pub mod optimise;
 pub mod schema;
 pub mod session;
 pub mod terrain;

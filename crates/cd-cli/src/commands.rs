@@ -475,6 +475,149 @@ pub fn align(
     }
 }
 
+/// The DEM for a stage that needs one. A DEM given with `--dem` is read and recorded as the
+/// document's reference. Otherwise the one the document names must be there and must be the file
+/// whose hash was recorded.
+fn stage_dem(
+    session: &mut Session,
+    doc: &str,
+    bytes: Option<&[u8]>,
+    flag: &Option<String>,
+    command: &str,
+) -> core::result::Result<Option<cd_format::geotiff::Dem>, Failure> {
+    if let Some(path) = flag {
+        let b = std::fs::read(path).map_err(|e| input_error(format!("cannot read {path}: {e}")))?;
+        let d = read_dem(&b, path)?;
+        session.set_dem(&relative_dem_path(doc, path), &b, &d);
+        return Ok(Some(d));
+    }
+    let p = session.dem_path().unwrap_or("DEM").to_string();
+    match session.dem_check(bytes) {
+        DemCheck::Matches => Ok(Some(read_dem(bytes.unwrap_or_default(), &p)?)),
+        DemCheck::Changed => Err(input_error(format!(
+            "the DEM `{p}` has changed since its hash was recorded, so the {command} stage will not run on it. \
+             To accept the new file run `cdesign {command} --dem {p}`."
+        ))),
+        DemCheck::Missing => Err(input_error(format!(
+            "the DEM `{p}` is missing: the {command} stage cannot run without it. \
+             Put the file back, or point to another with `cdesign {command} --dem FILE`."
+        ))),
+        DemCheck::NoDem => Ok(None),
+    }
+}
+
+/// The flags of `cdesign optimise`.
+pub struct OptimiseFlags {
+    pub dem: Option<String>,
+    pub base_level: Option<f64>,
+    pub sites: Option<String>,
+    pub lifts: Option<String>,
+    pub wet_weight: Option<f64>,
+    pub dry_weight: Option<f64>,
+    pub model: Option<String>,
+}
+
+fn number_list(flag: &str, list: &str) -> core::result::Result<Vec<f64>, Failure> {
+    list.split(',')
+        .map(|x| x.trim().parse::<f64>())
+        .collect::<core::result::Result<Vec<f64>, _>>()
+        .map_err(|_| input_error(format!("{flag} must be numbers, comma separated: `{list}`")))
+}
+
+pub fn optimise(
+    doc: &str,
+    flags: OptimiseFlags,
+    output: &Option<String>,
+    json_mode: bool,
+) -> Result {
+    let (mut session, bytes) = open_with_dem(doc)?;
+    let mut overrides = serde_json::Map::new();
+    for (k, v) in [
+        ("base_level_m", flags.base_level),
+        ("wet_weight", flags.wet_weight),
+        ("dry_weight", flags.dry_weight),
+    ] {
+        if let Some(v) = v {
+            overrides.insert(k.into(), json!(v));
+        }
+    }
+    if let Some(m) = &flags.model {
+        overrides.insert("cut_model".into(), json!(m));
+    }
+    if let Some(l) = &flags.sites {
+        overrides.insert(
+            "candidate_sites_m".into(),
+            json!(number_list("--sites", l)?),
+        );
+    }
+    if let Some(l) = &flags.lifts {
+        overrides.insert("lifts_m".into(), json!(number_list("--lifts", l)?));
+    }
+    let dem = stage_dem(&mut session, doc, bytes.as_deref(), &flags.dem, "optimise")?;
+    let sampler = match &dem {
+        Some(d) => Some(
+            cd_format::design::terrain::dem_sampler(d, project_epsg(&session))
+                .map_err(from_design)?,
+        ),
+        None => None,
+    };
+    session
+        .run_optimise(
+            &Value::Object(overrides),
+            sampler.as_ref().map(|s| s as Terrain),
+        )
+        .map_err(from_design)?;
+    let dest = destination(doc, output);
+    write(&dest, &session.to_text())?;
+    let res = session.document()["stages"]["optimise"]["results"].clone();
+    let option = session.document()["options"]
+        .as_array()
+        .and_then(|o| o.iter().find(|o| o["method"] == "lattice"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let weirs: Vec<String> = res["cascade"]["weirs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|w| {
+            format!(
+                "{:.0} m -> pool {:.1} m",
+                w["chainage_m"].as_f64().unwrap_or(f64::NAN),
+                w["pool_level_m"].as_f64().unwrap_or(f64::NAN)
+            )
+        })
+        .collect();
+    let c = &option["checks"];
+    let ok = c["radius_ok"].as_bool().unwrap_or(false);
+    let human = format!(
+        "weirs: {}\nPool lattice: {} pool(s) re-routed, minimum radius {:.0} m on a {:.0} m chord against R_min {:.0} m: {}",
+        if weirs.is_empty() {
+            "none".to_string()
+        } else {
+            weirs.join(", ")
+        },
+        option["details"]["n_replaced"],
+        c["measured_min_radius_m"].as_f64().unwrap_or(f64::NAN),
+        c["radius_check_chord_m"].as_f64().unwrap_or(f64::NAN),
+        c["r_min_m"].as_f64().unwrap_or(f64::NAN),
+        if ok { "ok" } else { "FAILS R_min" }
+    );
+    say(
+        dest == "-",
+        json_mode,
+        &human,
+        json!({"ok": true, "cascade": res["cascade"], "pools": res["pools"], "option": option}),
+    );
+    if ok {
+        Ok(())
+    } else {
+        Err(Failure {
+            message: "the option fails R_min".into(),
+            code: 1,
+        })
+    }
+}
+
 /// The flags of `cdesign volumes`.
 pub struct VolumesFlags {
     pub dem: Option<String>,
@@ -501,41 +644,7 @@ pub fn volumes(doc: &str, flags: VolumesFlags, output: &Option<String>, json_mod
             overrides.insert(k.into(), json!(v));
         }
     }
-    // A DEM given here is read and recorded as the document's reference. Otherwise the one the
-    // document names must be there and must be the file whose hash was recorded.
-    let dem = match &flags.dem {
-        Some(path) => {
-            let b =
-                std::fs::read(path).map_err(|e| input_error(format!("cannot read {path}: {e}")))?;
-            let d = read_dem(&b, path)?;
-            session.set_dem(&relative_dem_path(doc, path), &b, &d);
-            Some(d)
-        }
-        None => match session.dem_check(bytes.as_deref()) {
-            DemCheck::Matches => {
-                let d = read_dem(
-                    bytes.as_deref().unwrap_or_default(),
-                    session.dem_path().unwrap_or("DEM"),
-                )?;
-                Some(d)
-            }
-            DemCheck::Changed => {
-                let p = session.dem_path().unwrap_or("DEM").to_string();
-                return Err(input_error(format!(
-                    "the DEM `{p}` has changed since its hash was recorded, so the volumes stage will not run on it. \
-                     To accept the new file run `cdesign volumes --dem {p}`."
-                )));
-            }
-            DemCheck::Missing => {
-                let p = session.dem_path().unwrap_or("DEM").to_string();
-                return Err(input_error(format!(
-                    "the DEM `{p}` is missing: the volumes stage cannot run without it. \
-                     Put the file back, or point to another with `cdesign volumes --dem FILE`."
-                )));
-            }
-            DemCheck::NoDem => None,
-        },
-    };
+    let dem = stage_dem(&mut session, doc, bytes.as_deref(), &flags.dem, "volumes")?;
     let sampler = match &dem {
         Some(d) => Some(
             cd_format::design::terrain::dem_sampler(d, project_epsg(&session))

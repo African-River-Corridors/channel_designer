@@ -6,6 +6,7 @@
 use super::alignment::Terrain;
 use super::geojson::all_positions;
 use super::hash::sha256_hex;
+use super::optimise::pool_level_fn;
 use super::session::{DesignError, ENGINE_VERSION, Session, Stage, StageStatus};
 use crate::geotiff::Dem;
 use cd_core::cut_model::{CUT_MODEL, WIDEN_RMAX, widened_hb_from_shape};
@@ -216,17 +217,27 @@ impl Session {
             }]
         };
 
-        let grade_wl = move |s: f64| wl0 - slope * s;
+        let linear_wl = move |s: f64| wl0 - slope * s;
+        // Once the optimise stage has set pool levels, every option is measured under them, so the
+        // options compare on one water regime. Before that the water surface is the straight fall.
+        let pools = self.optimise_pools_result();
         let from_shape = |xy: &[Pt]| widened_hb_from_shape(xy, &shape, WIDEN_RMAX);
         let mut rows = Vec::new();
         for o in &options {
             let id = o["id"].as_str().unwrap_or("?");
             let line: Vec<Pt> = all_positions(&o["line"]);
+            let pool_wl = pools
+                .as_ref()
+                .map(|(base, p, b)| pool_level_fn(&line, base, p, *b));
+            let level = match &pool_wl {
+                Some(f) => Level::AtChainage(f),
+                None => Level::AtChainage(&linear_wl),
+            };
             let v = section_volumes(
                 &line,
                 terrain,
                 &river,
-                &Level::AtChainage(&grade_wl),
+                &level,
                 depth,
                 &HalfWidth::FromStations(&from_shape),
                 &model,
@@ -249,6 +260,7 @@ impl Session {
                 "stations": v.stations.len(),
                 // A failed check stays with the option's numbers.
                 "radius_ok": o["checks"]["radius_ok"],
+                "water": if pools.is_some() { "pools" } else { "linear" },
             }));
         }
         let st = &mut self.doc["stages"]["volumes"];
