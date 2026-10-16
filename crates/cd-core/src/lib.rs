@@ -5,6 +5,7 @@ pub mod alignment;
 pub mod cut_model;
 pub mod geom;
 pub(crate) mod numpy;
+pub mod optimise;
 pub mod pyrepr;
 pub mod rules;
 pub mod synthetic;

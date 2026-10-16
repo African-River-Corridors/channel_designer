@@ -9,6 +9,7 @@ use cd_core::cut_model::{self as cm, PerSide};
 use serde_json::{Number, Value, json};
 
 mod alignment;
+mod cascade;
 mod geometry;
 mod terrain;
 mod volumes;
@@ -82,6 +83,7 @@ pub fn eval(entry_point: &str, input: &Value) -> Result<Value, EvalError> {
         "rulesets" | "methods" | "design" | "simple" | "width_profile" => {
             crate::eval_rules::dispatch(entry_point, function, args)
         }
+        "cascade" => cascade::cascade(function, args),
         "sections" => volumes::sections(function, args),
         "cut_model_grid" => volumes::cut_model_grid(function, args),
         "cut_model_extras" => volumes::cut_model_extras(function, args),
