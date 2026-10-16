@@ -11,3 +11,7 @@ repository.workspace = true
 cd-core.workspace = true
 serde_json.workspace = true
 libm = "0.2"
+proj4rs = "0.2.1"
+sha2 = "0.11.1"
+rusqlite = { version = "0.40.2", features = ["bundled", "serialize"] }
+tiff = { version = "0.11.3", default-features = false, features = ["deflate", "lzw"] }

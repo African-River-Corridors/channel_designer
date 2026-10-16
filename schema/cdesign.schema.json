@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/African-River-Corridors/channel_designer/schema/cdesign.schema.json",
+  "title": "Channel design document (.cdesign), format version 1",
+  "description": "One screening study of one river reach for one vessel: its inputs, the choices made and the results of each stage. Each stage records a hash of what it depended on; a stage whose hash no longer matches is stale. Numbers are SI. Geometry is GeoJSON in the project CRS.",
+  "type": "object",
+  "required": ["format_version", "engine_version", "project", "inputs", "stages", "options"],
+  "additionalProperties": false,
+  "properties": {
+    "format_version": { "const": 1 },
+    "engine_version": { "type": "string", "minLength": 1 },
+    "project": {
+      "type": "object",
+      "required": ["title", "created", "crs", "source_crs"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "created": { "type": "string", "minLength": 10 },
+        "crs": {
+          "description": "The project CRS: WGS84 / UTM. Null until the first import.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["epsg", "name"],
+              "additionalProperties": false,
+              "properties": {
+                "epsg": { "type": "integer", "minimum": 32601, "maximum": 32760 },
+                "name": { "type": "string" }
+              }
+            }
+          ]
+        },
+        "source_crs": {
+          "description": "The CRS each input came in, by input name, as EPSG:nnnn.",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "required": ["left_bank", "right_bank", "centreline", "river_polygon", "dem"],
+      "additionalProperties": false,
+      "properties": {
+        "left_bank": { "$ref": "#/$defs/line_or_null" },
+        "right_bank": { "$ref": "#/$defs/line_or_null" },
+        "centreline": { "$ref": "#/$defs/line_or_null" },
+        "river_polygon": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/polygon" }]
+        },
+        "dem": {
+          "description": "The DEM is referenced, never embedded: path relative to the document, SHA-256 of the file, its CRS and nodata value.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["path", "sha256", "crs", "nodata"],
+              "additionalProperties": false,
+              "properties": {
+                "path": { "type": "string", "minLength": 1 },
+                "sha256": { "type": "string", "minLength": 64, "maxLength": 64 },
+                "crs": { "type": "string" },
+                "nodata": { "type": ["number", "null"] }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "stages": {
+      "type": "object",
+      "required": ["sizing", "alignment", "optimise", "volumes"],
+      "additionalProperties": false,
+      "properties": {
+        "sizing": { "$ref": "#/$defs/sizing_stage" },
+        "alignment": { "$ref": "#/$defs/stage" },
+        "optimise": { "$ref": "#/$defs/stage" },
+        "volumes": { "$ref": "#/$defs/stage" }
+      }
+    },
+    "options": {
+      "description": "Design line options, added by the alignment and optimise stages.",
+      "type": "array",
+      "items": { "type": "object" }
+    }
+  },
+  "$defs": {
+    "position": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "items": { "type": "number" }
+    },
+    "line": {
+      "type": "object",
+      "required": ["type", "coordinates"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "LineString" },
+        "coordinates": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/position" }
+        }
+      }
+    },
+    "line_or_null": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/line" }] },
+    "polygon": {
+      "type": "object",
+      "required": ["type", "coordinates"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "Polygon" },
+        "coordinates": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "minItems": 4,
+            "items": { "$ref": "#/$defs/position" }
+          }
+        }
+      }
+    },
+    "hash_or_null": { "type": ["string", "null"], "minLength": 64, "maxLength": 64 },
+    "stage": {
+      "type": "object",
+      "required": ["settings", "results", "depends_on", "engine_version"],
+      "additionalProperties": false,
+      "properties": {
+        "settings": { "type": ["object", "null"] },
+        "results": { "type": ["object", "null"] },
+        "depends_on": { "$ref": "#/$defs/hash_or_null" },
+        "engine_version": { "type": ["string", "null"] }
+      }
+    },
+    "sizing_stage": {
+      "type": "object",
+      "required": ["settings", "results", "depends_on", "engine_version"],
+      "additionalProperties": false,
+      "properties": {
+        "settings": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["ruleset_id", "vessel_standard_id", "draught_m"],
+              "additionalProperties": false,
+              "properties": {
+                "ruleset_id": { "type": "string", "minLength": 1 },
+                "vessel_standard_id": { "type": "string", "minLength": 1 },
+                "draught_m": { "type": ["number", "null"], "minimum": 0 }
+              }
+            }
+          ]
+        },
+        "results": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": [
+                "ruleset_id", "vessel_standard_id", "loa_m", "beam_m", "draught_m", "formation",
+                "bottom_width_straight_m", "min_bend_radius_m", "design_depth_m",
+                "bend_widening_at_rmin_m", "bottom_width_at_rmin_m", "width_basis", "source",
+                "warnings"
+              ],
+              "properties": {
+                "loa_m": { "type": "number" },
+                "beam_m": { "type": "number" },
+                "draught_m": { "type": "number" },
+                "bottom_width_straight_m": { "type": "number" },
+                "min_bend_radius_m": { "type": "number" },
+                "design_depth_m": { "type": "number" },
+                "warnings": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          ]
+        },
+        "depends_on": { "$ref": "#/$defs/hash_or_null" },
+        "engine_version": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

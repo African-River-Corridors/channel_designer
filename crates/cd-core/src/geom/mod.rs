@@ -8,6 +8,7 @@
 
 pub mod dd;
 pub mod depth;
+pub mod interior;
 pub mod linear;
 pub mod merge;
 pub mod offset;
