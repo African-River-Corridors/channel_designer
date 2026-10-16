@@ -4,4 +4,5 @@
 pub mod cut_model_grid;
 pub mod footprint;
 pub mod pools;
+pub mod raster;
 pub mod sections;
