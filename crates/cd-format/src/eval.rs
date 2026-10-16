@@ -73,12 +73,15 @@ pub fn eval(entry_point: &str, input: &Value) -> Result<Value, EvalError> {
     let args = input.get("args").unwrap_or(&Value::Null);
     match entry_point {
         "cut_model" => cut_model(function, args),
+        "rulesets" | "methods" | "design" | "simple" | "width_profile" => {
+            crate::eval_rules::dispatch(entry_point, function, args)
+        }
         ep if ENTRY_POINTS.contains(&ep) => Err(EvalError::NotPorted(ep.into())),
         ep => Err(EvalError::UnknownEntryPoint(ep.into())),
     }
 }
 
-fn ok(value: Value) -> Result<Value, EvalError> {
+pub(crate) fn ok(value: Value) -> Result<Value, EvalError> {
     Ok(json!({ "ok": value }))
 }
 
@@ -87,12 +90,12 @@ fn value_error(message: String) -> Result<Value, EvalError> {
     Ok(json!({ "error": { "type": "ValueError", "message": message } }))
 }
 
-fn bad(msg: String) -> EvalError {
+pub(crate) fn bad(msg: String) -> EvalError {
     EvalError::BadInput(msg)
 }
 
 /// A float as JSON: a number, or the tagged string for NaN and infinity.
-fn float_json(x: f64) -> Value {
+pub(crate) fn float_json(x: f64) -> Value {
     if x.is_nan() {
         json!("float:nan")
     } else if x == f64::INFINITY {
@@ -104,11 +107,11 @@ fn float_json(x: f64) -> Value {
     }
 }
 
-fn floats_json(xs: &[f64]) -> Value {
+pub(crate) fn floats_json(xs: &[f64]) -> Value {
     Value::Array(xs.iter().map(|&x| float_json(x)).collect())
 }
 
-fn read_float(v: &Value, what: &str) -> Result<f64, EvalError> {
+pub(crate) fn read_float(v: &Value, what: &str) -> Result<f64, EvalError> {
     match v {
         Value::Number(n) => n
             .as_f64()
@@ -123,33 +126,33 @@ fn read_float(v: &Value, what: &str) -> Result<f64, EvalError> {
     }
 }
 
-fn arg<'a>(args: &'a Value, name: &str) -> Result<&'a Value, EvalError> {
+pub(crate) fn arg<'a>(args: &'a Value, name: &str) -> Result<&'a Value, EvalError> {
     match args.get(name) {
         Some(v) if !v.is_null() => Ok(v),
         _ => Err(bad(format!("`args.{name}` is required"))),
     }
 }
 
-fn f64_arg(args: &Value, name: &str) -> Result<f64, EvalError> {
+pub(crate) fn f64_arg(args: &Value, name: &str) -> Result<f64, EvalError> {
     read_float(arg(args, name)?, &format!("args.{name}"))
 }
 
 /// An optional float: absent or `null` gives `default`.
-fn f64_or(args: &Value, name: &str, default: f64) -> Result<f64, EvalError> {
+pub(crate) fn f64_or(args: &Value, name: &str, default: f64) -> Result<f64, EvalError> {
     match args.get(name) {
         None | Some(Value::Null) => Ok(default),
         Some(v) => read_float(v, &format!("args.{name}")),
     }
 }
 
-fn opt_f64(args: &Value, name: &str) -> Result<Option<f64>, EvalError> {
+pub(crate) fn opt_f64(args: &Value, name: &str) -> Result<Option<f64>, EvalError> {
     match args.get(name) {
         None | Some(Value::Null) => Ok(None),
         Some(v) => read_float(v, &format!("args.{name}")).map(Some),
     }
 }
 
-fn list<'a>(args: &'a Value, name: &str) -> Result<&'a Vec<Value>, EvalError> {
+pub(crate) fn list<'a>(args: &'a Value, name: &str) -> Result<&'a Vec<Value>, EvalError> {
     arg(args, name)?
         .as_array()
         .ok_or_else(|| bad(format!("`args.{name}` must be a list")))
