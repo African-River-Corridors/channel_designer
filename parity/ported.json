@@ -6,5 +6,8 @@
   "simple",
   "width_profile",
   "geometry",
-  "synthetic"
+  "synthetic",
+  "sections",
+  "cut_model_grid",
+  "cut_model_extras"
 ]
