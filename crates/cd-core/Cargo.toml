@@ -9,7 +9,10 @@ repository.workspace = true
 
 # libm (spec 0001): every transcendental goes through it, so results are identical on every platform.
 # ovcd-core (ADR 0001): vessel classes and the `Check` type, pinned to a release TAG, never a branch.
+# dubins_paths (MIT, spec 0005): shortest bounded-curvature joins to fixed poses in the fairway fit.
+# Built on libm, not std floats, to keep results identical on every platform.
 # The Python reference pins the same tag (pyproject.toml, vessel_designer @ v0.2.2).
 [dependencies]
 libm = "0.2"
+dubins_paths = { version = "=3.2.0", default-features = false, features = ["libm", "alloc"] }
 ovcd-core = { git = "https://github.com/African-River-Corridors/open-vessel-concept-drawings", tag = "v0.2.2" }
