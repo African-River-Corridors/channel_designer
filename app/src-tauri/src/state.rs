@@ -429,7 +429,23 @@ impl AppState {
             .export_csv(self.dem_bytes.as_deref().map(|b| b.as_slice()))
     }
 
-    /// The `.cdesign` text to write.
+    /// The DEM path is stored relative to the document: say it again from the folder `path` is in.
+    /// Only the path changes; the DEM's hash stays, so no stage goes stale.
+    fn point_dem_from(&mut self, path: &Path) {
+        if let Some(file) = &self.dem_file {
+            let rel = relative_to(path.parent().unwrap_or(Path::new(".")), file);
+            self.session.set_dem_path(&rel);
+        }
+    }
+
+    /// The text to write at `path`: the design with its DEM path said from that folder.
+    pub fn save_text_for(&mut self, path: &Path) -> String {
+        self.point_dem_from(path);
+        self.session.to_text()
+    }
+
+    /// The `.cdesign` text as it stands (the save command uses [`AppState::save_text_for`]).
+    #[cfg(test)]
     pub fn save_text(&self) -> String {
         self.session.to_text()
     }
@@ -437,12 +453,7 @@ impl AppState {
     /// Record that the design was written to `path`.
     pub fn saved(&mut self, path: &Path) {
         self.path = Some(path.to_path_buf());
-        // The DEM path is stored relative to the document: say it again from the new folder. Only the
-        // path changes; the DEM's hash stays, so no stage goes stale.
-        if let Some(file) = &self.dem_file {
-            let rel = relative_to(path.parent().unwrap_or(Path::new(".")), file);
-            self.session.set_dem_path(&rel);
-        }
+        self.point_dem_from(path);
         self.dirty = false;
         self.warnings.clear();
     }

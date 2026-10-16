@@ -172,10 +172,7 @@ async fn open_file(app: AppHandle, window: Window, state: State<'_, Shared>) -> 
 }
 
 fn save_to(app: &AppHandle, window: &Window, state: &Shared, ask_for_path: bool) -> Reply {
-    let (known, text) = {
-        let guard = lock(state)?;
-        (guard.path().map(Path::to_path_buf), guard.save_text())
-    };
+    let known = lock(state)?.path().map(Path::to_path_buf);
     let path = match known {
         Some(p) if !ask_for_path => p,
         _ => {
@@ -185,6 +182,8 @@ fn save_to(app: &AppHandle, window: &Window, state: &Shared, ask_for_path: bool)
             p
         }
     };
+    // The text is made for this path: the DEM's relative path is said from the folder it lands in.
+    let text = lock(state)?.save_text_for(&path);
     write_file(&path, &text)?;
     let mut guard = lock(state)?;
     guard.saved(&path);
