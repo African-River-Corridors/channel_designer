@@ -2,17 +2,18 @@
 //!
 //! Each function names the GEOS routine it follows. Line vertices come out equal to GEOS's within
 //! 1e-9: the offset curve, the line buffer and the point circle are built vertex for vertex.
-//! Polygon overlay is not vertex-faithful; its results are compared normalised (`polycmp`).
-//!
-//! Not here: an offset or buffer that folds back on itself, and `buffer(0)` repair. GEOS runs
-//! noding and overlay there; these return [`GeomError::NeedsGeneralBuffer`] (ticket 43).
+//! A buffer whose raw curve folds back on itself, and `buffer(0)` repair, are resolved by GEOS's
+//! depth rule (`depth`). Those polygons, and polygon overlay, may start a ring at another vertex
+//! than GEOS's, so they are compared normalised (`polycmp`).
 
 pub mod dd;
+pub mod depth;
 pub mod linear;
 pub mod merge;
 pub mod offset;
 pub mod overlay;
 pub mod polycmp;
+pub mod valid;
 
 /// A point in the plane.
 pub type Pt = [f64; 2];
@@ -41,9 +42,6 @@ pub enum Geometry {
 /// Why a geometry function could not give a result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GeomError {
-    /// The offset or buffer folds back on itself, or the input needs `buffer(0)` repair: GEOS runs
-    /// noding and overlay there, which is the general buffer ticket (43).
-    NeedsGeneralBuffer(String),
     /// The input is of a kind this function does not handle.
     Unsupported(String),
 }
@@ -51,9 +49,6 @@ pub enum GeomError {
 impl core::fmt::Display for GeomError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            GeomError::NeedsGeneralBuffer(m) => {
-                write!(f, "needs the general buffer (ticket 43): {m}")
-            }
             GeomError::Unsupported(m) => write!(f, "unsupported: {m}"),
         }
     }

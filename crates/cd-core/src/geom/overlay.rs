@@ -187,7 +187,7 @@ fn node(a: &[[Pt; 2]], b: &[[Pt; 2]]) -> (Vec<[Pt; 2]>, Vec<[Pt; 2]>) {
     (split(a, cuts_a), split(b, cuts_b))
 }
 
-fn split(edges: &[[Pt; 2]], cuts: Vec<Vec<Pt>>) -> Vec<[Pt; 2]> {
+pub(crate) fn split(edges: &[[Pt; 2]], cuts: Vec<Vec<Pt>>) -> Vec<[Pt; 2]> {
     let mut out = Vec::new();
     for (e, mut c) in edges.iter().zip(cuts) {
         let d2 = |p: &Pt| (p[0] - e[0][0]) * (p[0] - e[0][0]) + (p[1] - e[0][1]) * (p[1] - e[0][1]);
@@ -337,7 +337,7 @@ fn compare_dir(o: Pt, a: Pt, b: Pt) -> core::cmp::Ordering {
 
 /// Link directed edges (interior on the left) into rings, taking the sharpest left turn at each
 /// node, and group them into shells (counter-clockwise) with their holes.
-fn build_polygons(edges: &[[Pt; 2]]) -> Vec<Polygon> {
+pub(crate) fn build_polygons(edges: &[[Pt; 2]]) -> Vec<Polygon> {
     let mut out_of: BTreeMap<Key, Vec<usize>> = BTreeMap::new();
     for (i, e) in edges.iter().enumerate() {
         out_of.entry(Key(e[0])).or_default().push(i);
