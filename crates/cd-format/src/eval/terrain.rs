@@ -9,7 +9,7 @@ use serde_json::Value;
 /// A terrain sampler: heights for the points `(xs[i], ys[i])`.
 pub(super) type Sampler = Box<dyn Fn(&[f64], &[f64]) -> Vec<f64>>;
 
-fn river_params(p: &Value) -> Result<RiverParams, EvalError> {
+pub(super) fn river_params(p: &Value) -> Result<RiverParams, EvalError> {
     let d = RiverParams::default();
     let hill_at = match p.get("hill_at") {
         None | Some(Value::Null) => d.hill_at,

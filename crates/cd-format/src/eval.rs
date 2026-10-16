@@ -12,6 +12,8 @@ mod alignment;
 mod cascade;
 mod geometry;
 mod lattice;
+mod river;
+mod route;
 mod terrain;
 mod volumes;
 
@@ -87,11 +89,17 @@ pub fn eval(entry_point: &str, input: &Value) -> Result<Value, EvalError> {
         "radius_check" => alignment::radius_check(function, args),
         "loops" => alignment::loops(function, args),
         "rolling_circle" => alignment::rolling_circle(function, args),
+        "route" => route::route(function, args),
         "cascade" => cascade::cascade(function, args),
         "lattice" => lattice::lattice(function, args),
         "sections" => volumes::sections(function, args),
         "cut_model_grid" => volumes::cut_model_grid(function, args),
         "cut_model_extras" => volumes::cut_model_extras(function, args),
+        "centreline" => river::centreline(function, args),
+        "widths" => river::widths(function, args),
+        "limits" => river::limits(function, args),
+        "meanders" => river::meanders(function, args),
+        "bends" => river::bends(function, args),
         "geometry" => geometry::geometry(function, args),
         "synthetic" => geometry::synthetic(function, args),
         ep if ENTRY_POINTS.contains(&ep) => Err(EvalError::NotPorted(ep.into())),
@@ -106,6 +114,11 @@ pub(crate) fn ok(value: Value) -> Result<Value, EvalError> {
 /// A Python `ValueError`, as the frozen Python driver records it.
 fn value_error(message: String) -> Result<Value, EvalError> {
     Ok(json!({ "error": { "type": "ValueError", "message": message } }))
+}
+
+/// A refusal the Python raised, as the frozen driver records it.
+pub(crate) fn value_error_of(e: cd_core::alignment::PyError) -> Result<Value, EvalError> {
+    Ok(json!({ "error": { "type": e.kind, "message": e.message } }))
 }
 
 pub(crate) fn bad(msg: String) -> EvalError {

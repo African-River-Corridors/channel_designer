@@ -61,7 +61,8 @@ fn path_length(coords: &Value) -> Option<f64> {
 
 /// The objective and constraints of one result, or `None` if the function is not a search or the
 /// result is a refusal.
-fn view(entry_point: &str, function: &str, output: &Value) -> Option<View> {
+fn view(entry_point: &str, input: &Value, output: &Value) -> Option<View> {
+    let function = input.get("fn").and_then(Value::as_str).unwrap_or("");
     let ok = output.get("ok")?;
     match (entry_point, function) {
         ("rolling_circle", "rolling_circle") => {
@@ -78,6 +79,31 @@ fn view(entry_point: &str, function: &str, output: &Value) -> Option<View> {
         ("rolling_circle", "find_forward_circle_contact") => Some(View {
             objective: ok.get("contact_chainage").and_then(float),
             constraints: json!({ "found": !ok.is_null() }),
+        }),
+        // The DP's objective is its total path cost; it has no constraint beyond the path itself.
+        ("route", "dp_optimise") => Some(View {
+            objective: ok.get("cost").and_then(float),
+            constraints: json!({}),
+        }),
+        // The corridor solve: the saving it reports, and whether its line clears the target
+        // radius (the reading tolerance below `r_min`, as `solve_at_corridor` enforces).
+        ("route", "solve_at_corridor") => {
+            let r_min = input.get("args")?.get("r_min").and_then(float)?;
+            let min_radius = ok.get("min_radius").and_then(float)?;
+            Some(View {
+                objective: ok.get("saving_pct").and_then(float),
+                constraints: json!({ "clears_target": min_radius >= 0.98 * r_min - 1e-6 }),
+            })
+        }
+        // The sweep's winner: the saving it reports; `radius_ok`, the measured radius and the
+        // chord it was read on must still match.
+        ("route", "optimise_route") => Some(View {
+            objective: ok.get("approx_saving_pct").and_then(float),
+            constraints: json!({
+                "radius_ok": ok.get("radius_ok")?,
+                "measured_min_radius_m": ok.get("measured_min_radius_m")?,
+                "radius_check_chord_m": ok.get("radius_check_chord_m")?,
+            }),
         }),
         _ => None,
     }
@@ -97,8 +123,7 @@ pub fn judge(
         .and_then(|s| s.get("near_tie"))
         .and_then(Value::as_bool)
         == Some(true);
-    let function = input.get("fn").and_then(Value::as_str).unwrap_or("");
-    let views = view(entry_point, function, expected).zip(view(entry_point, function, actual));
+    let views = view(entry_point, input, expected).zip(view(entry_point, input, actual));
     let (Some((e, a)), true) = (views, near_tie) else {
         return compare(expected, actual, tol).map(|()| Judged::Exact);
     };
@@ -228,5 +253,48 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    fn route_out(saving: f64, ok: bool, measured: f64, chord: f64) -> Value {
+        json!({"ok": {"line": {"geom": "LineString", "coords": []}, "offsets": [0.0],
+            "approx_saving_pct": saving, "radius_ok": ok,
+            "measured_min_radius_m": measured, "radius_check_chord_m": chord}})
+    }
+
+    #[test]
+    fn a_route_near_tie_is_judged_on_saving_and_the_radius_reading() {
+        let input = json!({"fn": "optimise_route", "args": {}});
+        let t = tie(true);
+        let e = route_out(12.5, true, 600.0, 400.0);
+        let mut other_path = route_out(12.5, true, 600.0, 400.0);
+        other_path["ok"]["offsets"] = json!([20.0]); // another path, same saving and reading
+        assert_eq!(
+            judge("route", &input, Some(&t), &e, &other_path, TOL),
+            Ok(Judged::NearTie)
+        );
+        for bad in [
+            route_out(12.6, true, 600.0, 400.0),
+            route_out(12.5, false, 600.0, 400.0),
+            route_out(12.5, true, 590.0, 400.0),
+            route_out(12.5, true, 600.0, 200.0),
+        ] {
+            assert!(judge("route", &input, Some(&t), &e, &bad, TOL).is_err());
+        }
+        // Not recorded as a near tie: the path is compared.
+        assert!(judge("route", &input, Some(&tie(false)), &e, &other_path, TOL).is_err());
+    }
+
+    #[test]
+    fn a_dp_near_tie_passes_on_the_same_cost_and_fails_on_another() {
+        let input = json!({"fn": "dp_optimise", "args": {}});
+        let t = tie(true);
+        let e = json!({"ok": {"path": [1, 2], "cost": 100.0}});
+        let same_cost = json!({"ok": {"path": [2, 1], "cost": 100.0}});
+        let dearer = json!({"ok": {"path": [2, 1], "cost": 100.001}});
+        assert_eq!(
+            judge("route", &input, Some(&t), &e, &same_cost, TOL),
+            Ok(Judged::NearTie)
+        );
+        assert!(judge("route", &input, Some(&t), &e, &dearer, TOL).is_err());
     }
 }
