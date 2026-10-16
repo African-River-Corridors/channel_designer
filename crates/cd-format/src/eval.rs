@@ -10,6 +10,7 @@ use serde_json::{Number, Value, json};
 
 mod alignment;
 mod cascade;
+mod dem;
 mod geometry;
 mod lattice;
 mod plan;
@@ -97,6 +98,7 @@ pub fn eval(entry_point: &str, input: &Value) -> Result<Value, EvalError> {
         "cut_model_grid" => volumes::cut_model_grid(function, args),
         "cut_model_extras" => volumes::cut_model_extras(function, args),
         "footprint" => plan::footprint(function, args),
+        "raster" => dem::raster(function, args),
         "pools" => plan::pools(function, args),
         "centreline" => river::centreline(function, args),
         "widths" => river::widths(function, args),
