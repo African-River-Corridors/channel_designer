@@ -420,6 +420,7 @@ pub struct AlignFlags {
     pub water_level: Option<f64>,
     pub water_slope: Option<f64>,
     pub corridors: Option<String>,
+    pub fairness_weight: Option<f64>,
 }
 
 pub fn align(
@@ -455,6 +456,9 @@ pub fn align(
                 let parsed = parsed
                     .map_err(|_| input_error(format!("--corridors must be numbers: `{list}`")))?;
                 put("corridor_sweep_m", json!(parsed));
+            }
+            if let Some(v) = flags.fairness_weight {
+                put("fairness_weight", json!(v));
             }
         }
     }

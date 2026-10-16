@@ -106,8 +106,8 @@ enum Command {
         /// Rolling circle: the number of passes (default 2).
         #[arg(long)]
         passes: Option<u32>,
-        /// Read the minimum radius on this chord, in metres (default: a third of R_min for the
-        /// rolling circle, one station each side for the re-route).
+        /// Read the minimum radius on this chord, in metres (default: a third of R_min, for every
+        /// method).
         #[arg(long, value_name = "METRES")]
         chord: Option<f64>,
         /// Re-route: a GeoTIFF DEM (WGS84 or the project's UTM zone) for the terrain.
@@ -122,6 +122,10 @@ enum Command {
         /// Re-route: the half-widths of the corridors to try, in metres, comma separated.
         #[arg(long, value_name = "LIST")]
         corridors: Option<String>,
+        /// Re-route: the fairness weight, on the squared change of heading between stations
+        /// (default 0: off). Prefers the smoother of two lines that cut the same.
+        #[arg(long, value_name = "WEIGHT")]
+        fairness_weight: Option<f64>,
         #[command(flatten)]
         out: Out,
     },
@@ -296,6 +300,7 @@ fn main() -> ExitCode {
             water_level,
             water_slope,
             corridors,
+            fairness_weight,
             out,
         } => commands::align(
             &doc,
@@ -308,6 +313,7 @@ fn main() -> ExitCode {
                 water_level,
                 water_slope,
                 corridors,
+                fairness_weight,
             },
             &out.output,
             out.json,

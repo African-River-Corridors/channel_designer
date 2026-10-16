@@ -140,7 +140,7 @@
       "additionalProperties": false,
       "properties": {
         "sizing": { "$ref": "#/$defs/sizing_stage" },
-        "alignment": { "$ref": "#/$defs/stage" },
+        "alignment": { "$ref": "#/$defs/alignment_stage" },
         "optimise": { "$ref": "#/$defs/stage" },
         "volumes": { "$ref": "#/$defs/stage" }
       }
@@ -205,6 +205,51 @@
       "additionalProperties": false,
       "properties": {
         "settings": { "type": ["object", "null"] },
+        "results": { "type": ["object", "null"] },
+        "depends_on": { "$ref": "#/$defs/hash_or_null" },
+        "engine_version": { "type": ["string", "null"] }
+      }
+    },
+    "alignment_stage": {
+      "type": "object",
+      "required": ["settings", "results", "depends_on", "engine_version"],
+      "additionalProperties": false,
+      "properties": {
+        "settings": {
+          "description": "Settings of each alignment method, by method name. A setting left out takes its default.",
+          "type": ["object", "null"],
+          "properties": {
+            "rolling_circle": {
+              "type": "object",
+              "properties": {
+                "use_water": {
+                  "description": "Spec 0005: the water-aware rolling circle. Null (the default) means on when the inputs have a river polygon. A version 1 document records false when it opens, so its results do not change.",
+                  "type": ["boolean", "null"]
+                },
+                "clearance_m": {
+                  "description": "Spec 0005: clearance from the bank, metres, added to half the bottom width when the water is shrunk to navigable water. Default 0.",
+                  "type": "number",
+                  "minimum": 0
+                },
+                "r_pref_m": {
+                  "description": "Spec 0005: a preferred radius for the fairway fit, metres; bends tighter than it are penalised, never refused. Default none.",
+                  "type": ["number", "null"],
+                  "minimum": 0
+                }
+              }
+            },
+            "reroute": {
+              "type": "object",
+              "properties": {
+                "fairness_weight": {
+                  "description": "Weight on the squared change of heading between stations in the least-cost re-route (spec 0005). 0, the default, gives the re-route without it.",
+                  "type": "number",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
         "results": { "type": ["object", "null"] },
         "depends_on": { "$ref": "#/$defs/hash_or_null" },
         "engine_version": { "type": ["string", "null"] }

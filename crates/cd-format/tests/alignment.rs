@@ -210,6 +210,7 @@ fn two_methods_give_two_options_and_a_rerun_replaces_only_its_own() {
             dry_weight: 1.0,
             corridor_sweep: vec![40.0, 80.0],
             check_chord_m: None,
+            fairness_weight: 0.0,
         },
     )
     .unwrap();
@@ -266,4 +267,48 @@ fn a_stage_run_runs_the_rolling_circle_and_a_new_vessel_makes_it_stale_then_run_
         vec![Stage::Sizing, Stage::Alignment]
     );
     assert_eq!(s.stage_status(Stage::Alignment), StageStatus::Fresh);
+}
+
+#[test]
+fn the_reroute_fairness_weight_is_a_stage_setting_and_the_schema_knows_it() {
+    // Spec 0005 Q9 (#99). Label: property.
+    let river = synthetic_river(RiverParams::default()).unwrap();
+    let terrain = |xs: &[f64], ys: &[f64]| -> Vec<f64> {
+        xs.iter()
+            .zip(ys)
+            .map(|(&x, &y)| river.terrain(x - SHIFT[0], y - SHIFT[1]))
+            .collect()
+    };
+    let mut s = design(&river_line(), "CEMT_IV");
+    s.align(AlignMethod::RollingCircle, &Value::Null, None)
+        .unwrap();
+    s.set_water_fall(river.water_level(0.0), 0.0).unwrap();
+    // The default is 0 and is recorded with the option's settings.
+    s.align(
+        AlignMethod::Reroute,
+        &json!({"corridor_sweep_m": [40.0]}),
+        Some(&terrain),
+    )
+    .unwrap();
+    let plain = option(&s, "reroute").clone();
+    assert_eq!(plain["settings"]["fairness_weight"], 0.0);
+    // A weight reaches the re-route (the option records it).
+    let weighted = json!({"corridor_sweep_m": [40.0], "fairness_weight": 5.0e4});
+    s.align(AlignMethod::Reroute, &weighted, Some(&terrain))
+        .unwrap();
+    assert_eq!(option(&s, "reroute")["settings"]["fairness_weight"], 5.0e4);
+    // A negative weight is refused, by the stage and by the schema.
+    let bad = json!({"fairness_weight": -1.0});
+    let e = s
+        .align(AlignMethod::Reroute, &bad, Some(&terrain))
+        .unwrap_err();
+    assert!(format!("{e}").contains("fairness_weight"), "{e}");
+    let mut doc = s.document().clone();
+    doc["stages"]["alignment"]["settings"] = json!({"reroute": {"fairness_weight": -1.0}});
+    let schema = cd_format::design::schema::schema();
+    let errors = cd_format::design::schema::validate(&schema, &doc);
+    assert!(
+        errors.iter().any(|m| m.contains("fairness_weight")),
+        "{errors:?}"
+    );
 }
