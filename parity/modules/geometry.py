@@ -6,8 +6,10 @@ buffer also returns its exterior ring as plain coordinates (`ring`), checked ver
 GEOS circle and line buffers are built exactly. The points and overlaps where two lines meet are
 returned sorted (`_points_and_lines`), since the package reads them as a set.
 
-No case here makes an offset fold back on itself or asks `buffer(0)` to repair a polygon; those need
-GEOS's noding and overlay and belong to the general buffer ticket (#43).
+Ticket 43 adds `buffer_shape`: a buffer whose raw curve folds back on itself, `buffer(0)` repair of an
+invalid polygon, and the buffers, differences and unions the package itself makes while it runs the
+footprint, raster and lattice cases (`_recorded`). Each result is compared normalised, with its
+validity.
 """
 from __future__ import annotations
 
@@ -15,7 +17,7 @@ import math
 
 import numpy as np
 import shapely
-from shapely.geometry import LineString, MultiLineString, MultiPoint, Point, Polygon
+from shapely.geometry import LineString, MultiLineString, MultiPoint, MultiPolygon, Point, Polygon
 from shapely.ops import linemerge, substring
 
 from ..common import Rng, case as _case, rline, rnd
@@ -58,6 +60,12 @@ def adapter(fn: str, args: dict):
     if fn == "polygon_op":
         a, b = args["a"], args["b"]
         return {"intersection": a.intersection, "difference": a.difference, "union": a.union}[args["op"]](b)
+    if fn == "buffer_shape":
+        kw = {k: args[k] for k in ("cap_style", "quad_segs") if k in args}
+        g = args["geom"].buffer(args["distance"], **kw)
+        return {"polygon": g, "valid": bool(g.is_valid)}
+    if fn == "is_valid":
+        return bool(args["polygon"].is_valid)
     if fn == "polygon_area":
         return args["polygon"].area
     if fn == "contains_xy":
@@ -115,6 +123,59 @@ def _walk(rng, n, step=(40.0, 90.0), turn=0.5):
         y += s * math.sin(h)
         pts.append((round(x, 3), round(y, 3)))
     return rline(pts)
+
+
+def _recorded(per_kind=12):
+    """The buffers, differences and unions the package makes while it runs the existing footprint,
+    raster and lattice cases, as geometry cases: the shapely calls are recorded and deduplicated, and
+    the first `per_kind` of each kind are kept, at most two from any one source case. Taking the first
+    ones keeps these cases fixed when cases are appended to those modules later."""
+    from shapely.geometry.base import BaseGeometry
+
+    from ..common import from_json
+    from . import footprint, lattice, raster
+
+    seen, calls, per_case = set(), {}, {}
+    orig = {n: getattr(BaseGeometry, n) for n in ("buffer", "difference", "union")}
+
+    def wrap(name, source):
+        def call(self, *a, **kw):
+            other = a[0] if name != "buffer" else None
+            key = (name, self.wkb, other.wkb if other is not None else None, a[1:] if other is not None else a,
+                   tuple(sorted(kw.items())))
+            if key not in seen and per_case.get(source[1], 0) < 2:
+                seen.add(key)
+                if name == "buffer":
+                    args = dict(geom=self, distance=float(a[0]))
+                    for k, v in kw.items():
+                        args[k] = v
+                    kind = "buffer_polygon" if isinstance(self, (Polygon, MultiPolygon)) else "buffer_line"
+                    calls.setdefault(f"{source[0]}_{kind}", []).append(("buffer_shape", args))
+                    per_case[source[1]] = per_case.get(source[1], 0) + 1
+                elif isinstance(self, (Polygon, MultiPolygon)) and isinstance(other, (Polygon, MultiPolygon)):
+                    calls.setdefault(f"{source[0]}_{name}", []).append(("polygon_op", dict(op=name, a=self, b=other)))
+                    per_case[source[1]] = per_case.get(source[1], 0) + 1
+            return orig[name](self, *a, **kw)
+        return call
+
+    try:
+        for mod in (footprint, raster, lattice):
+            source = [mod.ENTRY_POINT, None]
+            for n in orig:
+                setattr(BaseGeometry, n, wrap(n, source))
+            for case in mod.cases():
+                source[1] = (mod.ENTRY_POINT, case["id"])
+                try:
+                    mod.adapter(case["input"]["fn"], from_json(case["input"]["args"]))
+                except Exception:  # noqa: BLE001 - error cases refuse on purpose; only their calls matter
+                    pass
+    finally:
+        for n, f in orig.items():
+            setattr(BaseGeometry, n, f)
+    out = {}
+    for kind, items in sorted(calls.items()):
+        out[kind] = items[:per_kind]
+    return out
 
 
 def _clear_of_itself(ln, gap):
@@ -319,7 +380,7 @@ def cases():
         c(f"merge_sweep_{i:02d}", 2, "line_merge", dict(lines=chained))
     # --- tier 2: the GEOS probe (offset curves, buffers and circles, vertex for vertex) ---
     # Walks are kept only if nothing folds: a simple line whose non-adjacent segments stay more than
-    # 2.5 offsets apart. A folding offset is ticket 43's.
+    # 2.5 offsets apart, so the probe tests the raw curve; folding is the `fold_sweep` below.
     rng = Rng(24002)
     kept = 0
     while kept < 20:
@@ -343,6 +404,62 @@ def cases():
     for i in range(6):
         c(f"probe_circle_{i:02d}", 2, "buffer_point", dict(x=rng.r3(-8000, 8000), y=rng.r3(-8000, 8000),
                                                           distance=rng.r3(1e-3, 900.0), quad_segs=[128, 3, 17, 128, 8, 64][i]))
+    # --- ticket 43: the general buffer (folding curves, buffer(0) repair, the package's own inputs) ---
+    def ring(pts):
+        return Polygon(pts)
+
+    bow = ring([(0, 0), (20, 20), (20, 0), (0, 20)])
+    c("repair_bow_tie", 1, "buffer_shape", dict(geom=bow, distance=0.0))
+    c("repair_bow_tie_reversed", 1, "buffer_shape", dict(geom=ring(list(bow.exterior.coords)[::-1]), distance=0.0))
+    c("repair_self_touching_ring", 1, "buffer_shape", dict(
+        geom=ring([(0, 0), (40, 0), (40, 40), (20, 0), (0, 40)]), distance=0.0))
+    c("repair_figure_eight_unequal_lobes", 1, "buffer_shape", dict(
+        geom=ring([(0, 0), (30, 30), (30, 0), (0, 10), (-10, 10), (-10, 0)]), distance=0.0))
+    c("repair_valid_polygon_with_hole_is_itself", 1, "buffer_shape", dict(geom=holey, distance=0.0))
+    c("repair_spike", 1, "buffer_shape", dict(geom=ring([(0, 0), (10, 0), (10, 10), (10, 30), (10, 10), (0, 10)]),
+                                               distance=0.0))
+    c("repair_multipolygon", 1, "buffer_shape", dict(geom=MultiPolygon([sq, Polygon([(200, 0), (260, 0), (260, 60)])]),
+                                                     distance=0.0))
+    river = _sine(6000.0, 1500.0, 260.0)
+    for cap in ("round", "flat"):
+        c(f"wide_corridor_past_the_bend_radius_{cap}", 1, "buffer_shape", dict(geom=river, distance=300.0, cap_style=cap))
+        c(f"wide_corridor_on_a_reach_{cap}", 1, "buffer_shape", dict(geom=substring(river, 1200.0, 2600.0), distance=250.0,
+                                                                     cap_style=cap))
+    c("wide_corridor_cap_style_2", 1, "buffer_shape", dict(geom=substring(river, 300.0, 900.0), distance=240.0, cap_style=2))
+    c("hairpin_round", 1, "buffer_shape", dict(geom=LineString([(0, 0), (100, 0), (100, 5), (0, 5)]), distance=20.0))
+    c("hairpin_flat", 1, "buffer_shape", dict(geom=LineString([(0, 0), (100, 0), (100, 5), (0, 5)]), distance=20.0,
+                                              cap_style="flat"))
+    c("line_doubling_back", 1, "buffer_shape", dict(geom=LineString([(0, 0), (50, 0), (20, 0)]), distance=5.0))
+    c("self_crossing_line", 1, "buffer_shape", dict(geom=LineString([(0, 0), (100, 0), (50, 50), (50, -50)]), distance=8.0))
+    c("loop_leaves_a_hole", 1, "buffer_shape", dict(
+        geom=LineString([(0, 0), (200, 0), (200, 200), (0, 200), (0, 5)]), distance=10.0, cap_style="flat"))
+    c("corridor_union_as_the_lattice_makes_it", 1, "polygon_op", dict(
+        op="union", a=substring(river, 1000.0, 1600.0).buffer(80.0),
+        b=substring(_sine(6000.0, 1400.0, 240.0), 950.0, 1700.0).buffer(80.0)))
+    for side in (300.0, -300.0):
+        c(f"offset_folding_river_{side:+g}", 1, "offset_curve", dict(line=river, distance=side))
+    c("offset_folding_hairpin", 1, "offset_curve", dict(line=LineString([(0, 0), (100, 0), (100, 5), (0, 5)]), distance=-20.0))
+    for name, poly in (("bow_tie", bow), ("square", sq), ("with_hole", holey)):
+        c(f"is_valid_{name}", 1, "is_valid", dict(polygon=poly))
+    for kind, items in _recorded().items():
+        for i, (fn, args) in enumerate(items):
+            c(f"from_{kind}_{i:02d}", 1, fn, args)
+    # tier 2: folding sweep (walks and sine reaches buffered wider than they bend) and repairs of random rings
+    rng = Rng(24043)
+    for i in range(16):
+        ln = _walk(rng, rng.i(4, 9), turn=1.2)
+        c(f"fold_sweep_{i:02d}", 2, "buffer_shape", dict(geom=ln, distance=rng.r3(30.0, 120.0),
+                                                         cap_style=["round", "flat", "square"][i % 3],
+                                                         quad_segs=[16, 8, 4][i % 3]))
+    for i in range(6):
+        wl, amp = rng.r3(300.0, 1200.0), rng.r3(60.0, 300.0)
+        rmin = wl * wl / (4 * math.pi * math.pi * amp)
+        c(f"fold_sweep_sine_{i:02d}", 2, "buffer_shape", dict(geom=_sine(rng.r3(800.0, 2000.0), wl, amp),
+                                                              distance=round(rmin * rng.u(1.2, 2.5), 3),
+                                                              cap_style=["round", "flat"][i % 2]))
+    for i in range(10):
+        pts = [(rng.r3(0.0, 100.0), rng.r3(0.0, 100.0)) for _ in range(rng.i(4, 8))]
+        c(f"repair_sweep_{i:02d}", 2, "buffer_shape", dict(geom=Polygon(pts), distance=0.0))
     # Tier 3: this module has none. Every refusal GEOS or shapely makes carries their own wording, which is
     # not ours to reproduce.
     return out
