@@ -158,4 +158,22 @@ describe("Channel Designer app smoke test", () => {
     assert.equal(await text("project-crs"), "none yet");
     assert.equal(await text("status-sizing"), "not run");
   });
+  it("shows the basemap attribution on the map, before and after zooming", async () => {
+    const ATTRIBUTION =
+      "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)";
+    const shown = async () => {
+      const el = await browser.$("[data-testid=attribution]");
+      return (await el.isDisplayed()) && (await el.getText()) === ATTRIBUTION;
+    };
+    await until("the attribution to show", shown);
+    // Zoom with the map's own buttons when the map started (it needs WebGL; the attribution does not).
+    const zoomIn = await browser.$(".maplibregl-ctrl-zoom-in");
+    if (await zoomIn.isExisting()) {
+      for (let i = 0; i < 4; i++) {
+        await zoomIn.click();
+        await browser.pause(300);
+        assert.ok(await shown(), `the attribution is visible after zoom step ${i + 1}`);
+      }
+    }
+  });
 });

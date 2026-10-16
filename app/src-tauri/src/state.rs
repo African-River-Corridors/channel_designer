@@ -114,6 +114,11 @@ impl AppState {
         }
     }
 
+    /// The plan map's geometry in WGS84, from the session.
+    pub fn map_geometry(&self) -> Result<Value, String> {
+        self.session.map_geometry().map_err(message)
+    }
+
     /// The `.cdesign` text to write.
     pub fn save_text(&self) -> String {
         self.session.to_text()
