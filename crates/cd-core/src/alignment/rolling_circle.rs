@@ -8,6 +8,9 @@
 //! Search class (ADR 0005): the one discrete choice is the circle contact. The circle is the
 //! 512-sided polygon GEOS builds for `quad_segs=128`, never an exact circle.
 
+pub mod water;
+pub use water::{BendRung, Rung, WaterAwareResult, WaterInput, rolling_circle_with_water};
+
 use super::PyError;
 use super::radius_check::{default_check_chord, min_radius_on_chord, radius_ok};
 use crate::geom::offset::buffer_point;

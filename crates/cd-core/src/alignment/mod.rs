@@ -4,6 +4,7 @@
 pub mod bends;
 pub mod centreline;
 pub mod fairway_fit;
+pub mod fillet;
 pub mod limits;
 pub mod loops;
 pub mod meanders;
