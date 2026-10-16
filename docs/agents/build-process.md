@@ -58,7 +58,7 @@ works (from #22) is unchanged.
 
 The builder stops and reports to the coordinator at:
 
-- 60% of the account's weekly token quota (set by the maintainer on 2026-10-16);
+- 90% of the account's weekly token quota (raised from 60% by the maintainer on 2026-10-16);
 - any change to the tolerances (ADR 0005) or to the oracle guard;
 - a ticket whose acceptance criteria cannot be met as written.
 
