@@ -17,7 +17,7 @@ pub const CUT_MODEL_B: &str = "cut_model_b";
 pub const WET_SLOPE_H_PER_V: f64 = 3.0;
 pub const PRISM_CLEAR_M: f64 = 5.0;
 pub const PRISM_INTRUDE_M: f64 = 2.0;
-pub const BERM_M: f64 = 2.0;
+pub const BERM_M: f64 = 2.5;
 pub const ABOVE_SLOPE_H_PER_V: f64 = 1.5;
 pub const DAYLIGHT_RUN_M: f64 = 15.0;
 
