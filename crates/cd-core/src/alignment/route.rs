@@ -6,6 +6,15 @@
 //! corridor sweep. The target radius is never relaxed to the baseline's own radius (issue #9);
 //! the winner reports `radius_ok`, the measured radius and the chord it was read on (issue #10).
 //!
+//! No-cut zones: a bank where no dry ground may be dug over a stretch of chainage (a town, a
+//! landholding, a permit that will not be granted). A zone is read against a bank line, normally
+//! the river's own centreline: a dry ground point is on the protected bank when its nearest point
+//! on the bank line lies in the zone's chainage and it is on the zone's side of that line. (Not the
+//! side of the baseline: a re-route across the inside of a bend has dry ground on both of its
+//! sides, and all of it is the inner bank.) The grid records the template's dry cut on each
+//! protected bank, the search refuses every offset that digs there, and the result reports the
+//! protected cut the finished line still has (the smoothing can move it back), so a breach is loud.
+//!
 //! Search class (ADR 0005): the discrete choices are the DP's predecessor at every state and the
 //! corridor the sweep picks. Ties go to the first candidate, as in the Python (strict `<`).
 
@@ -17,6 +26,65 @@ use crate::numpy::{arange, argmin, np_min, np_mod, np_sum};
 use crate::py_max;
 
 pub const DEFAULT_CORRIDOR_SWEEP: [f64; 7] = [40.0, 60.0, 80.0, 120.0, 160.0, 220.0, 300.0];
+
+/// A bank of the bank line, looking along it from its first vertex to its last.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Bank {
+    /// The side of the left normal (positive offsets).
+    Left,
+    /// The side of negative offsets.
+    Right,
+}
+
+/// No dry ground may be cut on `bank` between chainages `from_m` and `to_m` on the bank line
+/// (inclusive). Cut below the river's water (dredging) is still allowed there.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NoCutZone {
+    pub from_m: f64,
+    pub to_m: f64,
+    pub bank: Bank,
+}
+
+impl NoCutZone {
+    fn covers(&self, s: f64) -> bool {
+        s >= self.from_m.min(self.to_m) - 1e-9 && s <= self.from_m.max(self.to_m) + 1e-9
+    }
+
+    fn holds(&self, s: f64, side: f64) -> bool {
+        self.covers(s)
+            && match self.bank {
+                Bank::Left => side > 0.0,
+                Bank::Right => side < 0.0,
+            }
+    }
+}
+
+/// The chainage of `p` on `line` (its nearest point; the first nearest segment wins a tie) and
+/// the side it is on: > 0 left, < 0 right, 0 on the line.
+pub fn chainage_and_side(line: &[Pt], p: Pt) -> (f64, f64) {
+    let (mut best, mut s_best, mut side_best) = (f64::INFINITY, f64::NAN, 0.0);
+    let mut start = 0.0;
+    for w in line.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+        let len2 = dx * dx + dy * dy;
+        let len = len2.sqrt();
+        let t = if len2 > 0.0 {
+            (((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let q = [a[0] + t * dx, a[1] + t * dy];
+        let d = hypot(p[0] - q[0], p[1] - q[1]);
+        if d < best {
+            best = d;
+            s_best = start + t * len;
+            side_best = dx * (p[1] - a[1]) - dy * (p[0] - a[0]);
+        }
+        start += len;
+    }
+    (s_best, side_best)
+}
 
 /// A terrain sampler: heights for the points `(xs[i], ys[i])`, NaN where unknown.
 pub type Terrain<'a> = &'a dyn Fn(&[f64], &[f64]) -> Vec<f64>;
@@ -33,11 +101,37 @@ pub struct CostGrid {
     pub vol: Vec<Vec<f64>>,
     /// The in-river (dredge) part of `vol`.
     pub wet: Vec<Vec<f64>>,
+    /// The dry part of `vol` on a protected bank (a `NoCutZone`), m3; empty when there are none.
+    pub protected: Vec<Vec<f64>>,
     pub station_step: f64,
     pub offset_step: f64,
 }
 
 impl CostGrid {
+    /// True where the cell digs dry ground on a protected bank.
+    pub fn blocked(&self, i: usize, k: usize) -> bool {
+        self.protected
+            .get(i)
+            .and_then(|r| r.get(k))
+            .is_some_and(|&v| v > 0.0)
+    }
+
+    /// The protected cut of an offset path (each offset snapped to the grid), m3.
+    pub fn protected_cut(&self, ovals: &[f64]) -> f64 {
+        if self.protected.is_empty() {
+            return 0.0;
+        }
+        let k = self.offsets.len();
+        ovals
+            .iter()
+            .enumerate()
+            .map(|(i, &o)| {
+                let r = ((o - self.offsets[0]) / self.offset_step).round_ties_even();
+                self.protected[i][r.max(0.0).min(k as f64 - 1.0) as usize]
+            })
+            .sum()
+    }
+
     /// `wet * wet_weight + dry * dry_weight`, where `dry = vol - wet`.
     pub fn weighted(&self, wet_weight: f64, dry_weight: f64) -> Vec<Vec<f64>> {
         self.vol
@@ -80,6 +174,10 @@ pub struct RouteResult {
     pub measured_min_radius_m: f64,
     pub radius_check_chord_m: f64,
     pub radius_ok: bool,
+    /// Grid-approx dry cut of `line` on a protected bank, m3 (0 with no zones).
+    pub protected_cut_m3: f64,
+    /// `protected_cut_m3 == 0`: the line digs no protected bank.
+    pub no_cut_ok: bool,
 }
 
 fn hypot(a: f64, b: f64) -> f64 {
@@ -94,6 +192,29 @@ pub fn build_cost_grid(
     grade_at: &dyn Fn(f64) -> f64,
     p: &GridParams,
 ) -> Result<CostGrid, PyError> {
+    build_cost_grid_with(line, terrain, river, grade_at, p, &[], None)
+}
+
+/// `build_cost_grid` with no-cut zones: `protected` holds each cell's dry cut on a protected bank.
+/// The zones are read on `bank_line` (the river centreline), or on the baseline when it is None.
+pub fn build_cost_grid_with(
+    line: &[Pt],
+    terrain: Terrain,
+    river: &[Polygon],
+    grade_at: &dyn Fn(f64) -> f64,
+    p: &GridParams,
+    no_cut: &[NoCutZone],
+    bank_line: Option<&[Pt]>,
+) -> Result<CostGrid, PyError> {
+    let bank_line = bank_line.unwrap_or(line);
+    if !no_cut.is_empty() && bank_line.len() < 2 {
+        return Err(PyError::value("the bank line needs at least two points."));
+    }
+    for z in no_cut {
+        if !(z.from_m.is_finite() && z.to_m.is_finite()) {
+            return Err(PyError::value("a no-cut zone needs finite chainages."));
+        }
+    }
     let half_bottom = p.bottom_width / 2.0;
     let total_m = linear::length(line);
     let stations_m: Vec<f64> = arange(0.0, total_m + 0.5 * p.station_step, p.station_step)
@@ -151,6 +272,26 @@ pub fn build_cost_grid(
     let n_off = offsets.len();
     let mut vol = vec![vec![f64::NAN; n_off]; n];
     let mut wet = vec![vec![f64::NAN; n_off]; n];
+    let mut protected = if no_cut.is_empty() {
+        Vec::new()
+    } else {
+        vec![vec![0.0; n_off]; n]
+    };
+    // Which transect points are protected ground: dry, and on a zone's bank.
+    let guarded: Vec<bool> = if no_cut.is_empty() {
+        Vec::new()
+    } else {
+        sx.iter()
+            .zip(&sy)
+            .zip(&wet_flags)
+            .map(|((&x, &y), &wf)| {
+                !wf && {
+                    let (s, side) = chainage_and_side(bank_line, [x, y]);
+                    no_cut.iter().any(|z| z.holds(s, side))
+                }
+            })
+            .collect()
+    };
     let da = p.transect_step * p.station_step;
     for i in 0..n {
         let g = &heights[i * n_toff..(i + 1) * n_toff];
@@ -180,6 +321,15 @@ pub fn build_cost_grid(
                 .collect();
             vol[i][k] = np_sum(&cut) * da;
             wet[i][k] = np_sum(&wet_cut) * da;
+            if !guarded.is_empty() {
+                let gd = &guarded[i * n_toff..(i + 1) * n_toff];
+                let dug: f64 = (0..n_toff)
+                    .filter(|&j| gd[j])
+                    .map(|j| cut[j])
+                    .filter(|c| c.is_finite())
+                    .sum();
+                protected[i][k] = dug * da;
+            }
         }
     }
     Ok(CostGrid {
@@ -190,6 +340,7 @@ pub fn build_cost_grid(
         grades,
         vol,
         wet,
+        protected,
         station_step: p.station_step,
         offset_step: p.offset_step,
     })
@@ -485,7 +636,11 @@ pub fn solve_at_corridor(
     for (i, row) in g.iter_mut().enumerate() {
         for (k, v) in row.iter_mut().enumerate() {
             let o = offsets[k];
-            if o.abs() > corridor_half + 1e-6 || o < o_lo[i] - 1e-6 || o > o_hi[i] + 1e-6 {
+            if o.abs() > corridor_half + 1e-6
+                || o < o_lo[i] - 1e-6
+                || o > o_hi[i] + 1e-6
+                || grid.blocked(i, k)
+            {
                 *v = f64::INFINITY;
             }
         }
@@ -497,7 +652,17 @@ pub fn solve_at_corridor(
         r_min,
         grid.station_step,
         grid.offset_step,
-    )?;
+    )
+    .map_err(|e| {
+        if grid.protected.is_empty() {
+            e
+        } else {
+            PyError::runtime(format!(
+                "{}, or a no-cut zone leaves no offset that clears its bank",
+                e.message
+            ))
+        }
+    })?;
     let beta = baseline_turn_angles(&grid.centres);
     let chosen: Vec<f64> = path.iter().map(|&j| offsets[j]).collect();
     let sm = smooth_offsets(&chosen, grid.station_step / r_min, &beta, grid.station_step);
@@ -535,6 +700,7 @@ pub fn optimise_route(grid: &CostGrid, p: &RouteParams) -> Result<RouteResult, P
         Some(c) => ((c / (2.0 * grid.station_step) + 0.5).floor().max(1.0)) as usize,
     };
     struct Best {
+        clean: bool,
         ok: bool,
         ch: f64,
         sav: f64,
@@ -545,19 +711,33 @@ pub fn optimise_route(grid: &CostGrid, p: &RouteParams) -> Result<RouteResult, P
         measured: f64,
     }
     let mut best: Option<Best> = None;
+    let mut last_err: Option<PyError> = None;
     let mut sweep = Vec::new();
     for &ch in &p.corridor_sweep {
-        let (sm, passes, rmin, sav) = solve_at_corridor(grid, &cost, ch, p.r_min)?;
+        // With no-cut zones a narrow corridor may hold no offset clear of the bank: skip it and
+        // let a wider one win. Without zones a failure is an error, as before.
+        let (sm, passes, rmin, sav) = match solve_at_corridor(grid, &cost, ch, p.r_min) {
+            Ok(v) => v,
+            Err(e) if grid.protected.is_empty() => return Err(e),
+            Err(e) => {
+                last_err = Some(e);
+                continue;
+            }
+        };
         sweep.push((ch, sav, rmin));
         let pts = build_line_from_offsets(&grid.centres, &grid.normals, &sm);
         let measured = min_radius_on_vertices(&pts, k as i64)?;
         let ok = radius_ok(measured, p.r_min);
-        // Python `(ok, sav) > (best_ok, best_sav)`
-        let better = best
-            .as_ref()
-            .is_none_or(|b| (ok && !b.ok) || (ok == b.ok && sav > b.sav));
+        // `(clean, ok, sav) > (best_clean, best_ok, best_sav)`; `clean` is always true with no
+        // zones, so the ranking is then the Python `(ok, sav) > (best_ok, best_sav)`.
+        let clean = grid.protected_cut(&sm) == 0.0;
+        let better = best.as_ref().is_none_or(|b| {
+            (clean && !b.clean)
+                || (clean == b.clean && ((ok && !b.ok) || (ok == b.ok && sav > b.sav)))
+        });
         if better {
             best = Some(Best {
+                clean,
                 ok,
                 ch,
                 sav,
@@ -569,7 +749,14 @@ pub fn optimise_route(grid: &CostGrid, p: &RouteParams) -> Result<RouteResult, P
             });
         }
     }
-    let b = best.ok_or_else(|| PyError::value("cannot unpack non-iterable NoneType object"))?;
+    let b = match (best, last_err) {
+        (Some(b), _) => b,
+        (None, Some(e)) => return Err(e),
+        (None, None) => {
+            return Err(PyError::value("cannot unpack non-iterable NoneType object"));
+        }
+    };
+    let protected_cut_m3 = grid.protected_cut(&b.sm);
     Ok(RouteResult {
         line: b.pts,
         offsets: b.sm,
@@ -581,6 +768,8 @@ pub fn optimise_route(grid: &CostGrid, p: &RouteParams) -> Result<RouteResult, P
         measured_min_radius_m: b.measured,
         radius_check_chord_m: 2.0 * k as f64 * grid.station_step,
         radius_ok: b.ok,
+        protected_cut_m3,
+        no_cut_ok: b.clean,
     })
 }
 
@@ -588,6 +777,7 @@ pub fn optimise_route(grid: &CostGrid, p: &RouteParams) -> Result<RouteResult, P
 mod tests {
     //! Label: property
     use super::*;
+    use crate::geom::Polygon;
 
     fn straight(n: usize, ds: f64) -> Vec<Pt> {
         (0..n).map(|i| [i as f64 * ds, 0.0]).collect()
@@ -646,6 +836,7 @@ mod tests {
             grades: vec![0.0; 3],
             vol: vec![vec![5.0]; 3],
             wet: vec![vec![1.0]; 3],
+            protected: vec![],
             station_step: 100.0,
             offset_step: 10.0,
         };
@@ -670,5 +861,154 @@ mod tests {
             optimise_route(&grid, &bad).unwrap_err().message,
             "check_chord_m must be finite and positive."
         );
+    }
+
+    // A straight baseline along +x (left = +y) in a river 40 m wide (|y| < 20). Dry ground is 1 m
+    // high on the left bank and 4 m on the right, so an unconstrained route moves left. Template:
+    // bottom 20 m, 1:2 sides, invert -1: it meets 1 m ground 10 + 2 x 2 = 14 m from its centre.
+    fn bank_case(no_cut: &[NoCutZone]) -> CostGrid {
+        let line = straight(11, 100.0);
+        let river = [Polygon {
+            exterior: vec![
+                [-50.0, -20.0],
+                [1050.0, -20.0],
+                [1050.0, 20.0],
+                [-50.0, 20.0],
+                [-50.0, -20.0],
+            ],
+            holes: vec![],
+        }];
+        let terrain = |xs: &[f64], ys: &[f64]| -> Vec<f64> {
+            xs.iter()
+                .zip(ys)
+                .map(|(_, &y)| if y < 0.0 { 4.0 } else { 1.0 })
+                .collect()
+        };
+        let p = GridParams {
+            bottom_width: 20.0,
+            depth: 2.0,
+            side_slope: 2.0,
+            corridor_half: 40.0,
+            station_step: 100.0,
+            offset_step: 2.0,
+            transect_step: 1.0,
+            daylight_m: Some(30.0),
+        };
+        build_cost_grid_with(&line, &terrain, &river, &|_| -1.0, &p, no_cut, None).unwrap()
+    }
+
+    fn route_of(grid: &CostGrid) -> Result<RouteResult, PyError> {
+        optimise_route(
+            grid,
+            &RouteParams {
+                r_min: 300.0,
+                wet_weight: 1.0,
+                dry_weight: 1.0,
+                corridor_sweep: vec![10.0, 40.0],
+                check_chord_m: None,
+            },
+        )
+    }
+
+    #[test]
+    fn no_zones_leave_the_grid_and_the_route_as_they_were() {
+        let a = bank_case(&[]);
+        assert!(a.protected.is_empty());
+        let r = route_of(&a).unwrap();
+        assert!(r.no_cut_ok && r.protected_cut_m3 == 0.0);
+        // Unconstrained, the line takes the low left bank.
+        assert!(r.offsets[5] > 6.0, "{:?}", r.offsets);
+    }
+
+    #[test]
+    fn a_protected_left_bank_holds_the_line_where_its_cut_stays_in_the_water() {
+        // Golden: the template's left top of cut is 14 m from its centre and the bank is at +20 m,
+        // so the widest offset that digs no left-bank ground is +6 m (worked by hand above).
+        let zone = NoCutZone {
+            from_m: 0.0,
+            to_m: 1000.0,
+            bank: Bank::Left,
+        };
+        let g = bank_case(&[zone]);
+        let k6 = g
+            .offsets
+            .iter()
+            .position(|&o| (o - 6.0).abs() < 1e-9)
+            .unwrap();
+        assert!(!g.blocked(5, k6) && g.blocked(5, k6 + 1));
+        assert!(g.protected[5][k6 + 1] > 0.0 && g.protected[5][0] == 0.0);
+        let r = route_of(&g).unwrap();
+        assert!(r.no_cut_ok && r.protected_cut_m3 == 0.0);
+        assert!(
+            r.offsets.iter().all(|&o| o <= 6.0 + 1e-6),
+            "{:?}",
+            r.offsets
+        );
+        assert!((r.offsets[5] - 6.0).abs() < 1e-6, "{:?}", r.offsets);
+    }
+
+    #[test]
+    fn a_zone_only_covers_its_chainage_and_names_its_bank() {
+        let z = NoCutZone {
+            from_m: 300.0,
+            to_m: 500.0,
+            bank: Bank::Right,
+        };
+        let g = bank_case(&[z]);
+        // Right bank protected at stations 3..=5 only; the left bank is never protected.
+        let far_right = 0;
+        assert!(g.blocked(3, far_right) && g.blocked(5, far_right) && !g.blocked(6, far_right));
+        let far_left = g.offsets.len() - 1;
+        assert!((0..g.stations_m.len()).all(|i| !g.blocked(i, far_left)));
+    }
+
+    #[test]
+    fn a_zone_that_leaves_no_clear_offset_is_a_loud_failure() {
+        // Both banks protected and a river 10 m wide: the template is 28 m across at the ground,
+        // so every offset digs one bank or the other.
+        let both = [
+            NoCutZone {
+                from_m: 0.0,
+                to_m: 1000.0,
+                bank: Bank::Left,
+            },
+            NoCutZone {
+                from_m: 0.0,
+                to_m: 1000.0,
+                bank: Bank::Right,
+            },
+        ];
+        let line = straight(11, 100.0);
+        let river = [Polygon {
+            exterior: vec![
+                [-50.0, -5.0],
+                [1050.0, -5.0],
+                [1050.0, 5.0],
+                [-50.0, 5.0],
+                [-50.0, -5.0],
+            ],
+            holes: vec![],
+        }];
+        let flat = |xs: &[f64], _ys: &[f64]| -> Vec<f64> { vec![1.0; xs.len()] };
+        let p = GridParams {
+            bottom_width: 20.0,
+            depth: 2.0,
+            side_slope: 2.0,
+            corridor_half: 40.0,
+            station_step: 100.0,
+            offset_step: 2.0,
+            transect_step: 1.0,
+            daylight_m: Some(30.0),
+        };
+        let g = build_cost_grid_with(&line, &flat, &river, &|_| -1.0, &p, &both, None).unwrap();
+        let err = route_of(&g).unwrap_err();
+        assert_eq!(err.kind, "RuntimeError");
+        assert!(err.message.contains("no-cut zone"), "{}", err.message);
+        let bad = NoCutZone {
+            from_m: f64::NAN,
+            to_m: 1.0,
+            bank: Bank::Left,
+        };
+        assert!(build_cost_grid_with(&line, &flat, &river, &|_| -1.0, &p, &[bad], None).is_err());
     }
 }
