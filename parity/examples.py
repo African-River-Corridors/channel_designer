@@ -1,7 +1,8 @@
 """The two worked examples, run through the FROZEN Python, to the reference file the Rust is held to.
 
     python -m parity.examples            # rewrite parity/examples/reference.json
-    python -m parity.examples --check    # fail if the committed file is not what the frozen Python prints
+    python -m parity.examples --check    # fail if the committed file is not what the frozen Python prints,
+                                         # within the ADR 0005 tolerance (parity/tolerance.json)
 
 `examples/quickstart.py` and `examples/optimise_pools.py` are run as they stand, with the import
 name `channel_designer` swapped for `channel_designer_frozen` (the shipped package will become a
@@ -31,6 +32,42 @@ from .common import PARITY, dumps, tag_float  # noqa: E402,F401
 
 ROOT = PARITY.parent
 REFERENCE = PARITY / "examples" / "reference.json"
+
+
+def _tolerance() -> tuple:
+    t = json.loads((PARITY / "tolerance.json").read_text(encoding="utf-8"))
+    return t["rel"], t["abs"]
+
+
+def differences(expected, actual, path: str = "$", tol=None) -> list:
+    """Where `actual` differs from `expected`: floats by the ADR 0005 tolerance (Python's
+    `math.isclose(rel_tol=rel, abs_tol=abs)`, the rule the Rust comparator and the oracle guard use),
+    everything else exactly. The frozen Python prints different last bits on different platforms, so
+    a byte comparison would fail on a platform other than the one that wrote the file."""
+    import math
+    rel, abs_ = tol or _tolerance()
+    out: list = []
+    if isinstance(expected, bool) or isinstance(actual, bool):
+        if expected != actual or type(expected) is not type(actual):
+            out.append(f"{path}: expected {expected!r}, got {actual!r}")
+    elif isinstance(expected, float) and isinstance(actual, float):
+        if not math.isclose(expected, actual, rel_tol=rel, abs_tol=abs_):
+            out.append(f"{path}: expected {expected!r}, got {actual!r}")
+    elif isinstance(expected, dict) and isinstance(actual, dict):
+        for k in sorted(set(expected) | set(actual)):
+            if k not in expected or k not in actual:
+                out.append(f"{path}.{k}: present in only one")
+            else:
+                out += differences(expected[k], actual[k], f"{path}.{k}", (rel, abs_))
+    elif isinstance(expected, list) and isinstance(actual, list):
+        if len(expected) != len(actual):
+            out.append(f"{path}: expected {len(expected)} items, got {len(actual)}")
+        else:
+            for i, (e, a) in enumerate(zip(expected, actual)):
+                out += differences(e, a, f"{path}[{i}]", (rel, abs_))
+    elif expected != actual or type(expected) is not type(actual):
+        out.append(f"{path}: expected {expected!r}, got {actual!r}")
+    return out
 
 
 def _run_example(name: str):
@@ -83,9 +120,15 @@ def main(argv: list) -> int:
     doc = build()
     text = dumps(doc)
     if "--check" in argv:
-        if not REFERENCE.exists() or json.loads(REFERENCE.read_text()) != json.loads(text):
-            print("parity/examples/reference.json is not what the frozen Python prints; "
-                  "run `python -m parity.examples`", file=sys.stderr)
+        if not REFERENCE.exists():
+            print("parity/examples/reference.json is missing; run `python -m parity.examples`",
+                  file=sys.stderr)
+            return 1
+        diffs = differences(json.loads(REFERENCE.read_text()), json.loads(text))
+        if diffs:
+            print("parity/examples/reference.json is not what the frozen Python prints "
+                  "(beyond the ADR 0005 tolerance); run `python -m parity.examples`:\n  "
+                  + "\n  ".join(diffs[:10]), file=sys.stderr)
             return 1
         return 0
     REFERENCE.parent.mkdir(parents=True, exist_ok=True)
