@@ -6,7 +6,7 @@
 //!
 //! Label: snapshot (the Python reference for the example); the direct-call checks are properties.
 
-use cd_core::alignment::radius_check::min_radius_on_chord;
+use cd_core::alignment::radius_check::{min_radius_on_chord, radius_ok};
 use cd_core::geom::{Polygon, Pt};
 use cd_core::optimise::cascade::{
     CascadeConfig, SectionOptions, build_level_table, cascade_levels, earthworks_reach_cost,
@@ -239,6 +239,20 @@ fn weirs_pools_and_the_lattice_option_equal_the_core_called_directly() {
         measured
     );
     assert_eq!(opt["checks"]["radius_check_chord_m"], 255.0 / 3.0);
+    // Spec 0005 Q11 (#95): the pools result and every converged pool carry the chord reading.
+    assert_eq!(direct.measured_min_radius_m, measured);
+    assert_eq!(direct.radius_check_chord_m, 255.0 / 3.0);
+    assert_eq!(direct.radius_ok, radius_ok(measured, 255.0));
+    for p in &direct.pools {
+        assert_eq!(p.result.radius_check_chord_m, 255.0 / 3.0);
+        if let Some(l) = &p.result.line {
+            let m = min_radius_on_chord(l, 255.0 / 3.0).unwrap();
+            assert_eq!(p.result.measured_min_radius_m, m);
+            assert_eq!(p.result.radius_ok, radius_ok(m, 255.0));
+        } else {
+            assert!(p.result.measured_min_radius_m.is_nan() && !p.result.radius_ok);
+        }
+    }
     assert_eq!(s.stage_status(Stage::Optimise), StageStatus::Fresh);
 }
 

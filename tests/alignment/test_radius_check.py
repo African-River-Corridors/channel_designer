@@ -111,9 +111,9 @@ def test_property_route_reports_a_compliant_line():
     res = route.optimise_route(line, _hill, river, 0.0, bottom_width=30.0, depth=3.0,
                                side_slope=3.0, r_min=600.0, corridor_sweep=(40.0, 80.0))
     assert res.radius_ok
-    assert res.radius_check_chord_m == 200.0             # read on the stations, 2 × 100 m
+    assert res.radius_check_chord_m == 200.0             # read on the chord, R_min / 3 (#95)
     assert res.measured_min_radius_m >= 0.98 * 600.0
-    assert res.measured_min_radius_m == res.min_radius_m  # enforced on what it reports
+    assert res.min_radius_m >= 0.98 * 600.0              # the stations hold it too (enforced)
 
 
 def test_property_route_does_not_relax_rmin_to_a_tight_baseline():
@@ -141,7 +141,13 @@ def test_property_route_prefers_a_compliant_corridor():
     kw = dict(bottom_width=30.0, depth=3.0, side_slope=3.0, r_min=900.0, grid=grid)
     narrow = route.optimise_route(line, _hill, river, 0.0, corridor_sweep=(120.0,), **kw)
     wide = route.optimise_route(line, _hill, river, 0.0, corridor_sweep=(200.0,), **kw)
-    assert narrow.radius_ok and not wide.radius_ok
+    # The choice reads the stations (the reading the smoothing enforces): the wide corridor's
+    # excursion turns tighter than R_min there. Its reported reading, on a 300 m chord, passes.
+    from channel_designer.alignment.radius_check import min_radius_on_vertices
+    def stations_ok(r):
+        return min_radius_on_vertices(np.asarray(r.line.coords), 1) >= 0.98 * 900.0
+    assert stations_ok(narrow) and not stations_ok(wide)
+    assert narrow.radius_ok and wide.radius_ok
     assert wide.approx_saving_pct > narrow.approx_saving_pct
     res = route.optimise_route(line, _hill, river, 0.0, corridor_sweep=(120.0, 200.0), **kw)
     assert res.radius_ok and res.corridor_half_m == 120.0
@@ -164,4 +170,4 @@ def test_feasibility_route_check_chord_is_validated_and_rounds_half_up():
         with pytest.raises(ValueError):
             route.optimise_route(line, _hill, river, 0.0, check_chord_m=bad, **kw)
     res = route.optimise_route(line, _hill, river, 0.0, check_chord_m=250.0, **kw)
-    assert res.radius_check_chord_m == 300.0             # k = 2.5 rounds up to 3
+    assert res.radius_check_chord_m == 250.0             # reported on the chord asked for (#95)
