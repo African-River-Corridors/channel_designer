@@ -42,6 +42,24 @@ pub(crate) fn min_sum_squares_in_box(rows: &[Row], lo: &[f64], hi: &[f64]) -> Op
             }
         }
     }
+    // Scale the objective so its largest coefficient is about 1. The minimiser is unchanged; an
+    // interior-point method on a corner seed (weights near the reweight cap, 10 m spacing) otherwise
+    // stalls with InsufficientProgress and the pass is lost.
+    let scale = band
+        .iter()
+        .flat_map(|b| b.iter())
+        .chain(q.iter())
+        .fold(0.0f64, |m, &v| m.max(v.abs()));
+    if scale > 0.0 && scale.is_finite() {
+        for b in band.iter_mut() {
+            for v in b.iter_mut() {
+                *v /= scale;
+            }
+        }
+        for v in q.iter_mut() {
+            *v /= scale;
+        }
+    }
     let (mut colptr, mut rowval, mut nzval) = (vec![0usize], vec![], vec![]);
     for (j, b) in band.iter().enumerate() {
         for k in (0..3).rev() {
