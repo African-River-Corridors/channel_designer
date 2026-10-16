@@ -1,0 +1,70 @@
+name: App bundles
+
+# Unsigned pre-release builds of the desktop app (spec 0003, ticket 74): macOS, Windows and Linux.
+# They are build artifacts of the run, kept for 14 days. Nothing here publishes a GitHub Release:
+# publishing waits for the maintainer, and signing is a 1.0 gate (the maintainer's purchase).
+
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "crates/**"
+      - "Cargo.lock"
+      - ".github/workflows/app-bundles.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: app-bundles-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            name: macos-arm64
+            bundles: app,dmg
+          - os: windows-latest
+            name: windows-x64
+            bundles: nsis
+          - os: ubuntu-latest
+            name: linux-x64
+            bundles: deb,appimage
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install the pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Tauri system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+      - name: Build the bundles (unsigned)
+        working-directory: app
+        shell: bash
+        run: |
+          npm ci
+          npx tauri build --bundles ${{ matrix.bundles }}
+      - name: Keep the bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: channel-designer-${{ matrix.name }}-unsigned
+          path: |
+            target/release/bundle/**
+            !target/release/bundle/**/*.tar.gz
+          if-no-files-found: error
+          retention-days: 14
