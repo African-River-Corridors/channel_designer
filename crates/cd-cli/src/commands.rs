@@ -1,8 +1,10 @@
 //! The `cdesign` subcommands. File, stdin, stdout and clock access live here.
 
+use cd_format::design::geopackage;
 use cd_format::design::{DesignError, Role, Session, Stage, StageStatus};
 use serde_json::{Value, json};
 use std::io::{Read, Write};
+use std::path::Path;
 
 /// A failed command: its message and exit code (1 a failed check, 2 a usage or input error).
 pub struct Failure {
@@ -39,6 +41,38 @@ fn read(path: &str) -> core::result::Result<String, Failure> {
         Ok(s)
     } else {
         std::fs::read_to_string(path).map_err(|e| input_error(format!("cannot read {path}: {e}")))
+    }
+}
+
+/// The text of one input: GeoJSON as it is, or a GeoPackage layer turned into GeoJSON. A GeoPackage
+/// layer is named `FILE#LAYER`; a file with one feature layer needs no name.
+fn read_vector(spec: &str) -> core::result::Result<String, Failure> {
+    let (path, layer) = if spec == "-" || Path::new(spec).exists() {
+        (spec, None)
+    } else {
+        match spec.rsplit_once('#') {
+            Some((p, l)) if !l.is_empty() => (p, Some(l)),
+            _ => (spec, None),
+        }
+    };
+    let bytes = if path == "-" {
+        let mut b = Vec::new();
+        std::io::stdin()
+            .read_to_end(&mut b)
+            .map_err(|e| input_error(format!("cannot read stdin: {e}")))?;
+        b
+    } else {
+        std::fs::read(path).map_err(|e| input_error(format!("cannot read {path}: {e}")))?
+    };
+    if geopackage::is_geopackage(&bytes) {
+        geopackage::to_geojson(&bytes, layer).map_err(|e| input_error(format!("{path}: {e}")))
+    } else if layer.is_some() {
+        Err(input_error(format!(
+            "{path}: only a GeoPackage has layers, but this is not one"
+        )))
+    } else {
+        String::from_utf8(bytes)
+            .map_err(|_| input_error(format!("{path}: not GeoJSON text or a GeoPackage")))
     }
 }
 
@@ -136,7 +170,7 @@ pub fn import(
                 }
                 stdin_used = true;
             }
-            texts.push((role, read(&path)?));
+            texts.push((role, read_vector(&path)?));
         }
     }
     if texts.is_empty() {
