@@ -229,19 +229,19 @@ lessons are L1–L8 in the grill note.
 
 ## Tickets
 
-Each ticket is a sub-issue of the spec issue. "Blocked by" uses GitHub's native dependencies.
+Each ticket is a sub-issue of the spec issue (#91). "Blocked by" uses GitHub's native dependencies.
 
 | # | Ticket | Blocked by | Changes results |
 |---|---|---|---|
-| T1 | Polygon buffer in the geometry kernel: shrink, grow, open and close | — | No |
-| T2 | `polygon_from_bank_pair` orients the second bank and refuses crossing banks | — | Only for reversed input |
-| T3 | One radius reading: every reported radius on the chord, lattice and pools included | #36, #37 | Yes (re-route `radius_ok`) |
-| T4 | Navigable water, the per-station width check, ruleset bend-width validation, and the four synthetic fixtures | T1, #37 | No (new functions) |
-| T5 | The fairway fit: coarse-to-fine bending-energy band, capped projection, Dubins end pieces, must-follow segments, infeasible stretches | T3, T4 | Yes (new method) |
-| T6 | Water-aware rolling circle: the four-rung ladder (closes #5) | T5 | Yes, with water only |
-| T7 | `join_legs` with the join guard (closes #6) | T5 | Yes (new function) |
-| T8 | Fairness weight on the least-cost re-route, default 0 | #36, #37 | No at default |
-| T9 | `.cdesign` and CLI: `seed_legs`, `fixed`, the new settings, `fits_in_water` and `join_guard` checks in every export | T6, T7 | Yes (schema version) |
+| T1 (#92) | Polygon buffer in the geometry kernel: shrink, grow, open and close | — | No |
+| T2 (#93) | `polygon_from_bank_pair` orients the second bank and refuses crossing banks | — | Only for reversed input |
+| T3 (#95) | One radius reading: every reported radius on the chord, lattice and pools included | #36, #37 | Yes (re-route `radius_ok`) |
+| T4 (#94) | Navigable water, the per-station width check, ruleset bend-width validation, and the four synthetic fixtures | T1, #37 | No (new functions) |
+| T5 (#96) | The fairway fit: coarse-to-fine bending-energy band, capped projection, Dubins end pieces, must-follow segments, infeasible stretches | T3, T4 | Yes (new method) |
+| T6 (#97) | Water-aware rolling circle: the four-rung ladder (closes #5) | T5 (#96) | Yes, with water only |
+| T7 (#98) | `join_legs` with the join guard (closes #6) | T5 (#96) | Yes (new function) |
+| T8 (#99) | Fairness weight on the least-cost re-route, default 0 | #36, #37 | No at default |
+| T9 (#100) | `.cdesign` and CLI: `seed_legs`, `fixed`, the new settings, `fits_in_water` and `join_guard` checks in every export | T6, T7 | Yes (schema version) |
 
 T1 and T2 start now (Q13). T2 lands before #37 only with the same fix mirrored in the frozen Python
 and a parity case regenerated with the reason "bank pair orientation".
