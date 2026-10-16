@@ -9,6 +9,7 @@
 //! the Reference Results (ticket 37).
 
 mod commands;
+mod fetch;
 
 use clap::{Args, Parser, Subcommand};
 use std::process::ExitCode;
@@ -184,6 +185,23 @@ enum Command {
         #[command(flatten)]
         out: Out,
     },
+    /// Download the Copernicus GLO-30 DEM tiles that cover the river, write them next to the
+    /// document with their licence notice, and record them as the DEM. The only command that uses
+    /// the network.
+    FetchDem {
+        /// The channel design. `-` is not allowed: files are written next to it.
+        doc: String,
+        /// Metres to add around the river on every side (default 1000).
+        #[arg(long, value_name = "METRES", default_value_t = 1000.0)]
+        margin: f64,
+        /// Where the tiles come from: an http(s) URL laid out as `<url>/<tile>/<tile>.tif`, or a
+        /// folder with the same layout (default: the public Copernicus open-data bucket).
+        #[arg(long, value_name = "URL_OR_FOLDER")]
+        mirror: Option<String>,
+        /// Print a machine-readable result as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Export the design line options as GeoJSON, or the quantity table as CSV. Every export says
     /// "Screening — not for construction", and an option that fails a check says so.
     Export {
@@ -348,6 +366,12 @@ fn main() -> ExitCode {
             &out.output,
             out.json,
         ),
+        Command::FetchDem {
+            doc,
+            margin,
+            mirror,
+            json,
+        } => commands::fetch_dem(&doc, margin, mirror.as_deref(), json),
         Command::Export {
             doc,
             geojson,

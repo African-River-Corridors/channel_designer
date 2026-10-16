@@ -61,7 +61,32 @@
                 "path": { "type": "string", "minLength": 1 },
                 "sha256": { "type": "string", "minLength": 64, "maxLength": 64 },
                 "crs": { "type": "string" },
-                "nodata": { "type": ["number", "null"] }
+                "nodata": { "type": ["number", "null"] },
+                "source": {
+                  "description": "Where a fetched DEM came from (`cdesign fetch-dem`): the dataset, its licence notice, and each tile with its file, SHA-256, size and URL.",
+                  "type": "object",
+                  "required": ["name", "licence", "tiles"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": { "type": "string" },
+                    "licence": { "type": "string" },
+                    "tiles": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["name", "file", "sha256", "bytes", "url"],
+                        "additionalProperties": false,
+                        "properties": {
+                          "name": { "type": "string" },
+                          "file": { "type": "string" },
+                          "sha256": { "type": "string", "minLength": 64, "maxLength": 64 },
+                          "bytes": { "type": "integer", "minimum": 0 },
+                          "url": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
           ]
