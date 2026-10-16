@@ -13,6 +13,7 @@ pub mod merge;
 pub mod offset;
 pub mod overlay;
 pub mod polycmp;
+pub mod simple;
 pub mod valid;
 
 /// A point in the plane.

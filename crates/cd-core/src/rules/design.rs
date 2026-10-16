@@ -38,6 +38,7 @@
 
 use super::methods::{MethodRegistry, Options};
 use super::{RuleError, value_err};
+use crate::numpy::{interp, linspace, np_mod};
 use crate::py_max;
 use ovcd_core::checks::Check;
 use ovcd_core::pyfmt::{fixed, py_str, round_to};
@@ -385,73 +386,8 @@ fn downsample_indices(n: usize, n_samples: Option<usize>) -> Vec<usize> {
 }
 
 // =============================================================================
-// numpy, written out
+// numpy, written out (the shared parts are in `crate::numpy`)
 // =============================================================================
-
-/// `np.linspace(start, stop, num)` with the endpoint: `i * step + start`, last value `stop`.
-fn linspace(start: f64, stop: f64, num: usize) -> Vec<f64> {
-    if num == 0 {
-        return Vec::new();
-    }
-    if num == 1 {
-        return vec![start];
-    }
-    let div = (num - 1) as f64;
-    let delta = stop - start;
-    let step = delta / div;
-    let mut y: Vec<f64> = (0..num)
-        .map(|i| {
-            if step == 0.0 {
-                (i as f64 / div) * delta + start
-            } else {
-                i as f64 * step + start
-            }
-        })
-        .collect();
-    y[num - 1] = stop;
-    y
-}
-
-/// `np.interp(x, xp, fp)` for one point: flat outside the range.
-fn interp(x: f64, xp: &[f64], fp: &[f64]) -> f64 {
-    let n = xp.len();
-    if x.is_nan() {
-        return x;
-    }
-    if x > xp[n - 1] {
-        return fp[n - 1];
-    }
-    if x < xp[0] {
-        return fp[0];
-    }
-    // largest j with xp[j] <= x
-    let j = xp.partition_point(|&v| v <= x) - 1;
-    if j == n - 1 {
-        return fp[j];
-    }
-    if xp[j] == x {
-        return fp[j];
-    }
-    let slope = (fp[j + 1] - fp[j]) / (xp[j + 1] - xp[j]);
-    let mut r = slope * (x - xp[j]) + fp[j];
-    if r.is_nan() {
-        r = slope * (x - xp[j + 1]) + fp[j + 1];
-        if r.is_nan() && fp[j] == fp[j + 1] {
-            r = fp[j];
-        }
-    }
-    r
-}
-
-/// `np.mod` for floats: the result takes the sign of the divisor, as Python's `%`.
-fn np_mod(a: f64, b: f64) -> f64 {
-    let m = a % b;
-    if m != 0.0 {
-        if (b < 0.0) != (m < 0.0) { m + b } else { m }
-    } else {
-        libm::copysign(0.0, b)
-    }
-}
 
 /// `np.unwrap(p)` with the default period 2 pi.
 fn unwrap(p: &[f64]) -> Vec<f64> {
