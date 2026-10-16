@@ -16,6 +16,7 @@ Small GeoTIFFs for `crates/cd-format/tests/geotiff.rs`. `expected.json` holds wh
 | `f32_pixel_is_point.tif` | PixelIsPoint raster (half-pixel origin shift) | generated; Apache-2.0 |
 | `f64_strip_none.tif`, `u16_strip_deflate_pred2.tif` | other sample types | generated; Apache-2.0 |
 | `glo30_n05_w003_clip.tif` | an 80 x 80 pixel clip of a real Copernicus GLO-30 tile (N05 W003, Ghana and Cote d'Ivoire), PixelIsPoint, EPSG:4326, DEFLATE | see below |
+| `warp_expected.json` | not a raster: what rasterio 1.5 reads from a warped (UTM 30N, 10 m, bilinear) copy of `f32_geographic.tif` at 150 UTM points, and the warp's own interpolation error. Made by `tools/make_warp_fixture.py`; used by `tests/geographic_dem.rs` | generated; Apache-2.0 |
 | `refuse_*.tif` | files the reader must refuse: ZSTD, PackBits, two bands, a rotated transform, no georeferencing | generated; Apache-2.0 |
 
 ## Copernicus GLO-30 clip
