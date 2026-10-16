@@ -63,11 +63,16 @@ jobs:
       - name: Take every compiler off the PATH, and check that none is left
         shell: pwsh
         run: |
-          $drop = 'cargo|rust|Visual Studio|MSBuild|mingw|msys|LLVM|cmake'
-          $kept = ($env:PATH -split ';') | Where-Object { $_ -and ($_ -notmatch $drop) }
+          $drop = 'cargo|rust|Visual Studio|MSBuild|mingw|msys|LLVM|cmake|strawberry'
+          $tools = 'cl', 'gcc', 'cc', 'link', 'rustc', 'cargo', 'cmake'
+          # Drop a folder by name, and any folder that holds a compiler (whatever it is called).
+          $kept = ($env:PATH -split ';') | Where-Object {
+            $dir = $_
+            $dir -and ($dir -notmatch $drop) -and -not ($tools | Where-Object { Test-Path (Join-Path $dir "$_.exe") })
+          }
           "PATH=" + ($kept -join ';') | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           $env:PATH = $kept -join ';'
-          foreach ($tool in 'cl', 'gcc', 'cc', 'link', 'rustc', 'cargo', 'cmake') {
+          foreach ($tool in $tools) {
             if (Get-Command $tool -ErrorAction SilentlyContinue) { throw "$tool is still on the PATH" }
           }
           Write-Output "no compiler on the PATH"
