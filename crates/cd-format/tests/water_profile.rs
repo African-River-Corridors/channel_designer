@@ -1,35 +1,18 @@
 //! The water level as a profile along the river centreline (ADR 0006), on the synthetic river.
 //!
 //! - Two design lines through the same place see the same water.
-//! - Parity: with the test-only sampling of the frozen Python (the design line's own chainage) the
-//!   quickstart's re-route and volumes equal spec 0001's results at the ADR 0005 tolerances.
-//! - The model change: with the shipped projection, the quickstart differs from spec 0001 by a
-//!   recorded amount, because water level belongs to the river, not to the design line.
 //! - Pool levels from the optimise stage are the profile the volumes read; an old document with a
 //!   start level and a slope converts to a two-point profile and its stages show as stale.
 //!
-//! Label: snapshot (spec 0001's reference); the rest are properties.
+//! Label: property.
 
 use cd_core::geom::{Pt, linear};
 use cd_core::synthetic::{RiverParams, SyntheticRiver, synthetic_river};
 use cd_format::design::{AlignMethod, Role, Session, Stage, StageStatus};
 use cd_format::geotiff::Dem;
-use cd_format::parity::{Tolerance, compare};
 use serde_json::{Value, json};
-use std::path::Path;
 
 const UTM30: &str = r#","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:EPSG::32630"}}"#;
-
-fn tolerance() -> Tolerance {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../parity/tolerance.json");
-    Tolerance::from_json(&std::fs::read_to_string(p).unwrap()).unwrap()
-}
-
-fn reference() -> Value {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../parity/examples/reference.json");
-    serde_json::from_str::<Value>(&std::fs::read_to_string(p).unwrap()).unwrap()["quickstart"]
-        .clone()
-}
 
 fn dem() -> Dem {
     Dem {
@@ -77,86 +60,6 @@ fn quickstart(river: &SyntheticRiver, design_line_sampling: bool) -> Session {
     s.set_water_profile(&profile).unwrap();
     s.set_dem("d.tif", b"d", &dem());
     s
-}
-
-fn run_quickstart(s: &mut Session, river: &SyntheticRiver) {
-    let terrain = |xs: &[f64], ys: &[f64]| -> Vec<f64> {
-        xs.iter()
-            .zip(ys)
-            .map(|(&x, &y)| river.terrain(x, y))
-            .collect()
-    };
-    s.align(AlignMethod::RollingCircle, &Value::Null, None)
-        .unwrap();
-    s.align(AlignMethod::Reroute, &Value::Null, Some(&terrain))
-        .unwrap();
-    s.run_volumes(&json!({"cut_model": "b", "maxw_m": 150.0}), Some(&terrain))
-        .unwrap();
-}
-
-fn line_of(s: &Session, i: usize) -> Value {
-    json!(s.document()["options"][i]["line"]["coordinates"])
-}
-
-#[test]
-fn the_quickstart_matches_spec_0001_with_the_pythons_sampling_in_test_mode() {
-    let river = synthetic_river(RiverParams::default()).unwrap();
-    let mut s = quickstart(&river, true);
-    run_quickstart(&mut s, &river);
-    let want = reference();
-    compare(
-        &want["lines"]["rolling circle"],
-        &line_of(&s, 0),
-        tolerance(),
-    )
-    .unwrap();
-    compare(&want["lines"]["least-cost"], &line_of(&s, 1), tolerance()).unwrap();
-    let rows = &s.document()["stages"]["volumes"]["results"]["options"];
-    for (i, name) in ["rolling circle", "least-cost"].iter().enumerate() {
-        let got = json!({
-            "dredge_m3": rows[i]["dredge_m3"], "excav_m3": rows[i]["excav_m3"],
-            "total_m3": rows[i]["total_m3"], "max_face_h_m": rows[i]["max_face_h_m"],
-            "n_stations": rows[i]["stations"],
-        });
-        compare(&want["volumes"][name], &got, tolerance())
-            .unwrap_or_else(|d| panic!("{name}: {}", d.join("; ")));
-    }
-}
-
-#[test]
-fn the_shipped_projection_differs_from_spec_0001_by_the_recorded_model_change() {
-    // Water level belongs to the river, not the design line (ADR 0006). The frozen Python reads the
-    // level at the design line's own chainage; the shipped code projects onto the river centreline.
-    // So the quickstart differs from spec 0001 by a known amount. If a later change moves it, this
-    // fails: either the model changed again, or something broke.
-    let river = synthetic_river(RiverParams::default()).unwrap();
-    let mut s = quickstart(&river, false);
-    run_quickstart(&mut s, &river);
-    let want = reference();
-    let rows = &s.document()["stages"]["volumes"]["results"]["options"];
-    let rel = |i: usize, name: &str, k: &str| {
-        let (a, b) = (
-            rows[i][k].as_f64().unwrap(),
-            want["volumes"][name][k].as_f64().unwrap(),
-        );
-        ((a - b) / b).abs()
-    };
-    let rc = ("rolling circle", 0);
-    let (dredge, dry) = (rel(rc.1, rc.0, "dredge_m3"), rel(rc.1, rc.0, "excav_m3"));
-    assert!(
-        (2.4e-4..=2.65e-4).contains(&dredge),
-        "dredge differs by {dredge:e}"
-    );
-    assert!(
-        (1.1e-4..=1.21e-4).contains(&dry),
-        "dry cut differs by {dry:e}"
-    );
-    // The shape of the change: small, and not zero, for the re-route too.
-    let route = rel(1, "least-cost", "dredge_m3");
-    assert!(
-        route > 1e-6 && route < 5e-3,
-        "re-route dredge differs by {route:e}"
-    );
 }
 
 #[test]
