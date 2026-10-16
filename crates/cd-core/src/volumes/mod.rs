@@ -2,4 +2,6 @@
 //! models themselves are in [`crate::cut_model`].
 
 pub mod cut_model_grid;
+pub mod footprint;
+pub mod pools;
 pub mod sections;
