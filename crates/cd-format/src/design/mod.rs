@@ -11,8 +11,10 @@ pub mod schema;
 pub mod session;
 pub mod terrain;
 pub mod volumes;
+pub mod water;
 
 pub use alignment::{AlignMethod, Terrain};
 pub use geojson::Role;
 pub use session::{DesignError, ImportReport, Session, Stage, StageStatus, Status, date_from_unix};
 pub use volumes::DemCheck;
+pub use water::WaterSampling;

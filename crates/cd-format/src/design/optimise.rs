@@ -22,12 +22,6 @@ use cd_core::rules::rulesets::{RulesetRegistry, channel_shape};
 use cd_core::volumes::sections::HalfWidth;
 use serde_json::{Value, json};
 
-/// `(chainage start, chainage end, water level)` of a pool.
-pub type Pool = (f64, f64, f64);
-
-/// The baseline, the pools along it and the level below the first pool.
-pub(super) type PoolsResult = (Vec<Pt>, Vec<Pool>, f64);
-
 const OPTION_ID: &str = "lattice";
 
 fn defaults() -> Value {
@@ -77,50 +71,7 @@ fn refuse(m: String) -> DesignError {
     DesignError::Input(m)
 }
 
-/// The water level of the pools along a line, as a function of the line's own chainage: the level
-/// of the last pool that starts at or before the baseline chainage nearest the point. `base` is the
-/// level before the first pool.
-pub fn pool_level_fn<'a>(
-    line: &'a [Pt],
-    baseline: &'a [Pt],
-    pools: &'a [(f64, f64, f64)],
-    base: f64,
-) -> impl Fn(f64) -> f64 + 'a {
-    move |s| {
-        let at = linear::interpolate(line, s).unwrap_or([f64::NAN; 2]);
-        let sp = linear::project(baseline, at);
-        pools
-            .iter()
-            .filter(|(a, _, _)| *a <= sp)
-            .map(|(_, _, l)| *l)
-            .fold(None, |m: Option<f64>, l| match m {
-                Some(m) if m >= l => Some(m),
-                _ => Some(l),
-            })
-            .unwrap_or(base)
-    }
-}
-
 impl Session {
-    /// The pools the optimise stage set, with the baseline they are measured along and the level
-    /// below the first pool, if the stage has run.
-    pub(super) fn optimise_pools_result(&self) -> Option<PoolsResult> {
-        let r = &self.doc["stages"]["optimise"]["results"];
-        if r.is_null() {
-            return None;
-        }
-        let pools = r["pools"]
-            .as_array()?
-            .iter()
-            .filter_map(|p| Some((p[0].as_f64()?, p[1].as_f64()?, p[2].as_f64()?)))
-            .collect();
-        Some((
-            all_positions(&r["baseline"]),
-            pools,
-            r["base_level_m"].as_f64()?,
-        ))
-    }
-
     /// Run the optimise stage: choose weir sites and pool levels, then add the lattice design line
     /// option (replacing the one an earlier run made). `terrain` is the DEM in the project CRS.
     pub fn run_optimise(
@@ -162,10 +113,6 @@ impl Session {
         })?;
 
         let mut settings = defaults();
-        let reroute = self.doc["stages"]["alignment"]["settings"]["reroute"].clone();
-        if !reroute["water_level_start_m"].is_null() {
-            settings["base_level_m"] = reroute["water_level_start_m"].clone();
-        }
         for source in [
             &self.doc["stages"]["optimise"]["settings"].clone(),
             overrides,
@@ -176,13 +123,6 @@ impl Session {
                 }
             }
         }
-        let base_level = settings["base_level_m"].as_f64().ok_or_else(|| {
-            DesignError::Input(
-                "the optimise stage needs `base_level_m`: the water level below the first weir, m"
-                    .into(),
-            )
-        })?;
-
         let sizing = &self.doc["stages"]["sizing"]["settings"];
         let (Some(rs), Some(vessel)) = (
             sizing["ruleset_id"].as_str(),
@@ -208,6 +148,18 @@ impl Session {
             .map(|o| all_positions(&o["line"]))
             .map_or_else(|| self.base_line(), Ok)?;
         let length = linear::length(&baseline);
+        // The water level below the first weir: a setting, else the document's profile at the start
+        // of the baseline (the profile of the inputs; the stage's own pool levels come after).
+        let centre = self.river_centreline()?;
+        let base_level = match settings["base_level_m"].as_f64() {
+            Some(b) => b,
+            None => {
+                let profile = self
+                    .input_water_profile()
+                    .ok_or_else(|| self.needs_water_profile(Stage::Optimise))?;
+                self.water_level_along(&profile, &baseline, &centre)(0.0)
+            }
+        };
 
         let polygon = &self.doc["inputs"]["river_polygon"];
         if polygon.is_null() {
@@ -350,11 +302,13 @@ impl Session {
             None => options.push(option),
         }
 
+        let profile_points = self.pool_profile(&baseline, &pools)?;
         let st = &mut self.doc["stages"]["optimise"];
         st["settings"] = settings;
         st["results"] = json!({
             "baseline": {"type": "LineString", "coordinates": baseline},
             "base_level_m": base_level,
+            "profile": profile_points,
             "pools": pools.iter().map(|&(a, b, l)| json!([a, b, l])).collect::<Vec<_>>(),
             "cascade": {
                 "total_cost": best.total_cost,

@@ -76,14 +76,20 @@ fn aligned() -> Session {
 
 const DEM_BYTES: &[u8] = b"pretend this is a GeoTIFF";
 
-fn with_dem() -> Session {
+fn with_dem_no_water() -> Session {
     let mut s = aligned();
     s.set_dem("dem/river.tif", DEM_BYTES, &dem());
     s
 }
 
+fn with_dem() -> Session {
+    let mut s = with_dem_no_water();
+    s.set_water_fall(river().water_level(0.0), 0.0).unwrap();
+    s
+}
+
 fn settings() -> Value {
-    json!({"water_level_start_m": river().water_level(0.0), "water_surface_slope": 0.0, "cut_model": "b"})
+    json!({"cut_model": "b"})
 }
 
 #[test]
@@ -201,13 +207,12 @@ fn volumes_refuses_without_a_dem_and_names_the_dem_it_cannot_read() {
 
 #[test]
 fn volumes_needs_a_water_level_and_a_fresh_alignment() {
-    let mut s = with_dem();
+    let mut s = with_dem_no_water();
     let e = s
         .run_volumes(&Value::Null, Some(&terrain))
         .unwrap_err()
         .to_string();
-    assert!(e.contains("water_level_start_m"), "{e}");
-    // The re-route's water level is the default.
+    assert!(e.contains("needs a water level"), "{e}");
     let mut s = with_dem();
     s.set_sizing("PIANC-B", "CEMT_Va", Some(2.5)).unwrap();
     assert_eq!(

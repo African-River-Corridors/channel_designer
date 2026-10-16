@@ -230,6 +230,7 @@ pub fn import(
     doc: &str,
     inputs: [(&str, Option<String>); 4],
     dem: Option<String>,
+    water: WaterFlags,
     output: &Option<String>,
     json_mode: bool,
 ) -> Result {
@@ -252,9 +253,10 @@ pub fn import(
             texts.push((role, read_vector(&path)?));
         }
     }
-    if texts.is_empty() && dem.is_none() {
+    let has_water = water.level.is_some() || water.slope.is_some() || water.table.is_some();
+    if texts.is_empty() && dem.is_none() && !has_water {
         return Err(input_error(
-            "nothing to import: give --left-bank, --right-bank, --centreline, --polygon or --dem",
+            "nothing to import: give --left-bank, --right-bank, --centreline, --polygon, --dem or a water level",
         ));
     }
     // The document is read first when it is on stdin: stdin can be read once.
@@ -268,6 +270,7 @@ pub fn import(
     } else {
         session.import(&items).map_err(from_design)?
     };
+    apply_water(&mut session, &water)?;
     if let Some(path) = &dem {
         let bytes =
             std::fs::read(path).map_err(|e| input_error(format!("cannot read {path}: {e}")))?;
@@ -355,6 +358,57 @@ pub fn size(
     Ok(())
 }
 
+/// The water level flags: a constant, a straight fall along the river chainage, or a table.
+#[derive(Default)]
+pub struct WaterFlags {
+    pub level: Option<f64>,
+    pub slope: Option<f64>,
+    pub table: Option<String>,
+}
+
+/// Set the document's water level profile from the flags, if any were given. A level alone is a
+/// constant; with a slope it is the level at the river's start, falling that much per metre.
+fn apply_water(session: &mut Session, w: &WaterFlags) -> Result {
+    if let Some(path) = &w.table {
+        if w.level.is_some() || w.slope.is_some() {
+            return Err(input_error(
+                "give the water level as a table or as a level and a slope, not both",
+            ));
+        }
+        let text = read(path)?;
+        let mut points = Vec::new();
+        for (n, line) in text.lines().enumerate() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let f: Vec<&str> = line.split(',').map(str::trim).collect();
+            match (
+                f.first().and_then(|x| x.parse::<f64>().ok()),
+                f.get(1).and_then(|x| x.parse::<f64>().ok()),
+            ) {
+                (Some(c), Some(l)) if f.len() == 2 => points.push([c, l]),
+                _ if n == 0 => {} // a header line
+                _ => {
+                    return Err(input_error(format!(
+                        "{path}, line {}: expected `chainage_m,level_m`",
+                        n + 1
+                    )));
+                }
+            }
+        }
+        return session.set_water_profile(&points).map_err(from_design);
+    }
+    match (w.level, w.slope) {
+        (None, None) => Ok(()),
+        (Some(l), None) => session.set_water_profile(&[[0.0, l]]).map_err(from_design),
+        (Some(l), Some(k)) => session.set_water_fall(l, k).map_err(from_design),
+        (None, Some(_)) => Err(input_error(
+            "--water-slope needs --water-level (the level at the start)",
+        )),
+    }
+}
+
 /// The flags of `cdesign align`.
 pub struct AlignFlags {
     pub step: Option<f64>,
@@ -393,12 +447,6 @@ pub fn align(
             }
         }
         AlignMethod::Reroute => {
-            if let Some(v) = flags.water_level {
-                put("water_level_start_m", json!(v));
-            }
-            if let Some(v) = flags.water_slope {
-                put("water_surface_slope", json!(v));
-            }
             if let Some(list) = &flags.corridors {
                 let parsed: core::result::Result<Vec<f64>, _> =
                     list.split(',').map(|x| x.trim().parse::<f64>()).collect();
@@ -412,6 +460,20 @@ pub fn align(
         put("check_chord_m", json!(v));
     }
     let overrides = Value::Object(overrides);
+    if method == AlignMethod::Reroute {
+        apply_water(
+            &mut session,
+            &WaterFlags {
+                level: flags.water_level,
+                slope: flags.water_slope,
+                table: None,
+            },
+        )?;
+    } else if flags.water_level.is_some() || flags.water_slope.is_some() {
+        return Err(input_error(
+            "--water-level and --water-slope are for the re-route only",
+        ));
+    }
     // The re-route samples a DEM; read it here, since the session has no file access. A DEM given
     // here becomes the document's DEM reference.
     let dem = match (&flags.dem, method) {
@@ -634,16 +696,19 @@ pub fn volumes(doc: &str, flags: VolumesFlags, output: &Option<String>, json_mod
     if let Some(m) = &flags.model {
         overrides.insert("cut_model".into(), json!(m));
     }
-    for (k, v) in [
-        ("water_level_start_m", flags.water_level),
-        ("water_surface_slope", flags.water_slope),
-        ("station_m", flags.station),
-        ("maxw_m", flags.maxw),
-    ] {
+    for (k, v) in [("station_m", flags.station), ("maxw_m", flags.maxw)] {
         if let Some(v) = v {
             overrides.insert(k.into(), json!(v));
         }
     }
+    apply_water(
+        &mut session,
+        &WaterFlags {
+            level: flags.water_level,
+            slope: flags.water_slope,
+            table: None,
+        },
+    )?;
     let dem = stage_dem(&mut session, doc, bytes.as_deref(), &flags.dem, "volumes")?;
     let sampler = match &dem {
         Some(d) => Some(

@@ -81,7 +81,19 @@ against the Python.
   CRS each input came in.
 - **Inputs:** left and right bank lines, or a river centreline; the river polygon (all GeoJSON in the
   project CRS); the DEM reference: path relative to the document, SHA-256 of the file, its CRS and
-  nodata value.
+  nodata value; the **water level**.
+- **Water level** (ADR 0006): a profile along the river centreline, a table of points
+  (river chainage in metres, level in metres), read linearly between points and held flat beyond the
+  first and last. Two points at one chainage make a step, as at a weir. It is set by hand or import
+  (a constant, a straight fall, or a table; `cdesign import --water-level/--water-slope/--water-table`).
+  A design line's station takes its level by projecting onto the river centreline and reading the
+  profile at that chainage, so every stage (the re-route, optimise and volumes) sees the same water,
+  and two design lines through the same place see the same level. When the optimise stage has run, its
+  pool levels (a step at each weir) are the profile the volumes stage reads; the results record which.
+  Editing the weirs marks the volumes stale. The document's `format_version` stays 1: `inputs.water_level`
+  is an optional addition, and a document made before it, with a start level and a fall in the stage
+  settings, is converted on open to a two-point profile; the stages that held those settings then show
+  as stale, because their results came from the old model.
 - **Stages,** in order: `sizing`, `alignment`, `optimise`, `volumes`. Each stage holds its settings,
   its results, the hash of everything it depended on (inputs, earlier stages' results, settings),
   and the engine version that ran it. A stage's status is worked out on load, never stored:

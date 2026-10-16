@@ -162,7 +162,8 @@ fn two_methods_give_two_options_and_a_rerun_replaces_only_its_own() {
     s.align(AlignMethod::RollingCircle, &Value::Null, None)
         .unwrap();
     let wl0 = river.water_level(0.0);
-    let reroute = json!({"water_level_start_m": wl0, "water_surface_slope": 0.0, "corridor_sweep_m": [40.0, 80.0]});
+    s.set_water_fall(wl0, 0.0).unwrap();
+    let reroute = json!({"corridor_sweep_m": [40.0, 80.0]});
     s.align(AlignMethod::Reroute, &reroute, Some(&terrain))
         .unwrap();
     assert_eq!(s.document()["options"].as_array().unwrap().len(), 2);
@@ -241,7 +242,7 @@ fn the_reroute_says_what_it_needs() {
         .align(AlignMethod::Reroute, &Value::Null, Some(&none))
         .unwrap_err()
         .to_string();
-    assert!(e.contains("water_level_start_m"), "{e}");
+    assert!(e.contains("water level"), "{e}");
 }
 
 #[test]

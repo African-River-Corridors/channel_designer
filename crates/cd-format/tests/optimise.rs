@@ -68,7 +68,6 @@ fn example_settings() -> Value {
         "lifts_m": [0.5, 1.0],
         "terminal_min_level_m": 0.5,
         "min_spacing_m": 1000.0,
-        "base_level_m": 0.0,
         "dry_weight": 1.5,
         "structure_fixed": 1.0e5,
         "structure_per_lift": 2.0e5,
@@ -86,6 +85,10 @@ fn example_settings() -> Value {
 }
 
 fn design() -> Session {
+    design_with(true)
+}
+
+fn design_with(water: bool) -> Session {
     let r = synthetic_river(params()).unwrap();
     let ring: Vec<Pt> = r.polygon.exterior.iter().map(shift).collect();
     let line = [shift(&[0.0, 0.0]), shift(&[3000.0, 0.0])];
@@ -112,6 +115,9 @@ fn design() -> Session {
     s.align(AlignMethod::RollingCircle, &Value::Null, None)
         .unwrap();
     s.set_dem("dem.tif", b"dem", &dem());
+    if water {
+        s.set_water_profile(&[[0.0, 0.0]]).unwrap();
+    }
     s
 }
 
@@ -277,18 +283,26 @@ fn volumes_measure_the_lattice_option_like_any_other_under_the_pool_levels() {
     let mut s = design();
     s.run_optimise(&example_settings(), Some(&terrain)).unwrap();
     assert_eq!(s.stage_status(Stage::Volumes), StageStatus::NotRun);
-    s.run_volumes(
-        &json!({"water_level_start_m": 0.0, "cut_model": "b", "maxw_m": 120.0}),
-        Some(&terrain),
-    )
-    .unwrap();
+    s.run_volumes(&json!({"cut_model": "b", "maxw_m": 120.0}), Some(&terrain))
+        .unwrap();
     let rows = s.document()["stages"]["volumes"]["results"]["options"]
         .as_array()
         .unwrap()
         .clone();
     let ids: Vec<&str> = rows.iter().map(|r| r["id"].as_str().unwrap()).collect();
     assert_eq!(ids, ["rolling-circle", "lattice"]);
-    assert!(rows.iter().all(|r| r["water"] == "pools"));
+    assert!(rows.iter().all(|r| r["water_source"] == "optimise"));
+    // The profile is the pool levels: a step of the weir's lift where the weir stands.
+    let (profile, source) = s.water_profile().unwrap();
+    assert_eq!(source, "optimise");
+    let weir = &s.document()["stages"]["optimise"]["results"]["cascade"]["weirs"][0];
+    let lift = weir["lift_m"].as_f64().unwrap();
+    let steps: Vec<&[[f64; 2]]> = profile
+        .windows(2)
+        .filter(|w| w[0][0] == w[1][0] && w[0][1] != w[1][1])
+        .collect();
+    assert!(!steps.is_empty(), "{profile:?}");
+    assert!((steps[0][1][1] - steps[0][0][1] - lift).abs() < 1e-9);
     assert!(rows.iter().all(|r| r["dredge_m3"].as_f64().unwrap() > 0.0));
     // The lattice moves dredge to dry cut, as the example shows: more dredge, less dry cut.
     assert!(rows[1]["excav_m3"].as_f64().unwrap() < rows[0]["excav_m3"].as_f64().unwrap());
@@ -302,12 +316,13 @@ fn volumes_measure_the_lattice_option_like_any_other_under_the_pool_levels() {
 
 #[test]
 fn the_stage_says_what_it_needs() {
-    let mut s = design();
+    let mut s = design_with(false);
     let e = s
         .run_optimise(&Value::Null, Some(&terrain))
         .unwrap_err()
         .to_string();
-    assert!(e.contains("base_level_m"), "{e}");
+    assert!(e.contains("needs a water level"), "{e}");
+    let mut s = design();
     let e = s
         .run_optimise(&example_settings(), None)
         .unwrap_err()

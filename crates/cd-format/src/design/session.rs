@@ -133,6 +133,7 @@ pub struct ImportReport {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Session {
     pub(super) doc: Value,
+    pub(super) water_sampling: super::water::WaterSampling,
 }
 
 fn empty_stage() -> Value {
@@ -176,13 +177,14 @@ impl Session {
     /// An empty channel design with a title. `created` is `YYYY-MM-DD`, given by the caller.
     pub fn new(title: &str, created: &str) -> Session {
         Session {
+            water_sampling: Default::default(),
             doc: json!({
                 "format_version": 1,
                 "engine_version": ENGINE_VERSION,
                 "project": {"title": title, "created": created, "crs": null, "source_crs": {}},
                 "inputs": {
                     "left_bank": null, "right_bank": null, "centreline": null,
-                    "river_polygon": null, "dem": null
+                    "river_polygon": null, "dem": null, "water_level": null
                 },
                 "stages": {
                     "sizing": empty_stage(), "alignment": empty_stage(),
@@ -197,7 +199,13 @@ impl Session {
     pub fn open(text: &str) -> Result<Session, DesignError> {
         let doc: Value = serde_json::from_str(text)
             .map_err(|e| DesignError::Input(format!("the file is not valid JSON: {e}")))?;
-        let s = Session { doc };
+        let mut s = Session {
+            doc,
+            water_sampling: Default::default(),
+        };
+        if s.doc["inputs"].is_object() && s.validate_schema_only().is_empty() {
+            s.migrate_water_settings();
+        }
         let errors = s.validate();
         if errors.is_empty() {
             Ok(s)
@@ -221,6 +229,10 @@ impl Session {
     /// The published JSON Schema text.
     pub fn schema_text() -> &'static str {
         schema::SCHEMA_TEXT
+    }
+
+    fn validate_schema_only(&self) -> Vec<String> {
+        schema::validate(&schema::schema(), &self.doc)
     }
 
     /// Every way the document breaks the schema or its own rules. Empty when it is valid.
@@ -269,8 +281,8 @@ impl Session {
         });
         if stage != Stage::Sizing {
             dep["inputs"] = self.doc["inputs"].clone();
-            // The rolling circle never reads the DEM: a DEM added after it ran leaves it fresh.
-            // The re-route, the optimise stage and the volumes read it.
+            // The rolling circle reads neither the DEM nor the water level: one added after it ran
+            // leaves it fresh. The re-route, the optimise stage and the volumes read them.
             let reads_dem = match stage {
                 Stage::Alignment => self.doc["stages"]["alignment"]["results"]["methods"]
                     .as_array()
@@ -279,6 +291,7 @@ impl Session {
             };
             if !reads_dem && let Some(inputs) = dep["inputs"].as_object_mut() {
                 inputs.remove("dem");
+                inputs.remove("water_level");
             }
             dep["crs"] = self.doc["project"]["crs"].clone();
         }
