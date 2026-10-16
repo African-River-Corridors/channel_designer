@@ -21,8 +21,25 @@ const forget = (file) => fs.rmSync(path.join(DIALOGS, file), { force: true });
 
 let browser;
 
-const until = (what, check, timeout = 15000) =>
-  browser.waitUntil(check, { timeout, interval: 100, timeoutMsg: `timed out waiting for: ${what}` });
+/** What the page shows, for a failure message: the file label, the error banner and the chosen vessel. */
+const pageState = () =>
+  browser
+    .execute(() => ({
+      label: document.querySelector("[data-testid=file-label]")?.textContent,
+      error: document.querySelector("[data-testid=error]")?.textContent?.trim() ?? null,
+      vessel: document.querySelector("select[aria-label='Vessel class']")?.value,
+      radius: document.querySelector("[data-testid=min-radius]")?.textContent,
+    }))
+    .then((s) => JSON.stringify(s))
+    .catch((e) => `(page state unavailable: ${e.message})`);
+
+const until = async (what, check, timeout = 15000) => {
+  try {
+    await browser.waitUntil(check, { timeout, interval: 100 });
+  } catch {
+    throw new Error(`timed out waiting for: ${what}; page: ${await pageState()}`);
+  }
+};
 
 const text = async (testid) => (await browser.$(`[data-testid=${testid}]`)).getText();
 const fileLabel = () => text("file-label");
