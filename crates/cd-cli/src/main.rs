@@ -3,10 +3,6 @@
 //! richer document back. All file, stdin and clock access is here; the session has none.
 //!
 //! Exit codes: 0 success; 1 a failed check or a stale-stage refusal; 2 a usage or input error.
-//!
-//! The hidden `cdesign eval <entry-point>` of spec 0001 reads one parity case input as JSON on
-//! stdin and writes the result as JSON on stdout. It exists for parity only and is removed with
-//! the Reference Results (ticket 37).
 
 mod commands;
 mod fetch;
@@ -245,9 +241,6 @@ enum Command {
     },
     /// Print the JSON Schema of the `.cdesign` format.
     Schema,
-    /// Run a parity case (spec 0001; removed with the Reference Results).
-    #[command(hide = true)]
-    Eval { entry_point: String },
 }
 
 fn main() -> ExitCode {
@@ -383,7 +376,6 @@ fn main() -> ExitCode {
         Command::Validate { doc, json } => commands::validate(&doc, json),
         Command::Status { doc, json } => commands::status(&doc, json),
         Command::Schema => commands::schema(),
-        Command::Eval { entry_point } => commands::eval(&entry_point),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

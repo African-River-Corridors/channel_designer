@@ -11,8 +11,7 @@
 #   2. clippy, warnings as errors (includes the banned-maths rule: crates/cd-core/clippy.toml and
 #      crates/cd-format/clippy.toml, which hold the same list)
 #   3. cargo test, with Python made unusable, to prove the Rust loop needs no Python
-#   4. the oracle guard (the parity oracle changes only through `cargo xtask regen`, with a reason)
-#   5. pytest against the shipped package
+#   4. pytest against the shipped package
 #
 # `cd-py` (the Python extension) is excluded from step 3 as well: PyO3's build script runs Python to find
 # the interpreter, which step 3 forbids. It has no Rust tests; clippy (step 2) and the Wheels workflow build it.
@@ -20,7 +19,7 @@
 # The desktop app (`cd-app`, spec 0003) is excluded from steps 2 and 3: it needs Node and the Tauri
 # system libraries, and its own CI jobs (`app-linux`, `app-e2e`) build and test it.
 #
-# CD_PYTHON picks the Python for steps 4 and 5 (default python3).
+# CD_PYTHON picks the Python for step 4 (default python3).
 set -euo pipefail
 
 fail() { echo "gates: FAIL: $*" >&2; exit 1; }
@@ -36,7 +35,7 @@ need() {
 need dirname
 cd "$(dirname "$0")/.."
 PY="${CD_PYTHON:-python3}"
-EXPECTED_STEPS=5
+EXPECTED_STEPS=4
 steps_run=0
 
 need git
@@ -86,7 +85,6 @@ cargo_test_without_python() {
 step "cargo fmt --check" cargo fmt --all --check
 step "clippy -D warnings" cargo clippy --workspace --exclude cd-app --all-targets --all-features -- -D warnings
 step "cargo test (no Python)" cargo_test_without_python
-step "oracle guard" env CD_PYTHON="$PY" cargo xtask oracle-guard
 step "pytest" "$PY" -m pytest -q
 
 [ "$steps_run" -eq "$EXPECTED_STEPS" ] || fail "only $steps_run of $EXPECTED_STEPS steps ran"

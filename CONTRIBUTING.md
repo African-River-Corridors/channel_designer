@@ -22,7 +22,7 @@ Or with plain pip: `python -m venv .venv && .venv/bin/pip install -e '.[dev]'`.
 python tools/release_guard.py
 ```
 
-Both must pass. CI runs them on every push and pull request.
+Both must pass (installing from source builds the Rust core, so it needs a Rust toolchain: rustup.rs). CI runs them on every push and pull request.
 
 ## Rules for the code
 
@@ -38,19 +38,38 @@ Both must pass. CI runs them on every push and pull request.
 - A project choice is not a standard. Name it as a user choice (for example `BANK_CUT_FRACTION`), and
   never present it as a default from a standard.
 
-## The Python code is frozen for the Rust port
+## The design-impact check
 
-The calculation core is being ported to Rust (spec 0001, issue #20; decisions in `docs/adr/`). The
-Python package is frozen at the tag `py-reference` as the reference the Rust code must match.
+The calculations run in a Rust core (`crates/`); the Python package is a thin wrapper over it. The port
+from the old pure-Python package is finished, and the scaffolding that held the two together (Reference
+Results, case files, the frozen Python, the hidden `eval` command, the oracle guard) is gone. The old
+package stays reachable as the git tag `py-reference`.
 
-From that tag until the port closes:
+What guards a change now is the **design-impact check**, `design-impact` in CI
+(`tools/design_impact.py`). On every pull request it:
 
-- **Python takes bug fixes only.** No new features, no refactors, and no behaviour changes other
-  than the fix itself. New features wait for the Rust core.
-- **Each fix is mirrored in the parity cases**, in the same pull request or in a linked one, so
-  the Rust code matches the fixed behaviour rather than the old one. Say in the pull request which
-  cases you changed and why.
-- Documentation, examples and CI changes are still welcome.
+1. builds the base branch and your branch;
+2. runs fixed scenarios on both: the two worked examples, every ruleset on every vessel class, a size
+   and design run, a channel footprint and a Cut Model A run (all synthetic, built in code);
+3. compares every number by the ADR 0005 tolerance (1e-9 relative; counts and names exactly).
+
+If nothing moved it says **no design impact** and passes. If a result moved, it lists what moved (scenario,
+result, base, your branch, change) and passes only when your pull request adds a bullet under
+`## Unreleased` > `### Design impact` in `CHANGELOG.md` saying what moved and why. A moved result with no
+entry fails. You can run it yourself:
+
+```
+python tools/design_impact.py run --out head.json     # on your branch
+python tools/design_impact.py run --out base.json     # on main, in another checkout
+python tools/design_impact.py compare base.json head.json --changelog CHANGELOG.md
+```
+
+A result that moves is not wrong by itself (a corrected coefficient moves volumes), but it must be
+deliberate and written down. Never loosen the tolerance to make a number pass; it lives in one place,
+`tools/design_impact.py`, and changing it needs a review.
+
+Other guards: `bash tools/gates.sh` (format, clippy with warnings as errors, Rust tests with Python made
+unusable, pytest) and `python tools/release_guard.py` (no embargoed terms or local paths).
 
 ## Pull requests
 

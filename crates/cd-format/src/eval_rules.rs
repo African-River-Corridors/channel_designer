@@ -1,7 +1,6 @@
 //! The parity dispatch for the rules entry points: `rulesets`, `methods`, `design`, `simple` and
 //! `width_profile` (spec 0001, ticket 25). Case input and output use the shapes in
-//! `parity/README.md`; the function names and argument names are those of the frozen Python and
-//! of its adapters in `parity/modules/`.
+//! the Python wrappers' calls; the function names and argument names are those of the Python package.
 //!
 //! A case may carry a `toy_method` spec. It is registered, from this crate and through the public
 //! registry API, into a registry made for that one case, so cases never see each other's methods.

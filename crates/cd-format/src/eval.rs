@@ -1,5 +1,5 @@
 //! `eval(entry_point, json) -> json`: the parity seam. One dispatch over every parity entry
-//! point. Input and output use the case and Reference Result shapes in `parity/README.md`.
+//! point. Input and output are JSON: the shapes are the ones the Python wrappers in `src/channel_designer/_rust.py` send and read.
 //!
 //! Number encoding, both ways: a finite float is a JSON number; NaN and infinity are the strings
 //! `"float:nan"`, `"float:inf"` and `"float:-inf"`. In an input list of heights, `null` also means
@@ -45,7 +45,7 @@ impl std::error::Error for EvalError {}
 
 /// Every parity entry point in spec 0001: one per Python module, named after it (`cut_model`
 /// keeps the name it had before the others were added). Each port ticket adds its dispatch arm and
-/// its name to `parity/ported.json`; until then `eval` says `NotPorted`.
+/// its name here; until then `eval` says `NotPorted`.
 pub const ENTRY_POINTS: &[&str] = &[
     "bends",
     "cascade",

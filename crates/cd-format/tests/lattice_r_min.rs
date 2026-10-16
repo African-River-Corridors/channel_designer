@@ -5,8 +5,7 @@
 //!
 //! 1. every primitive in `prim_seq` is a straight or an arc of radius >= the case's `r_min_m`;
 //! 2. the line itself, read as points, never turns tighter than `r_min_m`: the circumradius of
-//!    every three consecutive vertices is >= `r_min_m` (within a relative 1e-9, the parity
-//!    tolerance on floats). Collinear triples have no circle and are skipped.
+//!    every three consecutive vertices is >= `r_min_m` (within a relative 1e-9). Collinear triples have no circle and are skipped.
 //!
 //! Label: property. No fixed number: the bound is the case's own `r_min_m`.
 
@@ -14,8 +13,9 @@ use serde_json::Value;
 use std::path::Path;
 
 fn cases() -> Vec<Value> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../parity/cases/lattice.json");
-    let text = std::fs::read_to_string(&path).expect("parity/cases/lattice.json");
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/lattice_pool_inputs.json");
+    let text = std::fs::read_to_string(&path).expect("lattice_pool_inputs.json");
     let doc: Value = serde_json::from_str(&text).expect("lattice cases parse");
     doc["cases"].as_array().expect("cases").clone()
 }

@@ -1,5 +1,5 @@
 //! The `radius_check`, `loops` and `rolling_circle` entry points (ticket 28): the adapters of
-//! `parity/modules/{radius_check,loops,rolling_circle}.py`, over `cd_core::alignment`.
+//! the seam for `radius_check`, `loops` and `rolling_circle`, over `cd_core::alignment`.
 
 use super::geometry::{geom_from, geom_json, pt, pts};
 use super::{EvalError, arg, bad, f64_arg, float_json, floats_json, list, ok, opt_f64};
