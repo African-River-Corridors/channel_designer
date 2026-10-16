@@ -30,16 +30,16 @@ says so: ``radius_ok``, ``measured_min_radius_m`` and the chord it was read on
 """
 from __future__ import annotations
 
+from .. import _rust
+
 import math
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
-from shapely.geometry import GeometryCollection, LineString, MultiLineString, MultiPoint, Point
-from shapely.ops import linemerge
+from shapely.geometry import LineString
 
-from channel_designer.alignment.radius_check import (default_check_chord,
-                                                     min_radius_on_chord, radius_ok)
+from channel_designer.alignment.radius_check import radius_ok
 
 
 @dataclass
@@ -58,62 +58,24 @@ class RollingCircleResult:
 
 def primary_line(geom) -> LineString:
     """The single LineString to straighten (longest part of a multi-part line)."""
-    if isinstance(geom, LineString):
-        return geom
-    if isinstance(geom, MultiLineString):
-        merged = linemerge(geom)
-        if isinstance(merged, LineString):
-            return merged
-        return max(merged.geoms, key=lambda part: part.length)
-    raise ValueError("Centreline geometry must be a LineString or convertible to one.")
+    return _rust.call("rolling_circle", "primary_line", LineString, geom=geom)
 
 
 def resample_coordinate_sequence(points: np.ndarray, step: float) -> np.ndarray:
     """Resample the given coordinate array at approximately ``step`` metre spacing."""
-    if points.shape[0] < 2:
-        raise ValueError("Centreline must contain at least two vertices.")
-    if step <= 0.0:
-        raise ValueError("Resampling step must be positive.")
-
-    seg_lengths = np.linalg.norm(np.diff(points, axis=0), axis=1)
-    cumulative = np.concatenate(([0.0], np.cumsum(seg_lengths)))
-    total_length = float(cumulative[-1])
-    if total_length <= 0.0:
-        raise ValueError("Centreline has zero length; cannot resample.")
-
-    n_samples = max(int(math.ceil(total_length / step)) + 1, 3)
-    targets = np.linspace(0.0, total_length, n_samples, endpoint=True)
-    x = np.interp(targets, cumulative, points[:, 0])
-    y = np.interp(targets, cumulative, points[:, 1])
-    return np.column_stack((x, y))
+    return _rust.call("rolling_circle", "resample_coordinate_sequence", np.ndarray, points=points, step=step)
 
 
 def resample_linestring(line: LineString, step: float) -> np.ndarray:
-    return resample_coordinate_sequence(np.asarray(line.coords, dtype=float), step)
+    return _rust.call("rolling_circle", "resample_linestring", np.ndarray, line=line, step=step)
 
 
 def cumulative_chainages(points: np.ndarray) -> np.ndarray:
-    if points.shape[0] == 0:
-        return np.array([], dtype=float)
-    if points.shape[0] == 1:
-        return np.array([0.0], dtype=float)
-    increments = np.linalg.norm(np.diff(points, axis=0), axis=1)
-    return np.concatenate(([0.0], np.cumsum(increments)))
+    return _rust.call("rolling_circle", "cumulative_chainages", np.ndarray, points=points)
 
 
 def compute_unit_tangent(points: np.ndarray, index: int) -> np.ndarray:
-    if points.shape[0] < 2:
-        return np.array([0.0, 0.0], dtype=float)
-    if index <= 0:
-        direction = points[1] - points[0]
-    elif index >= points.shape[0] - 1:
-        direction = points[-1] - points[-2]
-    else:
-        direction = points[index + 1] - points[index - 1]
-    norm = np.linalg.norm(direction)
-    if norm == 0.0:
-        return np.array([0.0, 0.0], dtype=float)
-    return direction / norm
+    return _rust.call("rolling_circle", "compute_unit_tangent", np.ndarray, points=points, index=int(index))
 
 
 def place_circle_at_point(points: np.ndarray, index: int, radius: float,
@@ -122,147 +84,29 @@ def place_circle_at_point(points: np.ndarray, index: int, radius: float,
 
     ``side`` is ``"left"`` or ``"right"`` relative to the direction of increasing chainage.
     """
-    if not (0 <= index < points.shape[0]):
-        raise IndexError(f"Point index {index} out of range for {points.shape[0]} samples.")
-    if side not in {"left", "right"}:
-        raise ValueError(f"Side must be 'left' or 'right'; received {side!r}.")
-    if radius <= 0.0:
-        raise ValueError("Radius must be positive.")
-
-    tangent = compute_unit_tangent(points, index)
-    if np.allclose(tangent, 0.0):
-        raise ValueError(f"Cannot compute tangent at index {index}; insufficient variation.")
-
-    normal = np.array([-tangent[1], tangent[0]], dtype=float)
-    if side == "right":
-        normal *= -1.0
-    centre = points[index] + normal * radius
-    return centre, math.atan2(tangent[1], tangent[0])
+    r = _rust.call("rolling_circle", "place_circle_at_point", points=points, index=int(index), radius=radius, side=side)
+    return np.asarray(r["centre"], dtype=float), float(r["tangent_angle"])
 
 
 def create_arc_between_points(centre: np.ndarray, radius: float, start_point: np.ndarray,
                               end_point: np.ndarray, side: str,
                               num_segments: int = 32) -> np.ndarray:
     """Points along the circle arc from ``start_point`` to ``end_point``, turning to ``side``."""
-    v_start = start_point - centre
-    v_end = end_point - centre
-    angle_start = math.atan2(v_start[1], v_start[0])
-    angle_end = math.atan2(v_end[1], v_end[0])
-
-    delta = angle_end - angle_start
-    delta = (delta + math.pi) % (2 * math.pi) - math.pi
-    if side == "left" and delta <= 0:
-        delta += 2 * math.pi
-    elif side == "right" and delta >= 0:
-        delta -= 2 * math.pi
-
-    angles = np.linspace(angle_start, angle_start + delta, num_segments + 2)
-    return np.column_stack((centre[0] + radius * np.cos(angles), centre[1] + radius * np.sin(angles)))
+    return _rust.call("rolling_circle", "create_arc_between_points", np.ndarray, centre=centre, radius=radius,
+                      start_point=start_point, end_point=end_point, side=side, num_segments=int(num_segments))
 
 
 def interpolate_point_on_line(coords: np.ndarray, chainages: np.ndarray, distance: float) -> np.ndarray:
     """The coordinate lying ``distance`` metres along the polyline ``coords``."""
-    if coords.shape[0] == 0:
-        raise ValueError("Cannot interpolate point on an empty coordinate sequence.")
-    if distance <= 0.0:
-        return coords[0].copy()
-    if distance >= float(chainages[-1]):
-        return coords[-1].copy()
-
-    idx = int(np.searchsorted(chainages, distance, side="right"))
-    if idx == 0:
-        return coords[0].copy()
-    prev_idx = idx - 1
-    prev_chainage = float(chainages[prev_idx])
-    next_chainage = float(chainages[idx])
-    if math.isclose(next_chainage, prev_chainage):
-        return coords[idx].copy()
-    ratio = (distance - prev_chainage) / (next_chainage - prev_chainage)
-    return coords[prev_idx] + ratio * (coords[idx] - coords[prev_idx])
+    return _rust.call("rolling_circle", "interpolate_point_on_line", np.ndarray, coords=coords,
+                      chainages=chainages, distance=distance)
 
 
 def replace_segment_with_arc(line: LineString, start_distance: float, end_distance: float,
                              arc_points: np.ndarray) -> LineString:
     """Splice ``arc_points`` into ``line`` between ``start_distance`` and ``end_distance``."""
-    if arc_points.shape[0] < 2:
-        return line
-    coords = np.asarray(line.coords, dtype=float)
-    if coords.shape[0] < 2:
-        return line
-
-    chainages = cumulative_chainages(coords)
-    total_length = float(chainages[-1])
-    tol = 1e-9
-
-    start_distance = float(np.clip(start_distance, 0.0, total_length))
-    end_distance = float(np.clip(end_distance, 0.0, total_length))
-    if end_distance - start_distance <= tol:
-        return line
-
-    start_point = interpolate_point_on_line(coords, chainages, start_distance)
-    end_point = interpolate_point_on_line(coords, chainages, end_distance)
-
-    prefix: List[np.ndarray] = []
-    for idx, ch in enumerate(chainages):
-        if ch < start_distance - tol:
-            prefix.append(coords[idx])
-        else:
-            break
-    if not prefix:
-        prefix.append(coords[0])
-    if not np.allclose(prefix[-1], start_point, atol=tol):
-        prefix.append(start_point)
-
-    suffix: List[np.ndarray] = []
-    for idx in range(chainages.shape[0] - 1, -1, -1):
-        if chainages[idx] > end_distance + tol:
-            suffix.insert(0, coords[idx])
-        else:
-            break
-    if not suffix:
-        suffix.append(coords[-1])
-    if not np.allclose(suffix[0], end_point, atol=tol):
-        suffix.insert(0, end_point)
-
-    arc_coords = np.asarray(arc_points, dtype=float)
-    if not np.allclose(arc_coords[0], start_point, atol=tol):
-        arc_coords = np.vstack([start_point, arc_coords])
-    if not np.allclose(arc_coords[-1], end_point, atol=tol):
-        arc_coords = np.vstack([arc_coords, end_point])
-
-    combined: List[np.ndarray] = []
-    for seq in (prefix, arc_coords, suffix):
-        for point in seq:
-            if not combined or not np.allclose(combined[-1], point, atol=tol):
-                combined.append(np.asarray(point, dtype=float))
-    if len(combined) < 2:
-        return line
-    return LineString(np.asarray(combined))
-
-
-def _gather_points(geom) -> List[Point]:
-    if geom.is_empty:
-        return []
-    if isinstance(geom, Point):
-        return [geom]
-    if isinstance(geom, (MultiPoint, GeometryCollection)):
-        pts: List[Point] = []
-        for sub in geom.geoms:
-            pts.extend(_gather_points(sub))
-        return pts
-    if isinstance(geom, LineString):
-        coords = list(geom.coords)
-        if not coords:
-            return []
-        if len(coords) == 1:
-            return [Point(coords[0])]
-        return [Point(coords[0]), Point(coords[-1])]
-    if hasattr(geom, "geoms"):
-        pts = []
-        for sub in geom.geoms:
-            pts.extend(_gather_points(sub))
-        return pts
-    return [geom.representative_point()]
+    return _rust.call("rolling_circle", "replace_segment_with_arc", LineString, line=line,
+                      start_distance=start_distance, end_distance=end_distance, arc_points=arc_points)
 
 
 def find_forward_circle_contact(centreline: LineString, tangent_point: np.ndarray,
@@ -273,27 +117,13 @@ def find_forward_circle_contact(centreline: LineString, tangent_point: np.ndarra
 
     Returns ``(contact_point, centre, tangent_point, contact_chainage)``.
     """
-    if radius <= 0.0:
-        raise ValueError("Radius must be positive.")
-    if min_chainage_gap <= 0.0:
-        raise ValueError("min_chainage_gap must be positive.")
-
-    circle = Point(float(centre[0]), float(centre[1])).buffer(radius, quad_segs=128)
-    intersection = circle.boundary.intersection(centreline)
-    if intersection.is_empty:
+    r = _rust.call("rolling_circle", "find_forward_circle_contact", centreline=centreline,
+                   tangent_point=tangent_point, tangent_chainage=tangent_chainage, centre=centre,
+                   radius=radius, min_chainage_gap=min_chainage_gap)
+    if r is None:
         return None
-
-    candidates: List[Tuple[float, Point]] = []
-    for pt in _gather_points(intersection):
-        chainage = float(centreline.project(pt))
-        if chainage - tangent_chainage > min_chainage_gap:
-            candidates.append((chainage, pt))
-    if not candidates:
-        return None
-
-    contact_chainage, contact_geom = max(candidates, key=lambda item: item[0])
-    contact_point = np.array([contact_geom.x, contact_geom.y], dtype=float)
-    return contact_point, np.array(centre, dtype=float), tangent_point, contact_chainage
+    return (np.asarray(r["contact_point"], dtype=float), np.asarray(r["centre"], dtype=float),
+            np.asarray(r["tangent_point"], dtype=float), float(r["contact_chainage"]))
 
 
 def rolling_circle(centreline, min_radius: float, step: float, passes: int = 2,
@@ -312,61 +142,7 @@ def rolling_circle(centreline, min_radius: float, step: float, passes: int = 2,
     Expects a smooth input line. On a jagged trace (coarse vertices, zigzags) the circle does
     not resolve the zigzags and ``radius_ok`` comes back False: smooth or resample it first.
     """
-    if min_radius <= 0:
-        raise ValueError("min_radius must be positive.")
-    if step <= 0:
-        raise ValueError("step must be positive.")
-    line = LineString(primary_line(centreline))
-    gap = max(step, min_radius * 0.25) if min_chainage_gap is None else float(min_chainage_gap)
-    circles: List[dict] = []
-
-    def resampled():
-        pts = resample_linestring(line, step)
-        return pts, cumulative_chainages(pts)
-
-    def start_index(ch: np.ndarray) -> int:
-        idx = max(1, int(np.searchsorted(ch, step)))
-        if idx >= ch.shape[0] - 1:
-            idx = max(1, ch.shape[0] - 2)
-        return idx
-
-    for pass_index in range(passes):
-        for side in sides:
-            samples, chainages = resampled()
-            idx = start_index(chainages)
-            while idx < samples.shape[0] - 1:
-                try:
-                    centre, _ = place_circle_at_point(samples, idx, min_radius, side)
-                except (ValueError, IndexError):
-                    idx += 1
-                    continue
-                tangent_point = samples[idx]
-                tangent_distance = float(line.project(Point(float(tangent_point[0]),
-                                                             float(tangent_point[1]))))
-                contact = find_forward_circle_contact(line, tangent_point, tangent_distance,
-                                                      centre, min_radius, min_chainage_gap=gap)
-                if contact is None:
-                    idx += 1
-                    continue
-                contact_point, centre, tangent_point, contact_chainage = contact
-                circles.append({
-                    "pass": pass_index + 1, "side": side,
-                    "centre": (float(centre[0]), float(centre[1])),
-                    "radius_m": float(min_radius),
-                    "tangent_point": (float(tangent_point[0]), float(tangent_point[1])),
-                    "contact_point": (float(contact_point[0]), float(contact_point[1])),
-                    "start_chainage_m": tangent_distance,
-                    "end_chainage_m": float(contact_chainage),
-                })
-                arc = create_arc_between_points(centre, min_radius, tangent_point,
-                                                contact_point, side)
-                line = replace_segment_with_arc(line, tangent_distance, contact_chainage, arc)
-                samples, chainages = resampled()
-                updated = float(line.project(Point(contact_point[0], contact_point[1])))
-                idx = int(np.searchsorted(chainages, updated, side="left"))
-                idx = min(idx + 1, samples.shape[0] - 1)
-    chord = default_check_chord(min_radius) if check_chord_m is None else float(check_chord_m)
-    measured = min_radius_on_chord(line, chord)
-    return RollingCircleResult(centreline=line, min_radius_m=float(min_radius), circles=circles,
-                               measured_min_radius_m=measured, radius_check_chord_m=chord,
-                               radius_ok=radius_ok(measured, min_radius))
+    r = _rust.call("rolling_circle", "rolling_circle", centreline=centreline, min_radius=min_radius, step=step,
+                   passes=int(passes), sides=list(sides), min_chainage_gap=min_chainage_gap,
+                   check_chord_m=check_chord_m)
+    return _rust.decode(r["result"], RollingCircleResult)

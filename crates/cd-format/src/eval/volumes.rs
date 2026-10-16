@@ -9,7 +9,7 @@ use super::{
 use cd_core::cut_model::{self as cm, CUT_MODEL};
 use cd_core::geom::{Geometry, Polygon, Pt, linear};
 use cd_core::pyrepr::repr_str;
-use cd_core::rules::rulesets::{RulesetRegistry, channel_shape};
+use cd_core::rules::rulesets::channel_shape;
 use cd_core::volumes::cut_model_grid::{self as grid, HalfWidths, Mask, Matrix};
 use cd_core::volumes::sections::{self as sec, HalfWidth, Level};
 use serde_json::{Map, Value, json};
@@ -164,7 +164,7 @@ pub(super) fn cut_model_extras(function: &str, args: &Value) -> Result<Value, Ev
             let xy = xy_list(args, "xy")?;
             let rmax = f64_or(args, "rmax", cm::WIDEN_RMAX)?;
             match channel_shape(
-                &RulesetRegistry::new(),
+                &crate::eval_rules::ruleset_registry(args)?,
                 &str_arg(args, "ruleset_id")?,
                 &str_arg(args, "vessel_standard_id")?,
                 None,
@@ -283,6 +283,9 @@ fn section_volumes(args: &Value) -> Result<Value, EvalError> {
     // at the baseline chainage nearest this line's chainage `s`, as examples/optimise_pools.py).
     let wl_spec = arg(args, "wl")?;
     let wl_fn: Option<Box<dyn Fn(f64) -> f64>> = match wl_spec {
+        w if crate::host::callback_id(w).is_some() => Some(crate::host::scalar_fn(
+            crate::host::callback_id(w).unwrap_or(0),
+        )?),
         Value::Object(_) => {
             let kind = wl_spec
                 .get("kind")
@@ -339,10 +342,14 @@ fn section_volumes(args: &Value) -> Result<Value, EvalError> {
 
     // hb: a number, a list (one per station), or {"kind": "widened_from_shape", ...}
     let hb_spec = arg(args, "hb")?;
+    let hb_host = match crate::host::callback_id(hb_spec) {
+        Some(id) => Some(crate::host::arrays_fn(id)?),
+        None => None,
+    };
     let shape = match hb_spec {
-        Value::Object(_) => {
+        Value::Object(_) if hb_host.is_none() => {
             match channel_shape(
-                &RulesetRegistry::new(),
+                &crate::eval_rules::ruleset_registry(args)?,
                 &str_arg(hb_spec, "ruleset_id")?,
                 &str_arg(hb_spec, "vessel_standard_id")?,
                 None,
@@ -356,9 +363,14 @@ fn section_volumes(args: &Value) -> Result<Value, EvalError> {
         }
         _ => None,
     };
-    let from_shape = |xy: &[Pt]| match &shape {
-        Some(s) => cm::widened_hb_from_shape(xy, s, cm::WIDEN_RMAX),
-        None => Vec::new(),
+    let from_shape = |xy: &[Pt]| match (&hb_host, &shape) {
+        (Some(f), _) => {
+            let xs: Vec<f64> = xy.iter().map(|p| p[0]).collect();
+            let ys: Vec<f64> = xy.iter().map(|p| p[1]).collect();
+            f(&xs, &ys)
+        }
+        (None, Some(s)) => cm::widened_hb_from_shape(xy, s, cm::WIDEN_RMAX),
+        (None, None) => Vec::new(),
     };
     let hb = match hb_spec {
         Value::Object(_) => HalfWidth::FromStations(&from_shape),
@@ -367,7 +379,14 @@ fn section_volumes(args: &Value) -> Result<Value, EvalError> {
     };
 
     let tag_spec = args.get("tag").filter(|v| !v.is_null());
+    let tag_host = match tag_spec.and_then(crate::host::callback_id) {
+        Some(id) => Some(crate::host::text_fn(id)?),
+        None => None,
+    };
     let tag_fn = |s: f64| -> String {
+        if let Some(f) = &tag_host {
+            return f(s);
+        }
         let t = tag_spec.expect("tag spec");
         let key = if s < t["at"].as_f64().unwrap_or(f64::NAN) {
             "before"

@@ -44,6 +44,9 @@ pub(super) fn river_from(params: Option<&Value>) -> Result<synthetic::SyntheticR
 
 /// The sampler that a terrain spec names.
 pub(super) fn terrain_from(spec: &Value) -> Result<Sampler, EvalError> {
+    if let Some(id) = crate::host::callback_id(spec) {
+        return crate::host::arrays_fn(id);
+    }
     let kind = spec
         .get("kind")
         .and_then(Value::as_str)

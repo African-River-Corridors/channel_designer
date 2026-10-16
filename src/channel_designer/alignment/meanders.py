@@ -11,6 +11,8 @@ are not included — the records are plain dicts, ready to serialise.
 """
 from __future__ import annotations
 
+from .. import _rust
+
 import math
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -33,125 +35,35 @@ class Meander:
 
 
 def resample_polyline(points: Sequence[Point2D], step: float) -> np.ndarray:
-    coords = np.asarray(points, dtype=float)
-    if coords.shape[0] < 2:
-        raise ValueError("Centreline must contain at least two vertices.")
-    if step <= 0:
-        raise ValueError("Sample step must be positive.")
-
-    seg_lengths = np.linalg.norm(np.diff(coords, axis=0), axis=1)
-    cumulative = np.concatenate(([0.0], np.cumsum(seg_lengths)))
-    total_length = cumulative[-1]
-    if total_length <= 0.0:
-        raise ValueError("Centreline has zero length, cannot resample.")
-
-    n_samples = max(int(math.ceil(total_length / step)) + 1, 3)
-    targets = np.linspace(0.0, total_length, n_samples, endpoint=True)
-    x = np.interp(targets, cumulative, coords[:, 0])
-    y = np.interp(targets, cumulative, coords[:, 1])
-    return np.column_stack((x, y))
+    return _rust.call("meanders", "resample_polyline", np.ndarray, points=points, step=step)
 
 
 def circumcircle(p0: np.ndarray, p1: np.ndarray, p2: np.ndarray) -> Optional[Tuple[np.ndarray, float]]:
-    ax, ay = p0
-    bx, by = p1
-    cx, cy = p2
-    d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
-    if abs(d) < 1e-9:
-        return None
-    ax2_ay2 = ax * ax + ay * ay
-    bx2_by2 = bx * bx + by * by
-    cx2_cy2 = cx * cx + cy * cy
-    ux = (ax2_ay2 * (by - cy) + bx2_by2 * (cy - ay) + cx2_cy2 * (ay - by)) / d
-    uy = (ax2_ay2 * (cx - bx) + bx2_by2 * (ax - cx) + cx2_cy2 * (bx - ax)) / d
-    center = np.array([ux, uy], dtype=float)
-    radius = float(np.hypot(ux - ax, uy - ay))
-    return center, radius
+    r = _rust.call("meanders", "circumcircle", p0=p0, p1=p1, p2=p2)
+    return None if r is None else (np.asarray(r["center"], dtype=float), float(r["radius"]))
 
 
 def curvature_radius(points: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """(curvature, radius, signed curvature) at each point; signed > 0 for a left turn."""
-    n = len(points)
-    if n < 3:
-        raise ValueError("Need at least three points to compute curvature.")
-
-    curvature = np.zeros(n, dtype=float)
-    radius = np.full(n, np.inf, dtype=float)
-    signed_curvature = np.zeros(n, dtype=float)
-
-    for idx in range(1, n - 1):
-        p0 = points[idx - 1]
-        p1 = points[idx]
-        p2 = points[idx + 1]
-        circle = circumcircle(p0, p1, p2)
-        if circle is None:
-            continue
-        _centre, rad = circle
-        if rad < 1e-9:
-            radius[idx] = 0.0
-            continue
-        curvature[idx] = 1.0 / rad
-        radius[idx] = rad
-        cross = (p1[0] - p0[0]) * (p2[1] - p1[1]) - (p1[1] - p0[1]) * (p2[0] - p1[0])
-        if cross > 1e-9:
-            signed_curvature[idx] = curvature[idx]
-        elif cross < -1e-9:
-            signed_curvature[idx] = -curvature[idx]
-
-    curvature[0], curvature[-1] = curvature[1], curvature[-2]
-    radius[0], radius[-1] = radius[1], radius[-2]
-    signed_curvature[0], signed_curvature[-1] = signed_curvature[1], signed_curvature[-2]
-    return curvature, radius, signed_curvature
+    r = _rust.call("meanders", "curvature_radius", points=points)
+    return tuple(np.asarray(r[k], dtype=float) for k in ("curvature", "radius", "signed_curvature"))
 
 
 def compute_heading(points: np.ndarray) -> np.ndarray:
-    diffs = np.diff(points, axis=0)
-    headings = np.arctan2(diffs[:, 1], diffs[:, 0])
-    return np.unwrap(headings)
+    return _rust.call("meanders", "compute_heading", np.ndarray, points=points)
 
 
 def detect_curvature_runs(signed_curvature: np.ndarray, min_points: int) -> List[np.ndarray]:
-    eps = 1e-6
-    signs = np.sign(signed_curvature)
-    signs[np.abs(signed_curvature) < eps] = 0
-
-    runs: List[np.ndarray] = []
-    start: Optional[int] = None
-    current_sign = 0
-
-    for idx, sign in enumerate(signs):
-        if sign == 0:
-            if start is not None and idx - start >= min_points:
-                runs.append(np.arange(start, idx))
-            start = None
-            current_sign = 0
-            continue
-        if current_sign == 0:
-            start = idx
-            current_sign = sign
-            continue
-        if sign != current_sign:
-            if start is not None and idx - start >= min_points:
-                runs.append(np.arange(start, idx))
-            start = idx
-            current_sign = sign
-
-    if start is not None and len(signed_curvature) - start >= min_points:
-        runs.append(np.arange(start, len(signed_curvature)))
-    return runs
+    runs = _rust.call("meanders", "detect_curvature_runs", signed_curvature=signed_curvature,
+                      min_points=int(min_points))
+    return [np.asarray(r, dtype=int) for r in runs]
 
 
 def find_meander_runs(radius: np.ndarray, signed_curvature: np.ndarray,
                       threshold: float, min_points: int) -> List[np.ndarray]:
-    runs = detect_curvature_runs(signed_curvature, min_points=min_points)
-    meanders = []
-    for run in runs:
-        run_radii = radius[run]
-        if not np.any(np.isfinite(run_radii)):
-            continue
-        if np.nanmin(run_radii) <= threshold:
-            meanders.append(run)
-    return meanders
+    runs = _rust.call("meanders", "find_meander_runs", radius=radius, signed_curvature=signed_curvature,
+                      threshold=threshold, min_points=int(min_points))
+    return [np.asarray(r, dtype=int) for r in runs]
 
 
 def summarise_meanders(centerline: np.ndarray, radius: np.ndarray, signed_curvature: np.ndarray,
@@ -188,14 +100,7 @@ def summarise_meanders(centerline: np.ndarray, radius: np.ndarray, signed_curvat
 
 
 def tangent_angle(heading: np.ndarray, index: int) -> float:
-    if heading.size == 0:
-        return 0.0
-    if index <= 0:
-        return float(heading[0])
-    if index >= heading.size:
-        return float(heading[-1])
-    # Average successive segment headings to approximate the tangent at the point.
-    return 0.5 * (float(heading[index - 1]) + float(heading[index]))
+    return _rust.call("meanders", "tangent_angle", heading=heading, indices=[int(index)])[0]
 
 
 def build_meander_records(meanders: Iterable[Meander], centerline: np.ndarray,
@@ -234,11 +139,6 @@ def find_meanders(centreline: LineString, max_radius: float, sample_step: float 
     The original set ``max_radius = 2 × R_min = 2 × radius_multiple × LOA`` — the study
     radius, wider than the design limit, so near-misses are reported too.
     """
-    pts = resample_polyline(list(centreline.coords), sample_step)
-    _curv, radius, signed = curvature_radius(pts)
-    heading = compute_heading(pts)
-    runs = find_meander_runs(radius, signed, threshold=max_radius, min_points=min_points)
-    meanders = summarise_meanders(pts, radius, signed, heading, runs,
-                                  min_deflection_deg=min_deflection_deg)
-    kept = [m for m in meanders if np.isfinite(m.radius) and m.radius <= max_radius]
-    return build_meander_records(kept, pts, heading)
+    return _rust.call("meanders", "find_meanders", centreline=centreline, max_radius=max_radius,
+                      sample_step=sample_step, min_points=int(min_points),
+                      min_deflection_deg=min_deflection_deg)

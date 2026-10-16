@@ -121,6 +121,9 @@ fn built_grid(
     )?;
     let sampler = terrain_from(arg(args, "terrain")?)?;
     let grade: Box<dyn Fn(f64) -> f64> = match arg(args, "grade")? {
+        g if crate::host::callback_id(g).is_some() => {
+            crate::host::scalar_fn(crate::host::callback_id(g).unwrap_or(0))?
+        }
         g if g.is_object() => {
             // `{"kind": "water_level_minus", "depth": d, "params": {...}}`
             if g.get("kind").and_then(Value::as_str) != Some("water_level_minus") {

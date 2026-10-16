@@ -10,7 +10,7 @@ use crate::eval::{
     EvalError, arg, bad, f64_arg, f64_or, float_json, floats_json, list, ok, opt_f64, read_float,
 };
 use cd_core::rules::design::{self as ds, Centreline, ChannelDesignInputs, ChannelDesignParams};
-use cd_core::rules::methods::{MethodRegistry, OptValue, Options, WidthMethod};
+use cd_core::rules::methods::{BreakdownFn, MethodRegistry, OptValue, Options, WidthMethod};
 use cd_core::rules::rulesets::{self as rs, ChannelRuleInputs, Ruleset, RulesetRegistry};
 use cd_core::rules::simple::{self, PiancInputs};
 use cd_core::rules::width_profile::{self as wp, WidthFn};
@@ -83,6 +83,67 @@ fn method_registry(args: &Value) -> Result<MethodRegistry, EvalError> {
             description,
         };
         reg.register(method, true).map_err(|e| bad(e.to_string()))?;
+    }
+    // The host's own methods (Python callables, ticket 35): `host_methods` is a list of
+    // `{name, description, id, breakdown}`; each call goes to the host as `{op, ...}`.
+    if let Some(list) = args.get("host_methods").and_then(Value::as_array) {
+        for spec in list {
+            reg.register(host_method(spec)?, true).map_err(|e| bad(e.to_string()))?;
+        }
+    }
+    Ok(reg)
+}
+
+/// A width method whose callables live in the host.
+fn host_method(spec: &Value) -> Result<WidthMethod, EvalError> {
+    let id = spec
+        .get("id")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| bad("a host method needs a whole number `id`".into()))?;
+    let call = Arc::new(crate::host::json_fn(id)?);
+    let number = |v: Option<Value>| -> f64 {
+        v.and_then(|v| read_float(&v, "host method").ok())
+            .unwrap_or(f64::NAN)
+    };
+    let (c1, c2, c3, c4) = (call.clone(), call.clone(), call.clone(), call.clone());
+    let breakdown: Option<BreakdownFn> = if spec.get("breakdown").and_then(Value::as_bool) == Some(true) {
+        Some(Arc::new(move |loa, beam, o| {
+            let r = c4(json!({"op": "breakdown", "loa": float_json(loa), "beam": float_json(beam),
+                              "options": options_json(o)}));
+            Ok(r.and_then(|v| read_options(&v, "breakdown").ok()).unwrap_or_default())
+        }))
+    } else {
+        None
+    };
+    Ok(WidthMethod {
+        name: str_field(spec, "name")?,
+        straight_width: Arc::new(move |loa, beam, o| {
+            Ok(number(c1(json!({"op": "straight", "loa": float_json(loa), "beam": float_json(beam),
+                                 "options": options_json(o)}))))
+        }),
+        bend_width: Arc::new(move |loa, beam, o, r, rd, d| {
+            Ok(number(c2(json!({"op": "bend", "loa": float_json(loa), "beam": float_json(beam),
+                                 "options": options_json(o), "bend_radius": float_json(r),
+                                 "design_radius": float_json(rd), "deflection_deg": float_json(d)}))))
+        }),
+        min_radius: Arc::new(move |loa, o| {
+            Ok(number(c3(json!({"op": "min_radius", "loa": float_json(loa),
+                                 "options": options_json(o)}))))
+        }),
+        breakdown,
+        description: spec.get("description").and_then(Value::as_str).unwrap_or("").to_string(),
+    })
+}
+
+/// The built-in rulesets, plus the host's own (`host_rulesets`: every ruleset the host registry
+/// holds, as data; a built-in one the host edited replaces ours).
+pub(crate) fn ruleset_registry(args: &Value) -> Result<RulesetRegistry, EvalError> {
+    let mut reg = RulesetRegistry::new();
+    if let Some(list) = args.get("host_rulesets").and_then(Value::as_array) {
+        for spec in list {
+            reg.register(read_ruleset(spec)?, true)
+                .map_err(|e| bad(e.to_string()))?;
+        }
     }
     Ok(reg)
 }
@@ -339,7 +400,7 @@ fn rule_result_json(r: &rs::ChannelRuleResult) -> Value {
 // --- rulesets -------------------------------------------------------------------------------
 
 fn rulesets(methods: &MethodRegistry, function: &str, args: &Value) -> Result<Value, EvalError> {
-    let reg = RulesetRegistry::new();
+    let reg = ruleset_registry(args)?;
     match function {
         "rule_sets" => ok(json!(methods.names())),
         "rulesets_table" => {

@@ -42,9 +42,11 @@ Contract (the tests hold every registered method to it):
 """
 from __future__ import annotations
 
-import math
+
 from dataclasses import dataclass
 from typing import Callable, Mapping, Optional
+
+from .. import _rust
 
 ENTRY_POINT_GROUP = "channel_designer.width_methods"
 
@@ -159,49 +161,33 @@ PIANC_DEFAULTS = {
 }
 
 
-def _pianc_opts(options: Options) -> dict:
-    o = dict(PIANC_DEFAULTS)
-    o.update(options or {})
-    if o["maneuverability"] not in PIANC_MANEUVER:
-        raise ValueError(f"maneuverability must be one of {tuple(PIANC_MANEUVER)}")
-    return o
+def _pianc(what: str, loa_m: float, beam_m: float, options: Options, radius_m: float = 1.0,
+           deflection_deg: float = 45.0):
+    """One of the built-in method's callables, run by the Rust core (the method itself lives there)."""
+    r = _rust.call("methods", "evaluate", name="pianc", loa=loa_m, beam=beam_m, options=dict(options or {}),
+                   radii=[radius_m], deflection_deg=deflection_deg)
+    if what == "bend":
+        return r["bends"][0]
+    if what == "breakdown":
+        return r["breakdown"]
+    return r[what if what == "straight" else "min_radius"]
 
 
 def _pianc_straight(loa_m: float, beam_m: float, options: Options) -> float:
-    o = _pianc_opts(options)
-    if not o["use_buildup"]:
-        return o["width_multiple"] * beam_m
-    w_bm = PIANC_MANEUVER[o["maneuverability"]] * beam_m
-    extra = sum(o["extra_widths"].values()) * beam_m
-    banks = (o["bank_clearance_outer"] + o["bank_clearance_inner"]) * beam_m
-    return w_bm + extra + banks
+    return _pianc("straight", loa_m, beam_m, options)
 
 
 def _pianc_bend(loa_m: float, beam_m: float, options: Options, bend_radius_m: float,
                 design_radius_m: float, deflection_deg: float) -> float:
-    straight = _pianc_straight(loa_m, beam_m, options)
-    if bend_radius_m <= 0 or math.isinf(bend_radius_m):
-        return straight
-    return straight + loa_m ** 2 / (8.0 * bend_radius_m)
+    return _pianc("bend", loa_m, beam_m, options, bend_radius_m, deflection_deg)
 
 
 def _pianc_min_radius(loa_m: float, options: Options) -> float:
-    return _pianc_opts(options)["radius_multiple"] * loa_m
+    return _pianc("min_radius", loa_m, 0.0, options)
 
 
 def _pianc_breakdown(loa_m: float, beam_m: float, options: Options) -> dict:
-    o = _pianc_opts(options)
-    B = beam_m
-    if not o["use_buildup"]:
-        return {"fairway_kw_x_beam": round(o["width_multiple"] * B, 2),
-                "width_multiple": o["width_multiple"]}
-    return {
-        "W_BM_manoeuvring_lane": round(PIANC_MANEUVER[o["maneuverability"]] * B, 2),
-        "sum_Wi_additional": round(sum(o["extra_widths"].values()) * B, 2),
-        "bank_clearances_Br_Bg": round(
-            (o["bank_clearance_outer"] + o["bank_clearance_inner"]) * B, 2),
-        "maneuverability": o["maneuverability"],
-    }
+    return _pianc("breakdown", loa_m, beam_m, options)
 
 
 PIANC = register_width_method(WidthMethod(
@@ -213,3 +199,36 @@ PIANC = register_width_method(WidthMethod(
     description="PIANC: straight = k_w x beam (or the Report 121 build-up); "
                 "bend = straight + LOA^2 / (8R); R_min = k_r x LOA",
 ))
+
+
+def _core_methods(call, name: Optional[str] = None) -> dict:
+    """The registry as the Rust core needs it for one call: every method but the built-in
+    ``"pianc"`` (the core has its own), each as a callback into this process.
+
+    ``name`` is the method the call is about; asking for it here loads entry points on a miss and
+    raises the usual ``ValueError`` for an unknown one, exactly as before.
+    """
+    if name is not None:
+        get_width_method(name)
+    out = []
+    for m in list(_REGISTRY.values()):
+        if m is PIANC:
+            continue
+        out.append({"name": m.name, "description": m.description, "breakdown": m.breakdown is not None,
+                    "id": call.json(_handler(m))})
+    return {"host_methods": out}
+
+
+def _handler(m: WidthMethod):
+    def handle(req):
+        req = _rust.plain(req)
+        op, opts = req["op"], req.get("options", {})
+        if op == "straight":
+            return m.straight_width(req["loa"], req["beam"], opts)
+        if op == "bend":
+            return m.bend_width(req["loa"], req["beam"], opts, req["bend_radius"], req["design_radius"],
+                                req["deflection_deg"])
+        if op == "min_radius":
+            return m.min_radius(req["loa"], opts)
+        return m.breakdown(req["loa"], req["beam"], opts)
+    return handle

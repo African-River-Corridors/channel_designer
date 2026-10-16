@@ -7,6 +7,8 @@ named standard and vessel class use :func:`channel_designer.rules.rulesets.chann
 """
 from __future__ import annotations
 
+from .. import _rust
+
 from dataclasses import dataclass, field
 
 # Re-exported from the canonical module (single source of truth).
@@ -15,7 +17,7 @@ from .design import (  # noqa: F401
     required_depth,
     max_draft_for_depth,
 )
-from .methods import get_width_method
+from .methods import _core_methods
 
 
 @dataclass
@@ -56,30 +58,7 @@ def size_channel(inp: PIANCInputs, depth_m: float | None = None) -> PIANCChannel
     curvature-driven widening along a real surveyed centreline, use
     :func:`channel_designer.rules.design.compute`.
     """
-    method = get_width_method(inp.width_method)
-    opts = dict(inp.width_options)
-    if inp.width_method == "pianc":
-        opts = {"width_multiple": inp.width_multiple_straight, **opts}
-    bottom_straight = method.straight_width(inp.loa_m, inp.beam_m, opts)
-    radius = inp.radius_multiple * inp.loa_m
-    bottom_bend = max(bottom_straight,
-                      method.bend_width(inp.loa_m, inp.beam_m, opts, radius, radius, 45.0))
-    bend_widening = bottom_bend - bottom_straight
-
-    req_depth = required_depth(inp.draft_m, inp.ukc_fraction, inp.ukc_min_m) if inp.draft_m else 0.0
-    design_depth = depth_m if depth_m is not None else req_depth
-    max_draft = max_draft_for_depth(design_depth, inp.ukc_fraction, inp.ukc_min_m)
-    top_straight = bottom_straight + 2.0 * inp.side_slope_h_per_v * design_depth
-
-    return PIANCChannel(
-        bottom_width_straight_m=bottom_straight,
-        bottom_width_bend_m=bottom_bend,
-        bend_widening_m=bend_widening,
-        min_bend_radius_m=radius,
-        required_depth_m=req_depth,
-        max_draft_for_depth_m=max_draft,
-        top_width_straight_m=top_straight,
-        design_depth_m=design_depth,
-        passing_place_spacing_m=inp.passing_place_spacing_m,
-        passing_place_length_m=inp.passing_place_length_multiple * inp.loa_m,
-    )
+    c = _rust.Call()
+    r = _rust.call("simple", "size_channel", _call=c, inputs=inp, depth_m=depth_m,
+                   **_core_methods(c, inp.width_method))
+    return _rust.decode(r, PIANCChannel)

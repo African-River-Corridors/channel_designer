@@ -37,16 +37,15 @@ where unknown), the present river polygon, and a design grade (float or ``grade(
 """
 from __future__ import annotations
 
-import math
+from .. import _rust
+
 from dataclasses import dataclass, field
 from typing import Callable, Optional, Sequence, Union
 
 import numpy as np
-from shapely import contains_xy
 from shapely.geometry import LineString
 
-from channel_designer.alignment.radius_check import (RADIUS_TOL, min_radius_on_vertices,
-                                                     radius_ok)
+from channel_designer.alignment.radius_check import RADIUS_TOL, radius_ok
 
 TerrainSampler = Callable[[np.ndarray, np.ndarray], np.ndarray]
 GradeLike = Union[float, Callable[[float], float]]
@@ -88,11 +87,9 @@ class RouteResult:
     radius_ok: bool = False                     # measured holds ``r_min`` (2 % reading tol)
 
 
-def _grade_fn(grade: GradeLike) -> Callable[[float], float]:
-    if callable(grade):
-        return grade
-    g = float(grade)
-    return lambda _s: g
+def _grade_arg(call, grade: GradeLike):
+    """The grade as the core reads it: a number, or a callback for a function of chainage."""
+    return call.scalar(grade) if callable(grade) else float(grade)
 
 
 def build_cost_grid(line: LineString, terrain: TerrainSampler, river_polygon, grade: GradeLike,
@@ -108,95 +105,28 @@ def build_cost_grid(line: LineString, terrain: TerrainSampler, river_polygon, gr
     near the corridor edge are truncated and look cheaper than they are. Over high ground
     pass ``daylight_m = bottom_width/2 + side_slope × (max ground − grade)``.
     """
-    grade_at = _grade_fn(grade)
-    half_bottom = bottom_width / 2.0
-    total_m = line.length
-    stations_m = np.arange(0.0, total_m + 0.5 * station_step, station_step)
-    stations_m = stations_m[stations_m <= total_m]
-    offsets = np.arange(-corridor_half, corridor_half + offset_step, offset_step)
-
-    daylight = (half_bottom + side_slope * depth) if daylight_m is None else float(daylight_m)
-    t_half = corridor_half + daylight + transect_step
-    t_off = np.arange(-t_half, t_half + transect_step, transect_step)
-    n_toff = t_off.size
-
-    centres = np.zeros((stations_m.size, 2))
-    normals = np.zeros((stations_m.size, 2))
-    sx = np.zeros(stations_m.size * n_toff)
-    sy = np.zeros(stations_m.size * n_toff)
-    for i, sm in enumerate(stations_m):
-        p = line.interpolate(sm)
-        p1 = line.interpolate(max(0.0, sm - 5.0))
-        p2 = line.interpolate(min(total_m, sm + 5.0))
-        dx, dy = (p2.x - p1.x), (p2.y - p1.y)
-        n = np.hypot(dx, dy) or 1.0
-        tx, ty = dx / n, dy / n
-        nx, ny = -ty, tx     # unit perpendicular (left-normal)
-        centres[i] = (p.x, p.y)
-        normals[i] = (nx, ny)
-        base = i * n_toff
-        sx[base:base + n_toff] = p.x + t_off * nx
-        sy[base:base + n_toff] = p.y + t_off * ny
-
-    ground = np.asarray(terrain(sx, sy), dtype=float).reshape(stations_m.size, n_toff)
-    wet = contains_xy(river_polygon, sx, sy).reshape(stations_m.size, n_toff)
-    grades = np.array([grade_at(float(sm)) for sm in stations_m])
-
-    n_off = offsets.size
-    vol_grid = np.full((stations_m.size, n_off), np.nan)
-    wet_grid = np.full((stations_m.size, n_off), np.nan)
-    dA = transect_step * station_step
-    for i in range(stations_m.size):
-        g = ground[i]
-        valid = np.isfinite(g)
-        if valid.sum() < 5:
-            vol_grid[i] = 0.0
-            wet_grid[i] = 0.0
-            continue
-        w = wet[i]
-        for k, off in enumerate(offsets):
-            local = np.abs(t_off - off)
-            template = grades[i] + np.maximum(0.0, local - half_bottom) / side_slope
-            cut = np.where(valid, g - template, 0.0)
-            np.clip(cut, 0.0, None, out=cut)
-            vol_grid[i, k] = cut.sum() * dA
-            wet_grid[i, k] = cut[w].sum() * dA
-    return CostGrid(offsets, stations_m, centres, normals, grades, vol_grid, wet_grid,
-                    float(station_step), float(offset_step))
+    c = _rust.Call()
+    r = _rust.call("route", "build_cost_grid", CostGrid, _call=c, line=line, terrain=c.terrain(terrain),
+                   river_polygon=river_polygon, grade=_grade_arg(c, grade), bottom_width=bottom_width, depth=depth,
+                   side_slope=side_slope, corridor_half=corridor_half, station_step=station_step,
+                   offset_step=offset_step, transect_step=transect_step, daylight_m=daylight_m)
+    return r
 
 
 def radii(pts) -> np.ndarray:
     """Three-point circumradius R = abc / (4·Area) at every interior vertex (inf on ends)."""
-    pts = np.asarray(pts, dtype=float)
-    n = len(pts)
-    R = np.full(n, np.inf)
-    for i in range(1, n - 1):
-        A, B, C = pts[i - 1], pts[i], pts[i + 1]
-        a = np.hypot(*(B - C)); b = np.hypot(*(A - C)); c = np.hypot(*(A - B))
-        area = 0.5 * abs((B[0] - A[0]) * (C[1] - A[1]) - (C[0] - A[0]) * (B[1] - A[1]))
-        if area < 1e-9 or a * b * c < 1e-12:
-            continue
-        R[i] = a * b * c / (4.0 * area)
-    return R
+    return _rust.call("route", "radii", np.ndarray, pts=pts)
 
 
 def min_radius_of_line(pts):
     """Minimum radius of curvature (m) of the polyline and its vertex index."""
-    R = radii(pts)
-    imin = int(np.argmin(R))
-    return float(R[imin]), imin
+    r = _rust.call("route", "min_radius_of_line", pts=pts)
+    return float(r["radius"]), int(r["index"])
 
 
 def baseline_turn_angles(centres) -> np.ndarray:
     """Signed per-station turn (rad, > 0 left) of the baseline between station chords."""
-    n = len(centres)
-    beta = np.zeros(n)
-    for i in range(1, n - 1):
-        a1 = np.arctan2(centres[i][1] - centres[i - 1][1], centres[i][0] - centres[i - 1][0])
-        a2 = np.arctan2(centres[i + 1][1] - centres[i][1], centres[i + 1][0] - centres[i][0])
-        d = a2 - a1
-        beta[i] = (d + np.pi) % (2 * np.pi) - np.pi
-    return beta
+    return _rust.call("route", "baseline_turn_angles", np.ndarray, centres=centres)
 
 
 def offset_bounds(centres, target_R):
@@ -206,21 +136,8 @@ def offset_bounds(centres, target_R):
     Where the baseline is already tighter than ``target_R`` the window only forbids moving
     further inside (margin 0); it does not force the line outside, which would leave the DP
     no feasible path. ``radius_ok`` on the result reports what that leaves."""
-    n = len(centres)
-    R = radii(centres)
-    beta = baseline_turn_angles(centres)
-    o_lo = np.full(n, -np.inf)
-    o_hi = np.full(n, np.inf)
-    for i in range(1, n - 1):
-        rho = R[i]
-        if not np.isfinite(rho):
-            continue
-        margin = max(rho - target_R, 0.0)
-        if beta[i] > 1e-6:          # left turn: centre on +normal side
-            o_hi[i] = margin
-        elif beta[i] < -1e-6:       # right turn: centre on -normal side
-            o_lo[i] = -margin
-    return o_lo, o_hi
+    r = _rust.call("route", "offset_bounds", centres=centres, target_R=target_R)
+    return np.asarray(r["lo"], dtype=float), np.asarray(r["hi"], dtype=float)
 
 
 def dp_optimise(offsets, centres, cost_grid, r_min, station_step, offset_step):
@@ -232,92 +149,20 @@ def dp_optimise(offsets, centres, cost_grid, r_min, station_step, offset_step):
     the offset path may add zero curvature rather than be forced infeasible. DP over states
     (o[i-1], o[i]). Returns ``(path_indices, best_cost)``.
     """
-    ds = station_step
-    heading_budget = ds / r_min
-    beta = baseline_turn_angles(centres)
-    n = len(centres)
-    K = len(offsets)
-    step = offset_step
-
-    d_idx = np.arange(-(K - 1), K)
-    phi_lut = np.arctan2(d_idx * step, ds)
-    D0 = K - 1
-
-    INF = np.inf
-    dp = cost_grid[0][:, None] + cost_grid[1][None, :]
-    back = np.empty((n, K, K), dtype=np.int32)
-
-    for i in range(2, n):
-        ndp = np.full((K, K), INF)
-        nb = np.empty((K, K), dtype=np.int32)
-        bi = beta[i - 1]
-        budget = max(heading_budget, abs(bi))
-        for jp in range(K):
-            row = dp[jp]
-            finite = np.where(np.isfinite(row))[0]
-            if finite.size == 0:
-                continue
-            for jc in finite:
-                base_val = row[jc]
-                phi_prev = phi_lut[D0 + (jc - jp)]
-                phi_lo = -budget - bi + phi_prev
-                phi_hi = budget - bi + phi_prev
-                d_lo = int(np.ceil(np.tan(phi_lo) * ds / step)) if abs(phi_lo) < np.pi / 2 else -(K - 1)
-                d_hi = int(np.floor(np.tan(phi_hi) * ds / step)) if abs(phi_hi) < np.pi / 2 else (K - 1)
-                jn_lo = max(0, jc + d_lo)
-                jn_hi = min(K - 1, jc + d_hi)
-                if jn_lo > jn_hi:
-                    continue
-                cand = base_val + cost_grid[i][jn_lo:jn_hi + 1]
-                better = cand < ndp[jc, jn_lo:jn_hi + 1]
-                if better.any():
-                    idx = np.where(better)[0] + jn_lo
-                    ndp[jc, idx] = cand[better]
-                    nb[jc, idx] = jp
-        dp = ndp
-        back[i] = nb
-
-    flat = np.argmin(dp)
-    jp_end, jc_end = np.unravel_index(flat, dp.shape)
-    best_cost = dp[jp_end, jc_end]
-    if not np.isfinite(best_cost):
-        raise RuntimeError("DP found no feasible path — corridor/curvature too tight")
-
-    path = np.empty(n, dtype=np.int32)
-    path[n - 1] = jc_end
-    path[n - 2] = jp_end
-    jc, jp = jc_end, jp_end
-    for i in range(n - 1, 1, -1):
-        j_prev = back[i, jp, jc]
-        path[i - 2] = j_prev
-        jc, jp = jp, j_prev
-    return path, float(best_cost)
+    r = _rust.call("route", "dp_optimise", offsets=offsets, centres=centres, cost_grid=cost_grid, r_min=r_min,
+                   station_step=station_step, offset_step=offset_step)
+    return np.asarray(r["path"], dtype=float), float(r["cost"])
 
 
 def build_line_from_offsets(centres, normals, offset_vals) -> np.ndarray:
-    return centres + np.asarray(offset_vals)[:, None] * normals
-
-
-def _combined_turn(o, beta, ds):
-    n = o.size
-    phi = np.arctan2(np.diff(o), ds)
-    turn = np.zeros(n)
-    turn[1:-1] = beta[1:-1] + phi[1:] - phi[:-1]
-    return turn
+    return _rust.call("route", "build_line_from_offsets", np.ndarray, centres=centres, normals=normals,
+                      offset_vals=offset_vals)
 
 
 def smooth_offsets(offset_vals, heading_budget, beta, ds):
     """Gentle 3-point smoothing that keeps the DP path's bend-radius feasibility."""
-    o = offset_vals.astype("float64").copy()
-    for _ in range(3):
-        cand = o.copy()
-        cand[1:-1] = (o[:-2] + 2 * o[1:-1] + o[2:]) / 4.0
-        turn = _combined_turn(cand, beta, ds)
-        budget = np.maximum(heading_budget, np.abs(beta))
-        bad = np.abs(turn) > budget + 1e-4
-        cand[bad] = o[bad]
-        o = cand
-    return o
+    return _rust.call("route", "smooth_offsets", np.ndarray, offset_vals=offset_vals, heading_budget=heading_budget,
+                      beta=beta, ds=ds)
 
 
 def enforce_min_radius(offset_vals, centres, normals, target_R, max_iter=600,
@@ -331,39 +176,14 @@ def enforce_min_radius(offset_vals, centres, normals, target_R, max_iter=600,
     Returns after ``max_iter`` passes even when ``min_R < target_R`` (e.g. the baseline itself
     is tighter than the target). Compare ``min_R`` with ``target_R``; never assume it cleared.
     """
-    o = offset_vals.astype("float64").copy()
-    n = o.size
-    corridor = max(abs(o.min()), abs(o.max()), 1.0)
-
-    def apply_taper(a):
-        for k in range(min(taper_stations, n // 2)):
-            f = k / taper_stations
-            a[k] *= f
-            a[-1 - k] *= f
-        return a
-
-    o = apply_taper(o)
-    passes = 0
-    rmin = float(np.min(radii(centres + o[:, None] * normals)))
-    for _ in range(max_iter):
-        if rmin >= target_R - 1e-6:
-            break
-        sm = o.copy()
-        sm[1:-1] = 0.25 * o[:-2] + 0.5 * o[1:-1] + 0.25 * o[2:]
-        o = apply_taper(np.clip(sm, -corridor, corridor))
-        rmin = float(np.min(radii(centres + o[:, None] * normals)))
-        passes += 1
-    return o, passes, rmin
+    r = _rust.call("route", "enforce_min_radius", offset_vals=offset_vals, centres=centres, normals=normals,
+                   target_R=target_R, max_iter=int(max_iter), taper_stations=int(taper_stations))
+    return np.asarray(r["offsets"], dtype=float), int(r["passes"]), float(r["min_radius"])
 
 
 def approx_saving_pct(grid: CostGrid, cost: np.ndarray, ovals) -> float:
     """Grid-approx cost of ``ovals`` vs the baseline (offset 0 everywhere), as a %."""
-    offsets = grid.offsets
-    idx = np.clip(np.round((ovals - offsets[0]) / grid.offset_step).astype(int),
-                  0, offsets.size - 1)
-    opt = cost[np.arange(ovals.size), idx].sum()
-    base = cost[np.arange(ovals.size), int(np.argmin(np.abs(offsets)))].sum()
-    return 100.0 * (base - opt) / base if base else 0.0
+    return _rust.call("route", "approx_saving_pct", float, grid=grid, cost=cost, ovals=ovals)
 
 
 def solve_at_corridor(grid: CostGrid, cost: np.ndarray, corridor_half: float, r_min: float):
@@ -372,19 +192,8 @@ def solve_at_corridor(grid: CostGrid, cost: np.ndarray, corridor_half: float, r_
     The target is ``r_min`` less the fixed reading tolerance, never relaxed to the
     baseline's own radius (issue #9).
     """
-    offsets = grid.offsets
-    o_lo, o_hi = offset_bounds(grid.centres, r_min)
-    g = cost.copy()
-    for i in range(g.shape[0]):
-        bad = ((np.abs(offsets) > corridor_half + 1e-6)
-               | (offsets < o_lo[i] - 1e-6) | (offsets > o_hi[i] + 1e-6))
-        g[i, bad] = np.inf
-    path, _ = dp_optimise(offsets, grid.centres, g, r_min, grid.station_step, grid.offset_step)
-    beta = baseline_turn_angles(grid.centres)
-    sm = smooth_offsets(offsets[path], grid.station_step / r_min, beta, grid.station_step)
-    sm, passes, rmin = enforce_min_radius(sm, grid.centres, grid.normals,
-                                          (1.0 - RADIUS_TOL) * r_min)
-    return sm, passes, rmin, approx_saving_pct(grid, cost, sm)
+    r = _rust.call("route", "solve_at_corridor", grid=grid, cost=cost, corridor_half=corridor_half, r_min=r_min)
+    return np.asarray(r["offsets"], dtype=float), int(r["passes"]), float(r["min_radius"]), float(r["saving_pct"])
 
 
 def optimise_route(line: LineString, terrain: TerrainSampler, river_polygon, grade: GradeLike,
@@ -408,31 +217,10 @@ def optimise_route(line: LineString, terrain: TerrainSampler, river_polygon, gra
     so the real chord at a corner can be longer. A resampled check on one LOA can read well
     below a ``radius_ok`` route line at a corner between stations (see docs/known-issues.md).
     """
-    if grid is None:
-        grid = build_cost_grid(line, terrain, river_polygon, grade, bottom_width=bottom_width,
-                               depth=depth, side_slope=side_slope,
-                               corridor_half=float(max(corridor_sweep)),
-                               station_step=station_step, offset_step=offset_step,
-                               transect_step=transect_step, daylight_m=daylight_m)
-    cost = grid.weighted(wet_weight, dry_weight)
-    if check_chord_m is None:
-        k = 1
-    elif not (math.isfinite(check_chord_m) and check_chord_m > 0.0):
-        raise ValueError("check_chord_m must be finite and positive.")
-    else:   # round half up, so a port reproduces it exactly (not Python's half-to-even)
-        k = max(1, int(math.floor(check_chord_m / (2.0 * grid.station_step) + 0.5)))
-    best, sweep = None, []
-    for ch in corridor_sweep:
-        sm, passes, rmin, sav = solve_at_corridor(grid, cost, float(ch), r_min)
-        sweep.append((float(ch), float(sav), float(rmin)))
-        pts = build_line_from_offsets(grid.centres, grid.normals, sm)
-        measured = min_radius_on_vertices(pts, k)
-        ok = radius_ok(measured, r_min)
-        if best is None or (ok, sav) > (best[0], best[2]):
-            best = (ok, float(ch), sav, sm, rmin, passes, pts, measured)
-    ok, ch, sav, sm, rmin, passes, pts, measured = best
-    return RouteResult(line=LineString(pts), offsets=sm, min_radius_m=float(rmin),
-                       corridor_half_m=ch, approx_saving_pct=float(sav),
-                       smooth_passes=int(passes), sweep=sweep,
-                       measured_min_radius_m=float(measured),
-                       radius_check_chord_m=2.0 * k * grid.station_step, radius_ok=ok)
+    c = _rust.Call()
+    return _rust.call("route", "optimise_route", RouteResult, _call=c, line=line, terrain=c.terrain(terrain),
+                      river_polygon=river_polygon, grade=_grade_arg(c, grade), bottom_width=bottom_width,
+                      depth=depth, side_slope=side_slope, r_min=r_min, wet_weight=wet_weight,
+                      dry_weight=dry_weight, corridor_sweep=list(corridor_sweep), station_step=station_step,
+                      offset_step=offset_step, transect_step=transect_step, daylight_m=daylight_m,
+                      grid=grid, check_chord_m=check_chord_m)

@@ -25,12 +25,14 @@ Pure Python (math only) — Pyodide-safe.
 """
 from __future__ import annotations
 
+from .. import _rust
+
 from dataclasses import dataclass, field
 from typing import Optional
 
 from vessel_designer.core.checks import Check
-from .design import required_depth, under_keel_clearance
-from .methods import PIANC_MANEUVER as _PIANC_MANEUVER, get_width_method, width_methods
+from .design import required_depth
+from .methods import PIANC_MANEUVER as _PIANC_MANEUVER, _core_methods, width_methods
 
 
 def rule_sets() -> tuple:
@@ -62,8 +64,6 @@ def rule_sets() -> tuple:
 #          this module used (c_C = 0.125) never was.
 #   depth  PIANC sets a RATIO (1.3 x T). China sets draught PLUS A FIXED CLEARANCE. They
 #          diverge with draught: at T = 4.5 m China is ~16% shallower.
-
-from typing import Callable, Tuple as _Tuple
 
 
 @dataclass(frozen=True)
@@ -229,8 +229,9 @@ def lateral_room_m(wetted_width_m: float, top_width_m: float, bottom_width_m: fl
     channel is wider than the river — clamped at 0, since a channel wider than the river has
     no spare room, it does not have negative room). The second is the permitted bank cut.
     """
-    spare = max(0.0, (wetted_width_m - top_width_m) / 2.0)
-    return spare + bank_cut_fraction * bottom_width_m
+    return _rust.call("rulesets", "lateral_room_m", float, wetted_width_m=wetted_width_m,
+                      top_width_m=top_width_m, bottom_width_m=bottom_width_m,
+                      bank_cut_fraction=bank_cut_fraction)
 
 
 def classify_bend(e_m: float, room_m: float, tol_m: float = 1e-9) -> str:
@@ -240,9 +241,7 @@ def classify_bend(e_m: float, room_m: float, tol_m: float = 1e-9) -> str:
     'G' gentle    — it fits inside the room; the channel can follow the river
     'T' tight     — it does not; this bend is the optimiser's problem
     """
-    if e_m <= tol_m:
-        return "S"
-    return "G" if e_m <= room_m + tol_m else "T"
+    return _rust.call("rulesets", "classify_bend", str, e_m=e_m, room_m=room_m, tol_m=tol_m)
 
 
 def register_ruleset(ruleset: Ruleset, *, replace: bool = False) -> Ruleset:
@@ -267,6 +266,13 @@ def get_ruleset(ruleset_id: str) -> Ruleset:
         return RULESETS[ruleset_id]
     except KeyError:
         raise KeyError(f"unknown ruleset {ruleset_id!r}; known: {', '.join(sorted(RULESETS))}")
+
+def _core_args(call, method: Optional[str] = None) -> dict:
+    """The registries as the Rust core needs them for one call: every width method and every
+    ruleset this process knows (the core reads them as data and as callbacks)."""
+    out = _core_methods(call, method)
+    out["host_rulesets"] = [_rust.enc(r) for r in RULESETS.values()]
+    return out
 
 
 @dataclass
@@ -315,37 +321,6 @@ def _cn_table_width(loa_m: float, beam_m: float):
     return best if (best_d is not None and best_d <= 0.20) else None
 
 
-def _straight_width(rs: Ruleset, loa_m: float, beam_m: float, formation: str):
-    """Returns (width_m, basis, warnings)."""
-    import math as _m
-    warns = []
-    if rs.family == "china":
-        w_tab = _cn_table_width(loa_m, beam_m)
-        beta = _m.radians(_CN_DRIFT_DEG_LARGE_BEAM if beam_m >= _CN_LARGE_BEAM_M
-                          else _CN_DRIFT_DEG_SMALL_BEAM)
-        swept = beam_m + loa_m * _m.sin(beta)
-        bank = rs.bank_mult_motor if formation == "motor_vessel" else rs.bank_mult_convoy
-        w_formula = swept * (1.0 + bank)
-        if w_tab is not None:
-            if abs(w_tab - w_formula) / w_tab > 0.05:
-                warns.append(
-                    f"Table A.2 gives {w_tab:.0f} m where the A.3.2 formula gives "
-                    f"{w_formula:.1f} m; the table includes wind, the formula does not. "
-                    "Using the table.")
-            return w_tab, "table", warns
-        w = CN_TABLE_5_1_WIDTH_MULT * beam_m
-        warns.append(
-            f"no Table A.2 entry near LOA {loa_m:.0f} m / beam {beam_m:.1f} m, so the "
-            f"width is WG 141 Table 5.1's China-River single-lane ratio "
-            f"W_F/B = {CN_TABLE_5_1_WIDTH_MULT} ({w:.1f} m), which the table's own "
-            f"footnote records as WIND-INCLUDED. The A.3.2 formula gives {w_formula:.1f} m "
-            f"and omits wind (A.3.3 lists curvature, bank interaction, cross-flow and "
-            f"passing distance only); the implied ratio between them is "
-            f"{w / w_formula:.2f}.")
-        return w, "table-5.1-ratio", warns
-    return rs.width_mult * beam_m, "rule", warns
-
-
 def channel_shape(ruleset_id: str, vessel_standard_id: str,
                   draught_m: float = None) -> ChannelShape:
     """THE FRONT DOOR: a ruleset plus a vessel class fully determine the channel.
@@ -353,50 +328,12 @@ def channel_shape(ruleset_id: str, vessel_standard_id: str,
     ``draught_m`` overrides the vessel class's nominal draught — a project's design draught
     is its own decision, so it stays injectable.
     """
-    from vessel_designer.core.vessel_standards import get_standard
-    rs = get_ruleset(ruleset_id)
-    v = get_standard(vessel_standard_id)
-    loa = v.loa_m[1]                    # size on the LONG end of the class
-    T = v.draught_nominal_m if draught_m is None else draught_m
-    r_mult = rs.r_mult_motor if v.formation == "motor_vessel" else rs.r_mult_convoy
-    r_min = r_mult * loa
-    width, basis, warns = _straight_width(rs, loa, v.beam_m, v.formation)
-    if rs.family == "china":
-        rng = CN_DEPTH_CLEARANCE_M.get(v.class_name)
-        if rng is None:
-            # A.3.2 covers classes I-III only. Do not invent a clearance for IV+.
-            clearance = rs.depth_add_m
-            warns.append(
-                f"GB 50139's depth clause (A.3.2, p162) covers classes I-III only; class "
-                f"{v.class_name} is outside it, so the depth falls back to the ruleset's "
-                f"{clearance} m add-on, which is a user choice, not the standard's.")
-        else:
-            clearance = rng[1] if CN_DEPTH_CLEARANCE_END == "strict" else rng[0]
-            warns.append(
-                f"depth = draught + {clearance} m, the {CN_DEPTH_CLEARANCE_END} end of "
-                f"GB 50139's class-{v.class_name} range {rng[0]}-{rng[1]} m "
-                f"(WG 141 A.3.2, p162, as summarised — we do not hold GB 50139 itself).")
-        depth = T + clearance
-    else:
-        depth = max(rs.depth_mult * T, 1.2 * T)
-    # No project floor is applied here: the depth is the ruleset's. Where it falls below
-    # PIANC's river minimum ratio of 1.2 x T (WG 141 5.3.4.3, p108) the result says so, but
-    # the depth is not changed — a warning, not a hidden correction.
-    if depth < 1.2 * T:
-        warns.append(
-            f"design depth {depth:.2f} m is {1.2 * T - depth:.2f} m BELOW PIANC's river "
-            f"minimum depth ratio of 1.2 x draught ({1.2 * T:.2f} m at T {T:.2f} m; "
-            f"WG 141 5.3.4.3, p108, which recommends 1.3 x T and says never below 1.2).")
-    dW = _bend_widening(rs, loa, v.beam_m, r_min)
-    return ChannelShape(
-        ruleset_id=rs.ruleset_id, vessel_standard_id=v.standard_id,
-        loa_m=loa, beam_m=v.beam_m, draught_m=T, formation=v.formation,
-        bottom_width_straight_m=width, min_bend_radius_m=r_min, design_depth_m=depth,
-        bend_widening_at_rmin_m=dW, bottom_width_at_rmin_m=width + dW,
-        width_basis=basis, warnings=warns,
-        source=f"{rs.source}; vessel {v.source}",
-    )
-
+    c = _rust.Call()
+    args = _core_args(c)
+    if draught_m is not None:
+        args["draught_m"] = draught_m
+    return _rust.call("rulesets", "channel_shape", ChannelShape, _call=c, ruleset_id=ruleset_id,
+                      vessel_standard_id=vessel_standard_id, **args)
 
 
 @dataclass
@@ -501,18 +438,6 @@ class ChannelRuleResult:
 REFERENCE_DEFLECTION_DEG = 45.0
 
 
-def _size(inp: ChannelRuleInputs, ref_radius: float):
-    m = get_width_method(inp.rule_set)
-    opts = inp.method_options()
-    straight = m.straight_width(inp.loa_m, inp.beam_m, opts)
-    r_min = m.min_radius(inp.loa_m, opts)
-    bend = max(straight, m.bend_width(inp.loa_m, inp.beam_m, opts, ref_radius, ref_radius,
-                                      REFERENCE_DEFLECTION_DEG))
-    breakdown = dict(m.breakdown(inp.loa_m, inp.beam_m, opts)) if m.breakdown else {}
-    breakdown["bend_widening_at_reference_radius"] = round(bend - straight, 2)
-    return straight, r_min, bend, breakdown
-
-
 def width_at_radius(inp: ChannelRuleInputs, radius_m: float) -> float:
     """Required bottom width (m) at a bend of the given radius — the single width
     authority for the alignment solver's width-aware edge cost.
@@ -521,46 +446,18 @@ def width_at_radius(inp: ChannelRuleInputs, radius_m: float) -> float:
     Otherwise ``max(straight, bend_width(R1 = R2 = R, 45°))``; for ``"pianc"`` that is
     straight + LOA²/(8R). Monotonic non-increasing in R for every shipped method.
     """
-    import math as _math
-    m = get_width_method(inp.rule_set)
-    opts = inp.method_options()
-    straight = m.straight_width(inp.loa_m, inp.beam_m, opts)
-    if radius_m <= 0 or _math.isinf(radius_m):
-        return straight
-    return max(straight, m.bend_width(inp.loa_m, inp.beam_m, opts, radius_m, radius_m,
-                                      REFERENCE_DEFLECTION_DEG))
+    c = _rust.Call()
+    return _rust.call("rulesets", "width_at_radius", _call=c, inputs=inp, radii=[radius_m],
+                      **_core_args(c, inp.rule_set))[0]
 
 
 def size_channel(inp: ChannelRuleInputs) -> ChannelRuleResult:
     """One-lane channel geometry under the selected width method (``inp.rule_set``)."""
-    ref_radius = inp.reference_bend_radius_m or (3.0 * inp.loa_m)
-    straight, r_min, bend, breakdown = _size(inp, ref_radius)
-
-    ukc = under_keel_clearance(inp.draft_m, inp.ukc_fraction, inp.ukc_min_m)
-    depth = required_depth(inp.draft_m, inp.ukc_fraction, inp.ukc_min_m)
-    bed = inp.min_water_level_m - depth
-    top = straight + 2.0 * inp.side_slope_h_per_v * depth
-
-    checks = [
-        Check("straight_width_positive", straight > 0, f"straight width {straight:.1f} m > 0"),
-        Check("depth_covers_draft", depth >= inp.draft_m,
-              f"required depth {depth:.2f} m ≥ draft {inp.draft_m:.2f} m"),
-        Check("ref_radius_at_or_above_rule_min", ref_radius >= r_min - 1e-6,
-              f"reference bend radius {ref_radius:.0f} m vs rule minimum {r_min:.0f} m "
-              f"— bends below the rule minimum need widening / a cut-through", severity="warning"),
-    ]
-    warnings = []
-    if bed < 0.0:
-        warnings.append(f"bed level {bed:.2f} masl is below datum — marine/tidal dredge reach "
-                        f"(pool at min WL {inp.min_water_level_m:.1f} masl)")
-
-    return ChannelRuleResult(
-        rule_set=inp.rule_set, straight_bottom_width_m=straight, min_turn_radius_m=r_min,
-        reference_bend_radius_m=ref_radius, bend_bottom_width_m=bend,
-        bend_widening_m=bend - straight, required_depth_m=depth, under_keel_clearance_m=ukc,
-        min_water_level_m=inp.min_water_level_m, bed_level_m=bed, top_width_straight_m=top,
-        width_breakdown=breakdown, checks=checks, warnings=warnings,
-    )
+    c = _rust.Call()
+    r = _rust.call("rulesets", "size_channel", _call=c, inputs=inp, **_core_args(c, inp.rule_set))
+    res = _rust.plain(r["result"])
+    res["checks"] = [Check(**ck) for ck in res["checks"]]
+    return ChannelRuleResult(**res)
 
 
 # =============================================================================

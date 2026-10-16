@@ -217,26 +217,20 @@ def test_cn_table_a2_holds_only_what_is_read():
     class under every Chinese ruleset are what they were with the whole table."""
     from vessel_designer.core.vessel_standards import VESSEL_STANDARDS
     from channel_designer.rules import rulesets as R
+    # The width now comes from the Rust core, which holds its own copy of the table; the core's
+    # answers are checked below against the widths the whole table gave. The Python table is still
+    # the public `CN_TABLE_A2`, so check that every entry is read by some vessel class.
     used = set()
-    original = R._cn_table_width
-
-    def spy(loa, beam):
-        w = original(loa, beam)
-        if w is not None:
+    for sid, v in VESSEL_STANDARDS.items():
+        loa, beam = v.loa_m[1], v.beam_m
+        if R._cn_table_width(loa, beam) is not None:
             used.add(min(CN_TABLE_A2, key=lambda k: abs(k[0] - loa) / k[0] + abs(k[1] - beam) / k[1]))
-        return w
-
-    R._cn_table_width = spy
-    try:
-        for sid in VESSEL_STANDARDS:
-            for rs in ("CN", "CN-conservative", "CN-reduced"):
-                s = channel_shape(rs, sid)
-                if sid in _CN_WIDTHS_BEFORE_A2_TRIM:
-                    w, basis = _CN_WIDTHS_BEFORE_A2_TRIM[sid]
-                    assert abs(s.bottom_width_straight_m - w) < 1e-9, (rs, sid)
-                    assert s.width_basis == basis, (rs, sid)
-    finally:
-        R._cn_table_width = original
+        for rs in ("CN", "CN-conservative", "CN-reduced"):
+            s = channel_shape(rs, sid)
+            if sid in _CN_WIDTHS_BEFORE_A2_TRIM:
+                w, basis = _CN_WIDTHS_BEFORE_A2_TRIM[sid]
+                assert abs(s.bottom_width_straight_m - w) < 1e-9, (rs, sid)
+                assert s.width_basis == basis, (rs, sid)
     assert used == set(CN_TABLE_A2), set(CN_TABLE_A2) - used
     # values only: (LOA, beam) -> width, no other columns
     assert all(len(k) == 2 and isinstance(v, float) for k, v in CN_TABLE_A2.items())

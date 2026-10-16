@@ -106,6 +106,10 @@ fn sum8(t: [f64; 8]) -> f64 {
 }
 
 fn reach_fn(spec: &Value) -> Result<Reach, EvalError> {
+    if let Some(id) = crate::host::callback_id(spec) {
+        let f = crate::host::triple_fn(id)?;
+        return Ok(Box::new(move |a, b, level| Ok(f(a, b, level))));
+    }
     let kind = spec
         .get("kind")
         .and_then(Value::as_str)
@@ -160,13 +164,16 @@ fn reach_fn(spec: &Value) -> Result<Reach, EvalError> {
     }
 }
 
-fn structure_fn(spec: &Value) -> Result<impl Fn(f64) -> f64 + use<>, EvalError> {
+fn structure_fn(spec: &Value) -> Result<Box<dyn Fn(f64) -> f64>, EvalError> {
+    if let Some(id) = crate::host::callback_id(spec) {
+        return crate::host::scalar_fn(id);
+    }
     let (fixed, coeff, power) = (
         f64_arg(spec, "fixed")?,
         f64_arg(spec, "coeff")?,
         f64_arg(spec, "power")?,
     );
-    Ok(move |lift: f64| fixed + coeff * libm::pow(lift, power))
+    Ok(Box::new(move |lift: f64| fixed + coeff * libm::pow(lift, power)))
 }
 
 fn weir_json(w: &cs::CascadeWeir) -> Value {
