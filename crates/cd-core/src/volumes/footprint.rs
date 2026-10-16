@@ -5,7 +5,7 @@ use crate::alignment::limits::{self, LimitsDiagnostics, Widening};
 use crate::geom::interior::representative_point;
 use crate::geom::offset::buffer_polygons;
 use crate::geom::overlay::{self, Op, polygon_area};
-use crate::geom::{Geometry, Polygon, Pt, dist, linear, valid};
+use crate::geom::{Geometry, Polygon, Pt, SegHit, dist, linear, segment_intersection, valid};
 
 /// `orient_like`: flip `candidate` to run the same way as `reference`.
 pub fn orient_like(reference: &[Pt], candidate: &[Pt]) -> Vec<Pt> {
@@ -51,6 +51,55 @@ pub fn polygon_from_bank_pair(left: &[Pt], right: &[Pt]) -> Result<Vec<Polygon>,
         return Err("Constructed polygon is empty; check the input bank geometries.".into());
     }
     Ok(polys)
+}
+
+/// The polygon between two bank lines, whichever way the second one runs (spec 0005 Q12).
+#[derive(Debug, Clone, PartialEq)]
+pub struct BankPairPolygon {
+    pub polygons: Vec<Polygon>,
+    /// The second bank was reversed to run like the first.
+    pub reoriented: bool,
+}
+
+/// The first point where two lines meet, other than an end they share (the closed-pair case).
+fn bank_crossing(left: &[Pt], right: &[Pt]) -> Option<Pt> {
+    let ends = [left[0], left[left.len() - 1]];
+    let shared = |p: Pt| ends.contains(&p) && (p == right[0] || p == right[right.len() - 1]);
+    for a in left.windows(2) {
+        for b in right.windows(2) {
+            match segment_intersection(a[0], a[1], b[0], b[1]) {
+                SegHit::None => {}
+                SegHit::Point { p, .. } if shared(p) => {}
+                SegHit::Point { p, .. } => return Some(p),
+                SegHit::Overlap { a: p, .. } => return Some(p),
+            }
+        }
+    }
+    None
+}
+
+/// `polygon_from_bank_pair` with the second bank oriented like the first (`orient_like`), so a
+/// reversed second bank gives the same polygon as a correctly ordered pair. Banks that cross are
+/// refused, with the crossing point in the message.
+///
+/// `polygon_from_bank_pair` itself stays the frozen-Python behaviour until the port closes (#37):
+/// its parity cases hold a reversed pair and a crossing pair.
+pub fn bank_pair_polygon(left: &[Pt], right: &[Pt]) -> Result<BankPairPolygon, String> {
+    if left.len() < 2 || right.len() < 2 {
+        return Err("each bank needs at least two points".into());
+    }
+    let oriented = orient_like(left, right);
+    let reoriented = oriented.as_slice() != right;
+    if let Some(p) = bank_crossing(left, &oriented) {
+        return Err(format!(
+            "the banks cross at ({:.3}, {:.3}); check the bank lines",
+            p[0], p[1]
+        ));
+    }
+    Ok(BankPairPolygon {
+        polygons: polygon_from_bank_pair(left, &oriented)?,
+        reoriented,
+    })
 }
 
 /// `subtract_polygons`: channel minus river (repaired by `buffer(0)`), slivers under `min_area`
@@ -216,4 +265,59 @@ pub fn channel_footprint(
         excavation,
         diagnostics,
     })
+}
+
+#[cfg(test)]
+mod bank_pair_tests {
+    //! Label: sourced - hand calculation (a 500 m by 40 m strip, crossing diagonals)
+    use super::*;
+
+    const LEFT: [Pt; 3] = [[0.0, 20.0], [250.0, 25.0], [500.0, 20.0]];
+    const RIGHT: [Pt; 3] = [[0.0, -20.0], [250.0, -15.0], [500.0, -20.0]];
+
+    #[test]
+    fn a_reversed_second_bank_gives_the_same_polygon_and_says_so() {
+        let ordered = bank_pair_polygon(&LEFT, &RIGHT).unwrap();
+        let mut rev = RIGHT.to_vec();
+        rev.reverse();
+        let reversed = bank_pair_polygon(&LEFT, &rev).unwrap();
+        assert!(!ordered.reoriented);
+        assert!(reversed.reoriented);
+        assert_eq!(ordered.polygons, reversed.polygons);
+        let area: f64 = reversed.polygons.iter().map(polygon_area).sum();
+        assert!((area - 500.0 * 40.0).abs() < 1e-6, "{area}");
+        // Without the orientation the reversed pair is a bow-tie that repairs to a part.
+        let bow: f64 = polygon_from_bank_pair(&LEFT, &rev)
+            .unwrap()
+            .iter()
+            .map(polygon_area)
+            .sum();
+        assert!(bow < area / 2.0 + 1.0);
+    }
+
+    #[test]
+    fn a_correctly_ordered_pair_gives_todays_polygon() {
+        for (l, r) in [
+            (LEFT.to_vec(), RIGHT.to_vec()),
+            (
+                vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0]],
+                vec![[0.0, 0.0], [0.0, 10.0], [10.0, 10.0]],
+            ),
+        ] {
+            let new = bank_pair_polygon(&l, &r).unwrap();
+            assert!(!new.reoriented);
+            assert_eq!(new.polygons, polygon_from_bank_pair(&l, &r).unwrap());
+        }
+    }
+
+    #[test]
+    fn banks_that_cross_are_refused_naming_the_crossing_point() {
+        let e = bank_pair_polygon(&[[0.0, 0.0], [100.0, 100.0]], &[[0.0, 100.0], [100.0, 0.0]])
+            .unwrap_err();
+        assert!(e.contains("(50.000, 50.000)"), "{e}");
+        // A bank that dips across the other one.
+        let e =
+            bank_pair_polygon(&LEFT, &[[0.0, -20.0], [250.0, 30.0], [500.0, -20.0]]).unwrap_err();
+        assert!(e.contains("cross"), "{e}");
+    }
 }
