@@ -113,7 +113,8 @@ fn the_rolling_circle_option_equals_rolling_circle_called_directly() {
 
 #[test]
 fn an_option_that_fails_r_min_carries_radius_ok_false_in_the_document() {
-    // A zigzag the circle cannot straighten.
+    // A zigzag the circle cannot straighten. Without water: since #126 the water-aware ladder's
+    // fairway fit (a corridor solve) straightens it.
     let zig: Vec<Pt> = (0..=60)
         .map(|i| {
             [
@@ -123,8 +124,12 @@ fn an_option_that_fails_r_min_carries_radius_ok_false_in_the_document() {
         })
         .collect();
     let mut s = design(&zig, "CEMT_Va");
-    s.align(AlignMethod::RollingCircle, &Value::Null, None)
-        .unwrap();
+    s.align(
+        AlignMethod::RollingCircle,
+        &json!({"use_water": false}),
+        None,
+    )
+    .unwrap();
     let c = &option(&s, "rolling_circle")["checks"];
     assert_eq!(c["radius_ok"], false);
     assert!(c["measured_min_radius_m"].as_f64().unwrap() < 0.98 * c["r_min_m"].as_f64().unwrap());
