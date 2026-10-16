@@ -344,7 +344,7 @@ dependencies = [
 
 [[package]]
 name = "cd-app"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cd-format",
  "serde_json",
@@ -355,7 +355,7 @@ dependencies = [
 
 [[package]]
 name = "cd-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cd-core",
  "cd-format",
@@ -367,7 +367,7 @@ dependencies = [
 
 [[package]]
 name = "cd-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libm",
  "ovcd-core",
@@ -375,7 +375,7 @@ dependencies = [
 
 [[package]]
 name = "cd-format"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cd-core",
  "libm",
@@ -388,7 +388,7 @@ dependencies = [
 
 [[package]]
 name = "cd-py"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cd-format",
  "pyo3",
@@ -4846,7 +4846,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde_json",
 ]

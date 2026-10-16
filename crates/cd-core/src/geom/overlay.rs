@@ -165,7 +165,26 @@ fn oriented_edges_with_origins(polys: &[Polygon]) -> (Vec<[Pt; 2]>, Vec<Pt>) {
 
 /// Split every edge of `a` at the points where it meets an edge of `b`, and the other way round.
 #[allow(clippy::type_complexity)]
-fn node(a: &[[Pt; 2]], b: &[[Pt; 2]]) -> (Vec<([Pt; 2], usize)>, Vec<([Pt; 2], usize)>) {
+fn node(
+    a: &[[Pt; 2]],
+    b: &[[Pt; 2]],
+    snap: Option<f64>,
+) -> (Vec<([Pt; 2], usize)>, Vec<([Pt; 2], usize)>) {
+    // Snapped: the vertices of both inputs first merge into clusters `tol` wide, and every edge is
+    // redrawn between the cluster points. An edge that shrinks to a point stays in the list (so
+    // edge numbers do not move) and splits into nothing.
+    let mut reps = Snap::new(snap.unwrap_or(0.0));
+    let (a, b): (Vec<[Pt; 2]>, Vec<[Pt; 2]>) = if snap.is_some() {
+        let redraw = |es: &[[Pt; 2]], reps: &mut Snap| -> Vec<[Pt; 2]> {
+            es.iter().map(|e| [reps.add(e[0]), reps.add(e[1])]).collect()
+        };
+        let a2 = redraw(a, &mut reps);
+        let b2 = redraw(b, &mut reps);
+        (a2, b2)
+    } else {
+        (a.to_vec(), b.to_vec())
+    };
+    let (a, b) = (&a[..], &b[..]);
     let mut cuts_a: Vec<Vec<Pt>> = vec![Vec::new(); a.len()];
     let mut cuts_b: Vec<Vec<Pt>> = vec![Vec::new(); b.len()];
     let minx = |e: &[Pt; 2]| e[0][0].min(e[1][0]);
@@ -193,7 +212,101 @@ fn node(a: &[[Pt; 2]], b: &[[Pt; 2]]) -> (Vec<([Pt; 2], usize)>, Vec<([Pt; 2], u
             }
         }
     }
+    if let Some(tol) = snap {
+        snap_vertices(a, b, tol, &mut cuts_b);
+        snap_vertices(b, a, tol, &mut cuts_a);
+        // Each cut point joins the vertex cluster it falls in, or starts one: both edges that
+        // share a node must name it by the same coordinates.
+        for c in cuts_a.iter_mut().chain(cuts_b.iter_mut()) {
+            for p in c.iter_mut() {
+                *p = reps.add(*p);
+            }
+        }
+    }
     (split_ranked(a, cuts_a), split_ranked(b, cuts_b))
+}
+
+/// Cluster points: each new point is merged into the first earlier point within `tol`, or becomes
+/// a cluster point itself. Deterministic: it depends on the order points arrive in.
+struct Snap {
+    tol: f64,
+    cells: BTreeMap<(i64, i64), Vec<Pt>>,
+    seen: BTreeMap<Key, Pt>,
+}
+
+impl Snap {
+    fn new(tol: f64) -> Self {
+        Self { tol, cells: BTreeMap::new(), seen: BTreeMap::new() }
+    }
+
+    fn cell(&self, p: Pt) -> (i64, i64) {
+        ((p[0] / self.tol).floor() as i64, (p[1] / self.tol).floor() as i64)
+    }
+
+    fn add(&mut self, p: Pt) -> Pt {
+        if let Some(&q) = self.seen.get(&Key(p)) {
+            return q;
+        }
+        let (cx, cy) = self.cell(p);
+        let mut found: Option<Pt> = None;
+        'search: for dx in -1..=1 {
+            for dy in -1..=1 {
+                if let Some(v) = self.cells.get(&(cx + dx, cy + dy)) {
+                    for &q in v {
+                        if (p[0] - q[0]).abs() <= self.tol && (p[1] - q[1]).abs() <= self.tol {
+                            found = Some(q);
+                            break 'search;
+                        }
+                    }
+                }
+            }
+        }
+        let rep = found.unwrap_or(p);
+        if found.is_none() {
+            self.cells.entry((cx, cy)).or_default().push(p);
+        }
+        self.seen.insert(Key(p), rep);
+        rep
+    }
+}
+
+/// Distance from `p` to the segment `e`.
+fn point_segment_distance(p: Pt, e: &[Pt; 2]) -> f64 {
+    let (dx, dy) = (e[1][0] - e[0][0], e[1][1] - e[0][1]);
+    let len2 = dx * dx + dy * dy;
+    let t = if len2 == 0.0 {
+        0.0
+    } else {
+        (((p[0] - e[0][0]) * dx + (p[1] - e[0][1]) * dy) / len2).clamp(0.0, 1.0)
+    };
+    let (qx, qy) = (e[0][0] + t * dx, e[0][1] + t * dy);
+    ((p[0] - qx).powi(2) + (p[1] - qy).powi(2)).sqrt()
+}
+
+/// Make every vertex of `src` that lies within `tol` of an edge of `dst` (but is not one of its
+/// ends) a node of that edge. Floating-point noding finds a touch only when the orientation test
+/// is exactly zero, so a vertex a hair off an edge is a crossing with no node: the two boundaries
+/// then disagree about which side of each other it is on and the rings do not close. GEOS meets
+/// this with a snapping noder (`OverlayNGRobust`), which this stands in for.
+fn snap_vertices(src: &[[Pt; 2]], dst: &[[Pt; 2]], tol: f64, cuts_dst: &mut [Vec<Pt>]) {
+    let minx = |e: &[Pt; 2]| e[0][0].min(e[1][0]);
+    let maxx = |e: &[Pt; 2]| e[0][0].max(e[1][0]);
+    let mut order: Vec<usize> = (0..dst.len()).collect();
+    order.sort_by(|&i, &j| minx(&dst[i]).total_cmp(&minx(&dst[j])));
+    let mins: Vec<f64> = order.iter().map(|&j| minx(&dst[j])).collect();
+    for e in src {
+        let p = e[0];
+        let hi = mins.partition_point(|&m| m <= p[0] + tol);
+        for &j in &order[..hi] {
+            let d = &dst[j];
+            if maxx(d) < p[0] - tol || p == d[0] || p == d[1] {
+                continue;
+            }
+            if point_segment_distance(p, d) <= tol {
+                cuts_dst[j].push(p);
+            }
+        }
+    }
 }
 
 pub(crate) fn split(edges: &[[Pt; 2]], cuts: Vec<Vec<Pt>>) -> Vec<[Pt; 2]> {
@@ -256,7 +369,7 @@ pub fn overlay_geometry(a: &[Polygon], b: &[Polygon], op: Op) -> Geometry {
     if op != Op::Intersection {
         return Geometry::Empty("Polygon");
     }
-    let (ea, eb) = node(&oriented_edges(a), &oriented_edges(b));
+    let (ea, eb) = node(&oriented_edges(a), &oriented_edges(b), None);
     let ea: Vec<[Pt; 2]> = ea.into_iter().map(|(e, _)| e).collect();
     let eb: Vec<[Pt; 2]> = eb.into_iter().map(|(e, _)| e).collect();
     let rev: BTreeMap<(Key, Key), ()> = eb.iter().map(|e| ((Key(e[1]), Key(e[0])), ())).collect();
@@ -287,9 +400,34 @@ pub fn overlay_geometry(a: &[Polygon], b: &[Polygon], op: Op) -> Geometry {
 
 /// The polygon part of `overlay_geometry`: a list of polygons (empty when there is no area).
 pub fn overlay(a: &[Polygon], b: &[Polygon], op: Op) -> Vec<Polygon> {
+    // As GEOS `OverlayNGRobust`: plain floating-point noding first; if its edges do not close
+    // into rings, node again with vertices snapped onto the edges they nearly touch, at a
+    // tolerance of 1e-12 of the coordinates' size, then a thousand times that.
+    let magnitude = a
+        .iter()
+        .chain(b)
+        .flat_map(|p| p.exterior.iter().chain(p.holes.iter().flatten()))
+        .fold(1.0_f64, |m, q| m.max(q[0].abs()).max(q[1].abs()));
+    for snap in [None, Some(magnitude * 1e-12), Some(magnitude * 1e-9)] {
+        if let Some(polys) = overlay_with(a, b, op, snap, false) {
+            return polys;
+        }
+    }
+    // Last resort: link what closes and drop the loose edges, rather than fail.
+    overlay_with(a, b, op, Some(magnitude * 1e-9), true).unwrap_or_default()
+}
+
+/// One try of [`overlay`]: `None` when the kept edges do not close into rings and `lenient` is off.
+fn overlay_with(
+    a: &[Polygon],
+    b: &[Polygon],
+    op: Op,
+    snap: Option<f64>,
+    lenient: bool,
+) -> Option<Vec<Polygon>> {
     let (oa, origin_a) = oriented_edges_with_origins(a);
     let (ob, origin_b) = oriented_edges_with_origins(b);
-    let (ea, eb) = node(&oa, &ob);
+    let (ea, eb) = node(&oa, &ob, snap);
     let set_b: BTreeMap<(Key, Key), ()> = eb
         .iter()
         .map(|(e, _)| ((Key(e[0]), Key(e[1])), ()))
@@ -343,7 +481,7 @@ pub fn overlay(a: &[Polygon], b: &[Polygon], op: Op) -> Vec<Polygon> {
             ranks.push(rank(1, e, *parent, &origin_b));
         }
     }
-    build_polygons_ranked(&result, &ranks)
+    build_polygons_checked(&result, &ranks, lenient)
 }
 
 /// An edge's place in GEOS's overlay edge list (see `overlay`).
@@ -382,7 +520,47 @@ fn compare_dir(o: Pt, a: Pt, b: Pt) -> core::cmp::Ordering {
 /// node, and group them into shells (counter-clockwise) with their holes.
 pub(crate) fn build_polygons(edges: &[[Pt; 2]]) -> Vec<Polygon> {
     let ranks: Vec<Rank> = (0..edges.len()).map(|i| (0, i, 0.0)).collect();
-    build_polygons_ranked(edges, &ranks)
+    build_polygons_checked(edges, &ranks, true).unwrap_or_default()
+}
+
+/// `build_polygons_ranked` on edges that must close: an edge that ends where no kept edge starts
+/// is a loose end. Strict, that is `None`; lenient, loose edges (and those that only lead to
+/// them) are dropped first.
+fn build_polygons_checked(
+    edges: &[[Pt; 2]],
+    ranks: &[Rank],
+    lenient: bool,
+) -> Option<Vec<Polygon>> {
+    let mut keep: Vec<bool> = vec![true; edges.len()];
+    loop {
+        let mut starts: BTreeMap<Key, usize> = BTreeMap::new();
+        for (i, e) in edges.iter().enumerate() {
+            if keep[i] {
+                *starts.entry(Key(e[0])).or_default() += 1;
+            }
+        }
+        let mut changed = false;
+        for (i, e) in edges.iter().enumerate() {
+            if keep[i] && !starts.contains_key(&Key(e[1])) {
+                if !lenient {
+                    return None;
+                }
+                keep[i] = false;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    let (edges, ranks): (Vec<[Pt; 2]>, Vec<Rank>) = edges
+        .iter()
+        .zip(ranks)
+        .zip(&keep)
+        .filter(|&(_, &k)| k)
+        .map(|((e, r), _)| (*e, *r))
+        .unzip();
+    Some(build_polygons_ranked(&edges, &ranks))
 }
 
 /// `build_polygons`, with the polygons in the order of the lowest-ranked edge of each shell: GEOS
@@ -544,5 +722,37 @@ mod tests {
         assert_eq!(locate([10.0, 5.0], &s), Loc::Boundary);
         assert_eq!(locate([0.0, 0.0], &s), Loc::Boundary);
         assert_eq!(locate([11.0, 5.0], &s), Loc::Exterior);
+    }
+
+    #[test]
+    fn vertices_a_hair_off_an_edge_still_close_into_rings() {
+        // Label: property. Found on a real channel footprint: two vertices of B lie 1.4e-14 from
+        // A's end edge (and B's edge between them runs along it), so floating-point noding finds no
+        // touch there and the kept edges did not close. B lies inside A, so A \ B must lose B's
+        // whole area and A & B must be B.
+        let a = Polygon {
+            exterior: vec![
+                [5900.0, 40.0],
+                [5985.122858308741, 13.664210738209482],
+                [6014.877141691259, -13.66421073820999],
+                [5900.0, -40.0],
+                [5900.0, 40.0],
+            ],
+            holes: vec![],
+        };
+        let b = Polygon {
+            exterior: vec![
+                [5985.270156741328, 13.528921522979894],
+                [5975.276074558899, 2.6476946778540116],
+                [6000.0, -1.7845575639194763e-13],
+                [5985.270156741328, 13.528921522979894],
+            ],
+            holes: vec![],
+        };
+        let (a, b) = ([a], [b]);
+        let inter = area(&overlay(&a, &b, Op::Intersection));
+        let diff = area(&overlay(&a, &b, Op::Difference));
+        assert!((inter - area(&b)).abs() < 1e-6, "{inter}");
+        assert!((diff - (area(&a) - area(&b))).abs() < 1e-6, "{diff}");
     }
 }

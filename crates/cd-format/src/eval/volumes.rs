@@ -431,8 +431,16 @@ fn section_volumes(args: &Value) -> Result<Value, EvalError> {
         Ok(sv) => sv,
         Err(e) => return value_error(e),
     };
-    let detail: Vec<Value> = match args.get("detail_stations") {
-        Some(Value::Array(idx)) => idx
+    // `"all"`: the arrays of every station (the Python `CrossSection` carries them).
+    let wanted: Option<Vec<Value>> = match args.get("detail_stations") {
+        Some(Value::Array(idx)) => Some(idx.clone()),
+        Some(Value::String(s)) if s == "all" => {
+            Some((0..sv.stations.len()).map(|i| json!(i)).collect())
+        }
+        _ => None,
+    };
+    let detail: Vec<Value> = match &wanted {
+        Some(idx) => idx
             .iter()
             .map(|i| {
                 let i = i.as_u64().ok_or_else(|| bad("detail index".into()))? as usize;
@@ -449,7 +457,7 @@ fn section_volumes(args: &Value) -> Result<Value, EvalError> {
                 }))
             })
             .collect::<Result<_, EvalError>>()?,
-        _ => Vec::new(),
+        None => Vec::new(),
     };
     let mut by_tag = Map::new();
     for (t, v) in sv.by_tag() {

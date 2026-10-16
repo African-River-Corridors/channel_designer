@@ -18,8 +18,10 @@ Structures are placed as GEOMETRY only. Their design and cost are out of scope.
 """
 from __future__ import annotations
 
+from .. import _rust
+
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable
 
 import numpy as np
 from shapely.geometry import LineString, Point
@@ -50,40 +52,6 @@ class BedProfile:
         return float(self.line.length)
 
 
-def _fill_nan(z: np.ndarray) -> np.ndarray:
-    """Linear-interpolate interior NaNs; edge-fill the ends."""
-    z = z.copy()
-    idx = np.arange(z.size)
-    good = np.isfinite(z)
-    if good.sum() == 0:
-        return np.zeros_like(z)
-    z[~good] = np.interp(idx[~good], idx[good], z[good])
-    return z
-
-
-def _rolling_percentile(z: np.ndarray, win: int, q: float) -> np.ndarray:
-    """Centred rolling percentile (NaN-aware). Low ``q`` tracks the bottom."""
-    if win < 1:
-        return z.copy()
-    half = win // 2
-    out = np.empty_like(z)
-    for i in range(z.size):
-        seg = z[max(0, i - half): min(z.size, i + half + 1)]
-        seg = seg[np.isfinite(seg)]
-        out[i] = np.percentile(seg, q) if seg.size else np.nan
-    return out
-
-
-def _rolling_mean(z: np.ndarray, win: int) -> np.ndarray:
-    if win < 1:
-        return z.copy()
-    half = win // 2
-    out = np.empty_like(z)
-    for i in range(z.size):
-        out[i] = np.nanmean(z[max(0, i - half): min(z.size, i + half + 1)])
-    return out
-
-
 def overall_bottom_slope(z_raw: np.ndarray, spacing_m: float,
                          percentile: float = 20.0,
                          perc_window_m: float = 2500.0,
@@ -95,11 +63,8 @@ def overall_bottom_slope(z_raw: np.ndarray, spacing_m: float,
     3) cumulative maximum       -> enforce non-decreasing (a backwater can only
                                    pond water upstream, never downhill)
     """
-    z = _fill_nan(z_raw)
-    base = _rolling_percentile(z, max(1, int(round(perc_window_m / spacing_m))), percentile)
-    base = _fill_nan(base)
-    smooth = _rolling_mean(base, max(1, int(round(smooth_window_m / spacing_m))))
-    return np.maximum.accumulate(smooth)
+    return _rust.call("pools", "overall_bottom_slope", np.ndarray, z_raw=z_raw, spacing_m=spacing_m,
+                      percentile=percentile, perc_window_m=perc_window_m, smooth_window_m=smooth_window_m)
 
 
 def sample_bed_profile(
@@ -115,27 +80,35 @@ def sample_bed_profile(
 
     For a raster DEM pass :class:`channel_designer.volumes.raster.RasterTerrain`.
     """
-    line = centerline
-    length = line.length
-    s = np.arange(0.0, length + spacing_m, spacing_m)
-    s[-1] = min(s[-1], length)
-    pts = [line.interpolate(float(d)) for d in s]
-    z = np.asarray(terrain(np.array([p.x for p in pts]), np.array([p.y for p in pts])),
-                   dtype="float64")
-    z = np.where(np.isfinite(z), z, np.nan)
+    c = _rust.Call()
+    r = _rust.call("pools", "sample_bed_profile", _call=c, centerline=centerline, terrain=c.terrain(terrain),
+                   spacing_m=spacing_m, slope_percentile=slope_percentile,
+                   slope_perc_window_m=slope_perc_window_m, slope_smooth_window_m=slope_smooth_window_m)
+    return _decode_profile(r)
 
-    head = np.nanmean(z[: max(3, z.size // 10)])
-    tail = np.nanmean(z[-max(3, z.size // 10):])
-    if np.isfinite(head) and np.isfinite(tail) and head > tail:
-        line = LineString(list(line.coords)[::-1])
-        z = z[::-1].copy()
-        pts = pts[::-1]
 
-    z_overall = overall_bottom_slope(
-        z, spacing_m, percentile=slope_percentile,
-        perc_window_m=slope_perc_window_m, smooth_window_m=slope_smooth_window_m,
-    )
-    return BedProfile(s=s, z_raw=z, z_overall=z_overall, points=pts, line=line)
+def _profile_arg(profile: BedProfile) -> dict:
+    """A :class:`BedProfile` as the core reads it."""
+    return {"s": profile.s, "z_raw": profile.z_raw, "z_overall": profile.z_overall,
+            "points": [[p.x, p.y] for p in profile.points], "line": profile.line}
+
+
+def _decode_profile(r: dict) -> BedProfile:
+    """A :class:`BedProfile` from the core's answer."""
+    return BedProfile(s=np.asarray(_rust.plain(r["s"]), dtype=float),
+                      z_raw=np.asarray(_rust.plain(r["z_raw"]), dtype=float),
+                      z_overall=np.asarray(_rust.plain(r["z_overall"]), dtype=float),
+                      points=[Point(p) for p in _rust.plain(r["points"])], line=_rust.plain(r["line"]))
+
+
+def _decode_weirs(rows: list) -> list:
+    out = []
+    for w in rows:
+        w = _rust.plain(w)
+        w.pop("pool_length_m", None)
+        w["point"] = Point(w["point"])
+        out.append(Weir(**w))
+    return out
 
 
 @dataclass
@@ -155,24 +128,6 @@ class Weir:
         return self.pool_end_m - self.pool_start_m
 
 
-def _first_crossing(s: np.ndarray, z: np.ndarray, i0: int, level: float):
-    """First chainage upstream of index ``i0`` where bed reaches ``level``.
-
-    Returns (chainage, point_index) using linear interpolation between samples,
-    or None if the bed never reaches ``level`` before the upstream end.
-    """
-    ahead = np.where(z[i0 + 1:] >= level)[0]
-    if ahead.size == 0:
-        return None
-    j = i0 + 1 + int(ahead[0])
-    z0, z1 = z[j - 1], z[j]
-    if z1 == z0:
-        return float(s[j]), j
-    frac = (level - z0) / (z1 - z0)
-    chainage = float(s[j - 1] + frac * (s[j] - s[j - 1]))
-    return chainage, j
-
-
 def place_weirs(profile: BedProfile, weir_height_m: float, implantation_depth_m: float,
                 start_chainage_m: float | None = None,
                 start_elevation_m: float = 0.0,
@@ -185,58 +140,10 @@ def place_weirs(profile: BedProfile, weir_height_m: float, implantation_depth_m:
     pool's water level and founds d below it. This reproduces the confirmed rule
     (lift = H - d) and ignores the unrealistic terrain spikes.
     """
-    s, z = profile.s, profile.z_overall
-    H, d = weir_height_m, implantation_depth_m
-    lift = H - d
-    if lift <= 0:
-        raise ValueError(f"pool lift must be > 0 (H={H}, d={d} -> lift={lift})")
-
-    if start_chainage_m is None:
-        # First chainage (upstream) where the overall bottom slope reaches the
-        # start elevation -> weir #1.
-        reached = np.where(z >= start_elevation_m)[0]
-        i0 = int(reached[0]) if reached.size else 0
-    else:
-        i0 = min(max(int(np.searchsorted(s, start_chainage_m)), 0), s.size - 1)
-    bed_start = float(z[i0])
-
-    # Weir #1: founded d below the starting bed.
-    weirs: list[Weir] = [Weir(
-        index=1, chainage_m=float(s[i0]), point=profile.points[i0],
-        bed_m=bed_start, foundation_m=bed_start - d, crest_m=bed_start + lift,
-        pool_water_level_m=bed_start + lift,
-        pool_start_m=float(s[i0]), pool_end_m=float(s[-1]),
-    )]
-
-    target = bed_start + lift   # WL_1: bed must rise to this for the next weir
-    cur_i = i0
-    idx = 2
-    while True:
-        hit = _first_crossing(s, z, cur_i, target)
-        if hit is None:
-            break                       # last pool runs to the upstream end
-        chainage, j = hit
-        # Upstream cutoff: don't install weirs where the bed has risen past the
-        # ceiling (river is too high for navigation works above this).
-        if max_weir_elevation_m is not None and target >= max_weir_elevation_m:
-            break
-        foundation = target - d         # founded d below the pool it dams
-        crest = target + lift           # = WL of the pool upstream of this weir
-        weirs.append(Weir(
-            index=idx, chainage_m=chainage,
-            point=profile.line.interpolate(chainage),
-            bed_m=target, foundation_m=foundation, crest_m=crest,
-            pool_water_level_m=crest,
-            pool_start_m=chainage, pool_end_m=float(s[-1]),
-        ))
-        target = crest
-        cur_i = j
-        idx += 1
-
-    # Stitch pool_end to the next weir's chainage.
-    for a, b in zip(weirs, weirs[1:]):
-        a.pool_end_m = b.pool_start_m
-    return weirs
+    place = {"weir_height_m": weir_height_m, "implantation_depth_m": implantation_depth_m,
+             "start_chainage_m": start_chainage_m, "start_elevation_m": start_elevation_m,
+             "max_weir_elevation_m": max_weir_elevation_m}
+    return _decode_weirs(_rust.call("pools", "place_weirs", profile=_profile_arg(profile), place=place))
 
 
 def place_weirs_explicit(profile: BedProfile, cascade: list[dict]) -> list[Weir]:
@@ -252,23 +159,8 @@ def place_weirs_explicit(profile: BedProfile, cascade: list[dict]) -> list[Weir]
     downstream water level (e.g. sea level = 0) — passed to the volume functions as
     ``downstream_water_level_m``, not stored on the weirs.
     """
-    s, z = profile.s, profile.z_overall
-    items = sorted(cascade, key=lambda w: float(w["chainage_m"]))
-    weirs: list[Weir] = []
-    for i, w in enumerate(items, start=1):
-        ch = float(w["chainage_m"])
-        mwl = float(w["pool_mwl_m"])
-        H = float(w.get("structure_height_m") or 0.0)
-        j = int(np.clip(np.searchsorted(s, ch), 0, s.size - 1))
-        weirs.append(Weir(
-            index=i, chainage_m=ch, point=profile.line.interpolate(ch),
-            bed_m=float(z[j]), foundation_m=mwl - H, crest_m=mwl,
-            pool_water_level_m=mwl,
-            pool_start_m=ch, pool_end_m=float(s[-1]),
-        ))
-    for a, b in zip(weirs, weirs[1:]):
-        a.pool_end_m = b.pool_start_m
-    return weirs
+    return _decode_weirs(_rust.call("pools", "place_weirs", profile=_profile_arg(profile),
+                                    place={"kind": "explicit", "cascade": [dict(w) for w in cascade]}))
 
 
 def water_level_at(weirs: list, s: float, downstream_water_level_m: float = 0.0) -> float:
