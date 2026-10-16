@@ -159,7 +159,7 @@ describe("Channel Designer app smoke test", () => {
   });
 
   beforeEach(() => {
-    for (const f of ["open.txt", "save.txt", "discard.txt", "load.txt"]) forget(f);
+    for (const f of ["open.txt", "save.txt", "discard.txt", "load.txt", "export.txt"]) forget(f);
   });
 
   it("shows the screening label on its status line from the start", async () => {
@@ -371,5 +371,48 @@ describe("Channel Designer app smoke test", () => {
     const { values, current } = await vesselChoices();
     await chooseVessel(values.find((v) => v !== current && v.startsWith("CEMT")));
     await until("the sections to be withdrawn", async () => (await (await browser.$("[data-testid=section-note]")).isExisting()), 30000);
+  });
+  it("fills the option table, saves and reopens to the same table, and exports with the screening label", async () => {
+    await open(designWithDem("full-"), "with-dem.cdesign");
+    await formShowsExample();
+    await (await browser.$("[data-testid=run-alignment]")).click();
+    await until("alignment to be fresh", async () => (await text("status-alignment")) === "fresh", 60000);
+    await (await browser.$("[data-testid=water-level]")).setValue("38");
+    await (await browser.$("[data-testid=set-water]")).click();
+    await (await browser.$("[data-testid=run-volumes]")).click();
+    await until("volumes to be fresh", async () => (await text("status-volumes")) === "fresh", 120000);
+    const tableRows = () =>
+      browser.execute(() => [...document.querySelectorAll("[data-testid=option-row]")].map((r) => r.textContent.replace(/\s+/g, " ").trim()));
+    await until("the table to fill", async () => {
+      const rows = await tableRows();
+      return rows.length > 0 && rows.every((r) => !r.includes("—"));
+    }, 30000);
+    const before = await tableRows();
+
+    // Save, open something else, reopen: the same table.
+    const saved = path.join(WORK, "full-saved.cdesign");
+    answer("save.txt", saved);
+    await click("Save as");
+    await until("the file to be saved", async () => !(await fileLabel()).includes("(unsaved)"));
+    await open(EXAMPLE, "synthetic-river.cdesign");
+    await open(saved, "full-saved.cdesign");
+    await until("the table to return", async () => (await tableRows()).length === before.length, 30000);
+    assert.deepEqual(await tableRows(), before);
+    assert.equal(await text("status-volumes"), "fresh");
+
+    // Exports go through the session and say what they are.
+    const csv = path.join(WORK, "full.csv");
+    answer("export.txt", csv);
+    await click("Export CSV");
+    await until("the CSV to be written", async () => fs.existsSync(csv));
+    assert.equal(fs.readFileSync(csv, "utf8").split("\n")[0], "# Screening \u2014 not for construction");
+    const gj = path.join(WORK, "full.geojson");
+    answer("export.txt", gj);
+    await click("Export GeoJSON");
+    await until("the GeoJSON to be written", async () => fs.existsSync(gj));
+    const fc = JSON.parse(fs.readFileSync(gj, "utf8"));
+    assert.equal(fc.screening, "Screening \u2014 not for construction");
+    assert.ok(fc.features.length >= 1);
+    assert.ok(fc.features.every((f) => f.properties.screening === "Screening \u2014 not for construction" && Array.isArray(f.properties.failed_checks)));
   });
 });

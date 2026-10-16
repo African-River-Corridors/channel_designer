@@ -414,6 +414,21 @@ impl AppState {
         }
     }
 
+    /// The design line options as GeoJSON in longitude and latitude, from the session: the screening
+    /// label, the checks and any failed check ride in the file. The same text as `cdesign export
+    /// --geojson --wgs84` on the saved file.
+    pub fn export_geojson(&self) -> Result<String, String> {
+        self.session
+            .export_geojson(true, self.dem_bytes.as_deref().map(|b| b.as_slice()))
+            .map_err(message)
+    }
+
+    /// The quantity table as CSV, from the session. The same text as `cdesign export --csv`.
+    pub fn export_csv(&self) -> String {
+        self.session
+            .export_csv(self.dem_bytes.as_deref().map(|b| b.as_slice()))
+    }
+
     /// The `.cdesign` text to write.
     pub fn save_text(&self) -> String {
         self.session.to_text()
@@ -870,6 +885,47 @@ mod tests {
                 .unwrap_err()
                 .contains("stale")
         );
+    }
+
+    #[test]
+    fn the_app_s_exports_equal_cdesign_export_on_the_saved_file() {
+        let (mut s, dir) = ready();
+        run(&mut s, "alignment", Some("rolling_circle")).unwrap();
+        run(&mut s, "volumes", None).unwrap();
+        let doc = dir.path().join("river.cdesign");
+        std::fs::write(&doc, s.save_text()).unwrap();
+        let (gj, csv) = (dir.path().join("o.geojson"), dir.path().join("o.csv"));
+        let d = doc.to_string_lossy().into_owned();
+        cd_cli::commands::export(&d, true, false, true, Some(&gj.to_string_lossy()))
+            .unwrap_or_else(|f| panic!("{}", f.message));
+        cd_cli::commands::export(&d, false, true, false, Some(&csv.to_string_lossy()))
+            .unwrap_or_else(|f| panic!("{}", f.message));
+        assert_eq!(
+            s.export_geojson().unwrap(),
+            std::fs::read_to_string(gj).unwrap()
+        );
+        assert_eq!(s.export_csv(), std::fs::read_to_string(csv).unwrap());
+        // Both carry the label, and a table that has volumes carries them.
+        assert!(
+            s.export_csv()
+                .starts_with("# Screening \u{2014} not for construction\n")
+        );
+        assert!(
+            s.export_geojson()
+                .unwrap()
+                .contains("\"screening\": \"Screening \u{2014} not for construction\"")
+        );
+    }
+
+    #[test]
+    fn an_export_with_no_options_says_so_and_the_csv_is_just_the_label_and_header() {
+        let s = AppState::new_design("Study", "2026-10-16");
+        assert!(
+            s.export_geojson()
+                .unwrap_err()
+                .contains("run the alignment stage")
+        );
+        assert_eq!(s.export_csv().lines().count(), 2);
     }
 
     /// A temporary folder that goes away with the test.

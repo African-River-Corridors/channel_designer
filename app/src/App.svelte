@@ -79,6 +79,13 @@
     await fileAction(() => api.setWater(level, fall));
   }
 
+  async function exportAs(kind: "geojson" | "csv") {
+    await flush();
+    notice = null;
+    const path = await guard(() => api.exportFile(kind));
+    if (path) notice = `Exported to ${path}. The file says "Screening — not for construction".`;
+  }
+
   async function fetchDem() {
     await fileAction(api.fetchDem);
   }
@@ -313,6 +320,8 @@
     <button onclick={() => openDoc(api.openFile)}>Open</button>
     <button onclick={() => fileAction(api.save)}>Save</button>
     <button onclick={() => fileAction(api.saveAs)}>Save as</button>
+    <button disabled={!(table?.rows.length)} onclick={() => exportAs("geojson")} title="Design line options as GeoJSON (WGS84), with their checks">Export GeoJSON</button>
+    <button disabled={!(table?.rows.length)} onclick={() => exportAs("csv")} title="The quantity table as CSV">Export CSV</button>
     <button disabled={!anyStale || busy !== null} onclick={runStale} title="Rerun every stale stage, in order">Run stale</button>
     <span class="grow"></span>
     {#if snap}

@@ -205,3 +205,6 @@ export interface CrossSection {
 export const longSection = (option: string) => invoke<LongSection>("long_section", { option });
 export const crossSection = (option: string, chainage: number) => invoke<CrossSection>("cross_section", { option, chainage });
 export const stationNear = (option: string, lon: number, lat: number) => invoke<number>("station_near", { option, lon, lat });
+
+/** Export through the session to a file the user picks. Returns the path, or null when they cancel. Rejects with the reason (for example: no options yet). */
+export const exportFile = (kind: "geojson" | "csv") => invoke<string | null>("export_file", { kind });
