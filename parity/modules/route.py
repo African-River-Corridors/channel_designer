@@ -29,6 +29,13 @@ def _grid_obj(rt, d: dict):
 
 
 def _grade(g):
+    """A design grade: a number, or `{"kind": "water_level_minus", "depth": d, "params": {...}}`, the
+    callable `lambda s: river.water_level(s) - d` of the quickstart."""
+    if isinstance(g, dict):
+        assert g["kind"] == "water_level_minus", g
+        river = frozen("synthetic").synthetic_river(**g.get("params", {}))
+        depth = g["depth"]
+        return lambda s: river.water_level(s) - depth
     return g
 
 
@@ -38,7 +45,7 @@ def adapter(fn: str, args: dict):
     if fn == "build_cost_grid":
         kw = {k: v for k, v in args.items() if k not in ("line", "terrain", "river_polygon", "grade")}
         g = rt.build_cost_grid(args["line"], terrain_from(args["terrain"]), args["river_polygon"],
-                               args["grade"], **kw)
+                               _grade(args["grade"]), **kw)
         return g
     if fn == "radii":
         return rt.radii(arr("pts"))
@@ -76,7 +83,7 @@ def adapter(fn: str, args: dict):
             kw["corridor_sweep"] = tuple(kw["corridor_sweep"])
         grid = _grid_obj(rt, args["grid"]) if args.get("grid") else None
         return rt.optimise_route(args["line"], terrain_from(args["terrain"]), args["river_polygon"],
-                                 args["grade"], grid=grid, **kw)
+                                 _grade(args["grade"]), grid=grid, **kw)
     raise KeyError(f"route has no parity function {fn!r}")
 
 
@@ -320,6 +327,17 @@ def cases():
         c(f"check_chord_{bad}_refused", 3, "optimise_route", dict(
             line=sl, terrain=HILL, river_polygon=sriver, grade=0.0, bottom_width=30.0, depth=3.0, side_slope=3.0,
             r_min=600.0, corridor_sweep=[40.0], station_step=200.0, offset_step=20.0, check_chord_m=bad))
+    # --- the quickstart reach (examples/quickstart.py, step 4): the rolled line, a callable grade ---
+    rules = frozen("rules")
+    shape = rules.channel_shape("PIANC-B", "CEMT_IV", draught_m=2.5)
+    qs_river = frozen("synthetic").synthetic_river()
+    rolled = frozen("alignment.rolling_circle").rolling_circle(qs_river.centreline, shape.min_bend_radius_m, step=10.0)
+    out.append(_case("optimise_route/quickstart_reach", 1, "optimise_route", dict(
+        line=rline(rolled.centreline.coords), terrain={"kind": "synthetic_river"}, river_polygon=synth()["polygon"],
+        grade={"kind": "water_level_minus", "depth": shape.design_depth_m},
+        bottom_width=shape.bottom_width_straight_m, depth=shape.design_depth_m, side_slope=3.0,
+        r_min=shape.min_bend_radius_m, corridor_sweep=[40.0, 80.0, 120.0]),
+        "the quickstart reach with its callable grade (ticket 29): the real call of examples/quickstart.py"))
     # --- sweep ---
     rng = Rng(23015)
     for i in range(10):

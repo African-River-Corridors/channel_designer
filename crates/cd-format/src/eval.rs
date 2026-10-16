@@ -13,6 +13,7 @@ mod cascade;
 mod geometry;
 mod lattice;
 mod river;
+mod route;
 mod terrain;
 mod volumes;
 
@@ -88,6 +89,7 @@ pub fn eval(entry_point: &str, input: &Value) -> Result<Value, EvalError> {
         "radius_check" => alignment::radius_check(function, args),
         "loops" => alignment::loops(function, args),
         "rolling_circle" => alignment::rolling_circle(function, args),
+        "route" => route::route(function, args),
         "cascade" => cascade::cascade(function, args),
         "lattice" => lattice::lattice(function, args),
         "sections" => volumes::sections(function, args),
@@ -112,6 +114,11 @@ pub(crate) fn ok(value: Value) -> Result<Value, EvalError> {
 /// A Python `ValueError`, as the frozen Python driver records it.
 fn value_error(message: String) -> Result<Value, EvalError> {
     Ok(json!({ "error": { "type": "ValueError", "message": message } }))
+}
+
+/// A refusal the Python raised, as the frozen driver records it.
+pub(crate) fn value_error_of(e: cd_core::alignment::PyError) -> Result<Value, EvalError> {
+    Ok(json!({ "error": { "type": e.kind, "message": e.message } }))
 }
 
 pub(crate) fn bad(msg: String) -> EvalError {

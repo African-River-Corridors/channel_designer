@@ -8,6 +8,7 @@ pub mod loops;
 pub mod meanders;
 pub mod radius_check;
 pub mod rolling_circle;
+pub mod route;
 pub mod widths;
 
 /// A refusal the Python raises: its exception type and its message, as the frozen driver records
@@ -23,6 +24,13 @@ impl PyError {
     pub fn value(message: impl Into<String>) -> Self {
         PyError {
             kind: "ValueError",
+            message: message.into(),
+        }
+    }
+
+    pub fn runtime(message: impl Into<String>) -> Self {
+        PyError {
+            kind: "RuntimeError",
             message: message.into(),
         }
     }
