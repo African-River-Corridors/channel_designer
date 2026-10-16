@@ -48,7 +48,8 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Import bank lines, a river centreline or a river polygon from GeoJSON (WGS84 or WGS84 / UTM).
+    /// Import bank lines, a river centreline or a river polygon from GeoJSON or a GeoPackage (WGS84 or
+    /// WGS84 / UTM). Name a GeoPackage layer as FILE#LAYER.
     Import {
         /// The channel design. `-` is stdin.
         doc: String,
