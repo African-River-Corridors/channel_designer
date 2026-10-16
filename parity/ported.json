@@ -1,5 +1,10 @@
 [
   "cut_model",
+  "rulesets",
+  "methods",
+  "design",
+  "simple",
+  "width_profile",
   "geometry",
   "synthetic"
 ]

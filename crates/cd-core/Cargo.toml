@@ -7,6 +7,9 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
-# Only libm (spec 0001): every transcendental goes through it, so results are identical on every platform.
+# libm (spec 0001): every transcendental goes through it, so results are identical on every platform.
+# ovcd-core (ADR 0001): vessel classes and the `Check` type, pinned to a release TAG, never a branch.
+# The Python reference pins the same tag (pyproject.toml, vessel_designer @ v0.2.2).
 [dependencies]
 libm = "0.2"
+ovcd-core = { git = "https://github.com/African-River-Corridors/open-vessel-concept-drawings", tag = "v0.2.2" }

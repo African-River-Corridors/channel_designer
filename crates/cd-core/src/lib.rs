@@ -4,6 +4,7 @@
 pub mod cut_model;
 pub mod geom;
 pub mod pyrepr;
+pub mod rules;
 pub mod synthetic;
 
 /// Python's `min(a, b)`: `b` only if `b < a`. Differs from `f64::min` when a value is NaN.
