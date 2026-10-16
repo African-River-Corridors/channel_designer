@@ -1,6 +1,6 @@
 {
   "format_version": 1,
-  "engine_version": "0.1.0",
+  "engine_version": "0.2.0",
   "project": {
     "title": "Synthetic river",
     "created": "2026-10-16",
@@ -14287,7 +14287,7 @@
         "warnings": []
       },
       "depends_on": "1e43ac025dc366e61eb4a864a8d35d6ba255ee8675c8e913f665a8e196399684",
-      "engine_version": "0.1.0"
+      "engine_version": "0.2.0"
     },
     "alignment": {
       "settings": null,

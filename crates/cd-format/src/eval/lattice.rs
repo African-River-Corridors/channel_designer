@@ -154,6 +154,41 @@ fn config_json(c: &LatticeConfig) -> Value {
 }
 
 fn grid_of(g: &Value) -> Result<Result<TerrainGrid, String>, EvalError> {
+    // A grid the host already has (`TerrainGrid` fields): used as it is.
+    if g.get("ground").is_some() {
+        let rows = |name: &str| -> Result<Vec<Vec<Value>>, EvalError> {
+            list(g, name)?
+                .iter()
+                .map(|r| {
+                    r.as_array()
+                        .cloned()
+                        .ok_or_else(|| bad(format!("`{name}` must be a 2-D list")))
+                })
+                .collect()
+        };
+        let ground = rows("ground")?
+            .iter()
+            .map(|r| r.iter().map(|v| read_float(v, "ground")).collect())
+            .collect::<Result<Vec<Vec<f64>>, EvalError>>()?;
+        let mask = |name: &str| -> Result<Vec<Vec<bool>>, EvalError> {
+            rows(name)?
+                .iter()
+                .map(|r| {
+                    r.iter()
+                        .map(|v| v.as_bool().ok_or_else(|| bad(format!("`{name}` is true or false"))))
+                        .collect()
+                })
+                .collect()
+        };
+        return Ok(Ok(TerrainGrid {
+            ground,
+            wet: mask("wet")?,
+            valid: mask("valid")?,
+            x0: f64_arg(g, "x0")?,
+            y0: f64_arg(g, "y0")?,
+            cell_m: f64_arg(g, "cell_m")?,
+        }));
+    }
     let sampler = terrain_from(arg(g, "terrain")?)?;
     let river = polygons_of(arg(g, "river_polygon")?)?;
     let corridor = polygons_of(arg(g, "corridor")?)?;
