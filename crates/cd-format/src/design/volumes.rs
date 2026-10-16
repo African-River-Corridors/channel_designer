@@ -37,6 +37,7 @@ fn defaults() -> Value {
         "maxw_m": DEFAULT_MAXW_M,
         "dx_m": DEFAULT_DX_M,
         "wet_slope": DEFAULT_WET_SLOPE,
+        "half_width_m": null,
     })
 }
 
@@ -205,7 +206,20 @@ impl Session {
             }]
         };
 
+        // The bottom half-width: widened in bends from the sizing, unless the settings fix one.
+        let fixed_hb = match &settings["half_width_m"] {
+            Value::Null => None,
+            v => Some(v.as_f64().filter(|h| *h > 0.0).ok_or_else(|| {
+                DesignError::Input(
+                    "the setting `half_width_m` must be a positive number of metres or null".into(),
+                )
+            })?),
+        };
         let from_shape = |xy: &[Pt]| widened_hb_from_shape(xy, &shape, WIDEN_RMAX);
+        let half_width = match fixed_hb {
+            Some(h) => HalfWidth::Fixed(h),
+            None => HalfWidth::FromStations(&from_shape),
+        };
         let mut rows = Vec::new();
         for o in &options {
             let id = o["id"].as_str().unwrap_or("?");
@@ -218,7 +232,7 @@ impl Session {
                 &river,
                 &level,
                 depth,
-                &HalfWidth::FromStations(&from_shape),
+                &half_width,
                 &model,
                 setting(&settings, "wet_slope")?,
                 setting(&settings, "station_m")?,
