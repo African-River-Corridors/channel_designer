@@ -20,8 +20,12 @@ ticket whose blockers are all closed, and no other. For each ticket:
    as errors, `cargo test --workspace` with Python made unusable, the Python tests, and the oracle guard.
    Then run `python3 tools/release_guard.py --history`, and the embargo check of the PR body (see
    `issue-tracker.md`).
-4. **CI.** The `test` and `release-guard` jobs must be green on the head commit.
-5. **Merge.** Squash-merge: `gh pr merge <pr> --squash --delete-branch`. Check that the PR is merged,
+4. **CI, without waiting on it.** The `test` and `release-guard` jobs must be green on the head commit
+   before the merge, and branch protection enforces that. Nobody waits for them, though. As soon as the
+   PR is open, turn on auto-merge (`gh pr merge <pr> --squash --auto --delete-branch`), then start the
+   next ticket's reading and tests. If the PR goes red, fixing it comes before anything else. CI runs
+   once per PR (pull request event); pushes to ticket branches do not trigger a second run.
+5. **Merge.** Auto-merge squash-merges the PR when CI is green. Check that the PR is merged,
    the issue is closed, and `origin/main` holds the squash commit. Then write the **build notes** and
    remove the worktree. A local "main is already used by worktree" message is harmless.
 
