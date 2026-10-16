@@ -1,0 +1,65 @@
+name: Design impact
+
+# On every pull request: run fixed scenarios on the base branch and on the pull request, compare
+# the numbers (ADR 0005 tolerance), and fail only when a result moved and CHANGELOG.md has no
+# entry for it under "Unreleased > Design impact". See tools/design_impact.py.
+on:
+  pull_request:
+
+concurrency:
+  group: design-impact-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  design-impact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: head
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the pinned Rust toolchain (rust-toolchain.toml)
+        working-directory: head
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            head -> target
+            base -> target
+      - name: Build and install the pull request
+        run: |
+          python -m venv head-venv
+          head-venv/bin/python -m pip install --upgrade pip
+          head-venv/bin/python -m pip install ./head
+      - name: Build and install the base branch
+        run: |
+          python -m venv base-venv
+          base-venv/bin/python -m pip install --upgrade pip
+          base-venv/bin/python -m pip install ./base
+      - name: Run the scenarios on the pull request
+        run: head-venv/bin/python head/tools/design_impact.py run --out head.json
+      - name: Run the scenarios on the base branch
+        run: |
+          # The base's own copy of the scenarios when it has one, so an API change in this pull
+          # request cannot break the base run; this pull request's copy the first time.
+          script=base/tools/design_impact.py
+          test -f "$script" || script=head/tools/design_impact.py
+          base-venv/bin/python "$script" run --out base.json
+      - name: Compare
+        run: |
+          set +e
+          head-venv/bin/python head/tools/design_impact.py compare base.json head.json \
+            --changelog head/CHANGELOG.md --base-changelog base/CHANGELOG.md | tee report.md
+          code=${PIPESTATUS[0]}
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          exit $code

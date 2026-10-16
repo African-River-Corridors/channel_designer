@@ -3,6 +3,15 @@
 All notable changes to `channel_designer`. The format follows [Keep a Changelog](https://keepachangelog.com/);
 versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Design impact
+
+Every pull request is checked for design impact (`tools/design_impact.py`, CI job `design-impact`): fixed
+scenarios run on the base branch and on the pull request, and a result that moves by more than 1e-9
+(ADR 0005) must have a bullet here, under this heading, saying what moved and why. Add the bullet in the
+pull request that moves the result. Nothing has moved yet in this section.
+
 ## 0.2.0
 
 The calculations now run in a Rust core. The Python API is the same: the same names, arguments and
