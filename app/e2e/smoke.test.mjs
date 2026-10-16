@@ -96,6 +96,19 @@ function demTiff() {
   return Buffer.concat([head, ...extra, pixels]);
 }
 
+
+/** The worked example with a DEM beside it, in a fresh folder. Returns the .cdesign path. */
+function designWithDem(prefix) {
+  const dir = fs.mkdtempSync(path.join(WORK, prefix));
+  const tif = demTiff();
+  fs.writeFileSync(path.join(dir, "dem.tif"), tif);
+  const doc = JSON.parse(fs.readFileSync(EXAMPLE, "utf8"));
+  doc.inputs.dem = { path: "dem.tif", sha256: crypto.createHash("sha256").update(tif).digest("hex"), crs: "EPSG:32630", nodata: -9999 };
+  const file = path.join(dir, "with-dem.cdesign");
+  fs.writeFileSync(file, JSON.stringify(doc, null, 2));
+  return file;
+}
+
 /** The values of the vessel class list, and the one now chosen. */
 const vesselChoices = () =>
   browser.execute(() => {
@@ -146,7 +159,7 @@ describe("Channel Designer app smoke test", () => {
   });
 
   beforeEach(() => {
-    for (const f of ["open.txt", "save.txt", "discard.txt"]) forget(f);
+    for (const f of ["open.txt", "save.txt", "discard.txt", "load.txt"]) forget(f);
   });
 
   it("shows the screening label on its status line from the start", async () => {
@@ -230,18 +243,54 @@ describe("Channel Designer app smoke test", () => {
   });
   it("shows the DEM hillshade and an imagery-offline note when the tiles cannot load", async () => {
     // run.sh points every tile request at a dead address. The design names a DEM beside it.
-    const dir = fs.mkdtempSync(path.join(WORK, "hillshade-"));
-    const tif = demTiff();
-    fs.writeFileSync(path.join(dir, "dem.tif"), tif);
-    const doc = JSON.parse(fs.readFileSync(EXAMPLE, "utf8"));
-    doc.inputs.dem = { path: "dem.tif", sha256: crypto.createHash("sha256").update(tif).digest("hex"), crs: "EPSG:32630", nodata: -9999 };
-    const file = path.join(dir, "with-dem.cdesign");
-    fs.writeFileSync(file, JSON.stringify(doc, null, 2));
+    const file = designWithDem("hillshade-");
     await open(file, "with-dem.cdesign");
     await until("the offline note", async () => (await (await browser.$("[data-testid=offline-note]")).isExisting()), 30000);
     await until("the hillshade", async () => (await (await browser.$("[data-testid=plan-map]")).getAttribute("data-hillshade")) === "shown", 30000);
     assert.match(await text("offline-note"), /Imagery offline/);
     // The attribution stays up while the imagery is off.
     assert.ok(await (await browser.$("[data-testid=attribution]")).isDisplayed());
+  });
+  it("loads data by file dialog and shows the UTM zone it was moved to", async () => {
+    answer("discard.txt", "yes");
+    await click("New");
+    await until("a new design", async () => (await fileLabel()).startsWith("Untitled"));
+    // A bank line in plain WGS84 longitude and latitude.
+    const bank = path.join(WORK, "left-bank-wgs84.geojson");
+    fs.writeFileSync(bank, JSON.stringify({ type: "LineString", coordinates: [[-3.0, 5.4], [-2.99, 5.41], [-2.98, 5.41]] }));
+    answer("load.txt", bank);
+    await (await browser.$("[data-testid=load-left_bank]")).click();
+    await until("the bank to load", async () => (await text("data-left_bank")).includes("3 positions"));
+    assert.equal(await text("project-crs"), "WGS 84 / UTM zone 30N");
+    assert.match(await text("moved-note"), /EPSG:4326 was moved to WGS 84 \/ UTM zone 30N/);
+    // A refused file shows the reason and changes nothing.
+    const bad = path.join(WORK, "not-a-line.geojson");
+    fs.writeFileSync(bad, "{");
+    answer("load.txt", bad);
+    await (await browser.$("[data-testid=load-right_bank]")).click();
+    await until("the refusal", async () => (await browser.$("[data-testid=error]")).isExisting());
+    assert.equal(await text("data-right_bank"), "not loaded");
+  });
+
+  it("runs alignment, then volumes, and the stages turn fresh; editing the vessel makes them stale", async () => {
+    await open(designWithDem("run-"), "with-dem.cdesign");
+    await formShowsExample();
+    assert.equal(await text("status-alignment"), "not run");
+    await (await browser.$("[data-testid=run-alignment]")).click();
+    await until("alignment to be fresh", async () => (await text("status-alignment")) === "fresh", 60000);
+    // Volumes needs a water level: the session says so, and the app shows its words.
+    await (await browser.$("[data-testid=run-volumes]")).click();
+    await until("the missing water level to be named", async () => ((await (await browser.$("[data-testid=error]")).getText()) ?? "").includes("water level"), 60000);
+    await (await browser.$("[data-testid=water-level]")).setValue("38");
+    await (await browser.$("[data-testid=set-water]")).click();
+    await until("the water level to be set", async () => !(await (await browser.$("[data-testid=error]")).isExisting()));
+    await (await browser.$("[data-testid=run-volumes]")).click();
+    await until("volumes to be fresh", async () => (await text("status-volumes")) === "fresh", 120000);
+    assert.equal(await text("status-alignment"), "fresh");
+    // Change the vessel: the later stages go stale, and nothing reruns by itself.
+    const { values, current } = await vesselChoices();
+    await chooseVessel(values.find((v) => v !== current && v.startsWith("CEMT")));
+    await until("volumes to go stale", async () => (await text("status-volumes")) === "stale");
+    assert.equal(await text("status-alignment"), "stale");
   });
 });

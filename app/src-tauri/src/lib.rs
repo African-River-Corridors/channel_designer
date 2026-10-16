@@ -4,14 +4,15 @@
 //! shell owns the native open and save dialogs, the unsaved-changes guard, the window title and
 //! the clock, and nothing else. It holds no calculation, validation or default logic.
 
+mod run;
 mod state;
 
 use base64::Engine;
-use cd_format::design::{Session, date_from_unix};
+use cd_format::design::{Role, Session, date_from_unix};
 use state::AppState;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, State, Window, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, State, Window, WindowEvent};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
 type Shared = Mutex<AppState>;
@@ -259,6 +260,183 @@ fn basemap_tiles() -> Option<String> {
     }
 }
 
+/// The vector input a role name means.
+fn role_of(name: &str) -> Result<Role, String> {
+    match name {
+        "left_bank" => Ok(Role::LeftBank),
+        "right_bank" => Ok(Role::RightBank),
+        "centreline" => Ok(Role::Centreline),
+        "river_polygon" => Ok(Role::RiverPolygon),
+        other => Err(format!("`{other}` is not an input the app can load")),
+    }
+}
+
+/// Read a vector file as GeoJSON text. A GeoPackage is converted; `file.gpkg#layer` names a layer.
+fn read_vector(spec: &str) -> Result<String, String> {
+    let (path, layer) = if Path::new(spec).exists() {
+        (spec, None)
+    } else {
+        match spec.rsplit_once('#') {
+            Some((p, l)) if !l.is_empty() => (p, Some(l)),
+            _ => (spec, None),
+        }
+    };
+    let bytes = std::fs::read(path).map_err(|e| format!("cannot read {path}: {e}"))?;
+    if cd_format::design::geopackage::is_geopackage(&bytes) {
+        cd_format::design::geopackage::to_geojson(&bytes, layer).map_err(|e| format!("{path}: {e}"))
+    } else if layer.is_some() {
+        Err(format!(
+            "{path}: only a GeoPackage has layers, but this is not one"
+        ))
+    } else {
+        String::from_utf8(bytes).map_err(|_| format!("{path}: not GeoJSON text or a GeoPackage"))
+    }
+}
+
+/// Ask for a data file. `None` when the user cancels. A test answers from `load.txt`.
+fn pick_data(app: &AppHandle, dem: bool) -> Result<Option<PathBuf>, String> {
+    if let Some(answer) = test_answer("load.txt") {
+        return Ok(answer.map(PathBuf::from));
+    }
+    let (name, ext): (&str, &[&str]) = if dem {
+        ("GeoTIFF DEM", &["tif", "tiff"])
+    } else {
+        ("Vector data", &["geojson", "json", "gpkg"])
+    };
+    match app
+        .dialog()
+        .file()
+        .add_filter(name, ext)
+        .blocking_pick_file()
+    {
+        Some(p) => Ok(Some(p.into_path().map_err(|e| e.to_string())?)),
+        None => Ok(None),
+    }
+}
+
+/// Load one input: a vector role (`left_bank`, `right_bank`, `centreline`, `river_polygon`) or the
+/// `dem`. With no `path` the user is asked for a file; `null` comes back when they cancel. Dropping a
+/// file on the window passes its path.
+#[tauri::command]
+async fn load_input(
+    app: AppHandle,
+    window: Window,
+    state: State<'_, Shared>,
+    role: String,
+    path: Option<String>,
+) -> Reply {
+    let file = match path {
+        Some(p) => PathBuf::from(p),
+        None => match pick_data(&app, role == "dem")? {
+            Some(p) => p,
+            None => return Ok(serde_json::Value::Null),
+        },
+    };
+    if role == "dem" {
+        let bytes =
+            std::fs::read(&file).map_err(|e| format!("cannot read {}: {e}", file.display()))?;
+        let mut guard = lock(&state)?;
+        guard.load_dem(&file, bytes)?;
+        return finish(&window, &guard);
+    }
+    let role = role_of(&role)?;
+    let text = read_vector(&file.to_string_lossy())?;
+    let mut guard = lock(&state)?;
+    guard.load_inputs(&[(role, text)])?;
+    finish(&window, &guard)
+}
+
+/// Set the water level: at the river's start, and optionally a fall per metre of river.
+#[tauri::command]
+fn set_water(window: Window, state: State<Shared>, level: String, fall: String) -> Reply {
+    let num = |t: &str, what: &str| -> Result<Option<f64>, String> {
+        let t = t.trim();
+        if t.is_empty() {
+            return Ok(None);
+        }
+        t.parse::<f64>()
+            .map(Some)
+            .map_err(|_| format!("the {what} must be a number, not `{t}`"))
+    };
+    let level = num(&level, "water level")?.ok_or("give a water level in metres")?;
+    let fall = num(&fall, "fall per metre")?;
+    let mut guard = lock(&state)?;
+    guard.set_water(level, fall)?;
+    finish(&window, &guard)
+}
+
+/// Run one stage on a worker thread. `method` picks the alignment method (`rolling_circle` or
+/// `reroute`). The design changes only if the stage finishes: a cancel or a failure leaves it as it
+/// was. The reply is the snapshot, with `run` saying how it ended.
+#[tauri::command]
+async fn run_stage(
+    app: AppHandle,
+    window: Window,
+    state: State<'_, Shared>,
+    stage: String,
+    method: Option<String>,
+) -> Reply {
+    let (job, _control) = lock(&state)?.begin_run(&stage, method.as_deref())?;
+    let ticker = app.clone();
+    let last = std::sync::Mutex::new(std::time::Instant::now());
+    let outcome = tauri::async_runtime::spawn_blocking(move || {
+        job.execute(&|n| {
+            // At most four progress events a second.
+            if let Ok(mut t) = last.lock()
+                && t.elapsed() >= std::time::Duration::from_millis(250)
+            {
+                *t = std::time::Instant::now();
+                let _ = ticker.emit("stage-progress", n);
+            }
+        })
+    })
+    .await
+    .map_err(|e| e.to_string());
+    let mut guard = lock(&state)?;
+    let ended = match outcome {
+        Ok(o) => guard.finish_run(o),
+        Err(e) => guard.finish_run(run::Outcome::Failed(e)),
+    }?;
+    let mut snap = finish(&window, &guard)?;
+    snap["run"] = serde_json::json!({"stage": stage, "outcome": ended});
+    Ok(snap)
+}
+
+/// Ask the running stage to stop.
+#[tauri::command]
+fn cancel_run(state: State<Shared>) -> Result<bool, String> {
+    Ok(lock(&state)?.cancel_run())
+}
+
+/// Fetch a Copernicus DEM for the reach with `cdesign fetch-dem`, beside the saved design, then
+/// reload the design from the file. The design must be saved first: the tiles go next to it.
+#[tauri::command]
+async fn fetch_dem(window: Window, state: State<'_, Shared>) -> Reply {
+    let path = {
+        let guard = lock(&state)?;
+        guard.refuse_unsaved_fetch()?;
+        guard
+            .path()
+            .map(Path::to_path_buf)
+            .ok_or("save the design first: the DEM tiles are written next to it")?
+    };
+    let doc = path.to_string_lossy().into_owned();
+    let mirror = test_answer("dem-mirror.txt").flatten();
+    tauri::async_runtime::spawn_blocking(move || {
+        cd_cli::commands::fetch_dem(&doc, 1000.0, mirror.as_deref(), true).map_err(|f| f.message)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let dem = AppState::dem_path(&text)
+        .and_then(|rel| std::fs::read(path.parent().unwrap_or(Path::new(".")).join(rel)).ok());
+    let opened = AppState::open(&path, &text, dem.as_deref())?;
+    let mut guard = lock(&state)?;
+    *guard = opened;
+    finish(&window, &guard)
+}
+
 /// Rerun every stale stage.
 #[tauri::command]
 fn run_stale(window: Window, state: State<Shared>) -> Reply {
@@ -283,6 +461,11 @@ pub fn run() {
             run_stale,
             map_geometry,
             hillshade,
+            load_input,
+            set_water,
+            run_stage,
+            cancel_run,
+            fetch_dem,
             basemap_tiles,
         ])
         .on_window_event(|window, event| {

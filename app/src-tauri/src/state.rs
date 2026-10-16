@@ -4,11 +4,13 @@
 //! This module has no Tauri types, so it is tested like any other Rust. It holds no calculation,
 //! validation or default logic: every answer comes from [`Session`].
 
-use cd_format::design::{DesignError, Session, Stage, StageStatus};
+use crate::run::{Outcome, RunControl, RunJob};
+use cd_format::design::{AlignMethod, DemCheck, DesignError, Role, Session, Stage, StageStatus};
 use cd_format::geotiff::{Dem, read_bytes};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
 pub struct AppState {
@@ -19,6 +21,28 @@ pub struct AppState {
     warnings: Vec<String>,
     /// The DEM the document names, when the shell found it next to the document and it reads.
     dem: Option<Arc<Dem>>,
+    /// The DEM file's bytes, for the hash check, and where it was read from.
+    dem_bytes: Option<Arc<Vec<u8>>>,
+    dem_file: Option<PathBuf>,
+    /// The stage now running on a worker, if any.
+    running: Option<(Stage, Arc<RunControl>)>,
+}
+
+/// `target` relative to the folder `base`, using `..` where it must climb. Both are made absolute
+/// first, so the document stays portable when it is saved somewhere else.
+fn relative_to(base: &Path, target: &Path) -> String {
+    let (Ok(b), Ok(t)) = (std::fs::canonicalize(base), std::fs::canonicalize(target)) else {
+        return target.to_string_lossy().replace('\\', "/");
+    };
+    let (bc, tc): (Vec<_>, Vec<_>) = (b.components().collect(), t.components().collect());
+    let common = bc.iter().zip(&tc).take_while(|(x, y)| x == y).count();
+    let mut parts: Vec<String> = vec!["..".to_string(); bc.len() - common];
+    parts.extend(
+        tc[common..]
+            .iter()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned()),
+    );
+    parts.join("/")
 }
 
 fn message(e: DesignError) -> String {
@@ -34,6 +58,9 @@ impl AppState {
             dirty: false,
             warnings: Vec::new(),
             dem: None,
+            dem_bytes: None,
+            dem_file: None,
+            running: None,
         }
     }
 
@@ -42,12 +69,18 @@ impl AppState {
     pub fn open(path: &Path, text: &str, dem_bytes: Option<&[u8]>) -> Result<AppState, String> {
         let session = Session::open(text).map_err(message)?;
         let warnings = session.dem_warning(dem_bytes).into_iter().collect();
+        let dem_file = session
+            .dem_path()
+            .map(|rel| path.parent().unwrap_or(Path::new(".")).join(rel));
         Ok(AppState {
             session,
             path: Some(path.to_path_buf()),
             dirty: false,
             warnings,
             dem: dem_bytes.and_then(|b| read_bytes(b).ok()).map(Arc::new),
+            dem_bytes: dem_bytes.map(|b| Arc::new(b.to_vec())),
+            dem_file,
+            running: None,
         })
     }
 
@@ -86,6 +119,7 @@ impl AppState {
         vessel_standard_id: &str,
         draught_m: Option<f64>,
     ) -> Result<(), String> {
+        self.refuse_while_running()?;
         let before = self.session.clone();
         let outcome = self
             .session
@@ -105,6 +139,7 @@ impl AppState {
 
     /// Rerun every stale stage, in order. Returns the names of the stages that ran.
     pub fn run_stale(&mut self) -> Result<Vec<&'static str>, String> {
+        self.refuse_while_running()?;
         let before = self.session.clone();
         match self.session.run_stale() {
             Ok(ran) => {
@@ -130,6 +165,159 @@ impl AppState {
         self.dem.clone()
     }
 
+    fn refuse_while_running(&self) -> Result<(), String> {
+        match &self.running {
+            Some((stage, _)) => Err(format!(
+                "the {} stage is running: wait for it, or press Cancel",
+                stage.name()
+            )),
+            None => Ok(()),
+        }
+    }
+
+    /// A fetch rewrites the file on disk, so unsaved changes would be lost: refuse them.
+    pub fn refuse_unsaved_fetch(&self) -> Result<(), String> {
+        self.refuse_while_running()?;
+        if self.dirty {
+            Err("save the design first: fetching the DEM rewrites the file".into())
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Import vector inputs (GeoJSON text, already read by the shell). A refusal changes nothing.
+    pub fn load_inputs(&mut self, items: &[(Role, String)]) -> Result<(), String> {
+        self.refuse_while_running()?;
+        let list: Vec<(Role, &str)> = items.iter().map(|(r, t)| (*r, t.as_str())).collect();
+        let before = self.session.clone();
+        match self.session.import(&list) {
+            Ok(_) => {
+                self.dirty = true;
+                Ok(())
+            }
+            Err(e) => {
+                self.session = before;
+                Err(message(e))
+            }
+        }
+    }
+
+    /// Reference a DEM file and keep it for the stages. A DEM the stages could not sample is
+    /// refused, with the CRS named.
+    pub fn load_dem(&mut self, file: &Path, bytes: Vec<u8>) -> Result<(), String> {
+        self.refuse_while_running()?;
+        let dem = read_bytes(&bytes).map_err(|e| format!("{}: {e}", file.display()))?;
+        let epsg = self.project_epsg();
+        if epsg.is_some() {
+            cd_format::design::terrain::dem_sampler(&dem, epsg)
+                .map(|_| ())
+                .map_err(message)?;
+        }
+        let base = self.path.as_deref().and_then(Path::parent);
+        let rel = match base {
+            Some(b) => relative_to(b, file),
+            None => file.to_string_lossy().into_owned(),
+        };
+        self.session.set_dem(&rel, &bytes, &dem);
+        self.dem = Some(Arc::new(dem));
+        self.dem_bytes = Some(Arc::new(bytes));
+        self.dem_file = Some(file.to_path_buf());
+        self.warnings.clear();
+        self.dirty = true;
+        Ok(())
+    }
+
+    fn project_epsg(&self) -> Option<u32> {
+        self.session.document()["project"]["crs"]["epsg"]
+            .as_u64()
+            .map(|c| c as u32)
+    }
+
+    /// Set the water level: a level at the river's start, and optionally a fall per metre of
+    /// river. A refusal changes nothing.
+    pub fn set_water(&mut self, level_m: f64, fall_per_m: Option<f64>) -> Result<(), String> {
+        self.refuse_while_running()?;
+        let before = self.session.clone();
+        let done = match fall_per_m {
+            Some(f) => self.session.set_water_fall(level_m, f),
+            None => self.session.set_water_profile(&[[0.0, level_m]]),
+        };
+        match done {
+            Ok(()) => {
+                self.dirty = true;
+                Ok(())
+            }
+            Err(e) => {
+                self.session = before;
+                Err(message(e))
+            }
+        }
+    }
+
+    /// Begin running a stage: a job over a copy of the design. The design itself changes only when
+    /// [`AppState::finish_run`] gets a finished stage.
+    pub fn begin_run(
+        &mut self,
+        stage: &str,
+        method: Option<&str>,
+    ) -> Result<(RunJob, Arc<RunControl>), String> {
+        self.refuse_while_running()?;
+        let stage = Stage::from_name(stage).ok_or_else(|| format!("`{stage}` is not a stage"))?;
+        let method = match method {
+            Some(m) => Some(
+                AlignMethod::from_name(m)
+                    .ok_or_else(|| format!("`{m}` is not an alignment method"))?,
+            ),
+            None => None,
+        };
+        // The DEM is used only when it is the file whose hash was recorded.
+        let dem = match (
+            self.session
+                .dem_check(self.dem_bytes.as_deref().map(|b| b.as_slice())),
+            &self.dem,
+        ) {
+            (DemCheck::Matches, Some(d)) => Some(d.clone()),
+            _ => None,
+        };
+        let control = Arc::new(RunControl::default());
+        self.running = Some((stage, control.clone()));
+        let job = RunJob {
+            session: self.session.clone(),
+            stage,
+            method,
+            dem,
+            project_epsg: self.project_epsg(),
+            control: control.clone(),
+        };
+        Ok((job, control))
+    }
+
+    /// Ask the running stage to stop. `false` when nothing runs.
+    pub fn cancel_run(&self) -> bool {
+        match &self.running {
+            Some((_, c)) => {
+                c.cancel.store(true, Ordering::Relaxed);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Take the end of a run. A finished stage replaces the design; a cancelled or failed one
+    /// leaves it as it was. Returns the outcome's name, or the failure's reason.
+    pub fn finish_run(&mut self, outcome: Outcome) -> Result<&'static str, String> {
+        self.running = None;
+        match outcome {
+            Outcome::Done(session) => {
+                self.session = *session;
+                self.dirty = true;
+                Ok("done")
+            }
+            Outcome::Cancelled => Ok("cancelled"),
+            Outcome::Failed(reason) => Err(reason),
+        }
+    }
+
     /// The `.cdesign` text to write.
     pub fn save_text(&self) -> String {
         self.session.to_text()
@@ -138,6 +326,11 @@ impl AppState {
     /// Record that the design was written to `path`.
     pub fn saved(&mut self, path: &Path) {
         self.path = Some(path.to_path_buf());
+        // The DEM path is stored relative to the document: say it again from the new folder.
+        if let (Some(file), Some(bytes), Some(dem)) = (&self.dem_file, &self.dem_bytes, &self.dem) {
+            let rel = relative_to(path.parent().unwrap_or(Path::new(".")), file);
+            self.session.set_dem(&rel, bytes, dem);
+        }
         self.dirty = false;
         self.warnings.clear();
     }
@@ -166,7 +359,7 @@ impl AppState {
     pub fn snapshot(&self) -> Value {
         let status: Vec<Value> = self
             .session
-            .status()
+            .status_with_dem(self.dem_bytes.as_deref().map(|b| b.as_slice()))
             .stages
             .iter()
             .map(|(stage, st)| {
@@ -189,6 +382,7 @@ impl AppState {
             "dirty": self.dirty,
             "title": self.title(),
             "warnings": self.warnings,
+            "running": self.running.as_ref().map(|(s, _)| s.name()),
         })
     }
 }
@@ -377,5 +571,202 @@ mod tests {
                 .dem()
                 .is_none()
         );
+    }
+
+    // --- running stages (ticket 70) --------------------------------------------------------
+
+    /// A gently rolling DEM over the worked example's river, as GeoTIFF bytes (WGS 84 / UTM 30N).
+    fn dem_bytes() -> Vec<u8> {
+        let (w, h) = (80usize, 12usize);
+        let data = (0..w * h)
+            .map(|i| 40.0 + 6.0 * ((i % w) as f64 / 6.0).sin() + 4.0 * ((i / w) as f64 / 2.0).cos())
+            .collect();
+        let dem = Dem {
+            width: w,
+            height: h,
+            data,
+            geotransform: [100.0, 0.0, 499_800.0, 0.0, -100.0, 600_600.0],
+            nodata: Some(-9999.0),
+            epsg: Some(32630),
+        };
+        cd_format::design::dem_source::write_geotiff(&dem).unwrap()
+    }
+
+    /// The worked example with a DEM and a water level, opened from a folder that holds the DEM.
+    fn ready() -> (AppState, tempdir::Dir) {
+        let dir = tempdir::Dir::new();
+        let file = dir.path().join("dem.tif");
+        std::fs::write(&file, dem_bytes()).unwrap();
+        let mut s =
+            AppState::open(&dir.path().join("river.cdesign"), &worked_example(), None).unwrap();
+        s.load_dem(&file, dem_bytes()).unwrap();
+        s.set_water(38.0, None).unwrap();
+        (s, dir)
+    }
+
+    /// Run a stage to the end on this thread, as the worker does.
+    fn run(s: &mut AppState, stage: &str, method: Option<&str>) -> Result<&'static str, String> {
+        let (job, _) = s.begin_run(stage, method)?;
+        let outcome = job.execute(&|_| {});
+        s.finish_run(outcome)
+    }
+
+    #[test]
+    fn alignment_then_volumes_turn_fresh() {
+        let (mut s, _dir) = ready();
+        assert_eq!(stage_status(&s, "alignment"), "not_run");
+        assert_eq!(run(&mut s, "alignment", Some("rolling_circle")), Ok("done"));
+        assert_eq!(stage_status(&s, "alignment"), "fresh");
+        assert_eq!(run(&mut s, "volumes", None), Ok("done"));
+        assert_eq!(stage_status(&s, "volumes"), "fresh");
+        assert!(s.is_dirty());
+        assert!(s.snapshot()["running"].is_null());
+    }
+
+    #[test]
+    fn editing_the_vessel_after_a_run_marks_the_later_stages_stale() {
+        let (mut s, _dir) = ready();
+        run(&mut s, "alignment", Some("rolling_circle")).unwrap();
+        run(&mut s, "volumes", None).unwrap();
+        s.set_sizing("PIANC-B", "CEMT_Va", Some(2.5)).unwrap();
+        assert_eq!(stage_status(&s, "sizing"), "fresh");
+        assert_eq!(stage_status(&s, "alignment"), "stale");
+        assert_eq!(stage_status(&s, "volumes"), "stale");
+    }
+
+    #[test]
+    fn a_cancelled_run_leaves_the_design_exactly_as_it_was() {
+        let (mut s, _dir) = ready();
+        run(&mut s, "alignment", Some("rolling_circle")).unwrap();
+        let before = s.snapshot();
+        let (job, control) = s.begin_run("volumes", None).unwrap();
+        // Cancel before the first terrain read: the stage stops at its first look at the DEM.
+        assert!(s.cancel_run());
+        assert!(control.cancel.load(Ordering::Relaxed));
+        assert_eq!(s.finish_run(job.execute(&|_| {})), Ok("cancelled"));
+        let mut after = s.snapshot();
+        after["running"] = before["running"].clone();
+        assert_eq!(after, before);
+        assert_eq!(stage_status(&s, "volumes"), "not_run");
+    }
+
+    #[test]
+    fn cancel_pressed_mid_run_stops_it_after_it_started() {
+        let (mut s, _dir) = ready();
+        run(&mut s, "alignment", Some("rolling_circle")).unwrap();
+        let before = s.snapshot();
+        let (job, control) = s.begin_run("volumes", None).unwrap();
+        // The user presses Cancel while the stage is already reading the DEM.
+        let c = control.clone();
+        let outcome = job.execute(&move |n| {
+            if n > 500 {
+                c.cancel.store(true, Ordering::Relaxed);
+            }
+        });
+        assert!(
+            control.samples.load(Ordering::Relaxed) > 500,
+            "it had started"
+        );
+        assert_eq!(s.finish_run(outcome), Ok("cancelled"));
+        let mut after = s.snapshot();
+        after["running"] = before["running"].clone();
+        assert_eq!(after, before);
+    }
+
+    #[test]
+    fn a_failed_run_says_why_and_changes_nothing() {
+        let (mut s, _dir) = ready();
+        let before = s.snapshot();
+        // Volumes before alignment: the session refuses, with its own reason.
+        let e = run(&mut s, "volumes", None).unwrap_err();
+        assert!(!e.is_empty());
+        assert_eq!(s.snapshot(), before);
+    }
+
+    #[test]
+    fn nothing_else_runs_or_changes_while_a_stage_runs() {
+        let (mut s, _dir) = ready();
+        let (_job, _) = s.begin_run("alignment", None).unwrap();
+        assert!(
+            s.begin_run("alignment", None)
+                .unwrap_err()
+                .contains("is running")
+        );
+        assert!(
+            s.set_sizing("PIANC-B", "CEMT_Va", None)
+                .unwrap_err()
+                .contains("is running")
+        );
+        assert!(s.set_water(1.0, None).unwrap_err().contains("is running"));
+        assert_eq!(s.snapshot()["running"], "alignment");
+    }
+
+    #[test]
+    fn loading_wgs84_banks_moves_them_to_a_utm_zone_and_a_refusal_changes_nothing() {
+        let mut s = AppState::new_design("Study", "2026-10-16");
+        let line = |pts: &str| format!(r#"{{"type":"LineString","coordinates":{pts}}}"#);
+        s.load_inputs(&[
+            (Role::LeftBank, line("[[-3.0,5.40],[-2.99,5.41]]")),
+            (Role::RightBank, line("[[-3.0,5.401],[-2.99,5.411]]")),
+        ])
+        .unwrap();
+        let doc = &s.snapshot()["document"];
+        assert_eq!(doc["project"]["crs"]["name"], "WGS 84 / UTM zone 30N");
+        assert_eq!(doc["project"]["source_crs"]["left_bank"], "EPSG:4326");
+        let before = s.snapshot();
+        assert!(s.load_inputs(&[(Role::Centreline, "{".into())]).is_err());
+        assert_eq!(s.snapshot(), before);
+    }
+
+    #[test]
+    fn a_dem_is_referenced_by_a_path_relative_to_the_document_and_follows_a_save_as() {
+        let (mut s, dir) = ready();
+        assert_eq!(s.snapshot()["document"]["inputs"]["dem"]["path"], "dem.tif");
+        let sub = dir.path().join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        s.saved(&sub.join("moved.cdesign"));
+        assert_eq!(
+            s.snapshot()["document"]["inputs"]["dem"]["path"],
+            "../dem.tif"
+        );
+    }
+
+    #[test]
+    fn fetching_a_dem_needs_a_saved_design() {
+        let (mut s, _dir) = ready();
+        assert!(
+            s.refuse_unsaved_fetch()
+                .unwrap_err()
+                .contains("save the design first")
+        );
+        s.saved(Path::new("/nonexistent/x.cdesign"));
+        assert!(s.refuse_unsaved_fetch().is_ok());
+    }
+
+    /// A temporary folder that goes away with the test.
+    mod tempdir {
+        pub struct Dir(std::path::PathBuf);
+        impl Dir {
+            pub fn new() -> Dir {
+                let n = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos();
+                let p = std::env::temp_dir().join(
+                    format!("cd-app-test-{n}-{:?}", std::thread::current().id())
+                        .replace(['(', ')'], ""),
+                );
+                std::fs::create_dir_all(&p).unwrap();
+                Dir(p)
+            }
+            pub fn path(&self) -> &std::path::Path {
+                &self.0
+            }
+        }
+        impl Drop for Dir {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
     }
 }

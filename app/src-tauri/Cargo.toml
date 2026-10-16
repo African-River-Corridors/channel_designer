@@ -20,6 +20,7 @@ custom-protocol = ["tauri/custom-protocol"]
 
 [dependencies]
 base64 = "0.22"
+cd-cli = { path = "../../crates/cd-cli" }
 cd-format.workspace = true
 serde_json.workspace = true
 tauri = { version = "2", features = [] }

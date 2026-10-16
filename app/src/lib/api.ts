@@ -37,13 +37,19 @@ export interface Polygon {
 export interface Snapshot {
   engine_version: string;
   document: {
-    project: { title: string; created: string; crs: { epsg: number; name: string } | null };
+    project: {
+      title: string;
+      created: string;
+      crs: { epsg: number; name: string } | null;
+      source_crs: Record<string, string> | null;
+    };
     inputs: {
       left_bank: Line | null;
       right_bank: Line | null;
       centreline: Line | null;
       river_polygon: Polygon | null;
       dem: { path: string; sha256?: string } | null;
+      water_level: { points: number[][] } | null;
     };
     stages: Record<StageName, { settings: SizingSettings | null; results: ChannelShape | null }>;
   };
@@ -53,6 +59,8 @@ export interface Snapshot {
   dirty: boolean;
   title: string;
   warnings: string[];
+  /** The stage running on a worker now, if any. */
+  running: StageName | null;
 }
 export interface Choices {
   rulesets: { id: string; label: string; family: string }[];
@@ -114,3 +122,16 @@ export interface Hillshade {
 export const hillshade = () => invoke<Hillshade | null>("hillshade");
 /** A debug-build test hook: a replacement tile address. Null in release builds. */
 export const basemapTiles = () => invoke<string | null>("basemap_tiles");
+
+export type InputRole = "left_bank" | "right_bank" | "centreline" | "river_polygon" | "dem";
+/** Load one input. With no path the user picks a file; null comes back on cancel. Rejects with the session's reason. */
+export const loadInput = (role: InputRole, path?: string) => invoke<Snapshot | null>("load_input", { role, path: path ?? null });
+/** The water level at the river's start, and optionally a fall per metre (both as typed). */
+export const setWater = (level: string, fall: string) => invoke<Snapshot>("set_water", { level, fall });
+export type RunMethod = "rolling_circle" | "reroute";
+/** The snapshot after a run; `run.outcome` is `done` or `cancelled` (a cancelled run leaves the design as it was). Rejects with the reason. */
+export type RunResult = Snapshot & { run: { stage: StageName; outcome: "done" | "cancelled" } };
+export const runStage = (stage: StageName, method?: RunMethod) => invoke<RunResult>("run_stage", { stage, method: method ?? null });
+export const cancelRun = () => invoke<boolean>("cancel_run");
+/** Fetch a Copernicus DEM beside the saved design. */
+export const fetchDem = () => invoke<Snapshot>("fetch_dem");
