@@ -100,3 +100,6 @@ def classify_bends(natural: LineString, river, r_min: float, top_width: float,
     """
     return _rust.call("bends", "classify_bends", natural=natural, river=river, r_min=r_min, top_width=top_width,
                       bottom_width=bottom_width, bank_cut_fraction=bank_cut_fraction, step=step)
+
+
+_rust.core_constants(__name__, "STEP_M", "N_PSI", "PSI_MAX_DEG", "N_Y", "E_MAX_M", "E_TOL_M")

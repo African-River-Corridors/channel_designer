@@ -176,7 +176,9 @@ fn node(
     let mut reps = Snap::new(snap.unwrap_or(0.0));
     let (a, b): (Vec<[Pt; 2]>, Vec<[Pt; 2]>) = if snap.is_some() {
         let redraw = |es: &[[Pt; 2]], reps: &mut Snap| -> Vec<[Pt; 2]> {
-            es.iter().map(|e| [reps.add(e[0]), reps.add(e[1])]).collect()
+            es.iter()
+                .map(|e| [reps.add(e[0]), reps.add(e[1])])
+                .collect()
         };
         let a2 = redraw(a, &mut reps);
         let b2 = redraw(b, &mut reps);
@@ -236,11 +238,18 @@ struct Snap {
 
 impl Snap {
     fn new(tol: f64) -> Self {
-        Self { tol, cells: BTreeMap::new(), seen: BTreeMap::new() }
+        Self {
+            tol,
+            cells: BTreeMap::new(),
+            seen: BTreeMap::new(),
+        }
     }
 
     fn cell(&self, p: Pt) -> (i64, i64) {
-        ((p[0] / self.tol).floor() as i64, (p[1] / self.tol).floor() as i64)
+        (
+            (p[0] / self.tol).floor() as i64,
+            (p[1] / self.tol).floor() as i64,
+        )
     }
 
     fn add(&mut self, p: Pt) -> Pt {
@@ -280,7 +289,7 @@ fn point_segment_distance(p: Pt, e: &[Pt; 2]) -> f64 {
         (((p[0] - e[0][0]) * dx + (p[1] - e[0][1]) * dy) / len2).clamp(0.0, 1.0)
     };
     let (qx, qy) = (e[0][0] + t * dx, e[0][1] + t * dy);
-    ((p[0] - qx).powi(2) + (p[1] - qy).powi(2)).sqrt()
+    ((p[0] - qx) * (p[0] - qx) + (p[1] - qy) * (p[1] - qy)).sqrt()
 }
 
 /// Make every vertex of `src` that lies within `tol` of an edge of `dst` (but is not one of its

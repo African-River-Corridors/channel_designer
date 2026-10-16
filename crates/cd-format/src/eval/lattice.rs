@@ -62,9 +62,9 @@ fn string_or(v: &Value, name: &str, default: &str) -> Result<String, EvalError> 
 fn section(d: &Value) -> Result<Result<SectionSpec, String>, EvalError> {
     let hw = arg(d, "half_width")?;
     let half_width = match hw {
-        h if crate::host::callback_id(h).is_some() => {
-            HalfWidthSpec::Func(crate::host::scalar_fn(crate::host::callback_id(h).unwrap_or(0))?)
-        }
+        h if crate::host::callback_id(h).is_some() => HalfWidthSpec::Func(crate::host::scalar_fn(
+            crate::host::callback_id(h).unwrap_or(0),
+        )?),
         Value::Object(_) => {
             let mut inp = ChannelRuleInputs::new(
                 f64_arg(hw, "beam_m")?,
@@ -175,7 +175,10 @@ fn grid_of(g: &Value) -> Result<Result<TerrainGrid, String>, EvalError> {
                 .iter()
                 .map(|r| {
                     r.iter()
-                        .map(|v| v.as_bool().ok_or_else(|| bad(format!("`{name}` is true or false"))))
+                        .map(|v| {
+                            v.as_bool()
+                                .ok_or_else(|| bad(format!("`{name}` is true or false")))
+                        })
                         .collect()
                 })
                 .collect()

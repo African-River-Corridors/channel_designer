@@ -1,6 +1,7 @@
 """Raster DEM volumes: dredging vs. virgin-terrain excavation, per pool and per chunk.
 
-Needs the ``[dem]`` extra (rasterio, scipy, affine): ``pip install channel_designer[dem]``.
+Since 0.2.0 the Rust core reads the GeoTIFF itself: no rasterio, scipy or GDAL is needed (the
+``[dem]`` extra is kept so existing install commands keep working).
 
 The dredged/excavated channel is a TRAPEZOIDAL prism anchored to the centerline:
 
@@ -26,6 +27,7 @@ from __future__ import annotations
 
 from .. import _rust
 
+import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -198,6 +200,14 @@ class RasterTerrain:
         out = _rust.call("raster", "raster_terrain", np.ndarray, raster={"path": str(self.path)},
                          xs=xs.ravel(), ys=np.asarray(ys, dtype=float).ravel())
         return out.reshape(xs.shape)
+
+    @property
+    def ds(self):
+        """Deprecated: the rasterio dataset this class used to hold. Needs rasterio; gone in 0.3.0."""
+        warnings.warn("RasterTerrain.ds is deprecated: the Rust core reads the GeoTIFF and no rasterio "
+                      "dataset is held. It is removed in 0.3.0.", DeprecationWarning, stacklevel=2)
+        import rasterio
+        return rasterio.open(self.path)
 
     def close(self):
         _rust.run("raster", "release_raster", {"path": str(self.path)})

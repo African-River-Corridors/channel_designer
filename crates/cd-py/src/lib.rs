@@ -45,9 +45,16 @@ impl PyHost {
             "s" => Val::S(value.extract()?),
             "j" => {
                 let text: String = value.extract()?;
-                Val::J(serde_json::from_str(&text).map_err(|e| PyValueError::new_err(e.to_string()))?)
+                Val::J(
+                    serde_json::from_str(&text)
+                        .map_err(|e| PyValueError::new_err(e.to_string()))?,
+                )
             }
-            other => return Err(PyValueError::new_err(format!("unknown callback tag {other}"))),
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown callback tag {other}"
+                )));
+            }
         })
     }
 }
@@ -81,7 +88,10 @@ fn eval(
 ) -> PyResult<String> {
     let input: serde_json::Value = serde_json::from_str(input_json)
         .map_err(|e| PyValueError::new_err(format!("the call is not JSON: {e}")))?;
-    let host = Arc::new(PyHost { callbacks: callbacks.unwrap_or_default(), error: Mutex::new(None) });
+    let host = Arc::new(PyHost {
+        callbacks: callbacks.unwrap_or_default(),
+        error: Mutex::new(None),
+    });
     let result = with_host(host.clone(), || cd_format::eval(entry_point, &input));
     if let Some(e) = host.error.lock().ok().and_then(|mut s| s.take()) {
         return Err(e);

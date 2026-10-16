@@ -15,4 +15,4 @@ Three calculation layers, an optional optimiser layer and an optional drawing la
 
 Screening tool: not for construction, no design warranty.
 """
-__version__ = "0.1.0"
+__version__ = "0.2.0"

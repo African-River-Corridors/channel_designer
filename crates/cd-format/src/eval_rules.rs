@@ -88,7 +88,8 @@ fn method_registry(args: &Value) -> Result<MethodRegistry, EvalError> {
     // `{name, description, id, breakdown}`; each call goes to the host as `{op, ...}`.
     if let Some(list) = args.get("host_methods").and_then(Value::as_array) {
         for spec in list {
-            reg.register(host_method(spec)?, true).map_err(|e| bad(e.to_string()))?;
+            reg.register(host_method(spec)?, true)
+                .map_err(|e| bad(e.to_string()))?;
         }
     }
     Ok(reg)
@@ -106,32 +107,46 @@ fn host_method(spec: &Value) -> Result<WidthMethod, EvalError> {
             .unwrap_or(f64::NAN)
     };
     let (c1, c2, c3, c4) = (call.clone(), call.clone(), call.clone(), call.clone());
-    let breakdown: Option<BreakdownFn> = if spec.get("breakdown").and_then(Value::as_bool) == Some(true) {
-        Some(Arc::new(move |loa, beam, o| {
-            let r = c4(json!({"op": "breakdown", "loa": float_json(loa), "beam": float_json(beam),
-                              "options": options_json(o)}));
-            Ok(r.and_then(|v| read_options(&v, "breakdown").ok()).unwrap_or_default())
-        }))
-    } else {
-        None
-    };
+    let breakdown: Option<BreakdownFn> =
+        if spec.get("breakdown").and_then(Value::as_bool) == Some(true) {
+            Some(Arc::new(move |loa, beam, o| {
+                let r = c4(
+                    json!({"op": "breakdown", "loa": float_json(loa), "beam": float_json(beam),
+                              "options": options_json(o)}),
+                );
+                Ok(r.and_then(|v| read_options(&v, "breakdown").ok())
+                    .unwrap_or_default())
+            }))
+        } else {
+            None
+        };
     Ok(WidthMethod {
         name: str_field(spec, "name")?,
         straight_width: Arc::new(move |loa, beam, o| {
-            Ok(number(c1(json!({"op": "straight", "loa": float_json(loa), "beam": float_json(beam),
-                                 "options": options_json(o)}))))
+            Ok(number(c1(
+                json!({"op": "straight", "loa": float_json(loa), "beam": float_json(beam),
+                                 "options": options_json(o)}),
+            )))
         }),
         bend_width: Arc::new(move |loa, beam, o, r, rd, d| {
-            Ok(number(c2(json!({"op": "bend", "loa": float_json(loa), "beam": float_json(beam),
+            Ok(number(c2(
+                json!({"op": "bend", "loa": float_json(loa), "beam": float_json(beam),
                                  "options": options_json(o), "bend_radius": float_json(r),
-                                 "design_radius": float_json(rd), "deflection_deg": float_json(d)}))))
+                                 "design_radius": float_json(rd), "deflection_deg": float_json(d)}),
+            )))
         }),
         min_radius: Arc::new(move |loa, o| {
-            Ok(number(c3(json!({"op": "min_radius", "loa": float_json(loa),
-                                 "options": options_json(o)}))))
+            Ok(number(c3(
+                json!({"op": "min_radius", "loa": float_json(loa),
+                                 "options": options_json(o)}),
+            )))
         }),
         breakdown,
-        description: spec.get("description").and_then(Value::as_str).unwrap_or("").to_string(),
+        description: spec
+            .get("description")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
     })
 }
 

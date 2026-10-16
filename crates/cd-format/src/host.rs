@@ -54,7 +54,18 @@ pub fn callback_id(spec: &Value) -> Option<u64> {
 }
 
 /// `f(x) -> y`.
-pub fn scalar_fn(id: u64) -> Result<Box<dyn Fn(f64) -> f64>, EvalError> {
+pub type ScalarFn = Box<dyn Fn(f64) -> f64>;
+/// `f(a, b, c) -> y`.
+pub type TripleFn = Box<dyn Fn(f64, f64, f64) -> f64>;
+/// `f(xs, ys) -> zs`.
+pub type ArraysFn = Box<dyn Fn(&[f64], &[f64]) -> Vec<f64>>;
+/// `f(x) -> text`.
+pub type TextFn = Box<dyn Fn(f64) -> String>;
+/// A call with JSON in and out.
+pub type JsonFn = Box<dyn Fn(Value) -> Option<Value> + Send + Sync>;
+
+/// `f(x) -> y`.
+pub fn scalar_fn(id: u64) -> Result<ScalarFn, EvalError> {
     let h = current()?;
     Ok(Box::new(move |x| match h.call(id, &[Val::F(x)]) {
         Ok(Val::F(y)) => y,
@@ -63,16 +74,18 @@ pub fn scalar_fn(id: u64) -> Result<Box<dyn Fn(f64) -> f64>, EvalError> {
 }
 
 /// `f(a, b, c) -> y`, which may refuse.
-pub fn triple_fn(id: u64) -> Result<Box<dyn Fn(f64, f64, f64) -> f64>, EvalError> {
+pub fn triple_fn(id: u64) -> Result<TripleFn, EvalError> {
     let h = current()?;
-    Ok(Box::new(move |a, b, c| match h.call(id, &[Val::F(a), Val::F(b), Val::F(c)]) {
-        Ok(Val::F(y)) => y,
-        _ => f64::NAN,
+    Ok(Box::new(move |a, b, c| {
+        match h.call(id, &[Val::F(a), Val::F(b), Val::F(c)]) {
+            Ok(Val::F(y)) => y,
+            _ => f64::NAN,
+        }
     }))
 }
 
 /// `f(xs, ys) -> zs`.
-pub fn arrays_fn(id: u64) -> Result<Box<dyn Fn(&[f64], &[f64]) -> Vec<f64>>, EvalError> {
+pub fn arrays_fn(id: u64) -> Result<ArraysFn, EvalError> {
     let h = current()?;
     Ok(Box::new(move |xs, ys| {
         match h.call(id, &[Val::A(xs.to_vec()), Val::A(ys.to_vec())]) {
@@ -83,7 +96,7 @@ pub fn arrays_fn(id: u64) -> Result<Box<dyn Fn(&[f64], &[f64]) -> Vec<f64>>, Eva
 }
 
 /// `f(s) -> text`.
-pub fn text_fn(id: u64) -> Result<Box<dyn Fn(f64) -> String>, EvalError> {
+pub fn text_fn(id: u64) -> Result<TextFn, EvalError> {
     let h = current()?;
     Ok(Box::new(move |s| match h.call(id, &[Val::F(s)]) {
         Ok(Val::S(t)) => t,
@@ -92,7 +105,7 @@ pub fn text_fn(id: u64) -> Result<Box<dyn Fn(f64) -> String>, EvalError> {
 }
 
 /// A call with JSON in and JSON out, for the rare callable that takes a mapping (a width method).
-pub fn json_fn(id: u64) -> Result<Box<dyn Fn(Value) -> Option<Value> + Send + Sync>, EvalError> {
+pub fn json_fn(id: u64) -> Result<JsonFn, EvalError> {
     let h = current()?;
     Ok(Box::new(move |v| match h.call(id, &[Val::J(v)]) {
         Ok(Val::J(r)) => Some(r),

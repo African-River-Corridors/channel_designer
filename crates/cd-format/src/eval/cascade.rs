@@ -173,7 +173,9 @@ fn structure_fn(spec: &Value) -> Result<Box<dyn Fn(f64) -> f64>, EvalError> {
         f64_arg(spec, "coeff")?,
         f64_arg(spec, "power")?,
     );
-    Ok(Box::new(move |lift: f64| fixed + coeff * libm::pow(lift, power)))
+    Ok(Box::new(move |lift: f64| {
+        fixed + coeff * libm::pow(lift, power)
+    }))
 }
 
 fn weir_json(w: &cs::CascadeWeir) -> Value {

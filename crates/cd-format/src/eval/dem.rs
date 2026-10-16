@@ -40,13 +40,13 @@ fn raster_from_file(path: &str) -> Result<Arc<Raster>, EvalError> {
         .map_err(|e| bad(format!("cannot read the GeoTIFF: {path}: {e}")))?;
     let stamp = (meta.modified().ok(), meta.len());
     let mut cache = dem_cache().lock().unwrap_or_else(|e| e.into_inner());
-    if let Some((t, n, r)) = cache.get(path) {
-        if (*t, *n) == stamp {
-            return Ok(Arc::clone(r));
-        }
+    if let Some((t, n, r)) = cache.get(path)
+        && (*t, *n) == stamp
+    {
+        return Ok(Arc::clone(r));
     }
-    let dem = cd_format_geotiff::read_file(std::path::Path::new(path))
-        .map_err(|e| bad(e.to_string()))?;
+    let dem =
+        cd_format_geotiff::read_file(std::path::Path::new(path)).map_err(|e| bad(e.to_string()))?;
     let [a, _, c, _, e, f] = dem.geotransform;
     let r = Arc::new(Raster {
         width: dem.width,
@@ -225,7 +225,10 @@ pub(super) fn raster(function: &str, args: &Value) -> Result<Value, EvalError> {
         "bilinear" | "raster_terrain" => ok(sampled(args)?),
         "release_raster" => {
             if let Some(p) = args.get("path").and_then(Value::as_str) {
-                dem_cache().lock().unwrap_or_else(|e| e.into_inner()).remove(p);
+                dem_cache()
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(p);
             }
             ok(Value::Null)
         }
