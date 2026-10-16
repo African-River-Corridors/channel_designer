@@ -172,10 +172,7 @@ async fn open_file(app: AppHandle, window: Window, state: State<'_, Shared>) -> 
 }
 
 fn save_to(app: &AppHandle, window: &Window, state: &Shared, ask_for_path: bool) -> Reply {
-    let (known, text) = {
-        let guard = lock(state)?;
-        (guard.path().map(Path::to_path_buf), guard.save_text())
-    };
+    let known = lock(state)?.path().map(Path::to_path_buf);
     let path = match known {
         Some(p) if !ask_for_path => p,
         _ => {
@@ -185,6 +182,8 @@ fn save_to(app: &AppHandle, window: &Window, state: &Shared, ask_for_path: bool)
             p
         }
     };
+    // The text is made for this path: the DEM's relative path is said from the folder it lands in.
+    let text = lock(state)?.save_text_for(&path);
     write_file(&path, &text)?;
     let mut guard = lock(state)?;
     guard.saved(&path);
@@ -260,6 +259,44 @@ async fn station_near(
     w.session
         .station_near(&w.walk, lon, lat)
         .map_err(|e| e.to_string())
+}
+
+/// Export the options as GeoJSON (`kind` = `geojson`, WGS84) or the quantity table as CSV (`csv`),
+/// through the session, to a file the user picks. Returns the path, or `null` on cancel. The text is
+/// the same as `cdesign export` gives for the saved file.
+#[tauri::command]
+async fn export_file(
+    app: AppHandle,
+    state: State<'_, Shared>,
+    kind: String,
+) -> Result<Option<String>, String> {
+    let (text, ext, label) = {
+        let guard = lock(&state)?;
+        match kind.as_str() {
+            "geojson" => (guard.export_geojson()?, "geojson", "GeoJSON"),
+            "csv" => (guard.export_csv(), "csv", "CSV"),
+            other => return Err(format!("`{other}` is not an export: use geojson or csv")),
+        }
+    };
+    let picked = match test_answer("export.txt") {
+        Some(answer) => answer.map(PathBuf::from),
+        None => app
+            .dialog()
+            .file()
+            .add_filter(label, &[ext])
+            .set_file_name(format!("channel-design.{ext}"))
+            .blocking_save_file()
+            .map(|p| p.into_path().map_err(|e| e.to_string()))
+            .transpose()?,
+    };
+    let Some(mut path) = picked else {
+        return Ok(None);
+    };
+    if path.extension().is_none() {
+        path.set_extension(ext);
+    }
+    write_file(&path, &text)?;
+    Ok(Some(path.to_string_lossy().into_owned()))
 }
 
 /// The option comparison table and the checks list: failed options first, numbers kept.
@@ -509,6 +546,7 @@ pub fn run() {
             run_stale,
             map_geometry,
             option_table,
+            export_file,
             long_section,
             cross_section,
             station_near,

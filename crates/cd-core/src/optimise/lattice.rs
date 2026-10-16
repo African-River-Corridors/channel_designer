@@ -31,6 +31,7 @@
 //! The array code of the Python (numpy sums, `arange`, `linspace`, `rint`) is written out with
 //! the same arithmetic in the same order, so that the search takes the same decisions.
 
+use crate::alignment::radius_check::{default_check_chord, min_radius_on_chord, radius_ok};
 use crate::geom::offset::{Cap, buffer_line};
 use crate::geom::overlay::{Op, contains_xy, overlay};
 use crate::geom::{Geometry, Polygon, Pt, linear};
@@ -876,6 +877,12 @@ pub struct LatticeResult {
     pub timed_out: bool,
     /// `c_min_per_m` when the heuristic is `"c_min"`.
     pub c_min_per_m: Option<f64>,
+    /// The line's minimum radius read on the chord (`min_radius_on_chord`, chord R_min/3); NaN
+    /// when there is no line.
+    pub measured_min_radius_m: f64,
+    pub radius_check_chord_m: f64,
+    /// The chord reading holds R_min (within `RADIUS_TOL`); false when there is no line.
+    pub radius_ok: bool,
 }
 
 type Key = (i64, i64, usize, i8);
@@ -1052,6 +1059,9 @@ pub fn solve_lattice(
         hit_cap: false,
         timed_out: false,
         c_min_per_m,
+        measured_min_radius_m: f64::NAN,
+        radius_check_chord_m: default_check_chord(cfg.r_min_m),
+        radius_ok: false,
     };
     while let Some(Entry(_, gc, k)) = pq.pop() {
         if gc > g.get(&k).copied().unwrap_or(f64::INFINITY) + 1e-9 {
@@ -1136,6 +1146,10 @@ pub fn solve_lattice(
     }
     res.converged = true;
     res.cost = g[&best];
+    if let Ok(m) = min_radius_on_chord(&dense, res.radius_check_chord_m) {
+        res.measured_min_radius_m = m;
+        res.radius_ok = radius_ok(m, cfg.r_min_m);
+    }
     res.line = Some(dense);
     res.prim_seq = seq
         .iter()
@@ -1299,6 +1313,10 @@ pub fn optimise_pool(
 pub struct PoolsResult {
     pub line: Vec<Pt>,
     pub pools: Vec<PoolAlignment>,
+    /// The joined line's minimum radius read on the chord (R_min/3).
+    pub measured_min_radius_m: f64,
+    pub radius_check_chord_m: f64,
+    pub radius_ok: bool,
 }
 
 impl PoolsResult {
@@ -1379,7 +1397,12 @@ pub fn optimise_pools(
             }
         }
     }
+    let chord = default_check_chord(cfg.r_min_m);
+    let measured = min_radius_on_chord(&coords, chord).unwrap_or(f64::NAN);
     Ok(PoolsResult {
+        radius_ok: radius_ok(measured, cfg.r_min_m),
+        measured_min_radius_m: measured,
+        radius_check_chord_m: chord,
         line: coords,
         pools: out_pools,
     })

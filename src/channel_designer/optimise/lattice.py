@@ -369,6 +369,9 @@ class LatticeResult:
     hit_cap: bool = False
     timed_out: bool = False
     diagnostics: dict = field(default_factory=dict)
+    measured_min_radius_m: float = math.nan     # min radius of ``line`` on the chord (R_min/3)
+    radius_check_chord_m: float = math.nan
+    radius_ok: bool = False                     # the chord reading holds R_min (2 % tol)
 
 
 def _section_arg(call, spec: SectionSpec) -> dict:
@@ -453,6 +456,9 @@ def optimise_pool(baseline: LineString, terrain: TerrainSampler, river_polygon,
 class PoolsResult:
     line: LineString
     pools: List[PoolAlignment]
+    measured_min_radius_m: float = math.nan     # min radius of ``line`` on the chord (R_min/3)
+    radius_check_chord_m: float = math.nan
+    radius_ok: bool = False
 
     @property
     def n_replaced(self) -> int:

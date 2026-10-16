@@ -106,8 +106,8 @@ enum Command {
         /// Rolling circle: the number of passes (default 2).
         #[arg(long)]
         passes: Option<u32>,
-        /// Read the minimum radius on this chord, in metres (default: a third of R_min for the
-        /// rolling circle, one station each side for the re-route).
+        /// Read the minimum radius on this chord, in metres (default: a third of R_min, for every
+        /// method).
         #[arg(long, value_name = "METRES")]
         chord: Option<f64>,
         /// Re-route: a GeoTIFF DEM (WGS84 or the project's UTM zone) for the terrain.

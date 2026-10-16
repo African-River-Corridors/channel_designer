@@ -300,6 +300,9 @@ impl Session {
                     "start_m": p.start_m, "end_m": p.end_m, "water_level_m": p.water_level_m,
                     "converged": p.result.converged, "cost": p.result.cost,
                     "baseline_cost": p.baseline_cost,
+                    "measured_min_radius_m": num_or_null(p.result.measured_min_radius_m),
+                    "radius_check_chord_m": p.result.radius_check_chord_m,
+                    "radius_ok": p.result.radius_ok,
                 })).collect::<Vec<_>>(),
             },
         });
@@ -336,4 +339,9 @@ impl Session {
         self.doc["stages"]["optimise"]["depends_on"] = json!(h);
         Ok(())
     }
+}
+
+/// A finite number, or null (JSON has no NaN).
+fn num_or_null(v: f64) -> Value {
+    if v.is_finite() { json!(v) } else { Value::Null }
 }

@@ -281,6 +281,11 @@ impl Session {
         });
         if stage != Stage::Sizing {
             dep["inputs"] = self.doc["inputs"].clone();
+            // The DEM is identified by its hash, not by where the file sits: moving a design and its
+            // DEM to another folder must not make its results stale.
+            if let Some(dem) = dep["inputs"]["dem"].as_object_mut() {
+                dem.remove("path");
+            }
             // The rolling circle reads neither the DEM nor the water level: one added after it ran
             // leaves it fresh. The re-route, the optimise stage and the volumes read them.
             let reads_dem = match stage {

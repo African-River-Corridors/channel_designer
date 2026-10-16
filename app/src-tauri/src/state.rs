@@ -414,7 +414,38 @@ impl AppState {
         }
     }
 
-    /// The `.cdesign` text to write.
+    /// The design line options as GeoJSON in longitude and latitude, from the session: the screening
+    /// label, the checks and any failed check ride in the file. The same text as `cdesign export
+    /// --geojson --wgs84` on the saved file.
+    pub fn export_geojson(&self) -> Result<String, String> {
+        self.session
+            .export_geojson(true, self.dem_bytes.as_deref().map(|b| b.as_slice()))
+            .map_err(message)
+    }
+
+    /// The quantity table as CSV, from the session. The same text as `cdesign export --csv`.
+    pub fn export_csv(&self) -> String {
+        self.session
+            .export_csv(self.dem_bytes.as_deref().map(|b| b.as_slice()))
+    }
+
+    /// The DEM path is stored relative to the document: say it again from the folder `path` is in.
+    /// Only the path changes; the DEM's hash stays, so no stage goes stale.
+    fn point_dem_from(&mut self, path: &Path) {
+        if let Some(file) = &self.dem_file {
+            let rel = relative_to(path.parent().unwrap_or(Path::new(".")), file);
+            self.session.set_dem_path(&rel);
+        }
+    }
+
+    /// The text to write at `path`: the design with its DEM path said from that folder.
+    pub fn save_text_for(&mut self, path: &Path) -> String {
+        self.point_dem_from(path);
+        self.session.to_text()
+    }
+
+    /// The `.cdesign` text as it stands (the save command uses [`AppState::save_text_for`]).
+    #[cfg(test)]
     pub fn save_text(&self) -> String {
         self.session.to_text()
     }
@@ -422,11 +453,7 @@ impl AppState {
     /// Record that the design was written to `path`.
     pub fn saved(&mut self, path: &Path) {
         self.path = Some(path.to_path_buf());
-        // The DEM path is stored relative to the document: say it again from the new folder.
-        if let (Some(file), Some(bytes), Some(dem)) = (&self.dem_file, &self.dem_bytes, &self.dem) {
-            let rel = relative_to(path.parent().unwrap_or(Path::new(".")), file);
-            self.session.set_dem(&rel, bytes, dem);
-        }
+        self.point_dem_from(path);
         self.dirty = false;
         self.warnings.clear();
     }
@@ -870,6 +897,67 @@ mod tests {
                 .unwrap_err()
                 .contains("stale")
         );
+    }
+
+    #[test]
+    fn the_app_s_exports_equal_cdesign_export_on_the_saved_file() {
+        let (mut s, dir) = ready();
+        run(&mut s, "alignment", Some("rolling_circle")).unwrap();
+        run(&mut s, "volumes", None).unwrap();
+        let doc = dir.path().join("river.cdesign");
+        std::fs::write(&doc, s.save_text()).unwrap();
+        let (gj, csv) = (dir.path().join("o.geojson"), dir.path().join("o.csv"));
+        let d = doc.to_string_lossy().into_owned();
+        cd_cli::commands::export(&d, true, false, true, Some(&gj.to_string_lossy()))
+            .unwrap_or_else(|f| panic!("{}", f.message));
+        cd_cli::commands::export(&d, false, true, false, Some(&csv.to_string_lossy()))
+            .unwrap_or_else(|f| panic!("{}", f.message));
+        assert_eq!(
+            s.export_geojson().unwrap(),
+            std::fs::read_to_string(gj).unwrap()
+        );
+        assert_eq!(s.export_csv(), std::fs::read_to_string(csv).unwrap());
+        // Both carry the label, and a table that has volumes carries them.
+        assert!(
+            s.export_csv()
+                .starts_with("# Screening \u{2014} not for construction\n")
+        );
+        assert!(
+            s.export_geojson()
+                .unwrap()
+                .contains("\"screening\": \"Screening \u{2014} not for construction\"")
+        );
+    }
+
+    #[test]
+    fn an_export_with_no_options_says_so_and_the_csv_is_just_the_label_and_header() {
+        let s = AppState::new_design("Study", "2026-10-16");
+        assert!(
+            s.export_geojson()
+                .unwrap_err()
+                .contains("run the alignment stage")
+        );
+        assert_eq!(s.export_csv().lines().count(), 2);
+    }
+
+    #[test]
+    fn saving_to_another_folder_keeps_the_run_stages_fresh() {
+        let (mut s, dir) = ready();
+        run(&mut s, "alignment", Some("rolling_circle")).unwrap();
+        run(&mut s, "volumes", None).unwrap();
+        let sub = dir.path().join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        s.saved(&sub.join("moved.cdesign"));
+        assert_eq!(
+            s.snapshot()["document"]["inputs"]["dem"]["path"],
+            "../dem.tif"
+        );
+        assert_eq!(stage_status(&s, "volumes"), "fresh");
+        // And the saved file reopens fresh, with the DEM found at the new relative path.
+        let text = s.save_text();
+        let dem = std::fs::read(dir.path().join("dem.tif")).unwrap();
+        let again = AppState::open(&sub.join("moved.cdesign"), &text, Some(&dem)).unwrap();
+        assert_eq!(stage_status(&again, "volumes"), "fresh");
     }
 
     /// A temporary folder that goes away with the test.

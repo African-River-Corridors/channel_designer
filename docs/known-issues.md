@@ -46,22 +46,18 @@ every rolled line, so it ships as its own change.
 `radius_check_chord_m` (`alignment.radius_check`). `radius_ok` allows 2 % below R_min for
 reading error.
 
-| Step | How it reads | Default chord |
-|---|---|---|
-| `rolling_circle` | three-point radius, points half a chord apart, sliding at a stride of 10 m or less, read from both ends | R_min / 3 (one LOA at R_min = 3 × LOA) |
-| `optimise_route` | three-point radius on the line's own station vertices, the same reading its smoothing enforces | 2 × `station_step` |
+Every method reads radius the same way (spec 0005 Q11, #95): a three-point radius, points half
+a chord apart, sliding at a stride of 10 m or less, read from both ends (`min_radius_on_chord`).
+The default chord is R_min / 3 (one LOA at R_min = 3 × LOA). This holds for `rolling_circle`,
+`optimise_route`, the pool lattice (`LatticeResult`, `PoolsResult`), the fairway fit and
+`join_legs`. Pass `check_chord_m` to read another chord.
 
-The route reads its vertices, not a resample. A resample reads the corners between straight
-segments: a polyline with every vertex on an R circle reads 3-6 % below R at usual spacings.
-Pass `check_chord_m` (the vessel length) to `rolling_circle` to read on one LOA. On the route,
-`check_chord_m` sets how many stations each side are used (rounded half up), and the chord
-reported is nominal (2 × k × `station_step` along the baseline; offsets stretch segments).
-
-The route's reading is the one its smoothing enforces, so `radius_ok` there means the
-stations hold R_min. It does not mean every LOA-length chord does: a resampled one-LOA check
-can read well below it at a corner between stations. In one synthetic case (R_min 150 m,
-50 m stations) a 23° corner read 149.8 m on the vertices and 124.6 m on a resampled 100 m
-chord. If a corner matters, use a smaller `station_step` or smooth the line before use.
+**Closed: corners between stations (#95).** The route used to report the reading on its own
+station vertices, which misses the corners between straight segments: in one synthetic case
+(R_min 150 m, 50 m stations) a 23° corner read 149.8 m on the vertices and 124.6 m on a
+resampled 100 m chord, yet reported `radius_ok`. The route now reports the chord reading, so
+that line reports `radius_ok = false`. Its smoothing and its choice between corridors still use
+the vertex reading internally.
 
 The route's corridor sweep now prefers a corridor that holds R_min over one that saves more
 but does not. Up to 0.1.0 the route relaxed its target to the baseline's own radius,

@@ -64,6 +64,14 @@ impl Session {
         });
     }
 
+    /// Say where the DEM file now is, relative to the document, when the design is saved to another
+    /// folder. The file's hash, CRS and nodata value stay as recorded, and no stage goes stale.
+    pub fn set_dem_path(&mut self, path: &str) {
+        if self.doc["inputs"]["dem"].is_object() {
+            self.doc["inputs"]["dem"]["path"] = json!(path);
+        }
+    }
+
     /// Compare the file the caller found at [`Session::dem_path`] with the recorded hash.
     pub fn dem_check(&self, bytes: Option<&[u8]>) -> DemCheck {
         let Some(dem) = self.doc["inputs"]["dem"].as_object() else {

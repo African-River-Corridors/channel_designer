@@ -25,7 +25,11 @@
     }
   },
   "bundle": {
-    "active": false,
+    "active": true,
+    "publisher": "African River Corridors",
+    "category": "Utility",
+    "shortDescription": "Screen a river reach for a vessel: cut and dredge volumes, design line options and checks.",
+    "longDescription": "Channel Designer screens inland navigation channels. It is for screening, not for construction.",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.icns", "icons/icon.ico"]
   }
 }
