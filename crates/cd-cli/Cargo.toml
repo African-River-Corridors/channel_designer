@@ -13,6 +13,8 @@ path = "src/main.rs"
 
 [dependencies]
 cd-format.workspace = true
+clap = { version = "4.6.7", features = ["derive"] }
 serde_json.workspace = true
 
 [dev-dependencies]
+cd-core.workspace = true
