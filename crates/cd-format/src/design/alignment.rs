@@ -288,8 +288,8 @@ impl Session {
     }
 
     /// `run_stage(Alignment)`: rerun the methods that were run, or the rolling circle if none was.
-    /// A re-route needs a DEM, which a bare stage run does not have.
-    pub(super) fn rerun_alignment(&mut self) -> Result<(), DesignError> {
+    /// A re-route needs a DEM: without terrain it is refused.
+    pub(super) fn rerun_alignment(&mut self, terrain: Option<Terrain>) -> Result<(), DesignError> {
         let ran: Vec<AlignMethod> = self.doc["stages"]["alignment"]["results"]["methods"]
             .as_array()
             .map(|a| {
@@ -302,12 +302,12 @@ impl Session {
             return self.align(AlignMethod::RollingCircle, &Value::Null, None);
         }
         for m in ran {
-            if m == AlignMethod::Reroute {
+            if m == AlignMethod::Reroute && terrain.is_none() {
                 return Err(DesignError::NotAvailable(
                     "the re-route needs a DEM: rerun it with `cdesign align --method reroute --dem FILE`".into(),
                 ));
             }
-            self.align(m, &Value::Null, None)?;
+            self.align(m, &Value::Null, terrain)?;
         }
         Ok(())
     }

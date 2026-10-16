@@ -4,6 +4,7 @@
 //! The document is a JSON value (`schema/cdesign.schema.json`). A stage's status is never stored:
 //! it is worked out on load from the stage's recorded dependency hash.
 
+use super::alignment::Terrain;
 use super::crs::{Crs, Utm};
 use super::geojson::{self, Role};
 use super::hash::{hash_value, sha256_hex};
@@ -268,6 +269,17 @@ impl Session {
         });
         if stage != Stage::Sizing {
             dep["inputs"] = self.doc["inputs"].clone();
+            // The rolling circle never reads the DEM: a DEM added after it ran leaves it fresh.
+            // The re-route, the optimise stage and the volumes read it.
+            let reads_dem = match stage {
+                Stage::Alignment => self.doc["stages"]["alignment"]["results"]["methods"]
+                    .as_array()
+                    .is_some_and(|m| m.iter().any(|x| x == "reroute")),
+                _ => true,
+            };
+            if !reads_dem && let Some(inputs) = dep["inputs"].as_object_mut() {
+                inputs.remove("dem");
+            }
             dep["crs"] = self.doc["project"]["crs"].clone();
         }
         if matches!(stage, Stage::Optimise | Stage::Volumes) {
@@ -361,9 +373,19 @@ impl Session {
         Ok(())
     }
 
-    /// Run one stage. A stage whose earlier stages are stale refuses, and names the one to run
-    /// first. Stages after sizing arrive with their own tickets.
+    /// Run one stage with no terrain. See [`Session::run_stage_with`].
     pub fn run_stage(&mut self, stage: Stage) -> Result<(), DesignError> {
+        self.run_stage_with(stage, None)
+    }
+
+    /// Run one stage. A stage whose earlier stages are stale refuses, and names the one to run
+    /// first. `terrain` is the DEM in the project CRS, for the stages that need it (the re-route and
+    /// the volumes); the caller reads the file.
+    pub fn run_stage_with(
+        &mut self,
+        stage: Stage,
+        terrain: Option<Terrain>,
+    ) -> Result<(), DesignError> {
         for earlier in Stage::ALL.iter().take_while(|s| **s != stage) {
             if self.stage_status(*earlier) == StageStatus::Stale {
                 return Err(DesignError::StaleUpstream {
@@ -374,7 +396,8 @@ impl Session {
         }
         match stage {
             Stage::Sizing => self.run_sizing(),
-            Stage::Alignment => self.rerun_alignment(),
+            Stage::Alignment => self.rerun_alignment(terrain),
+            Stage::Volumes => self.run_volumes(&Value::Null, terrain),
             other => Err(DesignError::NotAvailable(format!(
                 "the {} stage is not available yet",
                 other.name()
@@ -385,6 +408,11 @@ impl Session {
     /// Run every stage that is stale, or has settings but no results, in order. Returns the stages
     /// that ran. A stale stage that cannot run yet (a later ticket builds it) is an error.
     pub fn run_stale(&mut self) -> Result<Vec<Stage>, DesignError> {
+        self.run_stale_with(None)
+    }
+
+    /// [`Session::run_stale`] with the DEM as a terrain sampler.
+    pub fn run_stale_with(&mut self, terrain: Option<Terrain>) -> Result<Vec<Stage>, DesignError> {
         let mut ran = Vec::new();
         for stage in Stage::ALL {
             let due = match self.stage_status(stage) {
@@ -393,7 +421,7 @@ impl Session {
                 StageStatus::Fresh => false,
             };
             if due {
-                self.run_stage(stage)?;
+                self.run_stage_with(stage, terrain)?;
                 ran.push(stage);
             }
         }

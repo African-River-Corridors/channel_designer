@@ -1,8 +1,9 @@
 //! The `cdesign` subcommands. File, stdin, stdout and clock access live here.
 
-use cd_format::design::crs::{Crs, Utm};
 use cd_format::design::geopackage;
-use cd_format::design::{AlignMethod, DesignError, Role, Session, Stage, StageStatus};
+use cd_format::design::{
+    AlignMethod, DemCheck, DesignError, Role, Session, Stage, StageStatus, Terrain,
+};
 use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::path::Path;
@@ -108,6 +109,65 @@ fn open(path: &str) -> core::result::Result<Session, Failure> {
     Session::open(&read(path)?).map_err(from_design)
 }
 
+/// Where a document's relative paths start: its own folder (the working folder for stdin).
+fn doc_dir(doc: &str) -> std::path::PathBuf {
+    match Path::new(doc).parent() {
+        Some(p) if doc != "-" && !p.as_os_str().is_empty() => p.to_path_buf(),
+        _ => std::path::PathBuf::from("."),
+    }
+}
+
+/// The DEM path as the document records it: relative to the document's folder, with `/`.
+fn relative_dem_path(doc: &str, dem: &str) -> String {
+    let base = std::fs::canonicalize(doc_dir(doc)).ok();
+    let full = std::fs::canonicalize(dem).ok();
+    match (base, full) {
+        (Some(b), Some(f)) => match f.strip_prefix(&b) {
+            Ok(rel) => rel.to_string_lossy().replace('\\', "/"),
+            Err(_) => pathdiff(&b, &f),
+        },
+        _ => dem.to_string(),
+    }
+}
+
+/// `target` relative to `base` (both absolute), using `..` where it must climb.
+fn pathdiff(base: &Path, target: &Path) -> String {
+    let b: Vec<_> = base.components().collect();
+    let t: Vec<_> = target.components().collect();
+    let common = b.iter().zip(&t).take_while(|(x, y)| x == y).count();
+    let mut parts: Vec<String> = vec!["..".to_string(); b.len() - common];
+    parts.extend(
+        t[common..]
+            .iter()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned()),
+    );
+    parts.join("/")
+}
+
+/// Open a document, find its DEM file and warn on stderr when the DEM is missing or has changed.
+/// Returns the session and the DEM file's bytes, if the file exists.
+fn open_with_dem(doc: &str) -> core::result::Result<(Session, Option<Vec<u8>>), Failure> {
+    let session = open(doc)?;
+    let bytes = session
+        .dem_path()
+        .and_then(|p| std::fs::read(doc_dir(doc).join(p)).ok());
+    if let Some(w) = session.dem_warning(bytes.as_deref()) {
+        eprintln!("cdesign: warning: {w}");
+    }
+    Ok((session, bytes))
+}
+
+/// The DEM as a terrain sampler, for the stages that need one.
+fn read_dem(bytes: &[u8], what: &str) -> core::result::Result<cd_format::geotiff::Dem, Failure> {
+    cd_format::geotiff::read_bytes(bytes).map_err(|e| input_error(format!("{what}: {e}")))
+}
+
+fn project_epsg(session: &Session) -> Option<u32> {
+    session.document()["project"]["crs"]["epsg"]
+        .as_u64()
+        .map(|c| c as u32)
+}
+
 /// Print a result. When the document itself goes to stdout the result goes to stderr, so the two
 /// never mix.
 fn say(doc_on_stdout: bool, json_mode: bool, human: &str, value: Value) {
@@ -169,6 +229,7 @@ pub fn new(file: &str, title: &str, date: Option<&str>, json_mode: bool) -> Resu
 pub fn import(
     doc: &str,
     inputs: [(&str, Option<String>); 4],
+    dem: Option<String>,
     output: &Option<String>,
     json_mode: bool,
 ) -> Result {
@@ -191,21 +252,52 @@ pub fn import(
             texts.push((role, read_vector(&path)?));
         }
     }
-    if texts.is_empty() {
+    if texts.is_empty() && dem.is_none() {
         return Err(input_error(
-            "nothing to import: give --left-bank, --right-bank, --centreline or --polygon",
+            "nothing to import: give --left-bank, --right-bank, --centreline, --polygon or --dem",
         ));
     }
     // The document is read first when it is on stdin: stdin can be read once.
     let mut session = open(doc)?;
     let items: Vec<(Role, &str)> = texts.iter().map(|(r, t)| (*r, t.as_str())).collect();
-    let report = session.import(&items).map_err(from_design)?;
+    let mut report = if items.is_empty() {
+        cd_format::design::ImportReport {
+            project_epsg: project_epsg(&session).unwrap_or(0),
+            inputs: Vec::new(),
+        }
+    } else {
+        session.import(&items).map_err(from_design)?
+    };
+    if let Some(path) = &dem {
+        let bytes =
+            std::fs::read(path).map_err(|e| input_error(format!("cannot read {path}: {e}")))?;
+        let d = read_dem(&bytes, path)?;
+        // Refuse a DEM the stages could not sample, now, with the CRS named.
+        cd_format::design::terrain::dem_sampler(&d, project_epsg(&session))
+            .map(|_| ())
+            .or_else(|e| {
+                // No project CRS yet is fine: the river comes later.
+                if project_epsg(&session).is_none() {
+                    Ok(())
+                } else {
+                    Err(e)
+                }
+            })
+            .map_err(from_design)?;
+        session.set_dem(&relative_dem_path(doc, path), &bytes, &d);
+        report.inputs.push((
+            "dem".to_string(),
+            cd_format::design::terrain::dem_crs_name(&d),
+            d.width * d.height,
+        ));
+    }
     let dest = destination(doc, output);
     write(&dest, &session.to_text())?;
     let human = {
         let mut lines = vec![format!("project CRS: EPSG:{}", report.project_epsg)];
         for (name, src, n) in &report.inputs {
-            lines.push(format!("{name}: {n} positions, from {src}"));
+            let unit = if name == "dem" { "pixels" } else { "positions" };
+            lines.push(format!("{name}: {n} {unit}, from {src}"));
         }
         lines.join("\n")
     };
@@ -320,45 +412,26 @@ pub fn align(
         put("check_chord_m", json!(v));
     }
     let overrides = Value::Object(overrides);
-    // The re-route samples a DEM; read it here, since the session has no file access.
+    // The re-route samples a DEM; read it here, since the session has no file access. A DEM given
+    // here becomes the document's DEM reference.
     let dem = match (&flags.dem, method) {
-        (Some(path), AlignMethod::Reroute) => Some(
-            cd_format::geotiff::read_file(Path::new(path))
-                .map_err(|e| input_error(format!("{path}: {e}")))?,
-        ),
+        (Some(path), AlignMethod::Reroute) => {
+            let bytes =
+                std::fs::read(path).map_err(|e| input_error(format!("cannot read {path}: {e}")))?;
+            let dem = read_dem(&bytes, path)?;
+            session.set_dem(&relative_dem_path(doc, path), &bytes, &dem);
+            Some(dem)
+        }
         (Some(_), _) => return Err(input_error("--dem is for the re-route only")),
         _ => None,
     };
-    let project = session.document()["project"]["crs"]["epsg"]
-        .as_u64()
-        .and_then(|c| Crs::from_epsg(c as u32).ok());
-    let sampler = dem.as_ref().map(|d| {
-        let to_dem: Box<dyn Fn(f64, f64) -> [f64; 2]> = match (d.epsg, project) {
-            (Some(4326), Some(Crs::Utm(u))) => {
-                Box::new(move |x, y| u.inverse(x, y).unwrap_or([f64::NAN; 2]))
-            }
-            _ => Box::new(|x, y| [x, y]),
-        };
-        move |xs: &[f64], ys: &[f64]| -> Vec<f64> {
-            xs.iter()
-                .zip(ys)
-                .map(|(&x, &y)| {
-                    let p = to_dem(x, y);
-                    d.sample_bilinear(p[0], p[1])
-                })
-                .collect()
-        }
-    });
-    if let (Some(d), Some(Crs::Utm(Utm { zone, .. }))) = (&dem, project)
-        && !matches!(d.epsg, Some(4326))
-        && d.epsg != project.map(Crs::epsg)
-    {
-        return Err(input_error(format!(
-            "the DEM's CRS ({}) is not WGS84 and not the channel design's UTM zone {zone}. Convert the DEM.",
-            d.epsg
-                .map_or("unknown".to_string(), |e| format!("EPSG:{e}"))
-        )));
-    }
+    let sampler = match &dem {
+        Some(d) => Some(
+            cd_format::design::terrain::dem_sampler(d, project_epsg(&session))
+                .map_err(from_design)?,
+        ),
+        None => None,
+    };
     session
         .align(
             method,
@@ -402,9 +475,131 @@ pub fn align(
     }
 }
 
+/// The flags of `cdesign volumes`.
+pub struct VolumesFlags {
+    pub dem: Option<String>,
+    pub model: Option<String>,
+    pub water_level: Option<f64>,
+    pub water_slope: Option<f64>,
+    pub station: Option<f64>,
+    pub maxw: Option<f64>,
+}
+
+pub fn volumes(doc: &str, flags: VolumesFlags, output: &Option<String>, json_mode: bool) -> Result {
+    let (mut session, bytes) = open_with_dem(doc)?;
+    let mut overrides = serde_json::Map::new();
+    if let Some(m) = &flags.model {
+        overrides.insert("cut_model".into(), json!(m));
+    }
+    for (k, v) in [
+        ("water_level_start_m", flags.water_level),
+        ("water_surface_slope", flags.water_slope),
+        ("station_m", flags.station),
+        ("maxw_m", flags.maxw),
+    ] {
+        if let Some(v) = v {
+            overrides.insert(k.into(), json!(v));
+        }
+    }
+    // A DEM given here is read and recorded as the document's reference. Otherwise the one the
+    // document names must be there and must be the file whose hash was recorded.
+    let dem = match &flags.dem {
+        Some(path) => {
+            let b =
+                std::fs::read(path).map_err(|e| input_error(format!("cannot read {path}: {e}")))?;
+            let d = read_dem(&b, path)?;
+            session.set_dem(&relative_dem_path(doc, path), &b, &d);
+            Some(d)
+        }
+        None => match session.dem_check(bytes.as_deref()) {
+            DemCheck::Matches => {
+                let d = read_dem(
+                    bytes.as_deref().unwrap_or_default(),
+                    session.dem_path().unwrap_or("DEM"),
+                )?;
+                Some(d)
+            }
+            DemCheck::Changed => {
+                let p = session.dem_path().unwrap_or("DEM").to_string();
+                return Err(input_error(format!(
+                    "the DEM `{p}` has changed since its hash was recorded, so the volumes stage will not run on it. \
+                     To accept the new file run `cdesign volumes --dem {p}`."
+                )));
+            }
+            DemCheck::Missing => {
+                let p = session.dem_path().unwrap_or("DEM").to_string();
+                return Err(input_error(format!(
+                    "the DEM `{p}` is missing: the volumes stage cannot run without it. \
+                     Put the file back, or point to another with `cdesign volumes --dem FILE`."
+                )));
+            }
+            DemCheck::NoDem => None,
+        },
+    };
+    let sampler = match &dem {
+        Some(d) => Some(
+            cd_format::design::terrain::dem_sampler(d, project_epsg(&session))
+                .map_err(from_design)?,
+        ),
+        None => None,
+    };
+    session
+        .run_volumes(
+            &Value::Object(overrides),
+            sampler.as_ref().map(|s| s as Terrain),
+        )
+        .map_err(from_design)?;
+    let dest = destination(doc, output);
+    write(&dest, &session.to_text())?;
+    let rows = session.document()["stages"]["volumes"]["results"]["options"].clone();
+    let mut human = Vec::new();
+    let mut all_ok = true;
+    for r in rows.as_array().into_iter().flatten() {
+        let ok = r["radius_ok"].as_bool().unwrap_or(false);
+        all_ok &= ok;
+        let f = |k: &str| r[k].as_f64().unwrap_or(f64::NAN);
+        human.push(format!(
+            "{}: dredge {:.0} m3, dry cut {:.0} m3, tallest face {:.1} m{}",
+            r["name"].as_str().unwrap_or("?"),
+            f("dredge_m3"),
+            f("excav_m3"),
+            f("max_face_h_m"),
+            if ok { "" } else { "  [FAILS R_min]" }
+        ));
+    }
+    say(
+        dest == "-",
+        json_mode,
+        &human.join("\n"),
+        json!({"ok": true, "options": rows}),
+    );
+    if all_ok {
+        Ok(())
+    } else {
+        Err(Failure {
+            message: "an option fails R_min".into(),
+            code: 1,
+        })
+    }
+}
+
 pub fn run(doc: &str, output: &Option<String>, json_mode: bool) -> Result {
-    let mut session = open(doc)?;
-    let ran = session.run_stale().map_err(from_design)?;
+    let (mut session, bytes) = open_with_dem(doc)?;
+    // The DEM is used only when it is the file whose hash was recorded.
+    let dem = match (session.dem_check(bytes.as_deref()), &bytes) {
+        (DemCheck::Matches, Some(b)) => Some(read_dem(b, session.dem_path().unwrap_or("DEM"))?),
+        _ => None,
+    };
+    let sampler = match &dem {
+        Some(d) => Some(
+            cd_format::design::terrain::dem_sampler(d, project_epsg(&session))
+                .map_err(from_design)?,
+        ),
+        None => None,
+    };
+    let ran = session
+        .run_stale_with(sampler.as_ref().map(|s| s as Terrain))
+        .map_err(from_design)?;
     let dest = destination(doc, output);
     write(&dest, &session.to_text())?;
     let names: Vec<&str> = ran.iter().map(|s| s.name()).collect();
@@ -453,8 +648,8 @@ pub fn validate(doc: &str, json_mode: bool) -> Result {
 }
 
 pub fn status(doc: &str, json_mode: bool) -> Result {
-    let session = open(doc)?;
-    let st = session.status();
+    let (session, bytes) = open_with_dem(doc)?;
+    let st = session.status_with_dem(bytes.as_deref());
     let mut human: Vec<String> = st
         .stages
         .iter()
@@ -484,7 +679,11 @@ pub fn status(doc: &str, json_mode: bool) -> Result {
         false,
         json_mode,
         &human.join("\n"),
-        json!({"stages": Value::Object(stages), "stale": stale}),
+        json!({
+            "stages": Value::Object(stages),
+            "stale": stale,
+            "warnings": session.dem_warning(bytes.as_deref()).into_iter().collect::<Vec<_>>(),
+        }),
     );
     Ok(())
 }
