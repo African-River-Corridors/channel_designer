@@ -256,6 +256,9 @@ fn result_json(r: &LatticeResult) -> Value {
         "hit_cap": r.hit_cap,
         "timed_out": r.timed_out,
         "diagnostics": diagnostics,
+        "measured_min_radius_m": float_json(r.measured_min_radius_m),
+        "radius_check_chord_m": float_json(r.radius_check_chord_m),
+        "radius_ok": r.radius_ok,
     })
 }
 
@@ -522,6 +525,9 @@ pub(super) fn lattice(function: &str, args: &Value) -> Result<Value, EvalError> 
                 "line": geom_json(&Geometry::LineString(pr.line.clone())),
                 "n_replaced": pr.n_replaced(),
                 "pools": Value::Array(pr.pools.iter().map(pool_json).collect()),
+                "measured_min_radius_m": float_json(pr.measured_min_radius_m),
+                "radius_check_chord_m": float_json(pr.radius_check_chord_m),
+                "radius_ok": pr.radius_ok,
             }))
         }
         other => Err(bad(format!("lattice has no parity function `{other}`"))),

@@ -83,7 +83,7 @@ class RouteResult:
     smooth_passes: int
     sweep: list = field(default_factory=list)   # (corridor, saving %, min R) per candidate
     measured_min_radius_m: float = np.nan       # minimum radius of ``line`` on the chord
-    radius_check_chord_m: float = np.nan        # NOMINAL chord, 2 × k × station_step, m
+    radius_check_chord_m: float = np.nan        # chord, m: ``check_chord_m`` or R_min / 3
     radius_ok: bool = False                     # measured holds ``r_min`` (2 % reading tol)
 
 
@@ -210,12 +210,10 @@ def optimise_route(line: LineString, terrain: TerrainSampler, river_polygon, gra
     away, so a moderate corridor usually wins; the sweep finds it.
 
     ``radius_ok`` on the result is False when the returned line is tighter than ``r_min``.
-    It is read on the line's own station vertices, ``k`` stations each side, so the chord is
-    ``2 × k × station_step``. The default ``k = 1`` is the reading the enforcement uses. Pass
-    ``check_chord_m`` to read a longer chord (``k = floor(check_chord_m / (2 × step) + 0.5)``,
-    at least 1). The chord is NOMINAL, measured along the baseline: offsets stretch segments,
-    so the real chord at a corner can be longer. A resampled check on one LOA can read well
-    below a ``radius_ok`` route line at a corner between stations (see docs/known-issues.md).
+    It is read on the chord, as every method reads it (``min_radius_on_chord``): the chord is
+    ``check_chord_m``, default R_min / 3, so it sees corners between stations. The radius
+    enforcement and the choice between corridors still read the line's own station vertices,
+    ``k`` stations each side (``k = floor(check_chord_m / (2 × step) + 0.5)``, at least 1).
     """
     c = _rust.Call()
     return _rust.call("route", "optimise_route", RouteResult, _call=c, line=line, terrain=c.terrain(terrain),

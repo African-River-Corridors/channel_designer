@@ -10,7 +10,9 @@
 //! corridor the sweep picks. Ties go to the first candidate, as in the Python (strict `<`).
 
 use super::PyError;
-use super::radius_check::{RADIUS_TOL, min_radius_on_vertices, radius_ok};
+use super::radius_check::{
+    RADIUS_TOL, default_check_chord, min_radius_on_chord, min_radius_on_vertices, radius_ok,
+};
 use crate::geom::overlay::contains_xy;
 use crate::geom::{Polygon, Pt, linear};
 use crate::numpy::{arange, argmin, np_min, np_mod, np_sum};
@@ -542,7 +544,6 @@ pub fn optimise_route(grid: &CostGrid, p: &RouteParams) -> Result<RouteResult, P
         rmin: f64,
         passes: i64,
         pts: Vec<Pt>,
-        measured: f64,
     }
     let mut best: Option<Best> = None;
     let mut sweep = Vec::new();
@@ -565,11 +566,17 @@ pub fn optimise_route(grid: &CostGrid, p: &RouteParams) -> Result<RouteResult, P
                 rmin,
                 passes,
                 pts,
-                measured,
             });
         }
     }
     let b = best.ok_or_else(|| PyError::value("cannot unpack non-iterable NoneType object"))?;
+    // The vertex reading above is the one the smoothing enforces and picks the corridor by. The
+    // reported reading is the chord one every method shares (spec 0005 Q11): it also sees the
+    // corners between stations.
+    let chord = p
+        .check_chord_m
+        .unwrap_or_else(|| default_check_chord(p.r_min));
+    let measured = min_radius_on_chord(&b.pts, chord)?;
     Ok(RouteResult {
         line: b.pts,
         offsets: b.sm,
@@ -578,9 +585,9 @@ pub fn optimise_route(grid: &CostGrid, p: &RouteParams) -> Result<RouteResult, P
         approx_saving_pct: b.sav,
         smooth_passes: b.passes,
         sweep,
-        measured_min_radius_m: b.measured,
-        radius_check_chord_m: 2.0 * k as f64 * grid.station_step,
-        radius_ok: b.ok,
+        measured_min_radius_m: measured,
+        radius_check_chord_m: chord,
+        radius_ok: radius_ok(measured, p.r_min),
     })
 }
 
@@ -659,7 +666,7 @@ mod tests {
         let r = optimise_route(&grid, &p).unwrap();
         assert_eq!(
             (r.corridor_half_m, r.radius_ok, r.radius_check_chord_m),
-            (40.0, true, 200.0)
+            (40.0, true, 100.0)
         );
         assert_eq!(r.sweep.len(), 2);
         let bad = RouteParams {
@@ -670,5 +677,49 @@ mod tests {
             optimise_route(&grid, &bad).unwrap_err().message,
             "check_chord_m must be finite and positive."
         );
+    }
+
+    #[test]
+    fn a_line_with_corners_between_stations_reports_radius_ok_false() {
+        // Label: sourced - hand calculation. Stations 100 m apart with every vertex on an R_min
+        // circle: the vertex reading is R_min, but on the chord (R_min/3 = 100 m) the three
+        // points half a chord either side of a vertex turn θ = 2 asin(100/600) over 50 m arms,
+        // so they read 50 / (2 sin(θ/2)) = 50 / (2/6) = 150 m. Spec 0005 Q11 reports the chord
+        // reading.
+        let r = 300.0;
+        let n = 8;
+        let th = |i: usize| i as f64 * 2.0 * libm::asin(100.0 / (2.0 * r));
+        let centres: Vec<Pt> = (0..n)
+            .map(|i| [r * libm::sin(th(i)), r * (1.0 - libm::cos(th(i)))])
+            .collect();
+        let grid = CostGrid {
+            offsets: vec![0.0],
+            stations_m: (0..n).map(|i| i as f64 * 100.0).collect(),
+            normals: (0..n)
+                .map(|i| [-libm::sin(th(i)), libm::cos(th(i))])
+                .collect(),
+            centres,
+            grades: vec![0.0; n],
+            vol: vec![vec![1.0]; n],
+            wet: vec![vec![0.0]; n],
+            station_step: 100.0,
+            offset_step: 10.0,
+        };
+        let p = RouteParams {
+            r_min: r,
+            wet_weight: 1.0,
+            dry_weight: 1.0,
+            corridor_sweep: vec![40.0],
+            check_chord_m: None,
+        };
+        let res = optimise_route(&grid, &p).unwrap();
+        assert!((min_radius_on_vertices(&res.line, 1).unwrap() - r).abs() < 1e-6);
+        assert_eq!(res.radius_check_chord_m, 100.0);
+        assert!(
+            (res.measured_min_radius_m - 150.0).abs() < 1e-6,
+            "{}",
+            res.measured_min_radius_m
+        );
+        assert!(!res.radius_ok);
     }
 }

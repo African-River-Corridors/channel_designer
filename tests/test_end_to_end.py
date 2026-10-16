@@ -43,8 +43,11 @@ def test_synthetic_river_rules_alignment_volumes():
                            grade=lambda s: river.water_level(s) - depth,
                            bottom_width=shape.bottom_width_straight_m, depth=depth,
                            side_slope=3.0, r_min=r_min, corridor_sweep=(40, 80, 120))
-    assert route.min_radius_m >= 0.98 * r_min
-    assert rolled.radius_ok and route.radius_ok
+    assert route.min_radius_m >= 0.98 * r_min            # the stations hold R_min ...
+    assert rolled.radius_ok
+    # ... but the corners between 100 m stations read about 103 m on the 85 m chord, and every
+    # method now reports the chord reading (#95, docs/known-issues.md).
+    assert not route.radius_ok and route.radius_check_chord_m == r_min / 3
     assert route.approx_saving_pct > 0.0
 
     # volumes: the least-cost line must cut less than the line it started from

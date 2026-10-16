@@ -10,7 +10,18 @@ versions follow [Semantic Versioning](https://semver.org/).
 Every pull request is checked for design impact (`tools/design_impact.py`, CI job `design-impact`): fixed
 scenarios run on the base branch and on the pull request, and a result that moves by more than 1e-9
 (ADR 0005) must have a bullet here, under this heading, saying what moved and why. Add the bullet in the
-pull request that moves the result. Nothing has moved yet in this section.
+pull request that moves the result.
+
+- **One radius reading (#95, spec 0005 Q11).** The least-cost re-route now reports
+  `measured_min_radius_m`, `radius_check_chord_m` and `radius_ok` read on the chord
+  (`min_radius_on_chord`, default R_min / 3), as the rolling circle already did. It used to report
+  the reading on its own station vertices, which misses the corners between stations. The
+  smoothing and the choice between corridors still read the vertices. What moved: the quickstart
+  re-route's `radius_ok` goes from true to false (254.0 m on the vertices, 103.6 m on the 85 m
+  chord); its reported chord goes from 200 m (2 × station step) to 85 m. Which way it moves depends
+  on the line: a corner between stations reads tighter on the chord, while a smooth excursion can
+  read wider on a long chord than on its station vertices. The pool lattice (`LatticeResult`) and
+  the pools result (`PoolsResult`) gain the same three fields. Rolling-circle results do not move.
 
 ## 0.2.0
 
