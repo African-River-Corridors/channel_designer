@@ -3,5 +3,6 @@
 mod eval;
 mod eval_rules;
 pub mod parity;
+pub mod search;
 
 pub use eval::{ENTRY_POINTS, EvalError, eval};

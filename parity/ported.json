@@ -6,5 +6,8 @@
   "simple",
   "width_profile",
   "geometry",
-  "synthetic"
+  "synthetic",
+  "radius_check",
+  "loops",
+  "rolling_circle"
 ]

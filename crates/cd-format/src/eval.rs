@@ -8,6 +8,7 @@
 use cd_core::cut_model::{self as cm, PerSide};
 use serde_json::{Number, Value, json};
 
+mod alignment;
 mod geometry;
 
 /// Why `eval` could not produce a result. A Python `ValueError` is not an `EvalError`: it is a
@@ -79,6 +80,9 @@ pub fn eval(entry_point: &str, input: &Value) -> Result<Value, EvalError> {
         "rulesets" | "methods" | "design" | "simple" | "width_profile" => {
             crate::eval_rules::dispatch(entry_point, function, args)
         }
+        "radius_check" => alignment::radius_check(function, args),
+        "loops" => alignment::loops(function, args),
+        "rolling_circle" => alignment::rolling_circle(function, args),
         "geometry" => geometry::geometry(function, args),
         "synthetic" => geometry::synthetic(function, args),
         ep if ENTRY_POINTS.contains(&ep) => Err(EvalError::NotPorted(ep.into())),

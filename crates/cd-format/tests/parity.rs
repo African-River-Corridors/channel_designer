@@ -3,7 +3,8 @@
 //!
 //! Needs no Python: it reads the committed files in `parity/` only.
 
-use cd_format::parity::{Tolerance, compare};
+use cd_format::parity::Tolerance;
+use cd_format::search::{Judged, judge};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -35,8 +36,17 @@ fn tolerance() -> Tolerance {
     Tolerance::from_json(&text).expect("tolerance.json parses")
 }
 
-/// (case id, case input, Reference Result) for one entry point, in file order.
-fn cases(entry_point: &str) -> Vec<(String, Value, Value)> {
+/// A case of one entry point: id, input, Reference Result, and the `search` record a search case
+/// carries (its near-tie flag).
+struct Case {
+    id: String,
+    input: Value,
+    expected: Value,
+    search: Option<Value>,
+}
+
+/// The cases of one entry point, in file order.
+fn cases(entry_point: &str) -> Vec<Case> {
     let cases = read_json(
         &parity_dir()
             .join("cases")
@@ -59,11 +69,12 @@ fn cases(entry_point: &str) -> Vec<(String, Value, Value)> {
         .zip(results)
         .map(|(c, r)| {
             assert_eq!(c["id"], r["id"], "{entry_point}: run `cargo xtask regen`");
-            (
-                c["id"].as_str().expect("case id").to_string(),
-                c["input"].clone(),
-                r["output"].clone(),
-            )
+            Case {
+                id: c["id"].as_str().expect("case id").to_string(),
+                input: c["input"].clone(),
+                expected: r["output"].clone(),
+                search: c.get("search").cloned(),
+            }
         })
         .collect()
 }
@@ -83,20 +94,36 @@ fn all_entry_points() -> Vec<String> {
 fn every_case_of_every_ported_entry_point_matches_its_reference_result() {
     let tol = tolerance();
     let mut failures = Vec::new();
+    let mut near_ties = Vec::new();
     let mut checked = 0;
     for ep in ported() {
-        for (id, input, expected) in cases(&ep) {
+        for Case {
+            id,
+            input,
+            expected,
+            search,
+        } in cases(&ep)
+        {
             checked += 1;
             match cd_format::eval(&ep, &input) {
-                Ok(actual) => {
-                    if let Err(diffs) = compare(&expected, &actual, tol) {
-                        failures.push(format!("{ep} {id}:\n    {}", diffs.join("\n    ")));
+                Ok(actual) => match judge(&ep, &input, search.as_ref(), &expected, &actual, tol) {
+                    Ok(Judged::NearTie) => near_ties.push(format!("{ep} {id}")),
+                    Ok(Judged::Exact) => {}
+                    Err(diffs) => {
+                        failures.push(format!("{ep} {id}:\n    {}", diffs.join("\n    ")))
                     }
-                }
+                },
                 Err(e) => failures.push(format!("{ep} {id}: {e}")),
             }
         }
     }
+    // A near tie is reported as one, never counted as a failure (ADR 0005).
+    eprintln!(
+        "search class: {} near-tie case(s) judged on objective and constraints{}{}",
+        near_ties.len(),
+        if near_ties.is_empty() { "" } else { ": " },
+        near_ties.join(", ")
+    );
     assert!(
         checked > 0,
         "no parity cases ran; the harness must never pass vacuously"
@@ -128,12 +155,37 @@ fn entry_points_not_yet_ported_say_so_and_are_not_half_ported() {
         .into_iter()
         .filter(|ep| !ported.contains(ep))
     {
-        for (id, input, _) in cases(&ep) {
+        for case in cases(&ep) {
+            let id = &case.id;
             assert_eq!(
-                cd_format::eval(&ep, &input),
+                cd_format::eval(&ep, &case.input),
                 Err(cd_format::EvalError::NotPorted(ep.clone())),
                 "{ep} {id}: the dispatch handles it, so add `{ep}` to parity/ported.json"
             );
         }
     }
+}
+
+/// Issues #9 and #10 (ticket 28): on every rolling-circle case, near tie or not, `radius_ok`, the
+/// measured minimum radius and the chord match the Reference Result. This test does not use the
+/// near-tie rule, so a tie can never excuse a wrong radius.
+#[test]
+fn radius_ok_measured_radius_and_chord_match_on_every_rolling_circle_case() {
+    let tol = tolerance();
+    let mut checked = 0;
+    for case in cases("rolling_circle") {
+        let Some(want) = case.expected["ok"].get("result") else {
+            continue;
+        };
+        let got = cd_format::eval("rolling_circle", &case.input).expect("eval");
+        for field in ["radius_ok", "measured_min_radius_m", "radius_check_chord_m"] {
+            let diffs = cd_format::parity::compare(&want[field], &got["ok"]["result"][field], tol);
+            assert!(diffs.is_ok(), "{} {field}: {diffs:?}", case.id);
+        }
+        checked += 1;
+    }
+    assert!(
+        checked >= 10,
+        "only {checked} rolling_circle results were checked"
+    );
 }

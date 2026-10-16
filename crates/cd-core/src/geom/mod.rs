@@ -13,6 +13,7 @@ pub mod merge;
 pub mod offset;
 pub mod overlay;
 pub mod polycmp;
+pub mod simple;
 
 /// A point in the plane.
 pub type Pt = [f64; 2];
