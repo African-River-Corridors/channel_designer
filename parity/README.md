@@ -84,8 +84,15 @@ noise between two correct implementations. Below it, a different choice in the R
 order-of-operations noise, and the exact path is not compared. Above it, a different choice is a
 port error. A case is never marked a tie after a failure.
 
-How a search case is judged is ticket 28's to build (objective within `search_objective_rel`, every
-constraint met, and the exact path unless `near_tie`).
+How a search case is judged is in `crates/cd-format/src/search.rs` (ticket 28). A case whose record
+says `near_tie: false`, or that has no record, is compared exactly like any other: the same path.
+A case with `near_tie: true` is compared on its objective, within `search_objective_rel`, and on its
+constraints, which still have to match the Reference Result; the path is not compared. Each search
+function names its objective and constraints in `search::view` (rolling circle: the length of the
+returned line; `radius_ok`, the measured radius and the chord). `cargo test` prints the near-tie
+cases it judged this way, so a tie is reported, never counted as a pass or a failure unseen. A
+separate test checks `radius_ok`, the measured radius and the chord on every rolling-circle case,
+tie or not.
 
 ## What "identical" means
 

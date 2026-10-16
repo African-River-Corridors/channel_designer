@@ -119,7 +119,7 @@ pub fn bend_units(s: &[f64], kappa: &[f64], smooth_n: usize) -> Vec<BendUnit> {
             } else {
                 f64::INFINITY
             },
-            deflection_rad: super::limits::pairwise_sum(seg).abs() * (s[1] - s[0]),
+            deflection_rad: crate::numpy::np_sum(seg).abs() * (s[1] - s[0]),
         });
     }
     out

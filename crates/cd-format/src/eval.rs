@@ -11,6 +11,7 @@ use serde_json::{Number, Value, json};
 mod alignment;
 mod cascade;
 mod geometry;
+mod river;
 mod terrain;
 mod volumes;
 
@@ -83,15 +84,18 @@ pub fn eval(entry_point: &str, input: &Value) -> Result<Value, EvalError> {
         "rulesets" | "methods" | "design" | "simple" | "width_profile" => {
             crate::eval_rules::dispatch(entry_point, function, args)
         }
+        "radius_check" => alignment::radius_check(function, args),
+        "loops" => alignment::loops(function, args),
+        "rolling_circle" => alignment::rolling_circle(function, args),
         "cascade" => cascade::cascade(function, args),
         "sections" => volumes::sections(function, args),
         "cut_model_grid" => volumes::cut_model_grid(function, args),
         "cut_model_extras" => volumes::cut_model_extras(function, args),
-        "centreline" => alignment::centreline(function, args),
-        "widths" => alignment::widths(function, args),
-        "limits" => alignment::limits(function, args),
-        "meanders" => alignment::meanders(function, args),
-        "bends" => alignment::bends(function, args),
+        "centreline" => river::centreline(function, args),
+        "widths" => river::widths(function, args),
+        "limits" => river::limits(function, args),
+        "meanders" => river::meanders(function, args),
+        "bends" => river::bends(function, args),
         "geometry" => geometry::geometry(function, args),
         "synthetic" => geometry::synthetic(function, args),
         ep if ENTRY_POINTS.contains(&ep) => Err(EvalError::NotPorted(ep.into())),

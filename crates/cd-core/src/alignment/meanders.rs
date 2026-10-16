@@ -7,7 +7,7 @@
 
 use super::limits::circumcircle;
 use crate::geom::Pt;
-use crate::numpy::{chainages, py_mod, sign, unwrap};
+use crate::numpy::{chainages, np_mod, sign, unwrap};
 
 /// `resample_polyline` (the meanders copy, with its own messages).
 pub fn resample_polyline(points: &[Pt], step: f64) -> Result<Vec<Pt>, String> {
@@ -239,7 +239,7 @@ pub fn find_meanders(
             apex_location: pts[apex],
             radius: r,
             deflection_deg: turn,
-            tangent_angle_deg: py_mod(degrees(tangent_angle(&heading, apex as i64)) + 360.0, 360.0),
+            tangent_angle_deg: np_mod(degrees(tangent_angle(&heading, apex as i64)) + 360.0, 360.0),
             left: orient >= 0.0,
             circle_center: centre,
             id_number: 0,

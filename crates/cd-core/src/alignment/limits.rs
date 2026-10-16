@@ -107,40 +107,9 @@ pub fn rolling_average_radius(radii: &[f64], chainages: &[f64], window: f64) -> 
         .collect()
 }
 
-/// `np.mean`: numpy's pairwise sum, then the division.
+/// `np.mean`: numpy's sum (`numpy::np_sum`), then the division.
 pub(crate) fn mean(v: &[f64]) -> f64 {
-    pairwise_sum(v) / v.len() as f64
-}
-
-/// numpy's pairwise summation (`pairwise_sum` in `loops_utils.h`): blocks of up to 8 summed in
-/// eight lanes, halves of more than 128 summed recursively.
-pub(crate) fn pairwise_sum(a: &[f64]) -> f64 {
-    let n = a.len();
-    if n < 8 {
-        let mut s = 0.0;
-        for &x in a {
-            s += x;
-        }
-        s
-    } else if n <= 128 {
-        let mut r = [a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]];
-        let mut i = 8;
-        while i < n - (n % 8) {
-            for k in 0..8 {
-                r[k] += a[i + k];
-            }
-            i += 8;
-        }
-        let mut s = ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]));
-        for &x in &a[i..] {
-            s += x;
-        }
-        s
-    } else {
-        let mut n2 = n / 2;
-        n2 -= n2 % 8;
-        pairwise_sum(&a[..n2]) + pairwise_sum(&a[n2..])
-    }
+    crate::numpy::np_sum(v) / v.len() as f64
 }
 
 /// The widening parameters of `compute_extra_width` and the offset-line builders.
@@ -338,11 +307,5 @@ mod tests {
         let (c, r) = circumcircle([10.0, 0.0], [0.0, 10.0], [-10.0, 0.0]).unwrap();
         assert_eq!((c, r), ([0.0, 0.0], 10.0));
         assert_eq!(circumcircle([0.0, 0.0], [1.0, 1.0], [2.0, 2.0]), None);
-    }
-
-    #[test]
-    fn pairwise_sum_matches_a_plain_sum_on_integers() {
-        let v: Vec<f64> = (1..=300).map(f64::from).collect();
-        assert_eq!(pairwise_sum(&v), 45150.0);
     }
 }

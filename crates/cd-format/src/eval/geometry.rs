@@ -10,14 +10,14 @@ use serde_json::{Value, json};
 
 // --- geometry as JSON -------------------------------------------------------------------------
 
-fn pt(v: &Value, what: &str) -> Result<Pt, EvalError> {
+pub(super) fn pt(v: &Value, what: &str) -> Result<Pt, EvalError> {
     match v.as_array().map(Vec::as_slice) {
         Some([x, y, ..]) => Ok([read_float(x, what)?, read_float(y, what)?]),
         _ => Err(bad(format!("{what}: a point is [x, y]"))),
     }
 }
 
-fn pts(v: &Value, what: &str) -> Result<Vec<Pt>, EvalError> {
+pub(super) fn pts(v: &Value, what: &str) -> Result<Vec<Pt>, EvalError> {
     v.as_array()
         .ok_or_else(|| bad(format!("{what}: must be a list of points")))?
         .iter()
