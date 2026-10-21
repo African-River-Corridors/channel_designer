@@ -1,8 +1,8 @@
 # Slow tests: nightly, not per pull request
 
 Issue #151 (build-speed fix 3). The `test` job runs `tools/gates.sh`, which runs the Rust tests with
-`cargo nextest run --profile pr`. That profile leaves out the twelve slowest tests (30 s or more each in
-a debug build, about 590 s of test time together). `.github/workflows/nightly.yml` runs **every** test with
+`cargo nextest run --profile pr`. That profile leaves out the 26 slowest tests (20 s or more each in
+a debug build, about 920 s of test time together). `.github/workflows/nightly.yml` runs **every** test with
 `--profile nightly`, daily and on demand (`workflow_dispatch`). The list lives in `.config/nextest.toml`.
 
 Nothing is deleted. A test that is renamed drops out of the list and so runs in the pull-request job again.
@@ -23,6 +23,21 @@ To move a test, edit the filter in `.config/nextest.toml` and the table below. T
 | owd-cli::volumes: `run_reruns_a_stale_volumes_stage` | 36 s | Full run, edit, then full re-run through the CLI. |
 | owd-format::volumes: `run_stale_reruns_volumes_when_alignment_changes` | 34 s | Full volumes run, edit, then re-run. |
 | owd-cli::volumes: `a_changed_dem_warns_on_open_and_marks_volumes_stale` | 30 s | Full volumes run before the staleness check. |
+
+| owd-format::volumes: `the_volumes_equal_section_volumes_called_directly` | 29 s | Long run on the full river or DEM in a debug build. |
+| owd-cli::volumes: `volumes_equal_the_core_called_directly_on_the_same_dem` | 27 s | Long run on the full river or DEM in a debug build. |
+| owd-core: `alignment::fairway_fit::property_tests::the_synthetic_river_fits_at_300_m_and_is_too_narrow_at_every_apex_at_40_m` | 25 s | Long run on the full river or DEM in a debug build. |
+| owd-format::volumes: `a_new_dem_reference_marks_volumes_stale` | 24 s | Long run on the full river or DEM in a debug build. |
+| owd-format::volumes: `a_saved_document_reloads_with_the_same_volumes` | 24 s | Long run on the full river or DEM in a debug build. |
+| owd-format::volumes: `a_changed_dem_file_warns_on_open_and_marks_volumes_stale` | 23 s | Long run on the full river or DEM in a debug build. |
+| owd-cli::cdesign: `align_adds_a_rolling_circle_option_and_replaces_it_when_run_again` | 23 s | Long run on the full river or DEM in a debug build. |
+| owd-format::wgs84_river: `a_wgs84_river_is_reprojected_and_gives_the_volumes_of_the_utm_river` | 23 s | Long run on the full river or DEM in a debug build. |
+| owd-format::sections: `the_long_section_sums_to_the_volumes_the_table_shows` | 23 s | Long run on the full river or DEM in a debug build. |
+| owd-format::sections: `a_cross_section_is_the_walk_s_station_and_its_cut_agrees_with_the_long_section` | 22 s | Long run on the full river or DEM in a debug build. |
+| owd-format::sections: `a_point_picked_on_the_map_gives_the_nearest_station` | 22 s | Long run on the full river or DEM in a debug build. |
+| owd-format::volumes: `volumes_needs_a_water_level_and_a_fresh_alignment` | 22 s | Long run on the full river or DEM in a debug build. |
+| owd-format::volumes: `volumes_refuses_without_a_dem_and_names_the_dem_it_cannot_read` | 21 s | Long run on the full river or DEM in a debug build. |
+| owd-format::alignment: `two_methods_give_two_options_and_a_rerun_replaces_only_its_own` | 20 s | Long run on the full river or DEM in a debug build. |
 
 Times are from one local nextest run (10 cores, tests in parallel, so inflated); CI times are in the pull request.
 Python tests (about 33 s in total) all still run in the pull-request job.
