@@ -42,7 +42,7 @@ Every sentence on the home page is true of the code in the repo today.
 - PyPI is not published (issue #2). The install text must not say `pip install open-waterway-designer`
   works. It shows what works today: install from the git URL (needs a Rust toolchain), or build the
   desktop app from source. It says a PyPI release is coming.
-- There is no web app. The home page has no "Web app" link.
+- There is no web app. The home page has no "Web app" link. (Spec 0011 adds the web app, and that spec's last ticket adds the link and corrects these sentences.)
 - The desktop app has no release yet. The page says it builds from source and that CI builds unsigned
   pre-release bundles.
 

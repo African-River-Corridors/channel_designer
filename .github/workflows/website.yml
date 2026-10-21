@@ -1,6 +1,6 @@
 name: Website
 
-# Builds the website and docs (website/build.py) and checks the links. Spec 0010. The public URL is
+# Builds the website, docs and web app (website/build.py, spec 0011) and checks the links. Spec 0010. The public URL is
 # https://www.africanrivercorridors.com/owd: the ARC site proxies /owd to a GitHub Pages site
 # (website/README.md). A pull request that touches the site or docs runs the build, so a change is
 # proved before it merges. On main the site is also deployed to GitHub Pages (the maintainer turns Pages
@@ -14,12 +14,24 @@ on:
       - "docs/**"
       - "*.md"
       - ".github/workflows/website.yml"
+      - "app/**"
+      - "crates/**"
+      - "examples/web/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "tools/build_web.sh"
   pull_request:
     paths:
       - "website/**"
       - "docs/**"
       - "*.md"
       - ".github/workflows/website.yml"
+      - "app/**"
+      - "crates/**"
+      - "examples/web/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "tools/build_web.sh"
   workflow_dispatch:
 
 permissions:
@@ -32,7 +44,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -40,8 +52,33 @@ jobs:
           python-version: "3.12"
       - name: Install the pinned docs tools
         run: python -m pip install -r website/requirements.txt
-      - name: Build the site and docs (mkdocs --strict fails on a broken docs link)
-        run: python website/build.py
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "24"
+      - name: Install the pinned Rust toolchain (rust-toolchain.toml) and the wasm32 target
+        run: |
+          rustup toolchain install
+          rustup target add wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: The pinned wasm-bindgen version
+        id: wb
+        run: echo "version=$(sed -n 's/^wasm-bindgen = "=\([0-9.]*\)".*/\1/p' crates/owd-web/Cargo.toml)" >> "$GITHUB_OUTPUT"
+      - name: wasm-bindgen CLI (cached)
+        id: cli
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cargo/bin/wasm-bindgen
+          key: wasm-bindgen-cli-${{ steps.wb.outputs.version }}-${{ runner.os }}
+      - name: Install wasm-bindgen CLI
+        if: steps.cli.outputs.cache-hit != 'true'
+        run: cargo install wasm-bindgen-cli --version "${{ steps.wb.outputs.version }}" --locked
+      - name: Build the web package (wasm)
+        run: bash tools/build_web.sh
+      - name: Build the web app
+        working-directory: app
+        run: npm ci && npm run build:web
+      - name: Build the site and docs (mkdocs --strict fails on a broken docs link), with the web app
+        run: python website/build.py --app-dist app/dist-web
       - name: Check every internal link in the built site
         run: python website/check_links.py
       - name: The site's token file is the app's token file

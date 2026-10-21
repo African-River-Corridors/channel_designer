@@ -5,6 +5,14 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **Web app (spec 0011).** The desktop app's front end now also runs in a browser, over a WebAssembly build
+  of the same Rust core, at `africanrivercorridors.com/owd/app`. Nothing you load is uploaded. It opens a
+  bundled example, or `.owd` files, GeoJSON or GeoPackage banks and a GeoTIFF DEM from your computer; Save and
+  Export download. A run that you cancel is dropped and the design is as it was. Fetching a DEM is not offered
+  in the browser. The desktop app is unchanged. Results equal the native ones: `tools/web_parity.mjs` compares
+  the wasm and native documents by the ADR 0005 tolerance in CI. New crates: `owd-shell` (the app state, moved
+  out of the Tauri crate) and `owd-web` (the wasm session); `proj4rs` now builds without its C geodesic code
+  (OWD uses UTM only), and the pool search timer uses `web-time` on wasm.
 - **Renamed to Open Waterway Designer (OWD), spec 0006.** Names only; no result moves. The repo is
   `open-waterway-designer` (GitHub redirects the old URL), the Python import is `owd`, the PyPI name is
   `open-waterway-designer`, the crates are `owd-core`, `owd-format`, `owd-cli`, `owd-py` and `owd-app`, the command
