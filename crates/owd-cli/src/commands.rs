@@ -411,6 +411,65 @@ pub fn size(doc: &str, flags: SizeFlags, output: &Option<String>, json_mode: boo
     Ok(())
 }
 
+/// `owd trace`: the full Rule Trace, rebuilt from the document.
+pub fn trace(
+    doc: &str,
+    option: Option<&str>,
+    station_m: f64,
+    files: &[String],
+    json_mode: bool,
+) -> Result {
+    if !(station_m.is_finite() && station_m > 0.0) {
+        return Err(input_error(
+            "--station-m must be a positive number of metres",
+        ));
+    }
+    let mut session = open(doc)?;
+    load_rule_set_files(&mut session, files)?;
+    let t = session.rule_trace(option, station_m).map_err(from_design)?;
+    let mut human = format!(
+        "# {}\n# {}\n# sets: {}\n",
+        t["notice"].as_str().unwrap_or(""),
+        t["rules_notice"].as_str().unwrap_or(""),
+        t["sets"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    human.push_str("rule\tobject\tvalue\tcompare\tlimit\tmargin\toutcome\tgoverning\tstatus\n");
+    let cell = |v: &Value| match v {
+        Value::Null => String::new(),
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    };
+    for r in t["rows"].as_array().into_iter().flatten() {
+        human.push_str(
+            &[
+                cell(&r["rule"]),
+                cell(&r["object"]),
+                cell(&r["value"]),
+                cell(&r["compare"]),
+                cell(&r["limit"]),
+                cell(&r["margin"]),
+                cell(&r["outcome"]),
+                if r["governing"] == true {
+                    "governing".into()
+                } else {
+                    String::new()
+                },
+                cell(&r["status"]),
+            ]
+            .join("\t"),
+        );
+        human.push('\n');
+    }
+    say(false, json_mode, human.trim_end(), t);
+    Ok(())
+}
+
 /// `owd waterway add`: mark a reach of the river.
 pub fn waterway_add(
     doc: &str,
@@ -1231,18 +1290,28 @@ pub fn fetch_dem_with(
     Ok(())
 }
 
-pub fn export(doc: &str, geojson: bool, csv: bool, wgs84: bool, output: Option<&str>) -> Result {
+pub fn export(
+    doc: &str,
+    geojson: bool,
+    csv: bool,
+    wgs84: bool,
+    stretches: bool,
+    output: Option<&str>,
+) -> Result {
     if !geojson && !csv {
         return Err(input_error("choose an export: --geojson or --csv"));
     }
     let (session, bytes) = open_with_dem(doc)?;
     // Volumes numbers that no longer hold are exported with their status, never as fresh.
-    let text = if geojson {
-        session
+    let text = match (geojson, stretches) {
+        (true, false) => session
             .export_geojson(wgs84, bytes.as_deref())
-            .map_err(from_design)?
-    } else {
-        session.export_csv(bytes.as_deref())
+            .map_err(from_design)?,
+        (false, false) => session.export_csv(bytes.as_deref()),
+        (true, true) => session
+            .export_stretches_geojson(wgs84, bytes.as_deref())
+            .map_err(from_design)?,
+        (false, true) => session.export_stretches_csv(bytes.as_deref()),
     };
     write(output.unwrap_or("-"), &text)
 }

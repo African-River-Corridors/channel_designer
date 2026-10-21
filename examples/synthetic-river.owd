@@ -14305,7 +14305,80 @@
         "bottom_width_at_rmin_m": 44.56666666666667,
         "width_basis": "rule",
         "source": "Rule Sets pianc-wg141@0.3.0, owd@0.3.0; vessel WG 141 Table 2.1 (p15)",
-        "warnings": []
+        "warnings": [],
+        "design_basis": [
+          {
+            "quantity": "bottom-width",
+            "waterway": null,
+            "value": 30.400000000000002,
+            "unit": "m",
+            "rule": "pianc-wg141/Table5.7/bottom-width-b",
+            "rule_sets": [
+              "pianc-wg141@0.3.0"
+            ],
+            "citation": "PIANC InCom WG 141, Design Guidelines for Inland Waterway Dimensions, PIANC Report 141, 2019, Table 5.7",
+            "origin": "guideline",
+            "status": "unverified",
+            "other_rules": [
+              {
+                "rule": "owd/check/bottom-width-above-zero",
+                "limit": 0.0
+              }
+            ]
+          },
+          {
+            "quantity": "min-bend-radius",
+            "waterway": "free-flowing-river",
+            "value": 255.0,
+            "unit": "m",
+            "rule": "pianc-wg141/Table5.7/min-bend-radius-b",
+            "rule_sets": [
+              "pianc-wg141@0.3.0"
+            ],
+            "citation": "PIANC InCom WG 141, Design Guidelines for Inland Waterway Dimensions, PIANC Report 141, 2019, Table 5.7",
+            "origin": "guideline",
+            "status": "unverified",
+            "other_rules": []
+          },
+          {
+            "quantity": "design-depth",
+            "waterway": null,
+            "value": 3.25,
+            "unit": "m",
+            "rule": "pianc-wg141/5.3.4.3/design-depth-b",
+            "rule_sets": [
+              "pianc-wg141@0.3.0"
+            ],
+            "citation": "PIANC InCom WG 141, Design Guidelines for Inland Waterway Dimensions, PIANC Report 141, 2019, 5.3.4.3",
+            "origin": "guideline",
+            "status": "unverified",
+            "other_rules": [
+              {
+                "rule": "owd/check/depth-covers-draught",
+                "limit": 2.5
+              },
+              {
+                "rule": "owd/5.3.4.3/depth-ratio-floor",
+                "limit": 3.0
+              }
+            ]
+          },
+          {
+            "quantity": "widening-at-rmin",
+            "waterway": null,
+            "value": 14.166666666666666,
+            "unit": "m",
+            "rule": "pianc-wg141/5.3.3/bend-widening-b",
+            "rule_sets": [
+              "pianc-wg141@0.3.0"
+            ],
+            "citation": "PIANC InCom WG 141, Design Guidelines for Inland Waterway Dimensions, PIANC Report 141, 2019, 5.3.3",
+            "origin": "guideline",
+            "status": "unverified",
+            "other_rules": []
+          }
+        ],
+        "rules_notice": "Every Rule is unverified until a second reader checks it against its source."
       },
       "depends_on": "66369dd2a8b203db412eff2c6857cac478c8d130da3e7fed37668704cacf0253",
       "engine_version": "0.2.0"

@@ -67,6 +67,18 @@ versions follow [Semantic Versioning](https://semver.org/).
   claimed canal reach over the whole line with `gb50139` strict gives the old CN-reduced result bit for bit. The
   command is `owd waterway`, not `owd reach` as spec 0007 says, because `owd reach` already starts a study from a
   river reach (spec 0012).
+- **Screening outputs: verdict, design basis, constraint stretches, `owd trace` (spec 0007, T5).** The sizing
+  results now hold the **design basis**: each quantity (bottom width, minimum radius per waterway kind, design depth,
+  widening at R_min) with its governing Rule, sets, citation, origin, status and the other Rules of its Requirement.
+  The volumes stage now stores, for each design line option, a **verdict** (`navigable-as-is`, `navigable-with-works`
+  or `not-navigable`, with the blocking Rules not evaluated and the screening notice) and its **constraint
+  stretches**: runs of stations where the river's own width, depth or centreline radius falls short of a governing
+  limit, with the governing Rule, the required and found values at the worst station, the deficit, the works
+  (`bank-cut`, `dredge`, `cut-through`) and the dredge and dry cut inside. Spec 0005's infeasible stretches join them
+  as `infeasible`. `owd trace FILE [--option ID] [--json]` rebuilds the full Rule Trace from the document and refuses a
+  stored set hash the engine does not hold; it is never stored. `owd export --csv --stretches` and
+  `owd export --geojson --stretches` export the stretches with the notice; the CSV head holds the design basis and the
+  verdicts. No number of an earlier stage moves.
 
 - **A DEM for a reach (spec 0012, T5).** `owd fetch-dem DOC --bbox WEST,SOUTH,EAST,NORTH` fetches the Copernicus
   GLO-30 tiles for a box, and a study started with `owd reach` that has no banks yet fetches for its reach. The

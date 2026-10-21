@@ -20,6 +20,7 @@ pub mod design;
 pub mod engine;
 pub mod methods;
 pub mod rulesets;
+pub mod screening;
 pub mod simple;
 pub mod width_profile;
 

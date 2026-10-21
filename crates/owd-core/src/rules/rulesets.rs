@@ -651,6 +651,19 @@ fn engine_selection(rs: &Ruleset) -> Result<Option<Selection>, RuleError> {
     }))
 }
 
+/// The vessel the engine sizes for a vessel class: the long end of its LOA, its beam, the draught
+/// (the class's nominal one unless given), its formation and class.
+pub fn vessel_for(vessel_standard_id: &str, draught_m: Option<f64>) -> Result<Vessel, RuleError> {
+    let v = get_standard(vessel_standard_id).map_err(RuleError::Key)?;
+    Ok(Vessel {
+        loa_m: v.loa_m.1,
+        beam_m: v.beam_m,
+        draught_m: draught_m.unwrap_or_else(|| v.draught_nominal_m()),
+        formation: v.formation.clone(),
+        class_name: v.class_name.clone(),
+    })
+}
+
 /// The channel a selection of Rule Sets requires for a vessel class (spec 0007): the governing limit
 /// of each sized Measure, and warnings from the Rule Trace of the sized channel.
 ///

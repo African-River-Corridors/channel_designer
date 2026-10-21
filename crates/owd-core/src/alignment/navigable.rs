@@ -220,6 +220,18 @@ pub(crate) fn water_width_at(c: &Chained, s: f64, water: &[Polygon]) -> f64 {
     l + r
 }
 
+/// The local radius of `line` at chainage `s`, read on `chord_m` (as the radius checks read it):
+/// infinity on a straight or a line shorter than the chord.
+pub fn local_radius_on(line: &[Pt], s: f64, chord_m: f64) -> f64 {
+    Chained::new(line).local_radius(s, chord_m)
+}
+
+/// The width of the water across `line` at chainage `s` (m); zero where the station is not in the
+/// water.
+pub fn water_width_on(line: &[Pt], s: f64, water: &[Polygon]) -> f64 {
+    water_width_at(&Chained::new(line), s, water)
+}
+
 /// The per-station width check. At each station (every `STATION_STEP_M`, and the end), the
 /// bend-widened bottom width at the measured local radius (read on `chord_m`) is compared with
 /// the width of the water across the line. A station is `too_narrow` when the water is narrower

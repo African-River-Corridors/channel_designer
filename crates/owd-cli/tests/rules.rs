@@ -185,3 +185,37 @@ fn waterway_marks_lists_and_removes_reaches_and_the_claim_sizes_the_canal() {
     let o = json(&run(&["waterway", "remove", doc, "--from", "0", "--json"]));
     assert_eq!(o["waterway_reaches"], serde_json::json!([]));
 }
+
+/// `owd trace` on the web example (every stage fresh): the same rows on every run, as JSON and as a
+/// table; and `owd export --stretches` writes the stretches with the screening notice.
+#[test]
+fn trace_and_the_stretch_exports_run_on_the_example() {
+    let dir = work_dir("trace");
+    let web = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/web");
+    for f in ["river-example.owd", "river-dem.tif"] {
+        std::fs::copy(web.join(f), dir.join(f)).unwrap();
+    }
+    let doc = dir.join("river-example.owd");
+    let doc = doc.to_str().unwrap();
+    let a = json(&run(&["trace", doc, "--json"]));
+    let b = json(&run(&["trace", doc, "--json"]));
+    assert_eq!(a, b);
+    assert!(!a["rows"].as_array().unwrap().is_empty());
+    let table = String::from_utf8(run(&["trace", doc]).stdout).unwrap();
+    assert!(table.starts_with("# Screening"), "{table}");
+    let o = json(&run(&[
+        "trace",
+        doc,
+        "--option",
+        "rolling-circle",
+        "--json",
+    ]));
+    assert!(o["rows"].as_array().unwrap().len() > a["rows"].as_array().unwrap().len());
+    let csv = run(&["export", doc, "--csv", "--stretches"]);
+    assert!(csv.status.success());
+    let csv = String::from_utf8(csv.stdout).unwrap();
+    assert!(csv.starts_with("# Screening"), "{csv}");
+    assert!(csv.contains("option_id,kind,start_chainage_m"));
+    let gj = json(&run(&["export", doc, "--geojson", "--stretches"]));
+    assert_eq!(gj["type"], "FeatureCollection");
+}

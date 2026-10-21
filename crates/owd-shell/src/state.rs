@@ -1082,9 +1082,9 @@ mod tests {
         std::fs::write(&doc, s.save_text()).unwrap();
         let (gj, csv) = (dir.path().join("o.geojson"), dir.path().join("o.csv"));
         let d = doc.to_string_lossy().into_owned();
-        owd_cli::commands::export(&d, true, false, true, Some(&gj.to_string_lossy()))
+        owd_cli::commands::export(&d, true, false, true, false, Some(&gj.to_string_lossy()))
             .unwrap_or_else(|f| panic!("{}", f.message));
-        owd_cli::commands::export(&d, false, true, false, Some(&csv.to_string_lossy()))
+        owd_cli::commands::export(&d, false, true, false, false, Some(&csv.to_string_lossy()))
             .unwrap_or_else(|f| panic!("{}", f.message));
         assert_eq!(
             s.export_geojson().unwrap(),

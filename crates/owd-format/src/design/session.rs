@@ -382,9 +382,18 @@ impl Session {
     ) -> Result<Value, DesignError> {
         let mut s = Session::new("", "");
         s.set_sizing(ruleset_id, vessel_standard_id, draught_m)?;
-        let settings = s.sizing_settings();
-        let shape = s.shape_for_settings(&settings)?;
-        Ok(shape_value(&shape, &Session::selection_label(&settings)))
+        s.sizing_results()
+    }
+
+    /// The sizing results of the sizing settings: the channel shape, and B, the design basis (spec
+    /// 0007), each quantity with its governing Rule.
+    fn sizing_results(&self) -> Result<Value, DesignError> {
+        let settings = self.sizing_settings();
+        let shape = self.shape_for_settings(&settings)?;
+        let mut results = shape_value(&shape, &Session::selection_label(&settings));
+        results["design_basis"] = self.design_basis_value()?;
+        results["rules_notice"] = json!(super::screening::UNVERIFIED_NOTICE);
+        Ok(results)
     }
 
     /// Set the sizing choices by an old ruleset id, mapped to its Rule Set selection (spec 0007:
@@ -408,10 +417,7 @@ impl Session {
     }
 
     fn run_sizing(&mut self) -> Result<(), DesignError> {
-        let settings = self.sizing_settings();
-        let shape = self.shape_for_settings(&settings)?;
-        self.doc["stages"]["sizing"]["results"] =
-            shape_value(&shape, &Session::selection_label(&settings));
+        self.doc["stages"]["sizing"]["results"] = self.sizing_results()?;
         self.doc["stages"]["sizing"]["engine_version"] = json!(ENGINE_VERSION);
         let h = self.dependency_hash(Stage::Sizing);
         self.doc["stages"]["sizing"]["depends_on"] = json!(h);

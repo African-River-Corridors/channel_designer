@@ -371,16 +371,16 @@ fn selection_of(library: &Library, settings: &Value) -> Result<Selection, Design
         .map_err(|e| DesignError::Input(e.raw_message().to_string()))
 }
 
-/// The reaches of the river as the rules read them: the marked reaches in chainage order, with the
-/// chainage they leave uncovered as free-flowing reaches with no claim. No reach marked: the whole
-/// river is one free-flowing reach.
-fn waterway_reaches(doc: &Value) -> Vec<engine::WaterwayReach> {
+/// The reaches of the river as the rules read them, each with its chainage range on the river
+/// centreline: the marked reaches in chainage order, with the chainage they leave uncovered as
+/// free-flowing reaches with no claim. No reach marked: the whole river is one free-flowing reach.
+pub(super) fn reach_ranges(doc: &Value) -> Vec<(f64, f64, engine::WaterwayReach)> {
     let marked = doc["inputs"]["waterway_reaches"]
         .as_array()
         .cloned()
         .unwrap_or_default();
     if marked.is_empty() {
-        return vec![engine::WaterwayReach::whole_river()];
+        return vec![(0.0, f64::INFINITY, engine::WaterwayReach::whole_river())];
     }
     let free = |label: String| engine::WaterwayReach {
         label,
@@ -392,30 +392,39 @@ fn waterway_reaches(doc: &Value) -> Vec<engine::WaterwayReach> {
         let start = r["start_m"].as_f64().unwrap_or(0.0);
         let end = r["end_m"].as_f64();
         if start > at {
-            out.push(free(format!("{at} to {start} m")));
+            out.push((at, start, free(format!("{at} to {start} m"))));
         }
         let claim = r["reduced_radius_claim"]
             .as_str()
             .unwrap_or("no")
             .to_string();
-        out.push(engine::WaterwayReach {
-            label: match end {
-                Some(e) => format!("{start} to {e} m"),
-                None => format!("{start} m to the end"),
+        out.push((
+            start,
+            end.unwrap_or(f64::INFINITY),
+            engine::WaterwayReach {
+                label: match end {
+                    Some(e) => format!("{start} to {e} m"),
+                    None => format!("{start} m to the end"),
+                },
+                waterway: r["waterway"]
+                    .as_str()
+                    .unwrap_or("free-flowing-river")
+                    .to_string(),
+                claim_typed: claim == "yes",
+                claim,
             },
-            waterway: r["waterway"]
-                .as_str()
-                .unwrap_or("free-flowing-river")
-                .to_string(),
-            claim_typed: claim == "yes",
-            claim,
-        });
+        ));
         at = end.unwrap_or(f64::INFINITY);
     }
     if at.is_finite() {
-        out.push(free(format!("{at} m to the end")));
+        out.push((at, f64::INFINITY, free(format!("{at} m to the end"))));
     }
     out
+}
+
+/// The reaches of the river as the rules read them, in chainage order.
+fn waterway_reaches(doc: &Value) -> Vec<engine::WaterwayReach> {
+    reach_ranges(doc).into_iter().map(|(_, _, r)| r).collect()
 }
 
 impl Session {
