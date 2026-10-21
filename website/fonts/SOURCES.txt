@@ -1,0 +1,9 @@
+All fonts SIL Open Font License 1.1, from https://github.com/google/fonts (2026-10-21), subset to Latin
+and converted to woff2 with fontTools (pyftsubset). The licence text for each family is beside it.
+
+Public Sans (ofl/publicsans): interface and numbers.
+Libre Caslon Text (ofl/librecaslontext): headings and notes.
+IBM Plex Mono (ofl/ibmplexmono): code. Reserved Font Name "Plex".
+
+Display lettering (the logo, drawing titles, illustration labels) is not a font: it is drawn as
+single-stroke capitals and shipped as SVG in website/assets/.

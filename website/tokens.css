@@ -1,0 +1,131 @@
+/* OWD design tokens: the meander-belt plate.
+   From H. N. Fisk's 1944 plates of the Mississippi meander belt: cream paper, one dark printed ink
+   for every line and letter, a grey hillshade, and the river's past courses as coloured, hatched
+   "stages" keyed in a legend.
+
+   One rule carries the whole system: INK FOR THE INTERFACE, COLOUR FOR THE RIVER.
+   - The chrome (text, rules, buttons, focus, links) is one ink on cream, as the plate's base map is.
+   - The six stage colours belong to the design line options and to nothing else. Each option has a
+     line colour, a wash and a hatch angle, so colour is never the only way to tell options apart.
+   - Status (pass, warn, fail) has its own colours, kept out of the stage set, and always comes with a
+     word and a shape.
+   Light theme: the plate's cream paper. Dark theme: the hillshade at dusk, with cream ink.
+   The drawing sheet stays white in both themes: exported drawings print black on unprinted white.
+   Every text pair meets WCAG 2.2 AA (tools/contrast.py). */
+
+:root {
+  /* The plate: brand colours, the same in both themes */
+  --cream: #f2e8cf;           /* the paper */
+  --plate-ink: #2b2925;       /* the printed ink: the mark, line work, lettering */
+  --hillshade: #8c897f;       /* the grey relief. Decoration only, never text */
+  --river: #fbf8ef;           /* the present river, left pale on the plate. Decoration only */
+  --dusk: #23211c;            /* the dark ground: dark theme, the app icon tile */
+
+  /* Surfaces */
+  --paper: #f2e8cf;           /* window and chrome ground */
+  --surface: #f8f2e3;         /* panels and cards */
+  --surface-2: #e8dcbd;       /* inset: tab rail, table header, code */
+  --sheet: #ffffff;           /* the drawing sheet. Never tinted. */
+  --sheet-ink: #1f1e1b;       /* text and lines ON the sheet, the same in both themes */
+  --sheet-ink-2: #55524b;     /* captions on the sheet, the same in both themes */
+
+  /* Ink: the one interface colour */
+  --ink: #2b2925;
+  --ink-2: #4a463e;
+  --ink-3: #625c50;
+  --rule: #d8caa6;            /* hairlines and borders (not text) */
+  --rule-strong: #8a7d5e;     /* input borders (3:1 on surfaces) */
+
+  /* Accent is ink: links underlined, the primary button ink-filled, focus an ink ring */
+  --accent: #2b2925;
+  --accent-ink: #f8f2e3;      /* text on --accent */
+  --accent-soft: #e2d5b3;     /* selected row, active sub-tab ground */
+
+  /* Stages: the design line option palette. --opt-N line on cream (3:1 for a line),
+     --opt-N-wash for areas and legend swatches, --opt-N-hatch the hatch angle (degrees).
+     In dark theme the line takes the wash colour: a pastel line on the dusk ground. */
+  --opt-1: #b8432d;  --opt-1-wash: #eea594;  --opt-1-hatch: 45;    /* vermilion */
+  --opt-2: #2c6f7c;  --opt-2-wash: #9fcad1;  --opt-2-hatch: -45;   /* stage teal */
+  --opt-3: #5a7a24;  --opt-3-wash: #c6d98c;  --opt-3-hatch: 0;     /* meadow green */
+  --opt-4: #a65f12;  --opt-4-wash: #f1c37f;  --opt-4-hatch: 90;    /* ochre */
+  --opt-5: #96487f;  --opt-5-wash: #e6b6d6;  --opt-5-hatch: 22;    /* plum rose */
+  --opt-6: #5b58a0;  --opt-6-wash: #aeb0ee;  --opt-6-hatch: -22;   /* indigo slate */
+  /* On imagery (the app map), in both themes: the deep line over a cream casing. Chosen in round 2
+     over the wash-on-ink casing, after a test on Sentinel-2 imagery (renders/imagery-test.png). */
+  --opt-1-map: #b8432d;  --opt-2-map: #2c6f7c;  --opt-3-map: #5a7a24;
+  --opt-4-map: #a65f12;  --opt-5-map: #96487f;  --opt-6-map: #5b58a0;
+  --opt-casing: #f2e8cf;      /* the casing under an option line on imagery */
+
+  /* Status. Always with a word and a shape; colour is never the only signal.
+     Kept apart from the stages: deeper and duller, used for text, chips and map markers only. */
+  --pass: #24502b;   --pass-soft: #dde8cf;
+  --warn: #5a4106;   --warn-soft: #f0dfb2;
+  --fail: #7c1626;   --fail-soft: #f4d9d6;
+  --stale: #625c50;           /* out-of-date results: struck through + the words "out of date" */
+
+  /* Source tags on inputs */
+  --src-typed: var(--ink);
+  --src-default: var(--ink-3);
+  --src-ruleset: #4a3f78;     /* value set by the chosen rule set */
+
+  /* Type */
+  --font-ui: "Public Sans", system-ui, sans-serif;
+  --font-serif: "Libre Caslon Text", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  /* Display lettering is drawn, not set: single-stroke capitals from lib/owddraw.py, as SVG.
+     Where text must stay live, use --font-ui in capitals with --track-caps. */
+  --track-caps: 0.12em;
+
+  --fs-11: 11px;  --fs-12: 12px;  --fs-13: 13px;  --fs-14: 14px;
+  --fs-16: 16px;  --fs-20: 20px;  --fs-24: 24px;  --fs-32: 32px;  --fs-48: 48px;
+  --lh-tight: 1.2;  --lh-ui: 1.4;  --lh-read: 1.6;
+
+  /* Space: a 4 px step */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;  --sp-4: 16px;  --sp-5: 24px;  --sp-6: 32px;  --sp-7: 48px;
+
+  /* Line weights on screen, 1 : 2 : 4. The design line is always the heaviest line on the page. */
+  --lw-thin: 1px;   --lw-thick: 2px;   --lw-design: 4px;
+
+  --radius: 2px;
+  --radius-lg: 4px;
+
+  /* Motion */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --dur-1: 120ms;  --dur-2: 200ms;  --dur-3: 320ms;
+
+  color-scheme: light;
+}
+
+/* Dark: the hillshade at dusk, with cream ink */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #23211c;  --surface: #2c2a24;  --surface-2: #1a1915;
+    --ink: #f2e8cf;  --ink-2: #dacfb4;  --ink-3: #bdb299;
+    --rule: #4a463c;  --rule-strong: #8f8670;
+    --accent: #f2e8cf;  --accent-ink: #23211c;  --accent-soft: #3a372f;
+    --opt-1: #eea594;  --opt-2: #9fcad1;  --opt-3: #c6d98c;  --opt-4: #f1c37f;  --opt-5: #e6b6d6;  --opt-6: #aeb0ee;
+    --pass: #b5dcb0;  --pass-soft: #283a27;  --warn: #fbe8be;  --warn-soft: #3d3420;
+    --fail: #ffd3d6;  --fail-soft: #47262a;  --stale: #bdb299;
+    --src-ruleset: #d3c9f5;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #23211c;  --surface: #2c2a24;  --surface-2: #1a1915;
+  --ink: #f2e8cf;  --ink-2: #dacfb4;  --ink-3: #bdb299;
+  --rule: #4a463c;  --rule-strong: #8f8670;
+  --accent: #f2e8cf;  --accent-ink: #23211c;  --accent-soft: #3a372f;
+  --opt-1: #eea594;  --opt-2: #9fcad1;  --opt-3: #c6d98c;  --opt-4: #f1c37f;  --opt-5: #e6b6d6;  --opt-6: #aeb0ee;
+  --pass: #b5dcb0;  --pass-soft: #283a27;  --warn: #fbe8be;  --warn-soft: #3d3420;
+  --fail: #ffd3d6;  --fail-soft: #47262a;  --stale: #bdb299;
+  --src-ruleset: #d3c9f5;
+  color-scheme: dark;
+}
+
+/* Bundled fonts (OFL 1.1, fonts/): woff2 subset to Latin, with their OFL licences. Paths are relative to this file. */
+@font-face { font-family: "Public Sans"; src: url("fonts/PublicSans[wght].woff2") format("woff2"); font-weight: 100 900; font-style: normal; }
+@font-face { font-family: "Public Sans"; src: url("fonts/PublicSans-Italic[wght].woff2") format("woff2"); font-weight: 100 900; font-style: italic; }
+@font-face { font-family: "Libre Caslon Text"; src: url("fonts/LibreCaslonText[wght].woff2") format("woff2"); font-weight: 400 700; font-style: normal; }
+@font-face { font-family: "Libre Caslon Text"; src: url("fonts/LibreCaslonText-Italic[wght].woff2") format("woff2"); font-weight: 400 700; font-style: italic; }
+@font-face { font-family: "IBM Plex Mono"; src: url("fonts/IBMPlexMono-Regular.woff2") format("woff2"); font-weight: 400; }
+@font-face { font-family: "IBM Plex Mono"; src: url("fonts/IBMPlexMono-Medium.woff2") format("woff2"); font-weight: 500; }
