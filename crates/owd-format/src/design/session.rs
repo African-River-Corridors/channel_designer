@@ -410,8 +410,11 @@ impl Session {
     fn run_sizing(&mut self) -> Result<(), DesignError> {
         let settings = self.sizing_settings();
         let shape = self.shape_for_settings(&settings)?;
-        self.doc["stages"]["sizing"]["results"] =
-            shape_value(&shape, &Session::selection_label(&settings));
+        let mut results = shape_value(&shape, &Session::selection_label(&settings));
+        // B, the design basis (spec 0007): each quantity with its governing Rule.
+        results["design_basis"] = self.design_basis_value()?;
+        results["rules_notice"] = json!(super::screening::UNVERIFIED_NOTICE);
+        self.doc["stages"]["sizing"]["results"] = results;
         self.doc["stages"]["sizing"]["engine_version"] = json!(ENGINE_VERSION);
         let h = self.dependency_hash(Stage::Sizing);
         self.doc["stages"]["sizing"]["depends_on"] = json!(h);

@@ -161,6 +161,7 @@ impl Session {
         for o in &options {
             let id = o["id"].as_str().unwrap_or("?");
             let v = self.option_sections(&plan, o, terrain)?;
+            let screening = self.screening_value(o, &v, &plan.river, &plan.centre)?;
             rows.push(json!({
                 "id": id,
                 "name": o["name"],
@@ -172,6 +173,8 @@ impl Session {
                 // A failed check stays with the option's numbers.
                 "radius_ok": o["checks"]["radius_ok"],
                 "water_source": plan.water_source,
+                // A, the verdict, and C, the constraint stretches (spec 0007).
+                "screening": screening,
             }));
             if let Some(note) = self.depth_note() {
                 rows.last_mut().expect("a row was just pushed")["depth_basis"] = json!(note);
@@ -193,11 +196,11 @@ pub(super) struct SectionPlan {
     pub(super) settings: Value,
     profile: Vec<[f64; 2]>,
     pub(super) water_source: &'static str,
-    centre: Vec<Pt>,
+    pub(super) centre: Vec<Pt>,
     model: String,
     shape: owd_core::rules::rulesets::ChannelShape,
     depth: f64,
-    river: Vec<Polygon>,
+    pub(super) river: Vec<Polygon>,
     fixed_hb: Option<f64>,
     /// The bed model, when the document has one (spec 0012), with the water level it hangs from.
     bed: Option<(owd_core::bed::BedModel, Vec<[f64; 2]>)>,

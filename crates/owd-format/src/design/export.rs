@@ -195,4 +195,198 @@ impl Session {
         t.push('\n');
         Ok(t)
     }
+
+    /// The design basis (B) and the verdicts (A) as `#` comment lines, for the head of a CSV.
+    fn basis_and_verdict_lines(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        let sizing = &self.doc["stages"]["sizing"]["results"];
+        for b in sizing["design_basis"].as_array().into_iter().flatten() {
+            out.push(format!(
+                "design basis: {}{} = {} {} by {} ({}, {}, {})",
+                b["quantity"].as_str().unwrap_or(""),
+                b["waterway"]
+                    .as_str()
+                    .map_or(String::new(), |w| format!(" on {w}")),
+                num(&b["value"]),
+                b["unit"].as_str().unwrap_or(""),
+                b["rule"].as_str().unwrap_or(""),
+                b["citation"].as_str().unwrap_or(""),
+                b["origin"].as_str().unwrap_or(""),
+                b["status"].as_str().unwrap_or(""),
+            ));
+        }
+        for o in self.options_list() {
+            let id = o["id"].as_str().unwrap_or("");
+            if let Some(sc) = self.volumes_row(id).map(|v| &v["screening"]) {
+                let blocking = &sc["blocking_not_evaluated"];
+                out.push(format!(
+                    "verdict: {id}: {} ({} blocking Rules not evaluated{})",
+                    sc["verdict"].as_str().unwrap_or(""),
+                    blocking["count"],
+                    blocking["rules"]
+                        .as_array()
+                        .filter(|r| !r.is_empty())
+                        .map_or(String::new(), |r| format!(
+                            ": {}",
+                            r.iter()
+                                .filter_map(Value::as_str)
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )),
+                ));
+            }
+        }
+        out
+    }
+
+    /// The constraint stretches (C) of every option as CSV, one row per stretch. The head carries the
+    /// screening label, the unverified-Rules notice, the design basis and the verdicts. Empty rows
+    /// below the head until the volumes stage has run.
+    pub fn export_stretches_csv(&self, dem: Option<&[u8]>) -> String {
+        let mut out = format!(
+            "# {SCREENING_LABEL}\n# {}\n",
+            super::screening::UNVERIFIED_NOTICE
+        );
+        for n in self.notices() {
+            out.push_str(&format!("# {}\n", n.replace('\n', " ")));
+        }
+        for l in self.basis_and_verdict_lines() {
+            out.push_str(&format!("# {}\n", l.replace('\n', " ")));
+        }
+        out.push_str(&format!("# volumes: {}\n", self.volumes_status_name(dem)));
+        out.push_str(
+            "option_id,kind,start_chainage_m,end_chainage_m,start_x,start_y,end_x,end_y,\
+             governing_rule,required,river,worst_chainage_m,deficit,works,dredge_m3,dry_cut_m3\n",
+        );
+        for o in self.options_list() {
+            let id = o["id"].as_str().unwrap_or("");
+            let Some(v) = self.volumes_row(id) else {
+                continue;
+            };
+            for x in v["screening"]["constraint_stretches"]
+                .as_array()
+                .into_iter()
+                .flatten()
+            {
+                let cols = [
+                    csv_field(id),
+                    csv_field(x["kind"].as_str().unwrap_or("")),
+                    num(&x["start_chainage_m"]),
+                    num(&x["end_chainage_m"]),
+                    num(&x["start"][0]),
+                    num(&x["start"][1]),
+                    num(&x["end"][0]),
+                    num(&x["end"][1]),
+                    csv_field(x["governing_rule"].as_str().unwrap_or("")),
+                    num(&x["required"]),
+                    num(&x["river"]),
+                    num(&x["worst_chainage_m"]),
+                    num(&x["deficit"]),
+                    csv_field(x["works"].as_str().unwrap_or("")),
+                    num(&x["dredge_m3"]),
+                    num(&x["dry_cut_m3"]),
+                ];
+                out.push_str(&cols.join(","));
+                out.push('\n');
+            }
+        }
+        out
+    }
+
+    /// The constraint stretches (C) as GeoJSON lines: each the part of its option's design line
+    /// between the stretch's ends, in the project CRS or, with `wgs84`, in longitude and latitude.
+    pub fn export_stretches_geojson(
+        &self,
+        wgs84: bool,
+        dem: Option<&[u8]>,
+    ) -> Result<String, DesignError> {
+        let epsg = self.doc["project"]["crs"]["epsg"]
+            .as_u64()
+            .map(|c| c as u32);
+        let utm: Option<Utm> = epsg
+            .and_then(|c| Crs::from_epsg(c).ok())
+            .and_then(|c| match c {
+                Crs::Utm(u) => Some(u),
+                Crs::Wgs84 => None,
+            });
+        let mut features = Vec::new();
+        for o in self.options_list() {
+            let id = o["id"].as_str().unwrap_or("");
+            let Some(v) = self.volumes_row(id) else {
+                continue;
+            };
+            let line = super::geojson::all_positions(&o["line"]);
+            for x in v["screening"]["constraint_stretches"]
+                .as_array()
+                .into_iter()
+                .flatten()
+            {
+                let (a, b) = (
+                    x["start_chainage_m"].as_f64().unwrap_or(0.0),
+                    x["end_chainage_m"].as_f64().unwrap_or(0.0),
+                );
+                let mut coords = Vec::new();
+                for [px, py] in part_of(&line, a, b) {
+                    if wgs84 {
+                        let u = utm.ok_or_else(|| {
+                            DesignError::Input("the channel design has no project CRS".into())
+                        })?;
+                        let [lon, lat] = u.inverse(px, py).map_err(DesignError::Input)?;
+                        coords.push(json!([lon, lat]));
+                    } else {
+                        coords.push(json!([px, py]));
+                    }
+                }
+                let mut props = x.clone();
+                props["option_id"] = json!(id);
+                props["screening"] = json!(SCREENING_LABEL);
+                props["rules_notice"] = json!(super::screening::UNVERIFIED_NOTICE);
+                features.push(json!({
+                    "type": "Feature",
+                    "geometry": {"type": "LineString", "coordinates": coords},
+                    "properties": props,
+                }));
+            }
+        }
+        let mut fc = json!({
+            "type": "FeatureCollection",
+            "screening": SCREENING_LABEL,
+            "rules_notice": super::screening::UNVERIFIED_NOTICE,
+            "engine_version": super::session::ENGINE_VERSION,
+            "title": self.doc["project"]["title"],
+            "volumes_status": self.volumes_status_name(dem),
+            "features": features,
+        });
+        let notices = self.notices();
+        if !notices.is_empty() {
+            fc["notices"] = json!(notices);
+        }
+        if !wgs84 {
+            fc["crs"] = json!({"type": "name", "properties": {"name": format!("urn:ogc:def:crs:EPSG::{}", epsg.unwrap_or(0))}});
+        }
+        let mut t = serde_json::to_string_pretty(&fc).expect("a JSON value serialises");
+        t.push('\n');
+        Ok(t)
+    }
+}
+
+/// The part of a line from chainage `a` to `b`: the points at `a` and `b` and every vertex between.
+/// A stretch of one station is one point twice.
+fn part_of(line: &[[f64; 2]], a: f64, b: f64) -> Vec<[f64; 2]> {
+    use owd_core::geom::linear::interpolate;
+    let mut out = Vec::new();
+    if let Some(p) = interpolate(line, a) {
+        out.push(p);
+    }
+    let mut s = 0.0;
+    for w in line.windows(2) {
+        s += ((w[1][0] - w[0][0]).powi(2) + (w[1][1] - w[0][1]).powi(2)).sqrt();
+        if s > a && s < b {
+            out.push(w[1]);
+        }
+    }
+    if let Some(p) = interpolate(line, b) {
+        out.push(p);
+    }
+    out
 }

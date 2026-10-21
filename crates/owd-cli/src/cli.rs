@@ -353,6 +353,10 @@ enum Command {
         /// With --geojson: write longitude and latitude instead of the project CRS.
         #[arg(long, requires = "geojson")]
         wgs84: bool,
+        /// Export the constraint stretches (spec 0007) instead of the options: as GeoJSON lines or
+        /// as CSV, whose head holds the design basis and the verdicts.
+        #[arg(long)]
+        stretches: bool,
         /// Write the export here instead of stdout.
         #[arg(short = 'o', long = "output", value_name = "FILE")]
         output: Option<String>,
@@ -486,6 +490,25 @@ enum Command {
         dem_datum: Option<String>,
         #[command(flatten)]
         out: Out,
+    },
+    /// Print the full Rule Trace of a design (spec 0007): every Rule of every selected set at every
+    /// object, with value, limit, margin, outcome, governing flag and status. Rebuilt from the
+    /// document, never stored; refused when a stored set hash differs from the engine's.
+    Trace {
+        /// The channel design. `-` is stdin.
+        doc: String,
+        /// A design line option: read the station Rules at its stations (default: one per reach).
+        #[arg(long)]
+        option: Option<String>,
+        /// With --option: the station spacing, metres.
+        #[arg(long, value_name = "M", default_value_t = 10.0)]
+        station_m: f64,
+        /// Load a Rule Set file the design selects (repeatable).
+        #[arg(long = "rule-set-file", value_name = "FILE")]
+        rule_set_file: Vec<String>,
+        /// Print the rows as JSON.
+        #[arg(long)]
+        json: bool,
     },
     /// Rerun every stale stage, in order.
     Run {
@@ -774,8 +797,16 @@ pub fn main() -> ExitCode {
             geojson,
             csv,
             wgs84,
+            stretches,
             output,
-        } => commands::export(&doc, geojson, csv, wgs84, output.as_deref()),
+        } => commands::export(&doc, geojson, csv, wgs84, stretches, output.as_deref()),
+        Command::Trace {
+            doc,
+            option,
+            station_m,
+            rule_set_file,
+            json,
+        } => commands::trace(&doc, option.as_deref(), station_m, &rule_set_file, json),
         Command::Draw {
             sub: Some(DrawSub::Run { document }),
             ..
