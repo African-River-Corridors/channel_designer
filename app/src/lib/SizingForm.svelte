@@ -73,12 +73,12 @@
 </section>
 
 <style>
-  label { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; font-size: 12px; color: var(--dim); }
-  select, input { font: inherit; padding: 3px 4px; color: var(--ink); }
-  .shape { width: 100%; border-collapse: collapse; margin-top: 10px; }
-  caption { text-align: left; font-family: var(--serif); color: var(--navy); font-weight: bold; padding-bottom: 4px; }
-  th { text-align: left; font-weight: normal; color: var(--dim); padding: 3px 0; font-size: 12px; }
-  td { text-align: right; padding: 3px 0; }
-  .warn { background: #fdf1d3; color: #6b4a00; padding: 4px 6px; font-size: 12px; }
-  .dim { color: var(--dim); }
+  label { display: flex; flex-direction: column; gap: 3px; margin: var(--sp-2) 0; font-size: var(--fs-12); color: var(--ink-2); }
+  .shape { width: 100%; border-collapse: collapse; margin-top: var(--sp-4); }
+  caption { text-align: left; font: 600 var(--fs-11) var(--font-ui); letter-spacing: var(--track-caps); text-transform: uppercase; color: var(--ink-2); padding-bottom: var(--sp-1); border-bottom: var(--lw-thin) solid var(--ink); }
+  th { text-align: left; font-weight: 500; color: var(--ink); padding: var(--sp-1) 0; font-size: var(--fs-12); border-bottom: var(--lw-thin) solid var(--rule); }
+  td { text-align: right; padding: var(--sp-1) 0; font-size: var(--fs-12); color: var(--ink-2); font-variant-numeric: tabular-nums; border-bottom: var(--lw-thin) solid var(--rule); }
+  .warn { background: var(--warn-soft); color: var(--warn); padding: var(--sp-1) var(--sp-2); font-size: var(--fs-12); }
+  .warn::before { content: "! "; font-weight: 700; }
+  .dim { color: var(--ink-3); }
 </style>
