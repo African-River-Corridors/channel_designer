@@ -38,5 +38,5 @@
 </div>
 
 <style>
-  .left { padding: 10px 12px; display: flex; flex-direction: column; gap: 14px; }
+  .left { padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-5); }
 </style>

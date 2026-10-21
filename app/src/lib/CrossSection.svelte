@@ -83,18 +83,18 @@
 </div>
 
 <style>
-  .cross { display: flex; gap: 8px; align-items: flex-start; height: 100%; padding: 4px; box-sizing: border-box; overflow: auto; }
-  svg { flex: 1 1 auto; min-width: 200px; max-height: 100%; }
-  .grid { stroke: #e3dfd0; stroke-width: 1; }
-  .tick { font-size: 9px; fill: var(--dim); }
+  .cross { display: flex; gap: var(--sp-2); align-items: flex-start; height: 100%; padding: var(--sp-1); overflow: auto; background: var(--surface); }
+  svg { flex: 1 1 auto; min-width: 200px; max-height: 100%; font-family: var(--font-ui); }
+  .grid { stroke: var(--rule); stroke-width: 1; }
+  .tick { font-size: 9px; fill: var(--ink-3); }
   .tick.end { text-anchor: end; }
   .tick.mid { text-anchor: middle; }
-  .terrain { fill: none; stroke: #7a5a2a; stroke-width: 1.6; }
-  .face { fill: none; stroke-width: 2.4; }
-  .invert { stroke-width: 2.4; }
-  .water { stroke: #1f6fbf; stroke-width: 1.4; stroke-dasharray: 5 3; }
-  .facts { margin: 0; display: grid; grid-template-columns: auto auto; gap: 1px 8px; font-size: 11px; align-content: start; }
-  dt { color: var(--dim); }
-  dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
-  .slot { color: var(--dim); font-style: italic; margin: 8px; }
+  .terrain { fill: none; stroke: var(--ink); stroke-width: var(--lw-thick); }
+  .face { fill: none; stroke-width: var(--lw-thick); stroke-dasharray: 6 3; }
+  .invert { stroke-width: var(--lw-design); }
+  .water { stroke: var(--ink); stroke-width: var(--lw-thin); stroke-dasharray: 8 4; }
+  .facts { margin: 0; display: grid; grid-template-columns: auto auto; gap: 2px var(--sp-2); font-size: var(--fs-11); align-content: start; }
+  dt { color: var(--ink-3); }
+  dd { margin: 0; text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .slot { color: var(--ink-3); font-style: italic; margin: var(--sp-2); }
 </style>

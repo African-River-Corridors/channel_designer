@@ -5,7 +5,9 @@
   import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
   import type * as GeoJSON from "geojson";
   import type { Hillshade, MapGeometry } from "./api";
-  import { ATTRIBUTION, BASEMAP_TILES, OPTION_COLOURS } from "./basemap";
+  import { ATTRIBUTION, BASEMAP_TILES } from "./basemap";
+  import OptionSwatch from "./OptionSwatch.svelte";
+  import { optionColour, token } from "./theme";
 
   let {
     geometry,
@@ -41,6 +43,7 @@
   let ready = $state(false);
   let failure = $state<string | null>(null);
   let labels: maplibregl.Marker[] = [];
+  let bendMarkers: maplibregl.Marker[] = [];
   let stationMarker: maplibregl.Marker | undefined;
   /** The option the map has drawn as selected: what a test reads to know the map followed the table. */
   let drawn = $state<string | null>(null);
@@ -59,7 +62,7 @@
     const options = (g?.options ?? []).map((o, i) =>
       feature(o.line as GeoJSON.Geometry, {
         id: o.id,
-        colour: OPTION_COLOURS[i % OPTION_COLOURS.length],
+        colour: optionColour(i, "map"),
         selected: o.id === selected,
         failed: !o.radius_ok,
         dim: selected != null && o.id !== selected,
@@ -92,6 +95,18 @@
     labels.forEach((m) => m.remove());
     labels = [];
     const shown = geometry?.options.find((o) => o.id === selectedId) ?? geometry?.options[0];
+    // A tight bend is a disc with a cross: a shape as well as a colour. Also HTML, so it needs no glyphs.
+    bendMarkers.forEach((m) => m.remove());
+    bendMarkers = [];
+    for (const o of geometry?.options ?? []) {
+      for (const b of o.tight_bends) {
+        const el = document.createElement("span");
+        el.className = "bend-marker";
+        el.textContent = "✕";
+        el.title = `Radius ${Math.round(b.radius_m)} m`;
+        bendMarkers.push(new maplibregl.Marker({ element: el }).setLngLat(b.position).addTo(map));
+      }
+    }
     for (const t of shown?.ticks ?? []) {
       const el = document.createElement("span");
       el.className = "tick-label";
@@ -170,14 +185,16 @@
       m.addSource("hillshade", { type: "image", url: BLANK, coordinates: [[0, 1], [1, 1], [1, 0], [0, 0]] });
       for (const id of ["polygon", "banks", "centre", "options", "bends", "ticks"]) m.addSource(id, { type: "geojson", data: empty });
       m.addLayer({ id: "hillshade", type: "raster", source: "hillshade", paint: { "raster-fade-duration": 0 }, layout: { visibility: "none" } });
-      m.addLayer({ id: "polygon", type: "fill", source: "polygon", paint: { "fill-color": "#2a6ebb", "fill-opacity": 0.18 } });
-      m.addLayer({ id: "banks", type: "line", source: "banks", paint: { "line-color": "#ffffff", "line-width": 1.5 } });
-      m.addLayer({ id: "centre", type: "line", source: "centre", paint: { "line-color": "#ffffff", "line-width": 1, "line-dasharray": [3, 3] } });
-      // A casing under each option keeps its colour readable on any imagery.
-      m.addLayer({ id: "options-casing", type: "line", source: "options", paint: { "line-color": "#000000", "line-opacity": 0.6, "line-width": ["case", ["get", "selected"], 8, 5] } });
-      m.addLayer({ id: "options", type: "line", source: "options", paint: { "line-color": ["get", "colour"], "line-width": ["case", ["get", "selected"], 5, 3], "line-opacity": ["case", ["get", "dim"], 0.55, 1] } });
-      m.addLayer({ id: "ticks", type: "circle", source: "ticks", paint: { "circle-radius": 3, "circle-color": "#ffffff", "circle-stroke-color": "#000000", "circle-stroke-width": 1 } });
-      m.addLayer({ id: "bends", type: "circle", source: "bends", paint: { "circle-radius": 9, "circle-color": "rgba(255,0,0,0.25)", "circle-stroke-color": "#ff2a2a", "circle-stroke-width": 3 } });
+      // Colours are read from the tokens. On imagery the same cream and plate ink serve both themes.
+      const cream = token("cream");
+      const ink = token("plate-ink");
+      m.addLayer({ id: "polygon", type: "fill", source: "polygon", paint: { "fill-color": token("river"), "fill-opacity": 0.18 } });
+      m.addLayer({ id: "banks", type: "line", source: "banks", paint: { "line-color": cream, "line-width": 1.5 } });
+      m.addLayer({ id: "centre", type: "line", source: "centre", paint: { "line-color": cream, "line-width": 1, "line-dasharray": [3, 3] } });
+      // The deep line over a cream casing keeps each option readable on any imagery. The design line is the heaviest line.
+      m.addLayer({ id: "options-casing", type: "line", source: "options", paint: { "line-color": token("opt-casing"), "line-width": ["case", ["get", "selected"], 8, 6] } });
+      m.addLayer({ id: "options", type: "line", source: "options", paint: { "line-color": ["get", "colour"], "line-width": 4, "line-opacity": ["case", ["get", "dim"], 0.55, 1] } });
+      m.addLayer({ id: "ticks", type: "circle", source: "ticks", paint: { "circle-radius": 3, "circle-color": cream, "circle-stroke-color": ink, "circle-stroke-width": 1 } });
       ready = true;
     });
     // Offline: tiles keep failing and none has loaded. One success puts the imagery back.
@@ -230,12 +247,12 @@
   <ul class="legend" data-testid="map-legend">
     {#each geometry?.options ?? [] as o, i}
       <li>
-        <span class="swatch" style:background={OPTION_COLOURS[i % OPTION_COLOURS.length]}></span>
+        <OptionSwatch index={i} />
         {o.name}{#if !o.radius_ok}<span class="fail">radius fails</span>{/if}
       </li>
     {/each}
     {#if geometry?.options.some((o) => o.tight_bends.length)}
-      <li><span class="swatch ring"></span>tight bend</li>
+      <li><span class="bend-key">✕</span>tight bend</li>
     {/if}
   </ul>
   {#if offline}
@@ -247,17 +264,27 @@
 </div>
 
 <style>
-  .map { position: relative; width: 100%; height: 100%; min-height: 160px; background: #1b2430; }
+  .map { position: relative; width: 100%; height: 100%; min-height: 160px; background: var(--paper); }
   .canvas { position: absolute; inset: 0; }
-  .attribution { position: absolute; right: 0; bottom: 0; margin: 0; padding: 1px 6px; font-size: 10px; background: rgba(255, 255, 255, 0.85); color: #222; z-index: 2; max-width: 100%; }
-  .legend { position: absolute; left: 8px; top: 8px; margin: 0; padding: 4px 8px; list-style: none; font-size: 12px; background: rgba(255, 255, 255, 0.9); border-radius: 3px; z-index: 2; }
+  .attribution { position: absolute; right: 0; bottom: 0; margin: 0; padding: 1px 6px; font-size: 10px; background: var(--surface); color: var(--ink-3); z-index: 2; max-width: 100%; }
+  .legend { position: absolute; left: var(--sp-3); top: var(--sp-3); margin: 0; padding: var(--sp-2) var(--sp-3); list-style: none; font-size: var(--fs-12); color: var(--ink); background: var(--surface); border: var(--lw-thin) solid var(--ink); z-index: 2; }
+  .legend li { display: flex; gap: var(--sp-2); align-items: center; margin: 3px 0; }
   .legend:empty { display: none; }
-  .swatch { display: inline-block; width: 18px; height: 4px; margin-right: 6px; vertical-align: middle; }
-  .swatch.ring { height: 10px; width: 10px; border: 2px solid #ff2a2a; border-radius: 50%; background: none; }
-  .offline { position: absolute; left: 8px; bottom: 28px; margin: 0; padding: 3px 8px; font-size: 12px; background: rgba(253, 241, 211, 0.95); color: #6b4a00; border: 1px solid var(--gold); border-radius: 3px; z-index: 2; }
-  .fail { color: #b3261e; margin-left: 6px; }
-  .hint, .failure { position: absolute; left: 50%; top: 40%; transform: translateX(-50%); margin: 0; padding: 8px 12px; background: rgba(255, 255, 255, 0.92); border-radius: 4px; z-index: 2; max-width: 80%; text-align: center; }
-  .failure { color: #b3261e; }
-  :global(.station-marker) { width: 16px; height: 16px; border-radius: 50%; background: #14325a; border: 3px solid #fff; box-shadow: 0 0 0 2px #14325a, 0 1px 4px rgba(0,0,0,.6); pointer-events: none; }
-  :global(.tick-label) { font-size: 10px; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; white-space: nowrap; }
+  .bend-key { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; border: var(--lw-thin) solid var(--ink); font-size: var(--fs-11); font-weight: 700; color: var(--fail); }
+  .offline { position: absolute; left: var(--sp-2); bottom: 28px; margin: 0; padding: 3px var(--sp-2); font-size: var(--fs-12); background: var(--warn-soft); color: var(--warn); border: var(--lw-thin) solid var(--rule-strong); border-radius: var(--radius); z-index: 2; }
+  .fail { color: var(--fail); margin-left: var(--sp-2); font-weight: 600; }
+  .fail::before { content: "✕ "; }
+  .hint, .failure { position: absolute; left: 50%; top: 40%; transform: translateX(-50%); margin: 0; padding: var(--sp-2) var(--sp-3); background: var(--surface); color: var(--ink); border: var(--lw-thin) solid var(--ink); z-index: 2; max-width: 80%; text-align: center; }
+  .failure { color: var(--fail); }
+  :global(.station-marker) { width: 16px; height: 16px; border-radius: 50%; background: var(--plate-ink); border: 3px solid var(--cream); box-shadow: 0 0 0 1px var(--plate-ink); pointer-events: none; }
+  :global(.tick-label) { font-size: var(--fs-11); color: var(--cream); text-shadow: 0 0 3px var(--plate-ink), 0 0 3px var(--plate-ink); white-space: nowrap; }
+  :global(.bend-marker) { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--ink); color: var(--fail); font: 700 14px / 1 var(--font-ui); pointer-events: none; }
+  :global(.maplibregl-ctrl-group) { border-radius: var(--radius); background: var(--surface); border: var(--lw-thin) solid var(--ink); box-shadow: none; }
+  :global(.maplibregl-ctrl-group button) { border-color: var(--rule); }
+  /* The control icons are dark drawings: show them in ink on the dark theme. */
+  :global(:root[data-theme="dark"] .maplibregl-ctrl-icon) { filter: invert(1); }
+  @media (prefers-color-scheme: dark) {
+    :global(:root:not([data-theme="light"]) .maplibregl-ctrl-icon) { filter: invert(1); }
+  }
+  :global(.maplibregl-ctrl-scale) { background: var(--surface); color: var(--ink); border-color: var(--ink); }
 </style>

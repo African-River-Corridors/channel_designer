@@ -89,16 +89,16 @@
 
 <style>
   table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; font-weight: normal; color: var(--dim); padding: 3px 0; font-size: 12px; }
-  td { text-align: right; padding: 3px 0; font-size: 13px; }
-  td.act { width: 1%; padding-left: 6px; }
-  button { font-size: 12px; padding: 1px 8px; }
-  tr.drop { background: #fdf1d3; outline: 2px dashed var(--gold); }
-  .moved { text-align: left; font-size: 12px; color: #6b4a00; background: #fdf1d3; padding: 3px 6px; }
-  .row { margin: 6px 0 0; }
-  .hint { font-size: 11px; color: var(--dim); margin: 4px 0 0; }
-  .water { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
-  .water label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--dim); }
-  .water input { font: inherit; padding: 3px 4px; color: var(--ink); }
-  .water button { align-self: flex-start; margin-top: 2px; }
+  th { text-align: left; font-weight: 500; color: var(--ink); padding: var(--sp-1) 0; font-size: var(--fs-12); border-bottom: var(--lw-thin) solid var(--rule); }
+  td { text-align: right; padding: var(--sp-1) 0; font-size: var(--fs-12); color: var(--ink-2); font-variant-numeric: tabular-nums; border-bottom: var(--lw-thin) solid var(--rule); }
+  td.act { width: 1%; padding-left: var(--sp-2); }
+  button { padding: 2px 8px; }
+  /* A dragged file over a row: a dashed ink outline, so colour is not the only signal. */
+  tr.drop { background: var(--accent-soft); outline: var(--lw-thick) dashed var(--ink); outline-offset: -2px; }
+  .moved { text-align: left; font-size: var(--fs-12); color: var(--warn); background: var(--warn-soft); padding: var(--sp-1) var(--sp-2); }
+  .row { margin: var(--sp-2) 0 0; }
+  .hint { font-size: var(--fs-11); color: var(--ink-3); margin: var(--sp-1) 0 0; }
+  .water { margin-top: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-1); }
+  .water label { display: flex; flex-direction: column; gap: 3px; font-size: var(--fs-12); color: var(--ink-2); }
+  .water button { align-self: flex-start; margin-top: var(--sp-1); }
 </style>
