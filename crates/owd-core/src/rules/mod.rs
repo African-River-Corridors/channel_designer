@@ -17,6 +17,7 @@ pub use ovcd_core::vessel_standards::{
 };
 
 pub mod design;
+pub mod engine;
 pub mod methods;
 pub mod rulesets;
 pub mod simple;

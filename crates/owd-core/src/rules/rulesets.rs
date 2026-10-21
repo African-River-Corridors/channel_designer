@@ -20,6 +20,7 @@
 //! = 0 masl) puts the bed below datum (a marine or tidal dredge reach) and is flagged.
 
 use super::design::{required_depth, under_keel_clearance};
+use super::engine::{self, Selection, Vessel};
 use super::methods::{MethodRegistry, OptValue, Options, PIANC_EXTRA_WIDTHS, WidthMethod};
 use super::{RuleError, value_err};
 use crate::pyrepr::repr_str;
@@ -27,7 +28,7 @@ use crate::{py_max, py_min};
 use ovcd_core::checks::Check;
 use ovcd_core::pyfmt::{fixed, py_str};
 use ovcd_core::vessel_standards::get_standard;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 // =====================================================================================
 // RULESETS: a channel design standard, named. Ruleset x vessel class -> channel shape.
@@ -461,6 +462,9 @@ pub struct ChannelShape {
     pub source: String,
     pub warnings: Vec<String>,
     ruleset: Ruleset,
+    /// The engine selection that sized the shape, and its vessel (spec 0007). `None` for a ruleset
+    /// that does not go through the engine yet.
+    engine: Option<(Arc<Selection>, Vessel)>,
 }
 
 impl ChannelShape {
@@ -470,7 +474,11 @@ impl ChannelShape {
     }
 
     pub fn bend_widening_m(&self, radius_m: f64) -> f64 {
-        bend_widening(&self.ruleset, self.loa_m, self.beam_m, radius_m)
+        match &self.engine {
+            Some((selection, vessel)) => engine::widening(selection, *vessel, radius_m)
+                .expect("the selection sized the bend widening at R_min, so it sizes it here"),
+            None => bend_widening(&self.ruleset, self.loa_m, self.beam_m, radius_m),
+        }
     }
 
     pub fn bottom_width_at_m(&self, radius_m: f64) -> f64 {
@@ -567,6 +575,53 @@ pub fn channel_shape(
     vessel_standard_id: &str,
     draught_m: Option<f64>,
 ) -> Result<ChannelShape, RuleError> {
+    let mut shape = channel_shape_legacy(rulesets, ruleset_id, vessel_standard_id, draught_m)?;
+    let Some(selection) = engine_selection(&shape.ruleset)? else {
+        return Ok(shape);
+    };
+    let vessel = Vessel {
+        loa_m: shape.loa_m,
+        beam_m: shape.beam_m,
+        draught_m: shape.draught_m,
+    };
+    let sized = engine::size(&selection, vessel)?;
+    shape.bottom_width_straight_m = sized.bottom_width_straight_m;
+    shape.min_bend_radius_m = sized.min_bend_radius_m;
+    shape.design_depth_m = sized.design_depth_m;
+    shape.bend_widening_at_rmin_m = sized.bend_widening_at_rmin_m;
+    shape.bottom_width_at_rmin_m = sized.bottom_width_straight_m + sized.bend_widening_at_rmin_m;
+    shape.engine = Some((
+        Arc::new(selection.narrowed_to(engine::BEND_WIDENING, vessel)),
+        vessel,
+    ));
+    Ok(shape)
+}
+
+/// The engine selection an old ruleset maps to (spec 0007, "Rule Sets at 0.3.0"), or `None` for one
+/// that does not go through the engine yet. Only an unchanged built-in ruleset maps: one replaced
+/// through [`RulesetRegistry::register`] keeps the old path.
+fn engine_selection(rs: &Ruleset) -> Result<Option<Selection>, RuleError> {
+    let quality = match rs.ruleset_id.as_str() {
+        "PIANC-A" => "A",
+        "PIANC-B" => "B",
+        "PIANC-C" => "C",
+        _ => return Ok(None),
+    };
+    if !builtin_rulesets().contains(rs) {
+        return Ok(None);
+    }
+    Selection::built_in(&["pianc-wg141"], &[(engine::SE_QUALITY, quality)]).map(Some)
+}
+
+/// The channel shape by the old `Ruleset` code: the parity reference for the engine path
+/// (spec 0007), kept for that check only until the old path goes.
+#[doc(hidden)]
+pub fn channel_shape_legacy(
+    rulesets: &RulesetRegistry,
+    ruleset_id: &str,
+    vessel_standard_id: &str,
+    draught_m: Option<f64>,
+) -> Result<ChannelShape, RuleError> {
     let rs = rulesets.get(ruleset_id)?;
     let v = get_standard(vessel_standard_id).map_err(RuleError::Key)?;
     let loa = v.loa_m.1; // size on the LONG end of the class
@@ -649,6 +704,7 @@ pub fn channel_shape(
         source: format!("{}; vessel {}", rs.source, v.source),
         warnings: warns,
         ruleset: rs.clone(),
+        engine: None,
     })
 }
 

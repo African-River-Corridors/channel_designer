@@ -107,6 +107,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
+name = "arc-rules"
+version = "0.2.4"
+source = "git+https://github.com/African-River-Corridors/open-vessel-concept-drawings?tag=v0.2.4#5789530300e0b0ec0007941a5c351e8f9cb21faa"
+dependencies = [
+ "serde_json",
+ "sha2 0.11.1",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2607,6 +2616,7 @@ dependencies = [
 name = "owd-core"
 version = "0.2.0"
 dependencies = [
+ "arc-rules",
  "clarabel",
  "dubins_paths",
  "libm",
