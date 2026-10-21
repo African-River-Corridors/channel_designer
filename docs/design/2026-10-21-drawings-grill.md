@@ -42,15 +42,18 @@ This note keeps every answer, so the spec can be checked against it.
 | Q18 | Which cross sections | Default: a set spacing (500 m), plus the worst station of each constraint stretch, plus the middle of each bend. Configurable. One common scale. |
 | Q19 | Typical section | One per reach kind: bottom width, side slopes, design depth, design water level, under-keel clearance, each dimensioned from geometry. A note names the governing Rule once spec 0007 lands; until then, the ruleset. |
 | Q20 | Setting-out table | On the sheet as lines and text, and as CSV. Coordinates in the design's UTM zone to 0.001 m, zone and datum in the header. |
-| Q21 | Imagery source | Esri World Imagery. |
+| Q21 | Imagery source | First answer: Esri World Imagery. **Changed 2026-10-21:** EOxCloudless (EOX Sentinel-2 cloudless) for now, not Esri. The 2016 year, because it is the only CC BY 4.0 year (see the note). |
 | Q22 | What configurable means | A sheet style: a JSON file with built-in defaults (`owd-default.style.json`). It sets layers, named label rules with parameters, chainage tick spacing by scale, section spacing and extra sections, sheet size and scales. No threshold lives only in code. The style's content hash goes in the title block. CLI flags override single values. |
 | Q23 | Release | Every ticket goes in the next release. The spec names no version number; the maintainer says when the version moves. |
 
 ## Notes recorded with the answers
 
-- **Esri terms (Q21).** Esri World Imagery needs an access key, and its terms limit offline caching and
-  reuse. The user supplies the key; no key is in this public repository. The sheet prints the
-  attribution the terms ask for. This is recorded as a risk in spec 0004, not reopened.
+- **EOxCloudless licence (Q21, changed answer).** Read on EOX's own pages (cloudless.eox.at, the
+  licence summary and the FAQ; s2maps.eu now redirects there) on 2026-10-21. The 2016 mosaic is CC BY
+  4.0: commercial use is allowed with attribution, through the free 2016 endpoint, with no service
+  level and a fair-use limit, and not as resold raw tiles. Mosaics from 2018 on are CC BY-NC-SA 4.0:
+  commercial use needs a paid EOX licence. So OWD offers 2016 only. The sheet carries:
+  "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)".
 - **Setting-out table (Q20), found after the interview.** OWD's design line is a polyline from the
   fairway fit and the rolling circle (ADR 0007), not a chain of intersection points with arcs. So there
   are no IPs to tabulate. The spec reads Q20 as: one row per station at a set spacing (chainage, E, N,

@@ -83,7 +83,7 @@ Every ticket ships in the next release.
   2. **Images.** From a raster grid in model coordinates: clip to a viewport, shaded relief from a DEM,
      JPEG, and the `image` entity with its bytes. No file access in the core.
   3. **Fetched imagery.** A crate apart from the core that fetches and caches imagery tiles for a box
-     (Esri World Imagery first, with the user's key) and returns a raster grid for item 2.
+     (EOxCloudless 2016 first, which needs no key) and returns a raster grid for item 2.
   4. **Layout review.** A review of normalised content: text overlap, smallest text at print size, text
      clear of hatches, entities inside the frame.
   5. **Vertical exaggeration**, once the standard allows it (clause 7.3.3). A request to the standard.
@@ -139,14 +139,20 @@ Every ticket ships in the next release.
   infeasible stretches, and (later ticket) constraint stretches.
 - **Background.** Shaded relief from the design's DEM by default. A user's orthophoto GeoTIFF (WGS84 or
   the design's UTM zone, reprojected by OWD's existing code) or fetched imagery when asked. OWD reads
-  the files; OTD makes the image. Fetched imagery prints its attribution on the sheet.
+  the files; OTD makes the image.
+- **Fetched imagery.** EOxCloudless 2016 (Sentinel-2 cloudless mosaic, 10 m pixels), from EOX's free
+  2016 tile endpoint. It is CC BY 4.0, so commercial use is allowed with attribution. The year is fixed
+  at 2016: later years are CC BY-NC-SA 4.0 and need a paid licence for commercial use, so OWD does not
+  offer them. Every sheet that shows it prints this attribution, in full, on the sheet:
+  "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)". Tiles are cached on disk and are never shipped in this repository or as a dataset of
+  their own.
 - **Long section.** Not in this build: it needs vertical exaggeration. The app keeps its own view.
 
 ### CLI
 
 - `owd draw <file> --out <dir>` writes, for each sheet, the drawing document, the normalised content, SVG,
   PDF and DXF; and the setting-out CSV. Flags: `--option <name>`, `--sheets <kinds>`, `--style <file>`,
-  single-value overrides, `--orthophoto <geotiff>`, `--imagery esri` (key from the environment).
+  single-value overrides, `--orthophoto <geotiff>`, `--imagery eox-cloudless-2016`.
 - `owd draw --document` prints the drawing documents only.
 - `owd draw` runs OTD's layout review (when the pinned `otd` has it), then OWD's domain checks. Any
   error fails the command with the sheet and the check named.
@@ -189,7 +195,8 @@ Every ticket ships in the next release.
 - Intersection-point setting out (a later spec).
 - Drawings of structures (locks, weirs, bank protection).
 - Editing the sheet style in the app.
-- Imagery sources other than Esri World Imagery.
+- Imagery sources other than EOxCloudless 2016, including EOxCloudless 2018 and later (non-commercial
+  licence; see Risks).
 
 ## Tickets
 
@@ -217,9 +224,13 @@ cannot cross repos.
 
 - **OTD is not yet a repository.** Every ticket waits on it. If the move changes the library API,
   ticket 1 adapts to it; it does not pin `ovcd-draw` from OVCD instead.
-- **Imagery terms.** Esri World Imagery needs a key, and its terms limit offline caching and reuse. The
-  user supplies the key, OWD stores none, and the sheet prints the attribution. If the terms forbid a
-  use, the shaded relief and the user's orthophoto still work.
+- **Imagery licence.** EOX's terms (cloudless.eox.at, licence summary and FAQ, read 2026-10-21): the
+  2016 mosaic is CC BY 4.0; mosaics from 2018 on are CC BY-NC-SA 4.0, and commercial use needs a paid
+  EOX licence. Someone who uses OWD for paid work must stay on 2016. OWD offers 2016 only. The free
+  endpoint has no service level and a fair-use limit, so a fetch can fail or slow down; the sheet then
+  falls back to shaded relief with a message. The raw tiles may not be redistributed as a dataset of
+  their own, so the cache stays local and no fixture holds a real tile. The 2016 imagery is ten years
+  old: a river may have moved, so the sheet's image note states the year.
 - **Sheets look busy.** The label rules label exceptions only, and every rule can be turned off.
 - **A drawn number drifts from a result.** The domain checks fail `owd draw`.
 - **Two Python readers.** The cross-check pins the standard's commit; updating it is a deliberate change.
