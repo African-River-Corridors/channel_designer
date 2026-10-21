@@ -166,3 +166,91 @@ fn a_document_with_no_answer_and_a_bad_ruleset_are_refused() {
         json!(["PIANC-A", "PIANC-B"])
     );
 }
+
+/// The study of `crates/owd-format/tests/fits_full.rs` (a straight, 400 m wide river with a shallow
+/// bar of 1.5 m in a bed model of 4 m) and a flat DEM at 12 m, written to a folder.
+fn full_study(name: &str) -> String {
+    use owd_format::design::{Role, Session};
+    use owd_format::geotiff::Dem;
+    let dir = work_dir(name);
+    let at = |x: f64, y: f64| [x + 500_000.0, y + 600_000.0];
+    let mut s = Session::new("t", "2026-10-21");
+    let polygon = format!(
+        r#"{{"type":"Polygon"{UTM30},"coordinates":[{}]}}"#,
+        json!([
+            at(0.0, -200.0),
+            at(3000.0, -200.0),
+            at(3000.0, 200.0),
+            at(0.0, 200.0),
+            at(0.0, -200.0)
+        ])
+    );
+    let centre = format!(
+        r#"{{"type":"LineString"{UTM30},"coordinates":{}}}"#,
+        json!([at(0.0, 0.0), at(3000.0, 0.0)])
+    );
+    s.import(&[
+        (Role::RiverPolygon, polygon.as_str()),
+        (Role::Centreline, centre.as_str()),
+    ])
+    .unwrap();
+    s.set_water_profile(&[[0.0, 10.0]]).unwrap();
+    s.set_bed_model(
+        &[
+            [0.0, 4.0],
+            [1100.0, 4.0],
+            [1200.0, 1.5],
+            [1500.0, 1.5],
+            [1600.0, 4.0],
+            [3000.0, 4.0],
+        ],
+        Some("dry"),
+        "2026-10-21",
+    )
+    .unwrap();
+    let (w, h) = (120, 40);
+    let dem = Dem {
+        width: w,
+        height: h,
+        data: vec![12.0; w * h],
+        geotransform: [50.0, 0.0, 499_500.0, 0.0, -50.0, 601_000.0],
+        nodata: None,
+        epsg: Some(32630),
+    };
+    let bytes = owd_format::design::dem_source::write_geotiff(&dem).unwrap();
+    std::fs::write(dir.join("dem.tif"), &bytes).unwrap();
+    let back = owd_format::geotiff::read_bytes(&bytes).unwrap();
+    s.set_dem("dem.tif", &bytes, &back);
+    let doc = dir.join("t.owd");
+    std::fs::write(&doc, s.to_text()).unwrap();
+    doc.to_str().unwrap().to_string()
+}
+
+#[test]
+fn with_a_bed_model_and_a_dem_the_answer_is_full_with_the_verdict_and_the_depth_stretches() {
+    let doc = full_study("fits-full");
+    let o = owd(&["fits", &doc, "--json"]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let v: Value = serde_json::from_str(&out(&o)).unwrap();
+    assert_eq!(v["fits"]["mode"], "full");
+    let classes = v["fits"]["rulesets"][0]["classes"].as_array().unwrap();
+    assert!(
+        classes
+            .iter()
+            .all(|c| c["depth_basis"] == "depth assumed, not measured")
+    );
+    assert!(classes.iter().all(|c| c["verdict"].is_string()));
+    assert!(
+        classes.iter().any(|c| c["constraint_stretches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|s| s["kind"] == "depth" && s["works"] == "dredge")),
+        "some class meets the bar"
+    );
+    assert!(owd(&["validate", &doc]).status.success());
+    let t = out(&owd(&["fits", &doc, "--show"]));
+    assert!(t.contains("depth assumed, not measured"), "{t}");
+    assert!(t.contains("verdict: navigable-with-works"), "{t}");
+    assert!(t.contains("works: dredge"), "{t}");
+}

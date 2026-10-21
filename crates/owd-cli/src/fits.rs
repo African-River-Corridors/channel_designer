@@ -1,7 +1,11 @@
-//! `owd fits`: the plan-only answer to "what vessel fits this reach as it is?" (spec 0012, T8).
+//! `owd fits`: the answer to "what vessel fits this reach as it is?" (spec 0012): plan only (T8),
+//! or full, with depth and the spec 0007 verdict, when the document has a bed model, a water level
+//! and its DEM (T9).
 
-use crate::commands::{Failure, Result, destination, from_design, input_error, open, say, write};
-use owd_format::design::StageStatus;
+use crate::commands::{
+    Failure, Result, destination, from_design, input_error, open_with_dem, read_dem, say, write,
+};
+use owd_format::design::{DemCheck, StageStatus};
 use serde_json::{Value, json};
 
 fn f1(v: &Value) -> String {
@@ -33,6 +37,26 @@ fn table(results: &Value) -> String {
                 f1(&c["worst_radius_deficit_m"]),
                 c["stretch_count"]
             ));
+            if let Some(v) = c["verdict"].as_str() {
+                out.push_str(&format!("    verdict: {v}\n"));
+            }
+            for s in c["constraint_stretches"].as_array().into_iter().flatten() {
+                out.push_str(&format!(
+                    "    {} from {:.0} m to {:.0} m: needs {}, found {}, short by {}; works: {}, dredge {:.0} m3, dry cut {:.0} m3\n",
+                    s["kind"].as_str().unwrap_or("?"),
+                    s["start_chainage_m"].as_f64().unwrap_or(f64::NAN),
+                    s["end_chainage_m"].as_f64().unwrap_or(f64::NAN),
+                    f1(&s["required"]),
+                    f1(&s["river"]),
+                    f1(&s["deficit"]),
+                    s["works"].as_str().unwrap_or("?"),
+                    s["dredge_m3"].as_f64().unwrap_or(0.0),
+                    s["dry_cut_m3"].as_f64().unwrap_or(0.0),
+                ));
+            }
+            if c["constraint_stretches"].is_array() {
+                continue;
+            }
             for s in c["stretches"].as_array().into_iter().flatten() {
                 out.push_str(&format!(
                     "    {} from {:.0} m to {:.0} m: needs {} m, found {} m, short by {} m\n",
@@ -61,7 +85,7 @@ pub fn fits(
     output: &Option<String>,
     json_mode: bool,
 ) -> Result {
-    let mut session = open(doc)?;
+    let (mut session, bytes) = open_with_dem(doc)?;
     if show {
         let status = session.fits_status();
         let Some(results) = session.fits_result().cloned() else {
@@ -84,8 +108,26 @@ pub fn fits(
         );
         return Ok(());
     }
+    // The DEM only when it is the file whose hash was recorded; with it, a bed model and a water
+    // level, the answer is full.
+    let dem = match (session.dem_check(bytes.as_deref()), &bytes) {
+        (DemCheck::Matches, Some(b)) => Some(read_dem(b, session.dem_path().unwrap_or("DEM"))?),
+        _ => None,
+    };
+    let epsg = session.document()["project"]["crs"]["epsg"]
+        .as_u64()
+        .map(|c| c as u32);
+    let sampler = match &dem {
+        Some(d) => Some(owd_format::design::terrain::dem_sampler(d, epsg).map_err(from_design)?),
+        None => None,
+    };
     session
-        .run_fits((!rulesets.is_empty()).then_some(rulesets))
+        .run_fits_with(
+            (!rulesets.is_empty()).then_some(rulesets),
+            sampler
+                .as_ref()
+                .map(|s| s as &dyn Fn(&[f64], &[f64]) -> Vec<f64>),
+        )
         .map_err(from_design)?;
     let dest = destination(doc, output);
     write(&dest, &session.to_text())?;
