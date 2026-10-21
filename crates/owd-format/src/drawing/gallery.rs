@@ -139,7 +139,7 @@ fn finite(x: f64) -> bool {
 }
 
 /// The extent a panel must show: the whole wet channel and the cut, with room round them.
-fn extent(s: &CrossSection, p: &GalleryParams) -> (f64, f64, f64, f64) {
+pub(super) fn extent(s: &CrossSection, p: &GalleryParams) -> (f64, f64, f64, f64) {
     let idx: Vec<usize> = (0..s.offsets.len())
         .filter(|&j| design_surface(s, j) < s.wl || (s.terrain[j] - s.cutface[j]) > 1e-6)
         .collect();

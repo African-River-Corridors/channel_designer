@@ -136,17 +136,7 @@ pub fn table(session: &Session, option_id: &str, spacing_m: f64) -> Result<Table
             }
         })
         .collect();
-    let (s, xy) = resample(&line, BEND_STEP_M);
-    let kappa = curvature(&xy);
-    let bends = bend_units(&s, &kappa, BEND_SMOOTH_N)
-        .into_iter()
-        .map(|b| BendRow {
-            start_m: b.s0,
-            end_m: b.s1,
-            least_radius_m: b.r_min_natural_m,
-            deflection_deg: b.deflection_rad.to_degrees(),
-        })
-        .collect();
+    let bends = bend_rows(&line);
     Ok(Table {
         zone,
         epsg,
@@ -154,6 +144,22 @@ pub fn table(session: &Session, option_id: &str, spacing_m: f64) -> Result<Table
         stations,
         bends,
     })
+}
+
+/// The bend rows of a line: the units of the bend catalogue, at the alignment's own step and
+/// smoothing. The plan's bend labels read the same rows.
+pub(super) fn bend_rows(line: &[Pt]) -> Vec<BendRow> {
+    let (s, xy) = resample(line, BEND_STEP_M);
+    let kappa = curvature(&xy);
+    bend_units(&s, &kappa, BEND_SMOOTH_N)
+        .into_iter()
+        .map(|b| BendRow {
+            start_m: b.s0,
+            end_m: b.s1,
+            least_radius_m: b.r_min_natural_m,
+            deflection_deg: b.deflection_rad.to_degrees(),
+        })
+        .collect()
 }
 
 // ---- how a value is written -----------------------------------------------------------------------

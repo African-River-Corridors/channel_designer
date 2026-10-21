@@ -13,6 +13,10 @@
     "so": {
       "size": "A3",
       "orientation": "landscape"
+    },
+    "pl": {
+      "size": "A1",
+      "orientation": "landscape"
     }
   },
   "layers": {
@@ -80,5 +84,28 @@
   "setting_out": {
     "spacing_m": 100,
     "row_pitch_mm": 4.5
+  },
+  "plan": {
+    "strip_scale": 5000,
+    "overlap_m": 50,
+    "margin_m": 30,
+    "tick_mm": 8,
+    "tick_label_every": 5,
+    "relief": {
+      "azimuth_deg": 315,
+      "altitude_deg": 45,
+      "z_factor": 1,
+      "pixel_mm": 0.5,
+      "quality": 85
+    },
+    "label_rules": [
+      {
+        "rule": "bend-tighter-than",
+        "k": 1
+      },
+      {
+        "rule": "infeasible-stretch"
+      }
+    ]
   }
 }

@@ -5,6 +5,19 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **Plan sheets with shaded relief (spec 0004, T5).** `owd draw` now makes plan sheets, kind `PL`. First an
+  overview of the whole line at a fitted scale (the map ratios allowed), with the strip sheets outlined as a
+  key. Then strips along chainage at the style's scale (default 1:5000 on A1), with match lines that name the
+  next sheet. Each sheet is drawn over shaded relief of the design DEM, from `otd` 0.2.0. It shows the water
+  edge (the river bank lines of the design), the design line with chainage ticks, the channel footprint (toe
+  and top of cut at the stations of the volumes stage), the gallery's section lines `S1`, `S2`, ..., a UTM
+  grid, a north arrow and a scale bar. Labels mark exceptions only. The two first label rules are
+  `bend-tighter-than` (parameter `k`, against the ruleset's least bend radius, on the bend rows of the
+  setting-out table) and `infeasible-stretch` (the stored stretches of `checks.fits_in_water`). Leave a rule
+  out of `plan.label_rules` and its labels go. Strips are north up, as the standard draws an image only in a
+  viewport with no rotation. `owd draw` checks that each match line and section line crosses the line at its
+  result. The `otd` pin moves from v0.1.0 to v0.2.0 (Drawing Format Standard 1.1). No earlier sheet changes.
+
 - **Start from a river, in the app (spec 0012, T10).** A "Start from a river" view on the desktop and the web: a
   river name, a start, an end and via points (typed, or picked on the map), the route with its length, then
   "Make the inputs": banks from the JRC water mask, moved onto Sentinel-2 (optional), and the default water level

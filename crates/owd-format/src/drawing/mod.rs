@@ -10,12 +10,14 @@
 pub mod check;
 mod furniture;
 mod gallery;
+pub mod plan;
 mod setting_out;
 pub mod style;
 mod typical;
 
 use crate::design::terrain::dem_sampler;
 use crate::design::{DemCheck, DesignError, Session, Terrain};
+use otd::raster::WithImages;
 use otd::{NoFiles, RunResult};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -35,6 +37,8 @@ pub enum SheetKind {
     TypicalSection,
     /// The setting-out table.
     SettingOut,
+    /// The plan sheets: an overview and strips along chainage.
+    Plan,
 }
 
 impl SheetKind {
@@ -42,6 +46,7 @@ impl SheetKind {
         SheetKind::CrossSections,
         SheetKind::TypicalSection,
         SheetKind::SettingOut,
+        SheetKind::Plan,
     ];
 
     /// The kind code in the drawing number.
@@ -50,6 +55,7 @@ impl SheetKind {
             SheetKind::CrossSections => "XS",
             SheetKind::TypicalSection => "TS",
             SheetKind::SettingOut => "SO",
+            SheetKind::Plan => "PL",
         }
     }
 
@@ -59,6 +65,7 @@ impl SheetKind {
             SheetKind::CrossSections => "xs",
             SheetKind::TypicalSection => "ts",
             SheetKind::SettingOut => "so",
+            SheetKind::Plan => "pl",
         }
     }
 
@@ -198,6 +205,14 @@ pub fn sheets(
                 }
                 out.extend(built);
             }
+            SheetKind::Plan => {
+                let built = plan::build(session, &option_id, &walk, terrain, options)?;
+                let findings = check::plan(&built, &walk, session, &option_id, options);
+                if !findings.is_empty() {
+                    return Err(DrawError::Checks(findings));
+                }
+                out.extend(built);
+            }
             SheetKind::TypicalSection => {
                 let built = typical::build(session, &option_id, options)?;
                 let findings = check::typical(&built, &typical::facts(session)?);
@@ -251,7 +266,20 @@ pub struct SheetOutput {
 /// Make every output of a sheet with `otd`.
 pub fn render(sheet: &Sheet) -> Result<SheetOutput, DrawError> {
     let text = sheet.document_text();
-    let norm = match otd::run_text(&text, &NoFiles) {
+    // the images of the sheet (the plan's relief) go to `otd` from memory, by the path the
+    // document names
+    let images: Vec<otd::raster::Backdrop> = sheet
+        .extra
+        .iter()
+        .filter(|(name, _)| name.ends_with(".jpg"))
+        .map(|(name, bytes)| otd::raster::Backdrop {
+            path: name.clone(),
+            jpeg: bytes.clone(),
+            bbox_m: [0.0; 4],
+        })
+        .collect();
+    let files = WithImages::new(&NoFiles, &images);
+    let norm = match otd::run_text(&text, &files) {
         RunResult::Ok(n) => n,
         RunResult::Errors(set) => {
             return Err(DrawError::Format {
@@ -263,7 +291,7 @@ pub fn render(sheet: &Sheet) -> Result<SheetOutput, DrawError> {
     let parsed = otd::json::parse(&text).map_err(|_| {
         DrawError::Input(format!("sheet {}: the document is not JSON", sheet.number))
     })?;
-    let dxf = otd::render::dxf::to_dxf(&parsed, &norm, &NoFiles);
+    let dxf = otd::render::dxf::to_dxf(&parsed, &norm, &files);
     let mut normalised = serde_json::to_string_pretty(&norm.to_value()).unwrap_or_default();
     normalised.push('\n');
     Ok(SheetOutput {
@@ -430,4 +458,9 @@ impl SheetKind {
 /// The result of one drawing document through `otd`, as the runner of clause 17.3 prints it.
 pub fn run_document(text: &str) -> Value {
     otd::run_text(text, &NoFiles).to_value()
+}
+
+/// The same, with the files the document names (its images) read through `files`.
+pub fn run_document_with(text: &str, files: &dyn otd::Files) -> Value {
+    otd::run_text(text, files).to_value()
 }

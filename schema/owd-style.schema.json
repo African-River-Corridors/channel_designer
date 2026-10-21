@@ -13,7 +13,8 @@
     "sections",
     "gallery",
     "typical",
-    "setting_out"
+    "setting_out",
+    "plan"
   ],
   "properties": {
     "style_version": {
@@ -30,7 +31,8 @@
       "required": [
         "xs",
         "ts",
-        "so"
+        "so",
+        "pl"
       ],
       "properties": {
         "xs": {
@@ -40,6 +42,9 @@
           "$ref": "#/$defs/sheet"
         },
         "so": {
+          "$ref": "#/$defs/sheet"
+        },
+        "pl": {
           "$ref": "#/$defs/sheet"
         }
       }
@@ -335,6 +340,128 @@
           "description": "The distance between two rows on paper.",
           "type": "number",
           "minimum": 4.5
+        }
+      }
+    },
+    "plan": {
+      "description": "The plan sheets (spec 0004, ticket 5): an overview of the whole line, then strips along chainage.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strip_scale",
+        "overlap_m",
+        "margin_m",
+        "tick_mm",
+        "tick_label_every",
+        "relief",
+        "label_rules"
+      ],
+      "properties": {
+        "strip_scale": {
+          "description": "The scale of every strip (a denominator of the standard).",
+          "type": "integer",
+          "minimum": 1
+        },
+        "overlap_m": {
+          "type": "number",
+          "description": "How far a strip runs past its match lines, in metres of chainage.",
+          "minimum": 0
+        },
+        "margin_m": {
+          "type": "number",
+          "description": "Room round the channel footprint in a window, in metres.",
+          "minimum": 0
+        },
+        "tick_mm": {
+          "type": "number",
+          "description": "The least paper distance between two chainage ticks, in millimetres; the step is 1, 2 or 5 times a power of ten.",
+          "minimum": 1
+        },
+        "tick_label_every": {
+          "description": "Every how many ticks a chainage is written.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "relief": {
+          "description": "The shaded relief behind the plan, from the design DEM.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "azimuth_deg",
+            "altitude_deg",
+            "z_factor",
+            "pixel_mm",
+            "quality"
+          ],
+          "properties": {
+            "azimuth_deg": {
+              "type": "number",
+              "description": "Where the light comes from, clockwise from grid north.",
+              "minimum": 0,
+              "maximum": 360
+            },
+            "altitude_deg": {
+              "type": "number",
+              "description": "The height of the light above the horizon.",
+              "maximum": 90,
+              "minimum": 1
+            },
+            "z_factor": {
+              "type": "number",
+              "description": "The vertical scale of the relief only (not of the drawing).",
+              "minimum": 0.01
+            },
+            "pixel_mm": {
+              "type": "number",
+              "description": "The size of one relief pixel on the paper, in millimetres.",
+              "minimum": 0.1,
+              "maximum": 5
+            },
+            "quality": {
+              "description": "The JPEG quality.",
+              "type": "integer",
+              "minimum": 10,
+              "maximum": 100
+            }
+          }
+        },
+        "label_rules": {
+          "description": "The label rules: a sheet labels only what a rule here finds. Leave a rule out to turn it off.",
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "rule",
+                  "k"
+                ],
+                "properties": {
+                  "rule": {
+                    "const": "bend-tighter-than"
+                  },
+                  "k": {
+                    "type": "number",
+                    "description": "Label a bend whose least radius is below k times the least bend radius of the ruleset.",
+                    "minimum": 0.01
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "rule"
+                ],
+                "properties": {
+                  "rule": {
+                    "const": "infeasible-stretch"
+                  }
+                }
+              }
+            ]
+          }
         }
       }
     }

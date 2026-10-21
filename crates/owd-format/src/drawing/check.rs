@@ -476,3 +476,144 @@ pub fn setting_out(sheets: &[Sheet], t: &super::setting_out::Table) -> Vec<Findi
     }
     found
 }
+
+fn point_of(v: &Value) -> Option<(f64, f64)> {
+    Some((v[0].as_f64()?, v[1].as_f64()?))
+}
+
+/// The distance from a point to the infinite line through two points.
+fn off_line(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let len = libm::hypot(dx, dy);
+    if len == 0.0 {
+        return libm::hypot(p.0 - a.0, p.1 - a.1);
+    }
+    ((p.0 - a.0) * dy - (p.1 - a.1) * dx).abs() / len
+}
+
+/// The chainage of a match-line label `MATCH LINE CH 1+250.0 SEE OWD-X-PL-003`, and the sheet.
+fn match_label(text: &str) -> Option<(f64, &str)> {
+    let rest = text.strip_prefix("MATCH LINE ")?;
+    let (ch, see) = rest.split_once(" SEE ")?;
+    Some((chainage_in(ch)?, see))
+}
+
+/// A match line's chainage and the sheet it names, if the sheet has one at that end.
+type MatchEnd = Option<(f64, String)>;
+
+/// The checks of the plan sheets. Each match line crosses the design line at the chainage it
+/// names, and names the sheet that has the matching line; each strip's end is the next strip's
+/// start. Each section line crosses the line at the gallery station it is numbered after.
+pub fn plan(
+    sheets: &[Sheet],
+    walk: &SectionVolumes,
+    session: &crate::design::Session,
+    option_id: &str,
+    options: &super::DrawOptions,
+) -> Vec<Finding> {
+    use crate::design::geojson::all_positions;
+    use owd_core::geom::linear;
+    let mut out = Vec::new();
+    let option = session.document()["options"]
+        .as_array()
+        .and_then(|a| a.iter().find(|o| o["id"] == option_id))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let line = all_positions(&option["line"]);
+    let picks = super::gallery::pick(walk, &option, &options.style.gallery());
+    let mut ends: Vec<(String, MatchEnd, MatchEnd)> = Vec::new();
+    for sheet in sheets {
+        let Some(vp) = sheet.document["viewports"]
+            .as_array()
+            .and_then(|a| a.iter().find(|v| v["id"] == "plan"))
+        else {
+            out.push(Finding {
+                sheet: sheet.number.clone(),
+                check: "plan-viewport",
+                message: "the sheet has no plan viewport".into(),
+            });
+            continue;
+        };
+        let mut found = (None, None);
+        for which in ["start", "end"] {
+            let Some(e) = entity(vp, &format!("match-{which}")) else {
+                continue;
+            };
+            let Some((ch, see)) =
+                text_of(vp, &format!("match-{which}-label")).and_then(match_label)
+            else {
+                out.push(Finding {
+                    sheet: sheet.number.clone(),
+                    check: "match-line",
+                    message: format!("the {which} match line has no chainage label"),
+                });
+                continue;
+            };
+            let at = linear::interpolate(&line, ch).map(|p| (p[0], p[1]));
+            let (a, b) = (point_of(&e["from_m"]), point_of(&e["to_m"]));
+            let crosses = match (at, a, b) {
+                (Some(at), Some(a), Some(b)) => off_line(at, a, b) < 1e-6,
+                _ => false,
+            };
+            if !crosses {
+                out.push(Finding {
+                    sheet: sheet.number.clone(),
+                    check: "match-line",
+                    message: format!(
+                        "the {which} match line does not cross the design line at CH {ch}"
+                    ),
+                });
+            }
+            if which == "start" {
+                found.0 = Some((ch, see.to_string()));
+            } else {
+                found.1 = Some((ch, see.to_string()));
+            }
+        }
+        ends.push((sheet.number.clone(), found.0, found.1));
+        for (n, &(si, _)) in picks.iter().enumerate() {
+            let Some(e) = entity(vp, &format!("xs-{}", n + 1)) else {
+                continue;
+            };
+            let s = &walk.stations[si];
+            let mid = match (point_of(&e["from_m"]), point_of(&e["to_m"])) {
+                (Some(a), Some(b)) => ((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0),
+                _ => (f64::NAN, f64::NAN),
+            };
+            if libm::hypot(mid.0 - s.x, mid.1 - s.y) > 1e-6
+                || text_of(vp, &format!("xs-{}-label", n + 1)) != Some(&format!("S{}", n + 1))
+            {
+                out.push(Finding {
+                    sheet: sheet.number.clone(),
+                    check: "section-line",
+                    message: format!(
+                        "section line S{} is not at the gallery station CH {:.1}",
+                        n + 1,
+                        s.chainage_m
+                    ),
+                });
+            }
+        }
+    }
+    for pair in ends.windows(2) {
+        let (this, _, end) = &pair[0];
+        let (next, start, _) = &pair[1];
+        if end.is_none() && start.is_none() {
+            continue; // the overview and the first strip
+        }
+        let ok = match (end, start) {
+            (Some((a, see_a)), Some((b, see_b))) => {
+                (a - b).abs() < 1e-9 && see_a == next && see_b == this
+            }
+            _ => false,
+        };
+        if !ok {
+            out.push(Finding {
+                sheet: this.clone(),
+                check: "match-line",
+                message: format!("its end match line does not meet the start match line of {next}"),
+            });
+        }
+    }
+    out
+}

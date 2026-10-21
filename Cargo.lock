@@ -651,7 +651,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a"
 dependencies = [
  "quote",
- "syn 3.0.9",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -1999,6 +1999,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "jpeg-encoder"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0370574b86f7eca156b9f298392b5e69a23f8c86f3f865add60bbc2e79467a6"
+
+[[package]]
 name = "js-sys"
 version = "0.3.106"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2563,9 +2569,10 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "otd"
-version = "0.1.0"
-source = "git+https://github.com/African-River-Corridors/open-technical-drawer?tag=v0.1.0#d78d022d22580ed3f7f7fa495ed47a0fb3575cc5"
+version = "0.2.0"
+source = "git+https://github.com/African-River-Corridors/open-technical-drawer?tag=v0.2.0#b7c44162fb644b10e142f35d73462344cbc4b8b3"
 dependencies = [
+ "jpeg-encoder",
  "libm",
  "miniz_oxide 0.8.9",
  "pdf-writer",
@@ -2604,6 +2611,7 @@ version = "0.2.0"
 dependencies = [
  "arc-rules",
  "clap",
+ "otd",
  "owd-core",
  "owd-format",
  "owd-reach",
