@@ -142,7 +142,7 @@ fn an_unregistered_method_is_refused_with_the_registered_names() {
     assert_eq!(
         err.raw_message(),
         "rule_set must be one of ('pianc',) (register more with \
-         channel_designer.rules.methods.register_width_method)"
+         owd.rules.methods.register_width_method)"
     );
 }
 

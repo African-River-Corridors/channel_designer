@@ -3,7 +3,7 @@ import math
 
 import numpy as np
 
-from channel_designer.alignment.loops import (
+from owd.alignment.loops import (
     LEN_RATIO_BACKSTOP,
     TURN_LIMIT_DEG,
     cumulative_turn_deg,
@@ -106,6 +106,6 @@ def test_feasibility_a_spiral_that_never_crosses_is_still_rejected():
 
 def test_feasibility_no_length_ratio_cap_as_the_rule():
     """The retired 1.30 length cap is not a live name; only the 3.0 backstop exists."""
-    from channel_designer.alignment import loops
+    from owd.alignment import loops
     assert not hasattr(loops, "MAX_LEN_RATIO")
     assert loops.LEN_RATIO_BACKSTOP == 3.0

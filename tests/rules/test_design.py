@@ -9,7 +9,7 @@ import math
 
 import numpy as np
 
-from channel_designer.rules.design import (
+from owd.rules.design import (
     ChannelDesignInputs,
     ChannelDesignParams,
     compute,

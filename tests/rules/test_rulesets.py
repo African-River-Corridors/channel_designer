@@ -5,7 +5,7 @@ door. The size_channel path is covered at the end of this file.
 """
 
 
-from channel_designer.rules.rulesets import (
+from owd.rules.rulesets import (
     CN_TABLE_A2,
     RULESETS,
     _bend_widening,
@@ -216,7 +216,7 @@ def test_cn_table_a2_holds_only_what_is_read():
     """Every kept Table A.2 entry is matched by a vessel class, and the widths of every
     class under every Chinese ruleset are what they were with the whole table."""
     from vessel_designer.core.vessel_standards import VESSEL_STANDARDS
-    from channel_designer.rules import rulesets as R
+    from owd.rules import rulesets as R
     # The width now comes from the Rust core, which holds its own copy of the table; the core's
     # answers are checked below against the widths the whole table gave. The Python table is still
     # the public `CN_TABLE_A2`, so check that every entry is read by some vessel class.
@@ -241,14 +241,14 @@ def test_cn_table_a2_holds_only_what_is_read():
 def test_feasibility_size_channel_rejects_china_instead_of_running_pianc():
     """rule_set='china' used to pass validation and silently run the PIANC path."""
     import pytest
-    from channel_designer.rules.rulesets import ChannelRuleInputs
+    from owd.rules.rulesets import ChannelRuleInputs
     with pytest.raises(ValueError, match="channel_shape"):
         ChannelRuleInputs(beam_m=12.0, loa_m=80.0, draft_m=2.0, min_water_level_m=0.0,
                           rule_set="china")
 
 
 def test_property_size_channel_every_rule_set_runs():
-    from channel_designer.rules.rulesets import ChannelRuleInputs, rule_sets, size_channel
+    from owd.rules.rulesets import ChannelRuleInputs, rule_sets, size_channel
     for rs in rule_sets():
         r = size_channel(ChannelRuleInputs(beam_m=12.0, loa_m=80.0, draft_m=2.0,
                                            min_water_level_m=7.0, rule_set=rs))

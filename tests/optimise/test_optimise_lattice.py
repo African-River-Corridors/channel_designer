@@ -10,9 +10,9 @@ import numpy as np
 import pytest
 from shapely.geometry import LineString, Polygon
 
-from channel_designer.alignment.limits import resample_line
-from channel_designer.alignment.route import min_radius_of_line
-from channel_designer.optimise.lattice import (
+from owd.alignment.limits import resample_line
+from owd.alignment.route import min_radius_of_line
+from owd.optimise.lattice import (
     FieldScorer,
     LatticeConfig,
     SectionSpec,
@@ -141,7 +141,7 @@ def test_feasibility_expansion_cap_reports_instead_of_hanging():
 
 
 def test_optimise_layer_reads_no_environment_and_no_paths():
-    src = Path(__file__).resolve().parents[2] / "src" / "channel_designer" / "optimise"
+    src = Path(__file__).resolve().parents[2] / "src" / "owd" / "optimise"
     for py in src.glob("*.py"):
         text = py.read_text()
         assert "os.environ" not in text and "getenv(" not in text, py.name

@@ -22,7 +22,7 @@ lattice with A*:
   (default half a pitch) and one heading bin; ``end_err_m`` reports the miss.
 
 The search cost is a SEARCH objective. Re-measure the winner with
-:func:`channel_designer.volumes.sections.section_volumes` (or ``volumes.raster``) before you
+:func:`owd.volumes.sections.section_volumes` (or ``volumes.raster``) before you
 quote a quantity.
 
 Terrain comes in through the package's sampler interface ``terrain(xs, ys) -> z`` (NaN where
@@ -473,7 +473,7 @@ def optimise_pools(baseline: LineString, terrain: TerrainSampler, river_polygon,
     """Run :func:`optimise_pool` on each ``(start_m, end_m, water_level_m)`` and splice the
     results into ``baseline``. A pool keeps its baseline segment when the search does not
     converge, or (``keep_if_dearer``) when the result costs more than the baseline under the
-    same scorer. Pools come from e.g. :meth:`channel_designer.optimise.cascade.Cascade.pools`.
+    same scorer. Pools come from e.g. :meth:`owd.optimise.cascade.Cascade.pools`.
 
     Each spliced segment joins the baseline within ``cfg.goal_pos_tol_m`` at its far end; the
     join is a straight step of at most that length.

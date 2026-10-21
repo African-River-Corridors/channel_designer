@@ -10,8 +10,8 @@ import math
 import numpy as np
 import pytest
 
-from channel_designer.volumes import cut_model as cm
-from channel_designer.volumes import cut_model_grid as cg
+from owd.volumes import cut_model as cm
+from owd.volumes import cut_model_grid as cg
 
 DEPTH = 3.25
 HB = 2.8 * 8 / 2.0        # bottom half-width 11.2 m

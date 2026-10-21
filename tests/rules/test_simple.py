@@ -1,5 +1,5 @@
 """PIANC sizing sanity checks on the one-call path."""
-from channel_designer.rules.simple import (
+from owd.rules.simple import (
     PIANCInputs, size_channel, required_depth, max_draft_for_depth,
 )
 

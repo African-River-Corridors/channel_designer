@@ -1,4 +1,4 @@
-//! The calculation core of channel_designer. Each module mirrors one Python module of the frozen
+//! The calculation core of owd. Each module mirrors one Python module of the frozen
 //! reference (the Python package at the tag `py-reference`). No I/O.
 
 pub mod alignment;

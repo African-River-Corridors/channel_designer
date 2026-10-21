@@ -1,6 +1,6 @@
 [package]
 name = "owd-core"
-description = "Pure calculation core of channel_designer. Its modules mirror the Python files one to one."
+description = "Pure calculation core of owd. Its modules mirror the Python files one to one."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

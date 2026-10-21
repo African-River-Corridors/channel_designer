@@ -10,10 +10,10 @@ import math
 import numpy as np
 from shapely.geometry import LineString
 
-from channel_designer.alignment import route
-from channel_designer.alignment.radius_check import min_radius_on_chord, min_radius_on_vertices
-from channel_designer.alignment.rolling_circle import rolling_circle
-from channel_designer.synthetic import sine_generated_centreline
+from owd.alignment import route
+from owd.alignment.radius_check import min_radius_on_chord, min_radius_on_vertices
+from owd.alignment.rolling_circle import rolling_circle
+from owd.synthetic import sine_generated_centreline
 
 
 def _arc(radius, sweep_deg, n=400):
@@ -31,7 +31,7 @@ def _jagged_trace(jitter_m=8.0, vertex_m=50.0):
 
 def _independent_min_radius(line, chord_m):
     """Fixed-phase three-point radius with points half a chord apart (the issues' check)."""
-    from channel_designer.alignment.limits import resample_line
+    from owd.alignment.limits import resample_line
     return float(np.min(route.radii(resample_line(line, chord_m / 2.0))))
 
 
@@ -143,7 +143,7 @@ def test_property_route_prefers_a_compliant_corridor():
     wide = route.optimise_route(line, _hill, river, 0.0, corridor_sweep=(200.0,), **kw)
     # The choice reads the stations (the reading the smoothing enforces): the wide corridor's
     # excursion turns tighter than R_min there. Its reported reading, on a 300 m chord, passes.
-    from channel_designer.alignment.radius_check import min_radius_on_vertices
+    from owd.alignment.radius_check import min_radius_on_vertices
     def stations_ok(r):
         return min_radius_on_vertices(np.asarray(r.line.coords), 1) >= 0.98 * 900.0
     assert stations_ok(narrow) and not stations_ok(wide)
@@ -154,7 +154,7 @@ def test_property_route_prefers_a_compliant_corridor():
 
 
 def test_property_unmeasured_result_is_not_ok():
-    from channel_designer.alignment.rolling_circle import RollingCircleResult
+    from owd.alignment.rolling_circle import RollingCircleResult
     res = RollingCircleResult(LineString([(0, 0), (1, 0)]), 300.0)
     assert not res.radius_ok and math.isnan(res.measured_min_radius_m)
     assert math.isnan(res.radius_check_chord_m)

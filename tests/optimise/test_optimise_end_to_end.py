@@ -10,9 +10,9 @@ from __future__ import annotations
 import numpy as np
 from shapely.geometry import LineString
 
-from channel_designer.alignment.limits import resample_line
-from channel_designer.alignment.route import min_radius_of_line
-from channel_designer.optimise import (
+from owd.alignment.limits import resample_line
+from owd.alignment.route import min_radius_of_line
+from owd.optimise import (
     CascadeConfig,
     LatticeConfig,
     SectionSpec,
@@ -22,8 +22,8 @@ from channel_designer.optimise import (
     optimise_pools,
     search_cascade,
 )
-from channel_designer.synthetic import synthetic_river
-from channel_designer.volumes.sections import section_volumes
+from owd.synthetic import synthetic_river
+from owd.volumes.sections import section_volumes
 
 DEPTH, HB, R_MIN = 3.25, 15.0, 255.0
 WET_W, DRY_W = 1.0, 1.5

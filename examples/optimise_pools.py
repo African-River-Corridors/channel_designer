@@ -10,11 +10,11 @@ The same code is the optimiser example in README.md; tests/test_examples.py runs
 """
 from shapely.geometry import LineString
 
-from channel_designer.optimise import (CascadeConfig, LatticeConfig, SectionSpec,
+from owd.optimise import (CascadeConfig, LatticeConfig, SectionSpec,
                                        build_level_table, cascade_levels,
                                        earthworks_reach_cost, optimise_pools, search_cascade)
-from channel_designer.synthetic import synthetic_river
-from channel_designer.volumes.sections import section_volumes
+from owd.synthetic import synthetic_river
+from owd.volumes.sections import section_volumes
 
 
 def main():

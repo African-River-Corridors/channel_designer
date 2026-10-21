@@ -1,4 +1,4 @@
-//! The Python extension `channel_designer._core` (ticket 35): the Rust core, reached through the
+//! The Python extension `owd._core` (ticket 35): the Rust core, reached through the
 //! same JSON seam the parity tests use. The Python package builds its public functions on this.
 //!
 //! `eval(entry_point, input_json, callbacks=None) -> json` runs one call. A refusal that the

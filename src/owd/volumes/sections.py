@@ -4,11 +4,11 @@ Walks the alignment every ``station_m``, samples a transverse terrain profile ou
 ``±maxw_m`` at ``dx_m`` spacing, splits it wet/dry against the present river polygon,
 applies Cut Model A or B (:mod:`.cut_model`), and integrates cut area × station spacing into
 dredge (wet) and excavation (dry) volumes. The pool water level per chainage comes from the
-caller (a float, or ``wl(s)`` — see :func:`channel_designer.volumes.pools.water_level_fn`).
+caller (a float, or ``wl(s)`` — see :func:`owd.volumes.pools.water_level_fn`).
 
 Terrain comes in as a sampler ``terrain(xs, ys) -> z`` (NaN where unknown), so the same code
 runs on an analytic surface, a numpy grid, or a raster DEM
-(:class:`channel_designer.volumes.raster.RasterTerrain`, ``[dem]`` extra).
+(:class:`owd.volumes.raster.RasterTerrain`, ``[dem]`` extra).
 
 Quantities only — m², m³, metres of face height.
 """

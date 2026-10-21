@@ -78,7 +78,7 @@ def sample_bed_profile(
     """Sample bed elevation along ``centerline`` with ``terrain(xs, ys)`` and build the
     overall slope. The line is oriented so s=0 is the lower-bed (downstream) end.
 
-    For a raster DEM pass :class:`channel_designer.volumes.raster.RasterTerrain`.
+    For a raster DEM pass :class:`owd.volumes.raster.RasterTerrain`.
     """
     c = _rust.Call()
     r = _rust.call("pools", "sample_bed_profile", _call=c, centerline=centerline, terrain=c.terrain(terrain),
@@ -182,5 +182,5 @@ def grade_at(weirs: list, s: float, depth_m: float, downstream_water_level_m: fl
 
 
 def water_level_fn(weirs: list, downstream_water_level_m: float = 0.0) -> Callable[[float], float]:
-    """``wl(s)`` callable for :func:`channel_designer.volumes.sections.section_volumes`."""
+    """``wl(s)`` callable for :func:`owd.volumes.sections.section_volumes`."""
     return lambda s: water_level_at(weirs, s, downstream_water_level_m)

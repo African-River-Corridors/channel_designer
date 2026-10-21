@@ -49,7 +49,7 @@ def cut_model_b_template(tmpl2, gz2, finite2, offs, hb, grade, wl,
     """Cut Model A's template, then close the works at sustained daylight.
 
     The limit is quantised to the rake step: a search proxy. Quote volumes from the scalar
-    integrator (:func:`channel_designer.volumes.sections.section_volumes`).
+    integrator (:func:`owd.volumes.sections.section_volumes`).
     """
     return _rust.call("cut_model_grid", "cut_model_b_template", np.ndarray, tmpl2=tmpl2, gz2=gz2,
                       finite2=np.asarray(finite2, dtype=bool), offs=offs, hb=_hb_arg(hb, gz2.shape[0]),

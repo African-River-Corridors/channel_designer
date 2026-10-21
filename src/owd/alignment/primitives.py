@@ -10,7 +10,7 @@ Two straight lengths exist on purpose: ``STRAIGHT_LEN_M`` (60 m) is the live sea
 definition each, not a duplicated input.
 
 Bend widening per arc is supplied by the caller (``widen_fn(radius_m) -> extra bottom width``),
-for example from :func:`channel_designer.rules.width_profile.make_width_fn` or
+for example from :func:`owd.rules.width_profile.make_width_fn` or
 :func:`lux_widening` below. The primitive set itself knows no vessel.
 """
 from __future__ import annotations

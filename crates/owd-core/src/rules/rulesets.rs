@@ -735,7 +735,7 @@ impl ChannelRuleInputs {
         if !methods.names().contains(&self.rule_set) {
             return value_err(format!(
                 "rule_set must be one of {} (register more with \
-                 channel_designer.rules.methods.register_width_method)",
+                 owd.rules.methods.register_width_method)",
                 methods.names_repr()
             ));
         }

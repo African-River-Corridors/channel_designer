@@ -8,7 +8,7 @@ Two front doors:
 - ``size_channel(ChannelRuleInputs(...))`` — one-lane channel *geometry* (straight width, min
   turn radius, bend width, required depth, bed level against the pool's minimum water level)
   from a *width method*. The package ships ``"pianc"``; another package can register more —
-  see :mod:`channel_designer.rules.methods`.
+  see :mod:`owd.rules.methods`.
 
 ``"pianc"`` is the PIANC concept-design path: straight width = ``k_w x beam`` (or the Report
 121 build-up W = W_BM + sum(W_i) + W_Br + W_Bg), min radius = ``k_r x LOA``, bend widening
@@ -250,7 +250,7 @@ def register_ruleset(ruleset: Ruleset, *, replace: bool = False) -> Ruleset:
     A ruleset is coefficients as data. ``family`` must be ``"pianc"`` (width = width_mult x
     beam, bend dF_C = c_c x L²/R, depth = depth_mult x draught) or ``"china"`` (swept path
     plus bank increment, dB = L²/(2R + B), depth = draught + depth_add_m). A method that is
-    not coefficients belongs in :mod:`channel_designer.rules.methods` instead.
+    not coefficients belongs in :mod:`owd.rules.methods` instead.
     """
     if ruleset.family not in ("pianc", "china"):
         raise ValueError(f"ruleset family must be 'pianc' or 'china'; got {ruleset.family!r}")
@@ -387,7 +387,7 @@ class ChannelRuleInputs:
         known = rule_sets()
         if self.rule_set not in known:
             raise ValueError(f"rule_set must be one of {known} (register more with "
-                             "channel_designer.rules.methods.register_width_method)")
+                             "owd.rules.methods.register_width_method)")
         for name in ("beam_m", "loa_m", "draft_m"):
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be > 0")
@@ -461,7 +461,7 @@ def size_channel(inp: ChannelRuleInputs) -> ChannelRuleResult:
 
 
 # =============================================================================
-# Worked example — run: python -m channel_designer.rules.rulesets
+# Worked example — run: python -m owd.rules.rulesets
 # =============================================================================
 
 def _print_case(title, base_kwargs):

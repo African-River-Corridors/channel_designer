@@ -1,11 +1,11 @@
-"""Drawings: cross-section gallery sheets (SVG, DXF). Needs ``channel_designer[drawings]``.
+"""Drawings: cross-section gallery sheets (SVG, DXF). Needs ``open-waterway-designer[drawings]``.
 
 Importing this package always works. Calling a drawing function without the extra raises an
 ``ImportError`` that says how to install it.
 """
 from __future__ import annotations
 
-_HINT = "pip install 'channel_designer[drawings]'"
+_HINT = "pip install 'open-waterway-designer[drawings]'"
 
 
 def _sections():
@@ -15,25 +15,25 @@ def _sections():
         if _HINT in str(exc):  # sections.py already named the hint and the cause
             raise
         raise ImportError(
-            f"channel_designer drawings need the optional extra: {_HINT}. Cause: {exc}") from exc
+            f"owd drawings need the optional extra: {_HINT}. Cause: {exc}") from exc
     return sections
 
 
 def section_gallery(*args, **kwargs):
-    """See :func:`channel_designer.drawings.sections.section_gallery`."""
+    """See :func:`owd.drawings.sections.section_gallery`."""
     return _sections().section_gallery(*args, **kwargs)
 
 
 def gallery_sheet(*args, **kwargs):
-    """See :func:`channel_designer.drawings.sections.gallery_sheet`."""
+    """See :func:`owd.drawings.sections.gallery_sheet`."""
     return _sections().gallery_sheet(*args, **kwargs)
 
 
 def pick_sections(*args, **kwargs):
-    """See :func:`channel_designer.drawings.sections.pick_sections`."""
+    """See :func:`owd.drawings.sections.pick_sections`."""
     return _sections().pick_sections(*args, **kwargs)
 
 
 def sheet_info(**kwargs):
-    """Build a :class:`channel_designer.drawings.sections.SheetInfo`."""
+    """Build a :class:`owd.drawings.sections.SheetInfo`."""
     return _sections().SheetInfo(**kwargs)

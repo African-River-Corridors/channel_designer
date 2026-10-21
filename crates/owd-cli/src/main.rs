@@ -1,4 +1,4 @@
-//! `cdesign`: the channel_designer command-line tool. A thin layer over the design session in
+//! `cdesign`: the owd command-line tool. A thin layer over the design session in
 //! `owd-format` (spec 0002): every command reads a channel design, does one thing and writes the
 //! richer document back. All file, stdin and clock access is here; the session has none.
 //!

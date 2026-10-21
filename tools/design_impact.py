@@ -3,7 +3,7 @@
     python tools/design_impact.py run --out results.json
     python tools/design_impact.py compare base.json head.json [--changelog CHANGELOG.md --base-changelog base/CHANGELOG.md]
 
-`run` runs a fixed set of scenarios through the installed `channel_designer` and writes every number
+`run` runs a fixed set of scenarios through the installed `owd` and writes every number
 they produce to one JSON file. The scenarios use synthetic geometry built in code (the two worked
 examples, a grid of rulesets and vessel classes, a footprint and a Model A section run), so they need
 no data files.
@@ -88,8 +88,8 @@ def scenario_optimise_pools() -> dict:
 
 
 def scenario_rulesets() -> dict:
-    from channel_designer.rules import channel_shape
-    from channel_designer.rules.rulesets import RULESETS
+    from owd.rules import channel_shape
+    from owd.rules.rulesets import RULESETS
     from vessel_designer.core.vessel_standards import VESSEL_STANDARDS
     out = {}
     for rid in sorted(RULESETS):
@@ -103,9 +103,9 @@ def scenario_rulesets() -> dict:
 
 
 def scenario_size_and_design() -> dict:
-    from channel_designer.rules.design import ChannelDesignInputs, compute
-    from channel_designer.rules.rulesets import ChannelRuleInputs, size_channel
-    from channel_designer.synthetic import synthetic_river
+    from owd.rules.design import ChannelDesignInputs, compute
+    from owd.rules.rulesets import ChannelRuleInputs, size_channel
+    from owd.synthetic import synthetic_river
     r = size_channel(ChannelRuleInputs(beam_m=9.5, loa_m=85.0, draft_m=2.5, min_water_level_m=10.0))
     d = compute(ChannelDesignInputs(total_loa=85.0, beam=9.5,
                                     centreline_points=list(synthetic_river().centreline.coords)))
@@ -118,9 +118,9 @@ def scenario_size_and_design() -> dict:
 
 
 def scenario_footprint_and_model_a() -> dict:
-    from channel_designer.synthetic import synthetic_river
-    from channel_designer.volumes.footprint import channel_footprint
-    from channel_designer.volumes.sections import section_volumes
+    from owd.synthetic import synthetic_river
+    from owd.volumes.footprint import channel_footprint
+    from owd.volumes.sections import section_volumes
     river = synthetic_river()
     out = {}
     for beam in (8.0, 16.0):

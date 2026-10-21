@@ -1,5 +1,5 @@
 [project]
-name = "channel_designer"
+name = "open-waterway-designer"
 version = "0.2.0"
 description = "Navigation channel design for inland waterways: width, bend and depth rules (PIANC, Chinese GB 50139), alignment, and cut and dredge volumes."
 requires-python = ">=3.12"
@@ -34,12 +34,14 @@ Issues = "https://github.com/African-River-Corridors/channel_designer/issues"
 requires = ["maturin>=1.7,<2"]
 build-backend = "maturin"
 
-# The package is the pure-Python layer in src/channel_designer plus the Rust extension
-# channel_designer._core (crates/owd-py), built as one abi3 wheel per platform: a user's `pip install`
+# The package is the pure-Python layer in src/owd plus the Rust extension
+# owd._core (crates/owd-py), built as one abi3 wheel per platform: a user's `pip install`
 # needs no compiler (#11).
 [tool.maturin]
 python-source = "src"
-module-name = "channel_designer._core"
+module-name = "owd._core"
+# The old import name, for one release: a shim that warns and aliases owd (spec 0006).
+python-packages = ["channel_designer"]
 manifest-path = "crates/owd-py/Cargo.toml"
 features = ["extension-module"]
 

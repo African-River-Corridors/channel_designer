@@ -16,6 +16,6 @@ labels: bug
 
 ## Versions
 
-- channel_designer version or commit:
+- open-waterway-designer (owd) version or commit:
 - Python version:
 - OS:
