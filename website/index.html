@@ -12,7 +12,7 @@
 <body>
 <header class="top">
   <a class="brand" href="/owd"><img class="light-only" src="/owd/assets/logo/owd-lockup.svg" alt="OWD, Open Waterway Designer"><img class="dark-only" src="/owd/assets/logo/owd-lockup-reversed-clear.svg" alt="OWD, Open Waterway Designer"></a>
-  <nav><a href="/owd/docs">Docs</a><a href="https://github.com/African-River-Corridors/open-waterway-designer">Source</a></nav>
+  <nav><a href="/owd/app">Web app</a><a href="/owd/docs">Docs</a><a href="https://github.com/African-River-Corridors/open-waterway-designer">Source</a></nav>
 </header>
 
 <main>
@@ -20,7 +20,7 @@
     <p class="kicker">Open Waterway Designer</p>
     <h1>Explore the navigation possibilities of a river.</h1>
     <p class="lede">Give OWD a river and a vessel. It sizes a navigation channel to a named standard, lays design line options through the river as it is, and measures what each one would cut and dredge. Every number cites its source. Every failed check says why.</p>
-    <p class="cta"><a class="btn primary" href="/owd/docs">Read the docs</a><a class="btn" href="/owd/docs#install">Install</a></p>
+    <p class="cta"><a class="btn primary" href="/owd/app">Try the web app</a><a class="btn" href="/owd/docs">Read the docs</a><a class="btn" href="/owd/docs#install">Install</a></p>
     <p class="notice">Screening tool. Not for construction.</p>
     <figure class="plate">
       <img class="light-only wide" src="/owd/assets/illustrations/before-after-cream.svg" alt="The same reach of river twice. Before: the reach as surveyed, with bars, an island and a shoal. After: three design line options drawn over it, each in its own colour and hatch, and the bank one option would cut.">
@@ -38,7 +38,7 @@
       <article><h3>Cites its sources</h3><p>Width, bend widening, bend radius and depth come from a named rule set: PIANC WG 141 qualities A, B and C, or GB 50139. Each value names its clause, table and page.</p></article>
       <article><h3>Shows where it fails</h3><p>An option that bends tighter than the minimum radius is marked on the map and in the table, with the radius it has and the radius it needs.</p></article>
       <article><h3>Uses the river, not the bank</h3><p>The route search moves the line sideways where that cuts less ground, while it holds the minimum radius. Where an option leaves the river, the cut is measured, not hidden.</p></article>
-      <article><h3>Runs on your computer</h3><p>The engine is a Rust core with a desktop app, a command line and a Python package. It fetches one thing from the internet: map imagery, for the map view. Terrain comes from a DEM file you supply.</p></article>
+      <article><h3>Runs on your computer</h3><p>The engine is a Rust core with a desktop app, a command line and a Python package. The web app runs the same core in your browser, so what you load stays on your computer. It fetches one thing from the internet: map imagery, for the map view. Terrain comes from a DEM file you supply.</p></article>
       <article><h3>Open and inspectable</h3><p>Apache 2.0. The code, the rule sets and their sources are in the repository. Read the working, or change it.</p></article>
     </div>
   </section>
@@ -64,7 +64,8 @@
       <li><b>Optimise</b> (optional). Weir sites and pool levels, and the least-cost line through each pool. Costs are weights you supply.</li>
       <li><b>Volumes.</b> Dredge and dry cut for each option, station by station, from a DEM. Quantities only; pricing is yours.</li>
     </ol>
-    <h3>Install today</h3>
+    <h3>Try it now, or install</h3>
+    <p class="note">The <a href="/owd/app">web app</a> needs no install. Open the example, or load your own banks and a DEM.</p>
     <pre><code>pip install "open-waterway-designer @ git+https://github.com/African-River-Corridors/open-waterway-designer"</code></pre>
     <p class="note">Needs Python 3.12 or later and a <a href="https://rustup.rs">Rust toolchain</a>, because this builds the core from source. A PyPI release is coming. The desktop app has no release yet: build it from source. <a href="/owd/docs#install">Install notes</a></p>
   </section>

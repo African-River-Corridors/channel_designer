@@ -14,9 +14,10 @@ The OWD website. Live at **https://www.africanrivercorridors.com/owd** once it i
   the wrong folder at `/owd`. GitHub Pages serves `page.html` for `/page`.
 - The ARC rewrites map two folder URLs to their index page: `/owd` and `/owd/docs`. Do not add other
   folder index pages; name the page instead.
-- The web app does not exist yet. When it does it is `app.html` (served as `/owd/app`) with its files
-  in `app-files/`, never a folder named `app/`: that makes GitHub Pages redirect `/app` to `/app/` on its
-  own host, which breaks the proxy.
+- The web app (spec 0011) is `app.html` (served as `/owd/app`) with its files in `app-files/`, never a
+  folder named `app/`: that makes GitHub Pages redirect `/app` to `/app/` on its own host, which breaks the
+  proxy. `app.html` in this folder is a placeholder that says the build has no app; the workflow builds the
+  wasm session and the app and passes them to `build.py --app-dist app/dist-web`, which replaces it.
 - No third-party request: the fonts are in `fonts/`.
 - Claims on the page match what is built. PyPI is not published, so the install text shows the git
   install.
@@ -26,6 +27,7 @@ The OWD website. Live at **https://www.africanrivercorridors.com/owd** once it i
 | Path | What it is |
 | --- | --- |
 | `index.html`, `site.css` | The home page. Plain HTML and CSS, no script. |
+| `app.html` | The web app page. This file is a placeholder; `build.py --app-dist` puts the built app in its place and its files under `app-files/`. |
 | `tokens.css`, `fonts/` | The brand tokens and fonts. `tokens.css` is owned by the app (`app/src/tokens.css`) and stays byte-identical to it. |
 | `assets/`, `favicon.svg` | Logo and illustrations. Copied from the brand pack; do not edit them here. |
 | `mkdocs.yml`, `hooks.py`, `overrides/` | The docs: mkdocs-material with the OWD theme. |
@@ -45,6 +47,14 @@ to GitHub.
 ```bash
 python3 -m venv website/.venv && website/.venv/bin/pip install -r website/requirements.txt
 website/.venv/bin/python website/build.py && python3 website/check_links.py
+```
+
+With the web app (needs the wasm32 target, a clang that can target it, `wasm-bindgen` at the version
+`crates/owd-web/Cargo.toml` pins, and Node):
+
+```bash
+bash tools/build_web.sh && (cd app && npm ci && npm run build:web)
+website/.venv/bin/python website/build.py --app-dist app/dist-web && python3 website/check_links.py
 ```
 
 ## Go live

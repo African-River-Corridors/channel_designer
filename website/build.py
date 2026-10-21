@@ -10,9 +10,15 @@ Steps:
      Links between the docs are kept; links to other repo files go to GitHub.
   3. Run mkdocs (website/mkdocs.yml) into _site/docs/.
 
-Run from anywhere: python3 website/build.py
+Optional: --app-dist <dir> adds the built web app (app/dist-web, from `npm run build:web`):
+<dir>/index.html becomes _site/app.html (served at /owd/app) and the rest of <dir> goes to
+_site/app-files/ (served at /owd/app-files/). Without it the "not in this build" app.html stays, so
+the links to /owd/app still resolve in a local build.
+
+Run from anywhere: python3 website/build.py [--app-dist app/dist-web]
 """
 
+import argparse
 import os
 import re
 import shutil
@@ -27,7 +33,7 @@ DOCS_SRC = WEBSITE / "_docs"
 BLOB = "https://github.com/African-River-Corridors/open-waterway-designer/blob/main/"
 TREE = "https://github.com/African-River-Corridors/open-waterway-designer/tree/main/"
 
-STATIC = ["index.html", "site.css", "tokens.css", "favicon.svg", "fonts", "assets"]
+STATIC = ["index.html", "app.html", "site.css", "tokens.css", "favicon.svg", "fonts", "assets"]
 
 # Repo file -> page in the docs. ADRs and specs keep their folder.
 PAGES = {
@@ -92,8 +98,30 @@ def copy_static() -> None:
             shutil.copy(src, SITE / name)
 
 
-def main() -> int:
+def add_app(dist: Path) -> None:
+    """Put the web app build where the ARC proxy needs it.
+
+    The page is app.html, not app/index.html, and the files go in app-files/, not app/: a folder
+    named app/ next to app.html makes GitHub Pages redirect /app to /app/ on its own host.
+    """
+    shutil.copy(dist / "index.html", SITE / "app.html")
+    files = SITE / "app-files"
+    for src in sorted(dist.rglob("*")):
+        rel = src.relative_to(dist)
+        if src.is_file() and rel != Path("index.html"):
+            (files / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(src, files / rel)
+
+
+def main(argv: list[str] | None = None) -> int | str:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--app-dist", type=Path, help="built web app folder (app/dist-web)")
+    args = parser.parse_args(argv)
+    if args.app_dist is not None and not (args.app_dist / "index.html").is_file():
+        return f"build.py: no index.html in --app-dist {args.app_dist}. Build the app first (npm run build:web)."
     copy_static()
+    if args.app_dist is not None:
+        add_app(args.app_dist)
     assemble_docs()
     subprocess.run(
         [sys.executable, "-m", "mkdocs", "build", "--strict", "--clean",
