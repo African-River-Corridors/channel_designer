@@ -54,6 +54,14 @@ versions follow [Semantic Versioning](https://semver.org/).
   and a detail that dimensions the under-keel clearance at a scale where it can be read. Each value has a note that
   names its source: the ruleset for the bottom width, depth and clearance, the volumes stage for the side slope, the
   water profile for the level. Levels are relative to the channel invert. `--sheets xs,ts` picks the kinds.
+- **Bed model from a depth profile (spec 0012, T7).** `owd bed` takes the depth of a river that has no survey:
+  one depth (`--depth`), or a table of depths along the river centreline (`--table`), and a season label.
+  The volumes then read the bed inside the water as the water level less the depth, shaped as a parabola
+  across the water (deepest at the centreline, level with the water at the banks). Outside the water the DEM
+  is read as before. The depth is assumed, not measured: the volumes, the quantity table, the sections and
+  the CSV and GeoJSON exports all say so. A survey replaces the bed model (`owd bed --clear`) and nothing else
+  in the document changes. The pool search (`optimise`) still reads the DEM. Documents without a bed model
+  give the same results.
 - **Web app (spec 0011).** The desktop app's front end now also runs in a browser, over a WebAssembly build
   of the same Rust core, at `africanrivercorridors.com/owd/app`. Nothing you load is uploaded. It opens a
   bundled example, or `.owd` files, GeoJSON or GeoPackage banks and a GeoTIFF DEM from your computer; Save and

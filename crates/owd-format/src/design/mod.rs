@@ -2,6 +2,7 @@
 
 pub mod alignment;
 pub mod bank_edit;
+pub mod bed;
 pub mod crs;
 pub mod dem_source;
 pub mod export;

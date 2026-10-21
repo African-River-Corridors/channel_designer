@@ -324,6 +324,29 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Give the depth of a river that has no survey: one depth, or a table of depths along the
+    /// river centreline. Inside the water the volumes then read the bed as the water level less the
+    /// depth, shaped as a parabola across the water. The depth is assumed, not measured, and every
+    /// output says so. Nothing else in the document changes.
+    Bed {
+        /// The channel design. `-` is stdin.
+        doc: String,
+        /// One depth in metres, for the whole river.
+        #[arg(long, value_name = "METRES")]
+        depth: Option<f64>,
+        /// Depths as lines of `chainage_m,depth_m` along the river centreline, read linearly between
+        /// lines and held flat beyond the first and last.
+        #[arg(long, value_name = "FILE")]
+        table: Option<String>,
+        /// The season the depths hold for, for example `dry`.
+        #[arg(long)]
+        season: Option<String>,
+        /// Remove the bed model, as a survey does when it replaces it.
+        #[arg(long)]
+        clear: bool,
+        #[command(flatten)]
+        out: Out,
+    },
     /// Rerun every stale stage, in order.
     Run {
         /// The channel design. `-` is stdin.
@@ -387,6 +410,22 @@ pub fn main() -> ExitCode {
                 slope: water_slope,
                 table: water_table,
             },
+            &out.output,
+            out.json,
+        ),
+        Command::Bed {
+            doc,
+            depth,
+            table,
+            season,
+            clear,
+            out,
+        } => crate::bed::bed(
+            &doc,
+            depth,
+            table.as_deref(),
+            season.as_deref(),
+            clear,
             &out.output,
             out.json,
         ),

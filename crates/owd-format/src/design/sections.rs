@@ -65,7 +65,7 @@ impl Session {
         let col = |f: &dyn Fn(&CrossSection) -> f64| -> Vec<Value> {
             walk.stations.iter().map(|s| json!(f(s))).collect()
         };
-        Ok(json!({
+        Ok(self.with_depth_basis(json!({
             "screening": SCREENING_LABEL,
             "option_id": option_id,
             "station_m": walk.station_m,
@@ -78,7 +78,7 @@ impl Session {
             "excav_area_m2": col(&|s| s.excav_area_m2),
             "max_face_h_m": col(&|s| s.max_face_h_m),
             "positions": positions,
-        }))
+        })))
     }
 
     /// The cross-section at the station nearest to `chainage_m`.
@@ -89,7 +89,7 @@ impl Session {
     ) -> Result<Value, DesignError> {
         let s = nearest(walk, |s| (s.chainage_m - chainage_m).abs())?;
         let [lon, lat] = self.utm()?.inverse(s.x, s.y).map_err(DesignError::Input)?;
-        Ok(json!({
+        Ok(self.with_depth_basis(json!({
             "screening": SCREENING_LABEL,
             "chainage_m": s.chainage_m,
             "position": [lon, lat],
@@ -107,7 +107,7 @@ impl Session {
             "max_face_h_m": s.max_face_h_m,
             "bench_left": s.bench_left,
             "bench_right": s.bench_right,
-        }))
+        })))
     }
 
     /// The chainage of the station nearest to a point picked on the map (`lon`, `lat`).

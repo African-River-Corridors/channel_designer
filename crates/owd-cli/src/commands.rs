@@ -18,7 +18,7 @@ pub struct Failure {
 
 pub type Result = core::result::Result<(), Failure>;
 
-fn input_error(message: impl Into<String>) -> Failure {
+pub(crate) fn input_error(message: impl Into<String>) -> Failure {
     Failure {
         message: message.into(),
         code: 2,
@@ -35,7 +35,7 @@ fn command_for(stage: Stage) -> &'static str {
     }
 }
 
-fn from_design(e: DesignError) -> Failure {
+pub(crate) fn from_design(e: DesignError) -> Failure {
     match e {
         DesignError::StaleUpstream { stage, run_first } => Failure {
             message: format!(
@@ -97,7 +97,7 @@ fn read_vector(spec: &str) -> core::result::Result<String, Failure> {
     }
 }
 
-fn write(path: &str, text: &str) -> Result {
+pub(crate) fn write(path: &str, text: &str) -> Result {
     if path == "-" {
         std::io::stdout()
             .write_all(text.as_bytes())
@@ -107,7 +107,7 @@ fn write(path: &str, text: &str) -> Result {
     }
 }
 
-fn open(path: &str) -> core::result::Result<Session, Failure> {
+pub(crate) fn open(path: &str) -> core::result::Result<Session, Failure> {
     Session::open(&read(path)?).map_err(from_design)
 }
 
@@ -172,7 +172,7 @@ fn project_epsg(session: &Session) -> Option<u32> {
 
 /// Print a result. When the document itself goes to stdout the result goes to stderr, so the two
 /// never mix.
-fn say(doc_on_stdout: bool, json_mode: bool, human: &str, value: Value) {
+pub(crate) fn say(doc_on_stdout: bool, json_mode: bool, human: &str, value: Value) {
     let text = if json_mode {
         format!("{value}\n")
     } else {
@@ -187,7 +187,7 @@ fn say(doc_on_stdout: bool, json_mode: bool, human: &str, value: Value) {
 
 /// Where a command that rewrites a document puts it: `-o`, else back where it came from
 /// (stdout if it came from stdin).
-fn destination(doc: &str, output: &Option<String>) -> String {
+pub(crate) fn destination(doc: &str, output: &Option<String>) -> String {
     output.clone().unwrap_or_else(|| doc.to_string())
 }
 

@@ -131,7 +131,7 @@ pub fn depth_at(table: &[[f64; 2]], chainage_m: f64) -> f64 {
 /// The parabola across the water: 1 at the centreline (`offset_m` 0), 0 at the bank
 /// (`|offset_m| >= half_width_m`), never negative.
 pub fn parabola(offset_m: f64, half_width_m: f64) -> f64 {
-    if !(half_width_m > 0.0) {
+    if half_width_m.is_nan() || half_width_m <= 0.0 {
         return 0.0;
     }
     let t = offset_m / half_width_m;
