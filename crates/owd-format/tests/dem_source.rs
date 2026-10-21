@@ -1,4 +1,4 @@
-//! Tile names, joining tiles, and writing a DEM as a GeoTIFF (what `cdesign fetch-dem` plans with).
+//! Tile names, joining tiles, and writing a DEM as a GeoTIFF (what `owd fetch-dem` plans with).
 //!
 //! Label: property
 

@@ -1,4 +1,4 @@
-//! `cdesign fetch-dem` against a recorded mirror (a folder laid out like the public bucket), so no
+//! `owd fetch-dem` against a recorded mirror (a folder laid out like the public bucket), so no
 //! test touches the network: the tiles and their hashes and the licence notice are written next to the
 //! document and recorded in it, a tile whose hash differs is never overwritten, and tiles on one grid
 //! are joined into one DEM.
@@ -13,10 +13,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 fn run(args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_cdesign"))
+    Command::new(env!("CARGO_BIN_EXE_owd"))
         .args(args)
         .output()
-        .expect("cdesign runs")
+        .expect("owd runs")
 }
 
 fn err(o: &Output) -> String {
@@ -32,7 +32,7 @@ fn code(o: &Output) -> i32 {
 }
 
 fn work_dir(name: &str) -> PathBuf {
-    let d = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("cdesign-fetch-{name}"));
+    let d = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("owd-fetch-{name}"));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d

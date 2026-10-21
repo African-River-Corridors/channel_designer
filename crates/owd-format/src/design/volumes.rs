@@ -142,8 +142,7 @@ impl Session {
         }
         let Some(dem_path) = self.dem_path().map(str::to_string) else {
             return Err(DesignError::Input(
-                "the volumes stage needs a DEM: import one first (`cdesign import --dem FILE`)"
-                    .into(),
+                "the volumes stage needs a DEM: import one first (`owd import --dem FILE`)".into(),
             ));
         };
         let terrain = terrain.ok_or_else(|| {

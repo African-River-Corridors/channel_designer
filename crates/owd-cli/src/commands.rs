@@ -1,4 +1,4 @@
-//! The `cdesign` subcommands. File, stdin, stdout and clock access live here.
+//! The `owd` subcommands. File, stdin, stdout and clock access live here.
 
 use owd_format::design::alignment::WIDTH_ONLY;
 use owd_format::design::export::{failed_checks, water_note};
@@ -39,7 +39,7 @@ fn from_design(e: DesignError) -> Failure {
     match e {
         DesignError::StaleUpstream { stage, run_first } => Failure {
             message: format!(
-                "the {} stage cannot run: {} is stale. Run `cdesign {}` first (or `cdesign run`).",
+                "the {} stage cannot run: {} is stale. Run `owd {}` first (or `owd run`).",
                 stage.name(),
                 run_first.name(),
                 command_for(run_first)
@@ -154,7 +154,7 @@ fn open_with_dem(doc: &str) -> core::result::Result<(Session, Option<Vec<u8>>), 
         .dem_path()
         .and_then(|p| std::fs::read(doc_dir(doc).join(p)).ok());
     if let Some(w) = session.dem_warning(bytes.as_deref()) {
-        eprintln!("cdesign: warning: {w}");
+        eprintln!("owd: warning: {w}");
     }
     Ok((session, bytes))
 }
@@ -411,7 +411,7 @@ fn apply_water(session: &mut Session, w: &WaterFlags) -> Result {
     }
 }
 
-/// The flags of `cdesign align`.
+/// The flags of `owd align`.
 pub struct AlignFlags {
     pub step: Option<f64>,
     pub passes: Option<u32>,
@@ -583,17 +583,17 @@ fn stage_dem(
         DemCheck::Matches => Ok(Some(read_dem(bytes.unwrap_or_default(), &p)?)),
         DemCheck::Changed => Err(input_error(format!(
             "the DEM `{p}` has changed since its hash was recorded, so the {command} stage will not run on it. \
-             To accept the new file run `cdesign {command} --dem {p}`."
+             To accept the new file run `owd {command} --dem {p}`."
         ))),
         DemCheck::Missing => Err(input_error(format!(
             "the DEM `{p}` is missing: the {command} stage cannot run without it. \
-             Put the file back, or point to another with `cdesign {command} --dem FILE`."
+             Put the file back, or point to another with `owd {command} --dem FILE`."
         ))),
         DemCheck::NoDem => Ok(None),
     }
 }
 
-/// The flags of `cdesign optimise`.
+/// The flags of `owd optimise`.
 pub struct OptimiseFlags {
     pub dem: Option<String>,
     pub base_level: Option<f64>,
@@ -705,7 +705,7 @@ pub fn optimise(
     }
 }
 
-/// The flags of `cdesign volumes`.
+/// The flags of `owd volumes`.
 pub struct VolumesFlags {
     pub dem: Option<String>,
     pub model: Option<String>,

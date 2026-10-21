@@ -1,4 +1,4 @@
-//! `cdesign fetch-dem`: the only network code in the tool (spec 0002, T4). It lives here, never in
+//! `owd fetch-dem`: the only network code in the tool (spec 0002, T4). It lives here, never in
 //! the core or the design session. The session plans (tile names, joining, the licence record); this
 //! module fetches and writes files.
 //!

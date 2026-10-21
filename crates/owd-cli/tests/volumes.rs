@@ -1,4 +1,4 @@
-//! `cdesign import --dem` and `cdesign volumes` (spec 0002, ticket 62), on the synthetic river and
+//! `owd import --dem` and `owd volumes` (spec 0002, ticket 62), on the synthetic river and
 //! a GeoTIFF DEM written from its terrain: the numbers equal the core called directly on the same
 //! DEM, a changed DEM warns and marks `volumes` stale, and a missing DEM names its path and refuses.
 //!
@@ -19,10 +19,10 @@ const SHIFT: Pt = [500_000.0, 600_000.0];
 const UTM30: &str = r#","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:EPSG::32630"}}"#;
 
 fn run(args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_cdesign"))
+    Command::new(env!("CARGO_BIN_EXE_owd"))
         .args(args)
         .output()
-        .expect("cdesign runs")
+        .expect("owd runs")
 }
 
 fn out(o: &Output) -> String {
@@ -38,7 +38,7 @@ fn code(o: &Output) -> i32 {
 }
 
 fn work_dir(name: &str) -> PathBuf {
-    let d = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("cdesign-vol-{name}"));
+    let d = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("owd-vol-{name}"));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d

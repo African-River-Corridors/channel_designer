@@ -1,4 +1,4 @@
-# A recorded mirror for `cdesign fetch-dem` tests
+# A recorded mirror for `owd fetch-dem` tests
 
 `Copernicus_DSM_COG_10_N05_00_W003_00_DEM/Copernicus_DSM_COG_10_N05_00_W003_00_DEM.tif` is the 80 x 80
 pixel clip of the real Copernicus GLO-30 tile N05 W003 that is also a fixture of the GeoTIFF reader

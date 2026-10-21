@@ -1,4 +1,4 @@
-//! Where a DEM came from, for `cdesign fetch-dem` (spec 0002, T4): the Copernicus GLO-30 tile names a
+//! Where a DEM came from, for `owd fetch-dem` (spec 0002, T4): the Copernicus GLO-30 tile names a
 //! reach needs, the tiles joined into one DEM, the licence notice, and the record in the document.
 //! No network, no files: the caller (the CLI) fetches and writes.
 //!
