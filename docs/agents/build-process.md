@@ -16,10 +16,16 @@ ticket whose blockers are all closed, and no other. For each ticket:
    the PR body links to its evidence. Evidence must be reachable from the PR: a test name or file in the
    diff, a command and its output pasted in the body, or a CI job. A reviewer must not have to ask the
    builder for it.
-3. **Local gates.** `bash tools/gates.sh` runs the fast gate: `cargo fmt --check`, clippy with warnings
-   as errors, `cargo test --workspace --exclude owd-app` with Python made unusable, and the Python tests.
-   Then run `python3 tools/release_guard.py --history`, and the embargo check of the PR body (see
-   `issue-tracker.md`).
+3. **Local checks, targeted (since 2026-10-21).** CI is the full gate, so don't run the full
+   `bash tools/gates.sh` before every push. Before pushing, run:
+   - `cargo fmt --all --check`;
+   - clippy with warnings as errors on the crates you touched;
+   - the tests of the crates or Python modules you touched;
+   - `python3 tools/release_guard.py --history`;
+   - the embargo check of the PR body (see `issue-tracker.md`).
+
+   This takes about a minute instead of about five. Run the full `tools/gates.sh` only when a change crosses
+   many crates, such as a rename or a shared-type change, or when CI went red and you need to reproduce it.
 4. **CI, without waiting on it.** The `test` and `release-guard` jobs must be green on the head commit
    before the merge, and branch protection enforces that. Nobody waits for them, though. As soon as the
    PR is open, turn on auto-merge (`gh pr merge <pr> --squash --auto --delete-branch`), then start the
