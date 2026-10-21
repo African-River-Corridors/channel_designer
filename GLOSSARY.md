@@ -1,15 +1,34 @@
-# channel_designer
+# Open Waterway Designer (OWD)
 
 Screening-level design of navigation channels in inland rivers: size a channel for a vessel to a
 named standard, find a design line the vessel can sail, and measure the cut and dredge it needs.
 
 ## Language
 
+### The product
+
+**Open Waterway Designer (OWD)**:
+The tool: this repository, its Python package, its command line and its desktop app. "Inland waterway" is
+the term PIANC WG 141 uses for the rivers and canals a vessel navigates.
+_Avoid_: Open Channel Designer ("open channel" means a canal or drain in hydraulics)
+
+**Code names**:
+The names of the parts match the product: repo `open-waterway-designer`, Python import `owd`, PyPI
+`open-waterway-designer`, crates `owd-core`, `owd-format`, `owd-cli`, `owd-py` and `owd-app`, command
+`owd`, file extension `.owd`.
+
+**Former names**:
+Before 2026-10-21 the tool was `channel_designer`: import `channel_designer`, command `cdesign`, file
+extension `.cdesign`, crates `cd-core`, `cd-format`, `cd-cli`, `cd-py` and `cd-app`, and the app "Channel
+Designer". For one release the import, the command and the extension still work (the import warns). The
+crate names were never published and have no alias.
+_Avoid_: using a former name in new text
+
 ### The design
 
 **Channel design**:
 One screening study of one river reach for one vessel: its inputs, the choices made, and the
-results of each stage. The unit a user opens, saves and shares.
+results of each stage. The unit a user opens, saves (as a `.owd` file) and shares.
 _Avoid_: project, scenario, run
 
 **Stage**:

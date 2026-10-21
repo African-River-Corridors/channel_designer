@@ -1,4 +1,4 @@
-# Contributing to channel_designer
+# Contributing to Open Waterway Designer
 
 Thank you for helping. Bug reports, fixes, worked examples, new rulesets and new features are all welcome.
 
@@ -7,8 +7,8 @@ Thank you for helping. Bug reports, fixes, worked examples, new rulesets and new
 Python 3.12 or later. With [uv](https://docs.astral.sh/uv/):
 
 ```
-git clone https://github.com/African-River-Corridors/channel_designer
-cd channel_designer
+git clone https://github.com/African-River-Corridors/open-waterway-designer
+cd open-waterway-designer
 uv venv
 uv pip install -e '.[dev]'
 ```
