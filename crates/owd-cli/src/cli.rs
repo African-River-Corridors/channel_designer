@@ -416,6 +416,30 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Set the river's default low-water level: the 10th percentile of each SWORD reach's SWOT levels
+    /// (Hydrocron), and the DEM water surface, never rising downstream, where SWOT has too little or
+    /// the river is under 100 m wide. Reads the SWORD reaches near the river from Zenodo.
+    WaterLevel {
+        /// The channel design (with its river centreline or banks, and a DEM for the fallback).
+        doc: String,
+        /// Another percentile of the SWOT levels (default 10, provisional). The level is then yours.
+        #[arg(long, value_name = "P")]
+        percentile: Option<f64>,
+        /// A SWORD reach narrower than this takes the DEM (default 100 m, provisional).
+        #[arg(long, value_name = "METRES")]
+        min_swot_width: Option<f64>,
+        /// The first date of the SWOT levels, YYYY-MM-DD (default: the start of SWOT's science orbit).
+        #[arg(long, value_name = "DATE")]
+        from: Option<String>,
+        /// The last date, YYYY-MM-DD (default: today).
+        #[arg(long, value_name = "DATE")]
+        to: Option<String>,
+        /// The vertical datum of a DEM that is not Copernicus GLO-30: `egm2008` (default) or `ellipsoid`.
+        #[arg(long, value_name = "DATUM")]
+        dem_datum: Option<String>,
+        #[command(flatten)]
+        out: Out,
+    },
     /// Rerun every stale stage, in order.
     Run {
         /// The channel design. `-` is stdin.
@@ -501,6 +525,24 @@ pub fn main() -> ExitCode {
             &out.output,
             out.json,
         ),
+        Command::WaterLevel {
+            doc,
+            percentile,
+            min_swot_width,
+            from,
+            to,
+            dem_datum,
+            out,
+        } => crate::level::water_level(crate::level::LevelFlags {
+            doc,
+            percentile,
+            min_swot_width,
+            from,
+            to,
+            dem_datum,
+            output: out.output,
+            json: out.json,
+        }),
         Command::Fits {
             doc,
             ruleset,

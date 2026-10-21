@@ -11,13 +11,16 @@ pub mod error;
 pub mod fetch;
 pub mod geo;
 pub mod jrc;
+pub mod level;
 pub mod overpass;
 pub mod provenance;
 pub mod reach;
 pub mod route;
 pub mod sentinel2;
 pub mod sources;
+pub mod sword;
 pub mod tiff;
+pub mod zip;
 
 pub use error::ReachError;
 pub use fetch::{DroppedFiles, Fetch, FetchError, ReplayFetch};
