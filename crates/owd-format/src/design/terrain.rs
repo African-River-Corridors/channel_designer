@@ -49,3 +49,45 @@ pub fn dem_sampler(
             .collect()
     })
 }
+
+/// A batch sampler of an orthophoto: the pixel at each point, `None` outside the image.
+pub trait RgbSampler: Fn(&[f64], &[f64]) -> Vec<Option<[u8; 3]>> {}
+impl<F: Fn(&[f64], &[f64]) -> Vec<Option<[u8; 3]>>> RgbSampler for F {}
+
+/// A sampler over an orthophoto for points in the project CRS, as [`dem_sampler`] is for a DEM: an
+/// image in WGS84 is sampled where it is, one in the project's own zone directly, and any other CRS
+/// is refused. A point outside the image is `None`. The nearest pixel is taken: an image is not
+/// blended. The points come in a batch, so the projection is set up once.
+pub fn rgb_sampler(
+    rgb: &crate::geotiff::Rgb,
+    project_epsg: Option<u32>,
+) -> Result<impl RgbSampler + '_, DesignError> {
+    let project = project_epsg.and_then(|c| Crs::from_epsg(c).ok());
+    let utm = match (rgb.epsg, project) {
+        (Some(4326), Some(Crs::Utm(u))) => Some(u),
+        (e, Some(p)) if e == Some(p.epsg()) => None,
+        (e, Some(p)) => {
+            return Err(DesignError::Input(format!(
+                "the orthophoto's CRS ({}) is not WGS84 and not the channel design's EPSG:{}. \
+                 Convert it to one of them.",
+                e.map_or("unknown".to_string(), |e| format!("EPSG:{e}")),
+                p.epsg()
+            )));
+        }
+        (_, None) => {
+            return Err(DesignError::Input(
+                "the channel design has no project CRS yet: import the river first".into(),
+            ));
+        }
+    };
+    Ok(move |xs: &[f64], ys: &[f64]| {
+        let pts: Vec<[f64; 2]> = xs.iter().zip(ys).map(|(&x, &y)| [x, y]).collect();
+        let pts = match utm {
+            Some(u) => u
+                .inverse_all(&pts)
+                .unwrap_or_else(|_| vec![[f64::NAN; 2]; pts.len()]),
+            None => pts,
+        };
+        pts.iter().map(|p| rgb.sample_nearest(p[0], p[1])).collect()
+    })
+}

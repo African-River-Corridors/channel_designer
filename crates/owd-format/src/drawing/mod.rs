@@ -24,6 +24,7 @@ use std::collections::BTreeMap;
 
 pub use check::Finding;
 pub use gallery::GalleryParams;
+pub use plan::Background;
 pub use setting_out::{SettingOutParams, Table as SettingOutTable, table as setting_out_table};
 pub use style::{Style, StyleError};
 pub use typical::{Facts, TypicalParams, facts as typical_facts};
@@ -109,8 +110,11 @@ pub struct Sheet {
     /// The drawing number, for example `OWD-SYNTHETIC-XS-001`.
     pub number: String,
     pub document: Value,
-    /// Files that go with the sheet, by name (the setting-out CSV).
+    /// Files that go with the sheet, by name (the setting-out CSV, a plan's backdrop image).
     pub extra: Vec<(String, Vec<u8>)>,
+    /// What the builder could not do as asked and did instead (a failed imagery fetch). Printed with
+    /// the sheet's other warnings; never a reason to fail.
+    pub warnings: Vec<String>,
 }
 
 impl Sheet {
@@ -196,6 +200,16 @@ pub fn sheets(
     terrain: Terrain,
     options: &DrawOptions,
 ) -> Result<Vec<Sheet>, DrawError> {
+    sheets_with(session, terrain, options, &Background::Relief)
+}
+
+/// [`sheets`], with the plan sheets drawn over `background` (spec 0004, ticket 6).
+pub fn sheets_with(
+    session: &Session,
+    terrain: Terrain,
+    options: &DrawOptions,
+    background: &Background,
+) -> Result<Vec<Sheet>, DrawError> {
     let option_id = resolve_option(session, options.option.as_deref())?;
     let walk = session.option_section_walk(&option_id, terrain)?;
     let mut out = Vec::new();
@@ -220,7 +234,7 @@ pub fn sheets(
                 out.extend(built);
             }
             SheetKind::Plan => {
-                let built = plan::build(session, &option_id, &walk, terrain, options)?;
+                let built = plan::build(session, &option_id, &walk, terrain, options, background)?;
                 let findings = check::plan(&built, &walk, session, &option_id, options);
                 if !findings.is_empty() {
                     return Err(DrawError::Checks(findings));
@@ -322,7 +336,7 @@ pub fn render(sheet: &Sheet) -> Result<SheetOutput, DrawError> {
         }
     };
     // otd's layout review: an error fails the sheet; a warning is printed with the DXF's
-    let mut warnings = Vec::new();
+    let mut warnings = sheet.warnings.clone();
     let mut errors = Vec::new();
     for f in otd::review::review(&norm, &otd::review::ReviewOptions::default()) {
         let line = format!(
@@ -406,6 +420,16 @@ pub fn sheets_from_text(
     dem: Option<&[u8]>,
     options: &DrawOptions,
 ) -> Result<Vec<Sheet>, DrawError> {
+    sheets_from_text_with(design, dem, options, &Background::Relief)
+}
+
+/// [`sheets_from_text`], with the plan sheets drawn over `background`.
+pub fn sheets_from_text_with(
+    design: &str,
+    dem: Option<&[u8]>,
+    options: &DrawOptions,
+    background: &Background,
+) -> Result<Vec<Sheet>, DrawError> {
     let session = Session::open(design)?;
     let name = session.dem_path().unwrap_or("DEM").to_string();
     let grid = match session.dem_check(dem) {
@@ -431,7 +455,7 @@ pub fn sheets_from_text(
         .as_u64()
         .map(|c| c as u32);
     let sampler = dem_sampler(&grid, epsg)?;
-    sheets(&session, &sampler, options)
+    sheets_with(&session, &sampler, options, background)
 }
 
 /// Every file of every sheet of a design: the one call that `owd draw` and `owd.draw` share.

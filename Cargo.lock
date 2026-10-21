@@ -1999,6 +1999,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "jpeg-decoder"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00810f1d8b74be64b13dbf3db89ac67740615d6c891f0e7b6179326533011a07"
+
+[[package]]
 name = "jpeg-encoder"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2583,6 +2589,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "otd-imagery"
+version = "0.1.0"
+source = "git+https://github.com/African-River-Corridors/open-technical-drawer?tag=v0.3.0#d3825201a284971c1348423ef2de28d87a2ea428"
+dependencies = [
+ "jpeg-decoder",
+ "libm",
+ "otd",
+ "ureq",
+]
+
+[[package]]
 name = "ovcd-core"
 version = "0.2.2"
 source = "git+https://github.com/African-River-Corridors/open-vessel-concept-drawings?tag=v0.2.2#5dbeee00579fc2c0377e3ed370894d84e2481e5a"
@@ -2612,6 +2629,7 @@ dependencies = [
  "arc-rules",
  "clap",
  "otd",
+ "otd-imagery",
  "owd-core",
  "owd-format",
  "owd-reach",
@@ -2640,6 +2658,7 @@ dependencies = [
  "arc-rules",
  "libm",
  "otd",
+ "otd-imagery",
  "owd-core",
  "png 0.18.1",
  "proj4rs",
@@ -4587,6 +4606,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a7ac20be9b7726e0bbdbf974c059676d9acb1cd414961f570a4e8231cacd7fc"
 dependencies = [
  "base64 0.23.1",
+ "flate2",
  "log",
  "percent-encoding",
  "rustls",

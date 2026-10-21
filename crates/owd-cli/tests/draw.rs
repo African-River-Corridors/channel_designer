@@ -201,3 +201,43 @@ fn sheets_picks_the_kinds_and_the_default_draws_both() {
         "{both:?}"
     );
 }
+
+#[test]
+fn imagery_offers_eox_cloudless_2016_only() {
+    for name in [
+        "eox-cloudless-2018",
+        "eox-cloudless-2020",
+        "eox-cloudless",
+        "sentinel",
+    ] {
+        let o = run(&[
+            "draw",
+            example().to_str().unwrap(),
+            "--sheets",
+            "pl",
+            "--imagery",
+            name,
+            "--document",
+        ]);
+        assert_eq!(code(&o), 2, "{name}: {}", err(&o));
+        assert!(err(&o).contains("only eox-cloudless-2016"), "{}", err(&o));
+        assert!(err(&o).contains("CC BY-NC-SA 4.0"), "{}", err(&o));
+    }
+}
+
+#[test]
+fn an_orthophoto_that_is_not_rgb_is_refused_with_its_reason() {
+    // the example's DEM is a one-band GeoTIFF, not an orthophoto
+    let dem = example().with_file_name("river-dem.tif");
+    let o = run(&[
+        "draw",
+        example().to_str().unwrap(),
+        "--sheets",
+        "pl",
+        "--orthophoto",
+        dem.to_str().unwrap(),
+        "--document",
+    ]);
+    assert_eq!(code(&o), 2, "{}", err(&o));
+    assert!(err(&o).contains("1 band(s)"), "{}", err(&o));
+}

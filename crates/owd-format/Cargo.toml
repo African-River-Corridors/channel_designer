@@ -11,6 +11,7 @@ repository.workspace = true
 owd-core.workspace = true
 arc-rules.workspace = true
 otd.workspace = true
+otd-imagery = { workspace = true, optional = true }
 serde_json.workspace = true
 libm = "0.2"
 png = "0.18"
@@ -18,3 +19,8 @@ proj4rs = { version = "0.2.1", default-features = false }
 sha2 = "0.11.1"
 rusqlite = { version = "0.40.2", features = ["bundled", "serialize"] }
 tiff = { version = "0.11.3", default-features = false, features = ["deflate", "lzw"] }
+
+[features]
+# `owd draw --imagery`: fetch EOxCloudless 2016 for plan backdrops. Off for the web build, which has no
+# network crate.
+imagery = ["dep:otd-imagery"]

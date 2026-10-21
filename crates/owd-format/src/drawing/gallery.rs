@@ -737,6 +737,7 @@ pub(super) fn build(
             number,
             document,
             extra: Vec::new(),
+            warnings: Vec::new(),
         });
     }
     Ok(out)

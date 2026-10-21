@@ -122,6 +122,19 @@ impl Crs {
 }
 
 impl Utm {
+    /// [`Utm::inverse`] as a function that builds the projection once and is then called point by
+    /// point: `None` where a point cannot be converted.
+    pub fn inverse_fn(self) -> Result<impl Fn([f64; 2]) -> Option<[f64; 2]>, String> {
+        let geo = Proj::from_proj_string("+proj=longlat +datum=WGS84 +no_defs")
+            .map_err(|e| e.to_string())?;
+        let utm = Proj::from_proj_string(&self.proj_string()).map_err(|e| e.to_string())?;
+        Ok(move |[x, y]: [f64; 2]| {
+            let mut p = (x, y, 0.0);
+            proj4rs::transform::transform(&utm, &geo, &mut p).ok()?;
+            Some([p.0.to_degrees(), p.1.to_degrees()])
+        })
+    }
+
     /// [`Utm::inverse`] for many points, building the projection once.
     pub fn inverse_all(self, pts: &[[f64; 2]]) -> Result<Vec<[f64; 2]>, String> {
         let geo = Proj::from_proj_string("+proj=longlat +datum=WGS84 +no_defs")
