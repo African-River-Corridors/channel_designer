@@ -2,8 +2,13 @@
 // no Rust behind it. It exists to take screenshots of every view. Production builds do not include it.
 import type { CrossSection, Hillshade, LongSection, MapGeometry, OptionTable, Snapshot } from "./lib/api";
 
-const theme = new URLSearchParams(location.search).get("theme");
-if (theme) document.documentElement.dataset.theme = theme;
+const params = new URLSearchParams(location.search);
+const theme = params.get("theme");
+// ?state=empty: a new design with nothing loaded, to see the empty views.
+const empty = params.get("state") === "empty";
+// ?theme=auto leaves the choice to the OS (the app's default); light and dark pin it.
+if (theme === "auto") delete document.documentElement.dataset.theme;
+else if (theme) document.documentElement.dataset.theme = theme;
 
 const LON0 = 0.5, LAT0 = 6.0, SPAN = 0.06;
 type LL = [number, number];
@@ -114,6 +119,15 @@ function relief(): Hillshade {
   return { url: c.toDataURL("image/png"), corners: [[w, n], [e, n], [e, s], [w, s]], width: c.width, height: c.height };
 }
 
+const blank = (): Snapshot => ({
+  ...snapshot, file_name: "Untitled", warnings: [], title: "Untitled",
+  stages: snapshot.stages.map((x) => ({ ...x, status: "not_run" as const })),
+  document: { ...snapshot.document, project: { ...snapshot.document.project, title: "Untitled", crs: null },
+    inputs: { left_bank: null, right_bank: null, centreline: null, river_polygon: null, dem: null, water_level: null },
+    stages: { ...snapshot.document.stages, sizing: { settings: null, results: null } } },
+});
+const none = (why: string) => () => Promise.reject(why);
+
 const answer: Record<string, () => unknown> = {
   snapshot: () => snapshot, set_sizing: () => snapshot, sizing_choices: () => ({
     rulesets: [{ id: "pianc-b", label: "PIANC WG 141, quality B", family: "pianc" }, { id: "pianc-a", label: "PIANC WG 141, quality A", family: "pianc" }],
@@ -124,6 +138,14 @@ const answer: Record<string, () => unknown> = {
   // The tile address fails at once, so the map shows the hillshade and its offline note.
   basemap_tiles: () => "http://127.0.0.1:9/{z}/{x}/{y}.jpg",
 };
+
+if (empty) {
+  Object.assign(answer, {
+    snapshot: blank, set_sizing: blank, map_geometry: none("nothing to draw"), hillshade: () => null,
+    option_table: () => ({ screening: table.screening, volumes_status: "not run", rows: [], checks: [] }),
+    long_section: none("Run volumes to see the long section."), cross_section: none("Run volumes to see the cross-section."),
+  });
+}
 
 (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
   invoke: (cmd: string) => Promise.resolve(answer[cmd] ? answer[cmd]() : null),

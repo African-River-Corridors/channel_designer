@@ -1,17 +1,5 @@
 @import "./tokens.css";
 
-/* Bridge for the old variable names: components still on them keep working. Each restyle ticket
-   (spec 0009) moves one group of components onto the tokens; the last one deletes this block. */
-:root {
-  --navy: var(--ink);
-  --gold: var(--ink);
-  --dim: var(--ink-3);
-  --line: var(--rule);
-  --bar: var(--paper);
-  --serif: var(--font-serif);
-  --sans: var(--font-ui);
-}
-
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--paper); color: var(--ink); font: var(--fs-13) / var(--lh-ui) var(--font-ui); }
 button, select, input { font: inherit; }

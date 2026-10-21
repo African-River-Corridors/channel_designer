@@ -5,7 +5,7 @@
   import CrossSection from "./lib/CrossSection.svelte";
   import LongSection from "./lib/LongSection.svelte";
   import BottomPanel from "./lib/BottomPanel.svelte";
-  import { optionVar } from "./lib/theme";
+  import { currentTheme, optionVar, setTheme, type ThemeChoice } from "./lib/theme";
   import { BASEMAP_TILES } from "./lib/basemap";
   import MapPanel from "./lib/MapPanel.svelte";
   import LeftPanel from "./lib/LeftPanel.svelte";
@@ -237,10 +237,8 @@
   }
 
   /** An option's colour (a CSS reference to its token): its place in the design's list, which is the order the map draws. */
-  const colourOf = (id: string) => {
-    const i = geometry?.options.findIndex((o) => o.id === id) ?? -1;
-    return optionVar(i < 0 ? 0 : i);
-  };
+  const indexOf = (id: string) => Math.max(geometry?.options.findIndex((o) => o.id === id) ?? 0, 0);
+  const colourOf = (id: string) => optionVar(indexOf(id));
 
   // The hillshade is drawn once by the Rust side, and only when the imagery is offline. A new DEM
   // reference clears it.
@@ -311,6 +309,8 @@
     };
   }
 
+  let theme = $state<ThemeChoice>(currentTheme());
+
   let anyStale = $derived(snap?.stages.some((s) => s.status === "stale") ?? false);
 </script>
 
@@ -327,6 +327,14 @@
     <button disabled={!(table?.rows.length)} onclick={() => exportAs("csv")} title="The quantity table as CSV">Export CSV</button>
     <button class="primary" disabled={!anyStale || busy !== null} onclick={runStale} title="Rerun every stale stage, in order">Run stale</button>
     <span class="grow"></span>
+    <label class="theme">
+      Theme
+      <select aria-label="Theme" bind:value={theme} onchange={() => setTheme(theme)}>
+        <option value="auto">Auto</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </label>
     {#if snap}
       <span class="meta" data-testid="file-label">{snap.file_name}{snap.dirty ? " (unsaved)" : ""}</span>
       <span class="meta" data-testid="study-title">{snap.document.project.title}</span>
@@ -360,7 +368,7 @@
       <div class="sections" data-testid="sections">
         <div class="longbox">
           {#if longSection}
-            <LongSection data={longSection} {station} colour={selectedId ? colourOf(selectedId) : "#14325a"} onPick={pickChainage} />
+            <LongSection data={longSection} {station} colour={selectedId ? colourOf(selectedId) : "var(--ink)"} onPick={pickChainage} />
           {:else}
             <p class="slot" data-testid="section-note">{sectionNote ?? "Run volumes to see the long section."}</p>
           {/if}
@@ -380,13 +388,13 @@
               oninput={(e) => slide(Number(e.currentTarget.value))}
             />
           </label>
-          <div class="csbody"><CrossSection section={crossSection} colour={selectedId ? colourOf(selectedId) : "#14325a"} /></div>
+          <div class="csbody"><CrossSection section={crossSection} colour={selectedId ? colourOf(selectedId) : "var(--ink)"} /></div>
         </div>
       </div>
     </section>
     <div class="handle h" role="separator" aria-orientation="horizontal" onpointerdown={drag("y")}></div>
     <section class="bottom">
-      <BottomPanel {table} {colourOf} {selectedId} onSelect={(id) => (selectedId = id)} />
+      <BottomPanel {table} {indexOf} {selectedId} onSelect={(id) => (selectedId = id)} />
     </section>
   </div>
 
@@ -400,6 +408,8 @@
   .brand img { height: 26px; }
   .mark-dark { display: none; }
   .grow { flex: 1; }
+  .theme { display: flex; gap: var(--sp-1); align-items: center; font-size: var(--fs-12); color: var(--ink-3); }
+  .theme select { padding: 2px 6px; font-size: var(--fs-12); }
   .meta { color: var(--ink-3); font-size: var(--fs-12); margin-left: var(--sp-3); font-variant-numeric: tabular-nums; }
   .banner { display: flex; gap: var(--sp-2); align-items: center; padding: 6px var(--sp-3); font-size: var(--fs-13); border-bottom: var(--lw-thin) solid var(--rule); }
   .banner.error { background: var(--fail-soft); color: var(--fail); }
