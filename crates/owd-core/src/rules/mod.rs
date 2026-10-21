@@ -1,15 +1,17 @@
-//! Channel sizing rules. Mirrors the `rules/` package of the frozen Python: `methods` (the width
-//! method registry), `rulesets` (named standards, `channel_shape`, `size_channel`), `design`
-//! (per-chainage sizing along a centreline), `simple` (one-call sizing) and `width_profile`.
+//! Channel sizing rules. `engine` holds the channel rules on the shared rules engine (`arc-rules`,
+//! spec 0007): the Rule Sets are data, the strictest Rule governs. `rulesets` sizes a channel from
+//! a selection of Rule Sets (`channel_shape_for`) and keeps the width methods (`size_channel`);
+//! `screening` finds the constraint stretches and the design basis. `methods` (the width method
+//! registry), `design` (per-chainage sizing along a centreline), `simple` (one-call sizing) and
+//! `width_profile` mirror the `rules/` package of the frozen Python.
 //!
 //! Vessel classes and the `Check` type come from `ovcd-core`, pinned to a tag (ADR 0001).
 //!
-//! Rulesets and width methods stay pluggable from outside the crate: a [`methods::WidthMethod`]
-//! holds plain closures and a [`rulesets::Ruleset`] is data, and both live in a registry value
-//! that the sizing functions take by reference. Python keeps the two registries in module
-//! globals; here [`methods::global_methods`] and [`rulesets::global_rulesets`] are the same
-//! thing for a caller that wants one process-wide registry, and any other registry value works
-//! just as well (the parity runner makes a fresh one per case).
+//! Width methods stay pluggable from outside the crate: a [`methods::WidthMethod`] holds plain
+//! closures and lives in a registry value that the sizing functions take by reference. Python keeps
+//! the registry in a module global; here [`methods::global_methods`] is the same thing for a caller
+//! that wants one process-wide registry. A Rule Set is added as a file, loaded at run time.
+//! The width methods are design assumptions, not verified rules.
 
 /// The built-in vessel classes (from `ovcd-core`, pinned to a tag): key and class, in catalogue order.
 pub use ovcd_core::vessel_standards::{

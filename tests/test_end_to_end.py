@@ -23,7 +23,8 @@ def test_synthetic_river_rules_alignment_volumes():
     river = synthetic_river()
 
     # rules
-    shape = channel_shape("PIANC-B", "CEMT_IV", draught_m=2.5)
+    shape = channel_shape("CEMT_IV", draught_m=2.5, rule_sets=["pianc-wg141"],
+                          set_inputs={"se_quality": "B"})
     r_min, depth = shape.min_bend_radius_m, shape.design_depth_m
     assert r_min == 3.0 * shape.loa_m and abs(depth - 1.3 * 2.5) < 1e-12
 

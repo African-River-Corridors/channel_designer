@@ -11,7 +11,7 @@ measures the cut and dredge volumes.
 
 | Layer | Module | What you get |
 |---|---|---|
-| **Rules** | `owd.rules` | Channel width, bend widening, minimum bend radius and depth from a named ruleset and a vessel class: PIANC WG 141 qualities A/B/C and the Chinese standard GB 50139 (as summarised in WG 141 Appendix A.3). Every coefficient cites its clause, table and page. Rulesets and width methods are pluggable: another package can add its own (`register_ruleset`, `register_width_method`, or the `owd.width_methods` entry-point group). |
+| **Rules** | `owd.rules` | Channel width, bend widening, minimum bend radius and depth from the selected Rule Sets and a vessel class, on the rules engine shared with open-vessel-concept-drawings: `pianc-wg141` (qualities A, B, C) and `gb50139` (the Chinese standard as WG 141 Appendix A.3 summarises it). Every Rule cites its clause, table and page, and is unverified until a second reader checks it. Select more than one set and the strictest Rule governs; load a Rule Set file of your own at run time (`owd rules`, `owd size --rule-set-file`). Width methods stay pluggable (`register_width_method`, or the `owd.width_methods` entry-point group); they are design assumptions, not verified rules. |
 | **Alignment** | `owd.alignment` | Centreline from two bank lines, river width, meander analysis, a tight/gentle/straight bend catalogue (exact reachability, not a closed form), rolling-circle straightening to R_min, channel limits with bend widening, and a least-cost route search that shifts the line sideways where that cuts less ground while holding R_min. |
 | **Volumes** | `owd.volumes` | Cut Model A and B cross-sections (wet batter, clearance-prism gate, benched face above the waterline), a station-by-station section integrator, a raster DEM integrator, weir-cascade pool levels, and the plan excavation footprint. Quantities only — m², m³ and face heights. |
 | **Terrain** | `owd.terrain` | Long profile of any line over a terrain sampler: chainage, levels, ascent and descent. Pure; it reads no files and fetches nothing. |
@@ -97,7 +97,8 @@ from owd.volumes.cut_model import widened_hb_from_shape
 from owd.volumes.sections import section_volumes
 
 river = synthetic_river()
-shape = channel_shape("PIANC-B", "CEMT_IV", draught_m=2.5)
+shape = channel_shape("CEMT_IV", draught_m=2.5, rule_sets=["pianc-wg141"],
+                      set_inputs={"se_quality": "B"})
 
 tight = find_meanders(river.centreline, max_radius=shape.min_bend_radius_m)
 rolled = rolling_circle(river.centreline, shape.min_bend_radius_m, step=10.0)
@@ -119,7 +120,7 @@ for name, line in (("rolling circle", rolled.centreline), ("least-cost", route.l
 Output:
 
 ```
-PIANC-B x CEMT_IV: bottom 30.4 m, R_min 255 m, depth 3.25 m
+pianc-wg141@0.3.0 + owd@0.3.0 x CEMT_IV: bottom 30.4 m, R_min 255 m, depth 3.25 m
 8 bends tighter than R_min; 16 arcs spliced in
 rolling circle: dredge   562,780 m3   dry cut   941,841 m3   tallest face 17.3 m
     least-cost: dredge   513,163 m3   dry cut   776,725 m3   tallest face 13.3 m
@@ -183,7 +184,7 @@ more `radius_multiples`) follows the river more closely and runs longer.
 - **Units:** metres, m², m³. **CRS:** any projected metric CRS; reprojection is the caller's job.
 - **Offsets:** signed, − left bank, + right bank, looking downstream→upstream along the line.
 - **Checks are data:** rules return `Check(name, ok, message, severity)` lists, not buried `if`s.
-- **User choices are named, not hidden:** `BANK_CUT_FRACTION`, the `CN-reduced` ruleset, the
+- **User choices are named, not hidden:** `BANK_CUT_FRACTION`, the reduced-radius claim on a canal reach, the
   cut-model parameters and the loop-rejection thresholds are judgements, not standards.
 
 ## Known issues
@@ -201,7 +202,8 @@ more `radius_multiples`) follows the river more closely and runs longer.
 
 ## Contributing
 
-Issues and pull requests are welcome — a new national ruleset is a good first contribution. See
+Issues and pull requests are welcome — a new national Rule Set is a good first contribution
+([docs/rules/codification.md](docs/rules/codification.md)). See
 [CONTRIBUTING.md](CONTRIBUTING.md) and [ROADMAP.md](ROADMAP.md).
 
 ## Licence

@@ -7,7 +7,8 @@
 
 use owd_core::cut_model::{WIDEN_RMAX, widened_hb_from_shape};
 use owd_core::geom::{Polygon, Pt};
-use owd_core::rules::rulesets::{RulesetRegistry, channel_shape};
+use owd_core::rules::engine::selection_for_old_ruleset;
+use owd_core::rules::rulesets::channel_shape_for;
 use owd_core::synthetic::{RiverParams, synthetic_river};
 use owd_core::volumes::sections::{HalfWidth, Level, section_volumes};
 use owd_format::design::{AlignMethod, DemCheck, DesignError, Role, Session, Stage, StageStatus};
@@ -107,7 +108,12 @@ fn the_volumes_equal_section_volumes_called_directly() {
         .iter()
         .map(|p| [p[0].as_f64().unwrap(), p[1].as_f64().unwrap()])
         .collect();
-    let shape = channel_shape(&RulesetRegistry::new(), "PIANC-B", "CEMT_IV", Some(2.5)).unwrap();
+    let shape = channel_shape_for(
+        &selection_for_old_ruleset("PIANC-B").unwrap(),
+        "CEMT_IV",
+        Some(2.5),
+    )
+    .unwrap();
     let ring: Vec<Pt> = river().polygon.exterior.iter().map(shift).collect();
     let poly = [Polygon {
         exterior: ring,

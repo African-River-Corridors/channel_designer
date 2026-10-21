@@ -1272,9 +1272,8 @@ mod property_tests {
 
     #[test]
     fn the_synthetic_river_fits_at_300_m_and_is_too_narrow_at_every_apex_at_40_m() {
-        let shape = crate::rules::rulesets::channel_shape(
-            &crate::rules::rulesets::RulesetRegistry::new(),
-            "PIANC-B",
+        let shape = crate::rules::rulesets::channel_shape_for(
+            &crate::rules::engine::selection_for_old_ruleset("PIANC-B").unwrap(),
             "CEMT_IV",
             Some(2.5),
         )

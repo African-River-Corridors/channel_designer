@@ -5,7 +5,8 @@
 //! Label: property
 
 use owd_core::geom::Geometry;
-use owd_core::rules::rulesets::{RulesetRegistry, channel_shape};
+use owd_core::rules::engine::selection_for_old_ruleset;
+use owd_core::rules::rulesets::channel_shape_for;
 use owd_core::synthetic::{RiverParams, synthetic_river};
 use serde_json::{Value, json};
 use std::io::Write;
@@ -175,7 +176,12 @@ fn the_size_command_gives_what_channel_shape_gives() {
         "",
     );
     assert_eq!(code(&o), 0);
-    let direct = channel_shape(&RulesetRegistry::new(), "PIANC-B", "CEMT_IV", Some(2.5)).unwrap();
+    let direct = channel_shape_for(
+        &selection_for_old_ruleset("PIANC-B").unwrap(),
+        "CEMT_IV",
+        Some(2.5),
+    )
+    .unwrap();
     // The document goes to stdout, so the JSON result goes to stderr.
     let result: Value = serde_json::from_str(err(&o).trim()).unwrap();
     assert_eq!(

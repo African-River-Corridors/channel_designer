@@ -82,23 +82,60 @@ _Avoid_: stationing, KP
 
 ### Channel sizing
 
-**Ruleset**:
-A named channel-design standard (for example PIANC quality B, or GB 50139) whose coefficients
-each cite a clause, table and page.
-_Avoid_: standard (alone), rule set
+**Rule Set**:
+A named, versioned group of Rules from one source, as a data file with a content hash
+(`pianc-wg141`, `gb50139`, `owd`, or a user's own file loaded at run time). A design selects one
+set or more; every selected Rule applies and the strictest governs (spec 0007, ADR 0008).
+_Avoid_: ruleset, standard (alone)
+
+**Rule**:
+One requirement from one source on one Measure: a limit, a citation (clause, table, page), an
+origin, an applicability and a consequence, with a verification status (`unverified` until a
+second reader checks it against its source).
+
+**Measure**:
+One quantity OWD computes for one object (the channel's bottom width, a station's radius), which a
+Rule tests. A Measure is code; a Rule is data.
+
+**Requirement**:
+The Rules on one Measure of one object in one direction (all lower bounds on the bottom width, say).
+
+**Governing Rule**:
+The strictest Rule of a Requirement. Its limit sizes the channel.
+
+**Rule Trace**:
+Every Rule of every selected set at every object, with its value, limit, margin, outcome and
+whether it governs. Rebuilt on demand (`owd trace`), never stored.
+
+**Reach**:
+A stretch of the river, by chainage on its centreline, marked as a canal, an impounded river or a
+free-flowing river, with or without the reduced-radius claim. Stations take its inputs. (Not the
+study reach of `owd reach`, spec 0012.)
+
+**Design basis**:
+Each quantity of the channel with the Rule that governs it, its citation and its status.
+
+**Constraint stretch**:
+A run of stations where the river as found falls short of a governing limit (width, depth or
+radius), with the works that follow (bank cut, dredge, cut-through) and their quantities.
+
+**Verdict**:
+A design line option's screening answer: navigable as it is, navigable with works, or not
+navigable.
 
 **Width method**:
-A way of computing channel width from a vessel and a bend radius that is not just a ruleset's
-coefficients.
+A way of computing channel width from a vessel and a bend radius (`size_channel`). A design
+assumption, not a verified rule: no document stage uses it.
 
 **Vessel class**:
 A named class of vessel with set dimensions, from a published classification (for example CEMT IV).
 
 **Channel shape**:
-The bottom width, minimum bend radius and design depth that a ruleset requires for a vessel class.
+The bottom width, minimum bend radius and design depth that the selected Rule Sets require for a
+vessel class.
 
 **Minimum bend radius** (R_min):
-The tightest radius the design line may turn at, as the ruleset requires for the vessel.
+The tightest radius the design line may turn at: the largest governing radius of any reach.
 _Avoid_: turning radius
 
 ### Earthworks

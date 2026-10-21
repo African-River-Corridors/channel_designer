@@ -2,8 +2,9 @@
 //!
 //! Label: property. No fixed number; the sizing numbers are compared with the old path.
 
+use owd_core::rules::engine::selection_for_old_ruleset;
 use owd_core::rules::engine::{self, BUILT_IN};
-use owd_core::rules::rulesets::{RulesetRegistry, channel_shape};
+use owd_core::rules::rulesets::channel_shape_for;
 use owd_format::design::{DesignError, Session, Stage, StageStatus};
 use serde_json::{Value, json};
 
@@ -45,7 +46,12 @@ fn a_new_design_opens_with_pianc_wg141_quality_c_all_marked_default() {
     assert_eq!(st["rule_sets"][0]["source"], "default");
     assert_eq!(st["set_inputs"][0]["source"], "default");
     let r = &s.document()["stages"]["sizing"]["results"];
-    let old = channel_shape(&RulesetRegistry::new(), "PIANC-C", "CEMT_IV", None).unwrap();
+    let old = channel_shape_for(
+        &selection_for_old_ruleset("PIANC-C").unwrap(),
+        "CEMT_IV",
+        None,
+    )
+    .unwrap();
     assert_eq!(
         r["bottom_width_straight_m"],
         json!(old.bottom_width_straight_m)
@@ -99,7 +105,8 @@ fn every_old_ruleset_maps_to_its_selection_with_the_same_numbers_and_warnings() 
         s.set_sizing(old, vessel, Some(2.6)).unwrap();
         s.run_stage(Stage::Sizing).unwrap();
         let r = &s.document()["stages"]["sizing"]["results"];
-        let o = channel_shape(&RulesetRegistry::new(), old, vessel, Some(2.6)).unwrap();
+        let o =
+            channel_shape_for(&selection_for_old_ruleset(old).unwrap(), vessel, Some(2.6)).unwrap();
         for (k, v) in [
             ("bottom_width_straight_m", o.bottom_width_straight_m),
             ("min_bend_radius_m", o.min_bend_radius_m),
@@ -203,9 +210,8 @@ fn a_claimed_canal_reach_over_the_whole_line_gives_cn_reduced() {
     assert_eq!(s.stage_status(Stage::Sizing), StageStatus::Stale);
     s.run_stage(Stage::Sizing).unwrap();
     let r = &s.document()["stages"]["sizing"]["results"];
-    let o = channel_shape(
-        &RulesetRegistry::new(),
-        "CN-reduced",
+    let o = channel_shape_for(
+        &selection_for_old_ruleset("CN-reduced").unwrap(),
         "CN_III_convoy_2ab",
         None,
     )

@@ -76,7 +76,7 @@ class ChannelDesignParams:
 
     Defaults are examples, not recommendations — set your own for your waterway. Note the
     default ``width_multiple`` 2.8 is below WG 141's 3.0 x beam single-lane minimum;
-    ``rulesets.channel_shape`` with a named ruleset is the standard-backed path.
+    ``rulesets.channel_shape`` with a Rule Set is the standard-backed path.
     """
 
     width_multiple: float = 2.8          # one-lane straight bottom width = k_w x beam

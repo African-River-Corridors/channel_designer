@@ -113,9 +113,6 @@ pub fn rolling_circle_with_water(
             infeasible: vec![],
         });
     };
-    w.shape
-        .validate()
-        .map_err(|e| PyError::value(e.raw_message().to_string()))?;
     let chord = base.radius_check_chord_m;
     let mut ladder = Ladder::new(w, min_radius, chord);
     // Bends: the circles' spans on today's line, overlapping spans merged (a second pass or
@@ -358,13 +355,17 @@ mod tests {
     //! no exit kink); sourced - hand calculation (the push-out corner: tangent length R).
     use super::*;
     use crate::alignment::radius_check::RADIUS_TOL;
-    use crate::rules::rulesets::{RulesetRegistry, channel_shape};
     use crate::synthetic::{RiverParams, open_basin_90, synthetic_river};
 
     const R_MIN: f64 = 255.0;
 
     fn shape() -> ChannelShape {
-        channel_shape(&RulesetRegistry::new(), "PIANC-B", "CEMT_IV", Some(2.5)).unwrap()
+        crate::rules::rulesets::channel_shape_for(
+            &crate::rules::engine::selection_for_old_ruleset("PIANC-B").unwrap(),
+            "CEMT_IV",
+            Some(2.5),
+        )
+        .unwrap()
     }
 
     fn sides() -> Vec<String> {

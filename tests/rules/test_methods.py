@@ -11,11 +11,7 @@ import pytest
 from owd.rules import methods as M
 from owd.rules.design import ChannelDesignInputs, ChannelDesignParams, compute
 from owd.rules.rulesets import (
-    RULESETS,
     ChannelRuleInputs,
-    Ruleset,
-    channel_shape,
-    register_ruleset,
     rule_sets,
     size_channel,
     width_at_radius,
@@ -172,19 +168,3 @@ def test_every_registered_method_meets_the_contract():
             radii = (100.0, 200.0, 400.0, 1000.0, 5000.0)
             widths = [max(straight, m.bend_width(loa, beam, {}, R, R, 45.0)) for R in radii]
             assert all(a >= b - 1e-9 for a, b in zip(widths, widths[1:])), (name, widths)
-
-
-def test_register_ruleset_for_channel_shape():
-    rs = Ruleset("PIANC-B-wide", "pianc", "test: PIANC-B with a wider fairway", "test",
-                 r_mult_convoy=3.0, r_mult_motor=3.0, width_mult=3.6, c_c=0.5, depth_mult=1.3)
-    register_ruleset(rs)
-    try:
-        s = channel_shape("PIANC-B-wide", "CEMT_IV")
-        b = channel_shape("PIANC-B", "CEMT_IV")
-        assert abs(s.bottom_width_straight_m / b.bottom_width_straight_m - 3.6 / 3.2) < 1e-12
-        with pytest.raises(ValueError, match="already registered"):
-            register_ruleset(rs)
-        with pytest.raises(ValueError, match="family"):
-            register_ruleset(Ruleset("X", "other", "x", "x", 1.0, 1.0))
-    finally:
-        RULESETS.pop("PIANC-B-wide", None)

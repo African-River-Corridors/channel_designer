@@ -12,7 +12,7 @@ use super::rule_sets::{default_settings, old_ruleset};
 use super::schema;
 use arc_rules::load::Library;
 use owd_core::rules::engine;
-use owd_core::rules::rulesets::{ChannelShape, RulesetRegistry};
+use owd_core::rules::rulesets::ChannelShape;
 use owd_core::rules::vessel_catalogue;
 use serde_json::{Value, json};
 
@@ -484,12 +484,35 @@ impl Session {
     /// The rulesets and vessel classes a user can choose for sizing, for the lists in the app and
     /// for `--help`-style discovery: ids, display labels and the dimensions that matter.
     pub fn sizing_choices() -> Value {
-        // CN-reduced needs a canal reach (spec 0007 T4), so it is not offered.
-        let rulesets: Vec<Value> = RulesetRegistry::new()
-            .iter()
-            .filter(|r| old_ruleset(&r.ruleset_id).is_ok())
-            .map(|r| json!({"id": r.ruleset_id, "label": r.label, "family": r.family}))
-            .collect();
+        // The old ruleset names the app's list offers until its Rule Set picker lands (spec 0007
+        // T6); each maps to its Rule Set and input. CN-reduced needs a canal reach, so it is not
+        // offered.
+        let rulesets: Vec<Value> = [
+            (
+                "PIANC-A",
+                "PIANC WG 141 \u{2014} Safety & Ease quality A",
+                "pianc",
+            ),
+            (
+                "PIANC-B",
+                "PIANC WG 141 \u{2014} Safety & Ease quality B",
+                "pianc",
+            ),
+            (
+                "PIANC-C",
+                "PIANC WG 141 \u{2014} Safety & Ease quality C",
+                "pianc",
+            ),
+            ("CN", "Chinese GB 50139 \u{2014} standard", "china"),
+            (
+                "CN-conservative",
+                "Chinese GB 50139 \u{2014} conservative",
+                "china",
+            ),
+        ]
+        .iter()
+        .map(|(id, label, family)| json!({"id": id, "label": label, "family": family}))
+        .collect();
         let vessels: Vec<Value> = vessel_catalogue()
             .into_iter()
             .map(|(id, v)| {

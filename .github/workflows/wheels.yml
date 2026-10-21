@@ -115,7 +115,7 @@ jobs:
       - name: Use it
         shell: pwsh
         run: |
-          python -c "import owd._core as c, json; print('core', c.__version__, len(c.entry_points()), 'entry points'); out = json.loads(c.eval('rulesets', json.dumps({'fn': 'channel_shape', 'args': {'ruleset_id': 'PIANC-B', 'vessel_standard_id': 'CEMT_IV', 'draught_m': 2.5}}))); assert abs(out['ok']['bottom_width_straight_m'] - 30.4) < 1e-9; from owd.rules import channel_shape; print(channel_shape('PIANC-B', 'CEMT_IV').design_depth_m)"
+          python -c "import owd._core as c, json; print('core', c.__version__, len(c.entry_points()), 'entry points'); out = json.loads(c.eval('rulesets', json.dumps({'fn': 'channel_shape', 'args': {'rule_sets': ['pianc-wg141'], 'set_inputs': {'se_quality': 'B'}, 'vessel_standard_id': 'CEMT_IV', 'draught_m': 2.5}}))); assert abs(out['ok']['bottom_width_straight_m'] - 30.4) < 1e-9; from owd.rules import channel_shape; print(channel_shape('CEMT_IV', rule_sets=['pianc-wg141'], set_inputs={'se_quality': 'B'}).design_depth_m)"
       - name: Negative control 2 - a source build fails in this same environment
         shell: pwsh
         run: |

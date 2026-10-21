@@ -3,7 +3,8 @@
 //! Label: property
 
 use owd_core::geom::Geometry;
-use owd_core::rules::rulesets::{RulesetRegistry, channel_shape};
+use owd_core::rules::engine::selection_for_old_ruleset;
+use owd_core::rules::rulesets::channel_shape_for;
 use owd_core::synthetic::{RiverParams, synthetic_river};
 use owd_format::design::crs::Utm;
 use owd_format::design::{DesignError, Role, Session, Stage, StageStatus};
@@ -79,7 +80,12 @@ fn a_saved_file_reloads_bit_for_bit() {
 #[test]
 fn sizing_results_equal_channel_shape_called_directly() {
     let s = imported();
-    let direct = channel_shape(&RulesetRegistry::new(), "PIANC-B", "CEMT_IV", Some(2.5)).unwrap();
+    let direct = channel_shape_for(
+        &selection_for_old_ruleset("PIANC-B").unwrap(),
+        "CEMT_IV",
+        Some(2.5),
+    )
+    .unwrap();
     let r = &s.document()["stages"]["sizing"]["results"];
     assert_eq!(
         r["bottom_width_straight_m"],
@@ -109,12 +115,8 @@ fn changing_the_vessel_marks_sizing_stale_and_nothing_reruns() {
     );
     // A ruleset change is an edit too.
     let mut s = imported();
-    let other = RulesetRegistry::new()
-        .iter()
-        .map(|r| r.ruleset_id.clone())
-        .find(|id| id != "PIANC-B")
-        .unwrap();
-    s.set_sizing(&other, "CEMT_IV", Some(2.5)).unwrap();
+    let other = "PIANC-A";
+    s.set_sizing(other, "CEMT_IV", Some(2.5)).unwrap();
     assert_eq!(s.stage_status(Stage::Sizing), StageStatus::Stale);
 }
 

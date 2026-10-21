@@ -137,8 +137,8 @@ def width_methods() -> tuple:
 # =====================================================================================
 # Default path: one-lane fairway = width_multiple x beam, bend widening LOA^2/(8R),
 # R_min = radius_multiple x LOA. NOTE the LOA^2/(8R) widening (c_C = 0.125) is BELOW
-# WG 141's own floor of c_C ~ 0.5 — see the RULESETS block in ``rulesets``. Prefer
-# ``channel_shape`` with a named ruleset for new work.
+# WG 141's own floor of c_C ~ 0.5 — see the ``pianc-wg141`` Rule Set. Prefer
+# ``channel_shape`` with a Rule Set for new work.
 #
 # ``use_buildup=True`` switches the straight width to the PIANC Report 121 concept-design
 # build-up W = W_BM + sum(W_i) + W_Br + W_Bg, coefficients as fractions of beam. Those are

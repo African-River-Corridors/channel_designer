@@ -16,7 +16,8 @@ use crate::alignment::navigable::{
 };
 use crate::alignment::radius_check::default_check_chord;
 use crate::geom::{Polygon, Pt};
-use crate::rules::rulesets::{ChannelShape, RulesetRegistry, channel_shape};
+use crate::rules::engine::selection_for_old_ruleset;
+use crate::rules::rulesets::{ChannelShape, channel_shape_for};
 use crate::rules::vessel_catalogue;
 
 /// Said on every output of the plan-only answer.
@@ -121,14 +122,16 @@ pub fn plan_only_fits(
             "the river centreline needs at least two points.",
         ));
     }
-    let registry = RulesetRegistry::new();
     let chained = Chained::new(centreline);
     let classes = classes_in_size_order();
     let mut rulesets = Vec::new();
     for &rs in ruleset_ids {
+        // An old ruleset name, sized through its Rule Set selection (spec 0007).
+        let selection = selection_for_old_ruleset(rs)
+            .map_err(|e| PyError::value(e.raw_message().to_string()))?;
         let mut rows = Vec::new();
         for class in &classes {
-            let shape = channel_shape(&registry, rs, class, None)
+            let shape = channel_shape_for(&selection, class, None)
                 .map_err(|e| PyError::value(e.raw_message().to_string()))?;
             rows.push(class_fit(&chained, water, &shape, class)?);
         }
