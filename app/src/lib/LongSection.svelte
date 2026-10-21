@@ -3,7 +3,7 @@
   import uPlot from "uplot";
   import "uplot/dist/uPlot.min.css";
   import type { LongSection } from "./api";
-  import { resolve } from "./theme";
+  import { onThemeChange, resolve, token } from "./theme";
 
   let {
     data,
@@ -27,31 +27,39 @@
   const series = (d: LongSection): uPlot.AlignedData => [d.chainage_m, d.bed_m, d.water_level_m, d.design_invert_m, d.cut_depth_m];
 
   function options(): uPlot.Options {
+    // Canvas cannot read CSS variables, so the tokens are resolved here, for the theme showing now.
+    const ink = token("ink");
+    const ink3 = token("ink-3");
+    const rule = token("rule");
+    const font = `${token("fs-11")} ${token("font-ui")}`;
+    const axis = { stroke: ink3, font, labelFont: font, grid: { stroke: rule, width: 1 }, ticks: { stroke: rule, width: 1 } };
     return {
       ...size,
       legend: { show: true, live: false },
       cursor: { drag: { x: false, y: false } },
       scales: { x: { time: false }, m: {}, cut: { range: (_u, min, max) => [0, Math.max(max, 1) * 1.1] } },
       axes: [
-        { label: "Chainage (m)", scale: "x" },
-        { label: "Elevation (m)", scale: "m", size: 56 },
-        { label: "Cut depth (m)", scale: "cut", side: 1, grid: { show: false }, size: 50 },
+        { ...axis, label: "Chainage (m)", scale: "x" },
+        { ...axis, label: "Elevation (m)", scale: "m", size: 56 },
+        { ...axis, label: "Cut depth (m)", scale: "cut", side: 1, grid: { show: false }, size: 50 },
       ],
       series: [
         {},
-        { label: "Bed", scale: "m", stroke: "#7a5a2a", width: 2 },
-        { label: "Water level", scale: "m", stroke: "#1f6fbf", width: 2, paths: uPlot.paths.stepped!({ align: 1 }) },
-        { label: "Design invert", scale: "m", stroke: resolve(colour), width: 2 },
-        { label: "Cut depth", scale: "cut", stroke: "#b3261e", width: 1, dash: [4, 3] },
+        // Ink for the ground and the water, the option's colour for its design line (the heaviest line).
+        { label: "Bed", scale: "m", stroke: ink, width: 2 },
+        { label: "Water level", scale: "m", stroke: ink, width: 1, dash: [8, 4], paths: uPlot.paths.stepped!({ align: 1 }) },
+        { label: "Design invert", scale: "m", stroke: resolve(colour), width: 4 },
+        { label: "Cut depth", scale: "cut", stroke: ink3, width: 1, dash: [4, 3] },
       ],
       hooks: {
         draw: [
           (u) => {
             if (marker == null) return;
             const x = u.valToPos(marker, "x", true);
+            const ink = token("ink");
             const { ctx } = u;
             ctx.save();
-            ctx.strokeStyle = "#14325a";
+            ctx.strokeStyle = ink;
             ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.moveTo(x, u.bbox.top);
@@ -80,7 +88,11 @@
       plot?.setSize(size);
     });
     ro.observe(host);
-    return () => ro.disconnect();
+    const unsub = onThemeChange(build);
+    return () => {
+      ro.disconnect();
+      unsub();
+    };
   });
   onDestroy(() => plot?.destroy());
 
@@ -100,7 +112,8 @@
 </div>
 
 <style>
-  .long { height: 100%; min-height: 0; }
+  .long { height: 100%; min-height: 0; background: var(--surface); }
   .plot { width: 100%; height: 100%; }
-  :global(.long .u-legend) { font-size: 11px; }
+  :global(.long .u-legend) { font-size: var(--fs-11); color: var(--ink-2); }
+  :global(.long .u-legend .u-marker) { border-radius: 0; }
 </style>
