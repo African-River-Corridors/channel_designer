@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import math
 
-from channel_designer.rules.width_profile import make_width_fn, width_params_dict
-from channel_designer.rules.rulesets import ChannelRuleInputs, width_at_radius
+from owd.rules.width_profile import make_width_fn, width_params_dict
+from owd.rules.rulesets import ChannelRuleInputs, width_at_radius
 
 RULE_SETS = ("pianc",)
 LOAS = (60.0, 80.0, 100.0)
@@ -51,7 +51,7 @@ def test_monotone_non_increasing_in_radius():
 
 
 def test_width_at_infinity_equals_straight_width_from_size_channel():
-    from channel_designer.rules.rulesets import size_channel
+    from owd.rules.rulesets import size_channel
 
     for rule_set in RULE_SETS:
         for loa_m in LOAS:

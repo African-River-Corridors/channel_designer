@@ -9,8 +9,8 @@ import sys
 import pytest
 from shapely.geometry import LineString
 
-from channel_designer.synthetic import synthetic_river
-from channel_designer.volumes.sections import section_volumes
+from owd.synthetic import synthetic_river
+from owd.volumes.sections import section_volumes
 
 
 def _volumes():
@@ -22,7 +22,7 @@ def _volumes():
 
 def test_gallery_sheet_renders(tmp_path):
     pytest.importorskip("technical_drawings_for_agents")
-    from channel_designer import drawings
+    from owd import drawings
     vols = _volumes()
     secs = drawings.pick_sections(vols, n=4, min_gap_m=100.0)
     assert 1 <= len(secs) <= 4
@@ -44,12 +44,12 @@ def test_missing_extra_gives_an_install_hint(monkeypatch):
         return real_import(name, *args, **kwargs)
 
     for mod in [m for m in sys.modules if m.startswith("technical_drawings_for_agents")
-                or m == "channel_designer.drawings.sections"]:
+                or m == "owd.drawings.sections"]:
         monkeypatch.delitem(sys.modules, mod)
-    drawings = importlib.import_module("channel_designer.drawings")
+    drawings = importlib.import_module("owd.drawings")
     monkeypatch.delattr(drawings, "sections", raising=False)
     monkeypatch.setattr(builtins, "__import__", fake_import)
     # The hint, and the real cause: an installed but incompatible toolkit looks the same (#14).
     with pytest.raises(ImportError,
-                       match=r"channel_designer\[drawings\].*technical_drawings_for_agents"):
+                       match=r"open-waterway-designer\[drawings\].*technical_drawings_for_agents"):
         drawings.section_gallery([], None)

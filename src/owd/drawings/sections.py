@@ -1,6 +1,6 @@
 """Cross-section gallery sheets (SVG, optional DXF) for a channel's cut.
 
-Every geometric quantity comes from :mod:`channel_designer.volumes` — this module only
+Every geometric quantity comes from :mod:`owd.volumes` — this module only
 lays out and draws. Furniture (paper-space sheet, frame, scale bars, ISO 7200 title block,
 status watermark, hatches, DXF) comes from ``technical_drawings_for_agents``.
 
@@ -11,7 +11,7 @@ Two generic pieces from the original section pack:
 - :func:`pack_gallery` — greedy packing of variable-height section panels at ONE common scale
   so sections compare.
 
-Needs ``channel_designer[drawings]``.
+Needs ``open-waterway-designer[drawings]``.
 """
 from __future__ import annotations
 
@@ -35,8 +35,8 @@ try:
     from technical_drawings_for_agents.titleblock import TitleBlockFields, iso7200_title_block
 except ImportError as exc:  # pragma: no cover - exercised by test_drawings_extra
     raise ImportError(
-        "channel_designer drawings need the optional extra: "
-        f"pip install 'channel_designer[drawings]'. Cause: {exc}") from exc
+        "owd drawings need the optional extra: "
+        f"pip install 'open-waterway-designer[drawings]'. Cause: {exc}") from exc
 
 from ..volumes.sections import CrossSection, SectionVolumes
 
@@ -328,7 +328,7 @@ def gallery_sheet(panels, info: SheetInfo, *, sheet_no: int = 1, n_sheets: int =
     sw("dredge", "Dredge: cut below WL inside the present river")
     sw("dry", "Dry excavation: bank, berm and face")
     sw(f"{C_GROUND}:0.4:", "Existing ground and river bed")
-    sw(f"{C_FACE}:0.35:", "Design cut face — channel_designer.volumes.cut_model")
+    sw(f"{C_FACE}:0.35:", "Design cut face — owd.volumes.cut_model")
     sw(f"{C_WL}:0.25:2,1", "Water level (WL)")
     y += 0.5
     for note in (["Areas per panel from volumes.cut_model.section_area — the same call, on the "
@@ -341,7 +341,7 @@ def gallery_sheet(panels, info: SheetInfo, *, sheet_no: int = 1, n_sheets: int =
         document_status=info.document_status, legal_owner=info.legal_owner,
         responsible_dept=info.responsible_dept, technical_reference=info.technical_reference,
         created_by=info.created_by, checked_by=info.checked_by, approved_by=info.approved_by,
-        sheet=f"{sheet_no} of {n_sheets}", provenance="channel_designer",
+        sheet=f"{sheet_no} of {n_sheets}", provenance="owd",
         scale=f"1:{scale}")
     d.add(iso7200_title_block(sheet, fields))
     return d.render()

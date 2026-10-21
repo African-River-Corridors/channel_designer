@@ -6,17 +6,17 @@ from __future__ import annotations
 
 import numpy as np
 
-from channel_designer.alignment.bends import classify_bends
-from channel_designer.alignment.centreline import build_centreline
-from channel_designer.alignment.limits import resample_line
-from channel_designer.alignment.meanders import find_meanders
-from channel_designer.alignment.rolling_circle import rolling_circle
-from channel_designer.alignment.route import min_radius_of_line, optimise_route
-from channel_designer.rules import channel_shape
-from channel_designer.synthetic import synthetic_river
-from channel_designer.volumes.cut_model import widened_hb_from_shape
-from channel_designer.volumes.footprint import channel_footprint
-from channel_designer.volumes.sections import section_volumes
+from owd.alignment.bends import classify_bends
+from owd.alignment.centreline import build_centreline
+from owd.alignment.limits import resample_line
+from owd.alignment.meanders import find_meanders
+from owd.alignment.rolling_circle import rolling_circle
+from owd.alignment.route import min_radius_of_line, optimise_route
+from owd.rules import channel_shape
+from owd.synthetic import synthetic_river
+from owd.volumes.cut_model import widened_hb_from_shape
+from owd.volumes.footprint import channel_footprint
+from owd.volumes.sections import section_volumes
 
 
 def test_synthetic_river_rules_alignment_volumes():

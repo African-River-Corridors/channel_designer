@@ -5,10 +5,10 @@ import numpy as np
 import pytest
 from shapely.geometry import LineString
 
-from channel_designer.volumes import pools
-from channel_designer.volumes.cut_model import WET_SLOPE_H_PER_V
-from channel_designer.volumes.footprint import channel_footprint, compute_excavation
-from channel_designer.volumes.sections import section_volumes, station_frame, trapezoid_area
+from owd.volumes import pools
+from owd.volumes.cut_model import WET_SLOPE_H_PER_V
+from owd.volumes.footprint import channel_footprint, compute_excavation
+from owd.volumes.sections import section_volumes, station_frame, trapezoid_area
 
 L = 1000.0
 HB = 15.0
@@ -57,7 +57,7 @@ def test_property_hb_forms_agree():
 
 
 def test_feasibility_model_b_never_cuts_more_than_a():
-    from channel_designer.synthetic import synthetic_river
+    from owd.synthetic import synthetic_river
     r = synthetic_river()
     seg = LineString(list(r.centreline.coords)[150:230])           # reach past the hill
     a = section_volumes(seg, r.terrain, r.polygon, r.water_level, 3.0, 15.0, model="a",
@@ -127,7 +127,7 @@ def test_golden_footprint_of_a_channel_wider_than_the_river():
 
 
 def test_property_footprint_grows_with_beam():
-    from channel_designer.synthetic import synthetic_river
+    from owd.synthetic import synthetic_river
     r = synthetic_river()
     small = channel_footprint(r.centreline, r.left_bank, r.right_bank, loa=80, beam=8, depth=3)
     big = channel_footprint(r.centreline, r.left_bank, r.right_bank, loa=80, beam=16, depth=3)
@@ -147,7 +147,7 @@ def _write_tif(path, z, x0, y0, px):
 
 def test_raster_terrain_bilinear_reproduces_a_plane(tmp_path):
     pytest.importorskip("rasterio")
-    from channel_designer.volumes.raster import RasterTerrain
+    from owd.volumes.raster import RasterTerrain
     px = 2.0
     xs = np.arange(0, 400, px) + px / 2
     ys = 200 - (np.arange(0, 200, px) + px / 2)
@@ -161,7 +161,7 @@ def test_raster_terrain_bilinear_reproduces_a_plane(tmp_path):
 
 def test_raster_chainage_volumes_match_the_section_integrator(tmp_path):
     pytest.importorskip("rasterio")
-    from channel_designer.volumes.raster import compute_chainage_volumes
+    from owd.volumes.raster import compute_chainage_volumes
     px = 1.0
     xs = np.arange(-50, 1050, px) + px / 2
     ys = 300 - (np.arange(0, 600, px) + px / 2)

@@ -8,9 +8,9 @@ import math
 import numpy as np
 import pytest
 
-from channel_designer.rules import methods as M
-from channel_designer.rules.design import ChannelDesignInputs, ChannelDesignParams, compute
-from channel_designer.rules.rulesets import (
+from owd.rules import methods as M
+from owd.rules.design import ChannelDesignInputs, ChannelDesignParams, compute
+from owd.rules.rulesets import (
     RULESETS,
     ChannelRuleInputs,
     Ruleset,
@@ -20,8 +20,8 @@ from channel_designer.rules.rulesets import (
     size_channel,
     width_at_radius,
 )
-from channel_designer.rules.simple import PIANCInputs, size_channel as simple_size
-from channel_designer.rules.width_profile import make_width_fn, width_params_dict
+from owd.rules.simple import PIANCInputs, size_channel as simple_size
+from owd.rules.width_profile import make_width_fn, width_params_dict
 
 CALLS = []
 
@@ -120,6 +120,26 @@ def test_entry_point_is_loaded_on_first_miss(monkeypatch):
 
     import importlib.metadata as md
     monkeypatch.setattr(md, "entry_points", lambda group=None: [EP()] if group == M.ENTRY_POINT_GROUP else [])
+    monkeypatch.setattr(M, "_ENTRY_POINTS_LOADED", False)
+    try:
+        assert M.get_width_method("toy") is TOY
+    finally:
+        M.unregister_width_method("toy")
+
+
+def test_legacy_entry_point_group_still_loads(monkeypatch):
+    """A plugin that still declares the pre-rename group `channel_designer.width_methods` is found."""
+    class EP:
+        name = "toy"
+        group = M.LEGACY_ENTRY_POINT_GROUP
+
+        @staticmethod
+        def load():
+            return TOY
+
+    import importlib.metadata as md
+    monkeypatch.setattr(md, "entry_points",
+                        lambda group=None: [EP()] if group == M.LEGACY_ENTRY_POINT_GROUP else [])
     monkeypatch.setattr(M, "_ENTRY_POINTS_LOADED", False)
     try:
         assert M.get_width_method("toy") is TOY

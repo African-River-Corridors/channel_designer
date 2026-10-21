@@ -7,7 +7,7 @@
 //! editing this one: build a [`WidthMethod`] from closures and call
 //! [`MethodRegistry::register`] (or [`register_width_method`] for the process-wide registry).
 //!
-//! Python also finds methods through the `channel_designer.width_methods` entry-point group. Rust
+//! Python also finds methods through the `owd.width_methods` entry-point group. Rust
 //! has no such mechanism; a plugin registers itself explicitly.
 //!
 //! Every callable takes an [`Options`] value: the method's own parameters, passed through

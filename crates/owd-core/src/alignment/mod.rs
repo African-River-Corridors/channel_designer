@@ -1,5 +1,5 @@
 //! Alignment: the line work between the river and the design line. One file per Python module of
-//! `channel_designer.alignment` (`radius_check`, `loops`, `rolling_circle`, ...).
+//! `owd.alignment` (`radius_check`, `loops`, `rolling_circle`, ...).
 
 pub mod bends;
 pub mod centreline;

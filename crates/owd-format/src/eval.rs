@@ -1,5 +1,5 @@
 //! `eval(entry_point, json) -> json`: the parity seam. One dispatch over every parity entry
-//! point. Input and output are JSON: the shapes are the ones the Python wrappers in `src/channel_designer/_rust.py` send and read.
+//! point. Input and output are JSON: the shapes are the ones the Python wrappers in `src/owd/_rust.py` send and read.
 //!
 //! Number encoding, both ways: a finite float is a JSON number; NaN and infinity are the strings
 //! `"float:nan"`, `"float:inf"` and `"float:-inf"`. In an input list of heights, `null` also means

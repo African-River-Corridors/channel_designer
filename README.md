@@ -65,13 +65,13 @@ vessel under PIANC quality B, straightened, re-routed and measured. This is
 `examples/quickstart.py`; the tests run it.
 
 ```python
-from channel_designer.alignment.meanders import find_meanders
-from channel_designer.alignment.rolling_circle import rolling_circle
-from channel_designer.alignment.route import optimise_route
-from channel_designer.rules import channel_shape
-from channel_designer.synthetic import synthetic_river
-from channel_designer.volumes.cut_model import widened_hb_from_shape
-from channel_designer.volumes.sections import section_volumes
+from owd.alignment.meanders import find_meanders
+from owd.alignment.rolling_circle import rolling_circle
+from owd.alignment.route import optimise_route
+from owd.rules import channel_shape
+from owd.synthetic import synthetic_river
+from owd.volumes.cut_model import widened_hb_from_shape
+from owd.volumes.sections import section_volumes
 
 river = synthetic_river()
 shape = channel_shape("PIANC-B", "CEMT_IV", draught_m=2.5)
@@ -109,7 +109,7 @@ bank lines as shapely `LineString`s, the wetted area as a `Polygon`, and a terra
 GeoTIFF DEM in the same CRS:
 
 ```
-from channel_designer.volumes.raster import RasterTerrain
+from owd.volumes.raster import RasterTerrain
 with RasterTerrain("my_dem.tif") as terrain:
     v = section_volumes(line, terrain, river_polygon, water_level, depth, half_width)
 ```

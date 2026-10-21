@@ -2,7 +2,7 @@
 
 ## Rolling-circle exits leave a short kink
 
-**Module:** `channel_designer.alignment.rolling_circle`
+**Module:** `owd.alignment.rolling_circle`
 
 **What happens.** The rolling circle replaces a tight bend with an arc of radius R_min. The arc
 joins the old line where the circle *crosses* it, not where it is tangent to it. So each arc
@@ -32,7 +32,7 @@ every rolled line, so it ships as its own change.
 
 ## R_min is reported, not guaranteed
 
-**Modules:** `channel_designer.alignment.rolling_circle`, `channel_designer.alignment.route`
+**Modules:** `owd.alignment.rolling_circle`, `owd.alignment.route`
 (issues #9 and #10)
 
 **What happens.** Both steps aim for R_min but can return a design line tighter than it:

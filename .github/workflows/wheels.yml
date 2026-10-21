@@ -108,24 +108,27 @@ jobs:
         shell: pwsh
         run: |
           # `--only-binary :all:` makes pip refuse any source build: a compiler is never needed.
-          python -m pip install --only-binary :all: --no-deps --no-index --find-links dist channel_designer
+          python -m pip install --only-binary :all: --no-deps --no-index --find-links dist open-waterway-designer
           python -m pip install --only-binary :all: numpy shapely
           # vessel_designer is pure Python, installed from git (its sdist builds without a compiler).
           python -m pip install "vessel_designer @ git+https://github.com/African-River-Corridors/open-vessel-concept-drawings@v0.2.2"
       - name: Use it
         shell: pwsh
         run: |
-          python -c "import channel_designer._core as c, json; print('core', c.__version__, len(c.entry_points()), 'entry points'); out = json.loads(c.eval('rulesets', json.dumps({'fn': 'channel_shape', 'args': {'ruleset_id': 'PIANC-B', 'vessel_standard_id': 'CEMT_IV', 'draught_m': 2.5}}))); assert abs(out['ok']['bottom_width_straight_m'] - 30.4) < 1e-9; from channel_designer.rules import channel_shape; print(channel_shape('PIANC-B', 'CEMT_IV').design_depth_m)"
+          python -c "import owd._core as c, json; print('core', c.__version__, len(c.entry_points()), 'entry points'); out = json.loads(c.eval('rulesets', json.dumps({'fn': 'channel_shape', 'args': {'ruleset_id': 'PIANC-B', 'vessel_standard_id': 'CEMT_IV', 'draught_m': 2.5}}))); assert abs(out['ok']['bottom_width_straight_m'] - 30.4) < 1e-9; from owd.rules import channel_shape; print(channel_shape('PIANC-B', 'CEMT_IV').design_depth_m)"
       - name: Negative control 2 - a source build fails in this same environment
         shell: pwsh
         run: |
           # The wheel installed above. The sdist needs rustc and a linker, so with --no-binary it must fail.
-          python -m pip install --no-binary channel_designer --no-deps --no-index --force-reinstall (Get-ChildItem sdist\*.tar.gz).FullName
+          python -m pip install --no-binary open-waterway-designer --no-deps --no-index --force-reinstall (Get-ChildItem sdist\*.tar.gz).FullName
           if ($LASTEXITCODE -eq 0) { throw "the source build succeeded, so the environment is not compiler-free" }
           $global:LASTEXITCODE = 0
           Write-Output "the source build failed, as it must; the wheel install passed"
       - name: The wheel still works after the failed source build
         shell: pwsh
         run: |
-          python -m pip install --only-binary :all: --no-deps --no-index --force-reinstall --find-links dist channel_designer
-          python -c "import channel_designer._core as c; print(c.__version__)"
+          python -m pip install --only-binary :all: --no-deps --no-index --force-reinstall --find-links dist open-waterway-designer
+          python -c "import owd._core as c; print(c.__version__)"
+          # The old import name works for one release (spec 0006): it warns and gives the owd objects.
+          python -W error::DeprecationWarning -c "import owd, owd.rules"
+          python -W always -c "import channel_designer, owd; assert channel_designer is owd; import channel_designer._core as c; print('old name ok', c.__version__)"

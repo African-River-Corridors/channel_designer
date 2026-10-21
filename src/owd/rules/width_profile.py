@@ -1,5 +1,5 @@
 """Thin bridge: channel bottom width as a function of bend radius, sourced from the
-single width authority (:func:`channel_designer.rules.rulesets.width_at_radius`).
+single width authority (:func:`owd.rules.rulesets.width_at_radius`).
 
 No width math is duplicated here — this module only wires inputs through and returns a
 callable the alignment solver can use as a width-aware edge cost.

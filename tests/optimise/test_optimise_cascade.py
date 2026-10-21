@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from shapely.geometry import LineString
 
-from channel_designer.optimise.cascade import (
+from owd.optimise.cascade import (
     CascadeConfig,
     LevelTable,
     build_level_table,

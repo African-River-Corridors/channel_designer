@@ -6,7 +6,7 @@ vessel only through (R_min, W_top, W_bottom). No design alignment is needed.
     e(bend)  the smallest lateral corridor half-width about the natural centreline inside
              which SOME curve of radius >= R_min can traverse the bend.
     room     how far the channel may sit off the natural line before it has left the river
-             (:func:`channel_designer.rules.rulesets.lateral_room_m`).
+             (:func:`owd.rules.rulesets.lateral_room_m`).
     class    e == 0 -> S (straight) | e <= room -> G (gentle, follow it) | else T (tight)
 
 A tight bend is what an alignment optimiser must solve; a gentle one can be followed.

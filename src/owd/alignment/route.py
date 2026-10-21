@@ -26,8 +26,8 @@ METHOD
    baseline sideways: it cannot lift a baseline that is itself tighter than ``r_min``. Roll
    the baseline first (:mod:`.rolling_circle`) and check ``radius_ok``.
 
-Validate a winner with a true volume integration (:mod:`channel_designer.volumes.sections`
-or :mod:`channel_designer.volumes.raster`), never with the grid's own numbers.
+Validate a winner with a true volume integration (:mod:`owd.volumes.sections`
+or :mod:`owd.volumes.raster`), never with the grid's own numbers.
 
 The objective weights wet and dry cut (``wet_weight``, ``dry_weight``). They are relative
 WEIGHTS, not prices: 1.0 / 1.0 minimises volume. Pricing is out of scope for this package.
@@ -45,7 +45,7 @@ from typing import Callable, Optional, Sequence, Union
 import numpy as np
 from shapely.geometry import LineString
 
-from channel_designer.alignment.radius_check import RADIUS_TOL, radius_ok
+from owd.alignment.radius_check import RADIUS_TOL, radius_ok
 
 TerrainSampler = Callable[[np.ndarray, np.ndarray], np.ndarray]
 GradeLike = Union[float, Callable[[float], float]]

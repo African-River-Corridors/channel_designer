@@ -27,7 +27,7 @@ Design basis:
 - Depth = draft + under-keel clearance, UKC = max(ukc_min, ukc_fraction x draft).
 - Side slope: top width = bottom + 2 x side_slope x design_depth.
 
-A registered width method (:mod:`channel_designer.rules.methods`) can replace the first and
+A registered width method (:mod:`owd.rules.methods`) can replace the first and
 third items: set ``ChannelDesignParams.width_method``. The straight width then comes from the
 method, and each discrete bend (a run of one turn direction) whose radius R1 is below R2 is
 widened to ``method.bend_width(loa, beam, options, R1, R2, deflection)``. Where a bend width
@@ -84,7 +84,7 @@ class ChannelDesignParams:
                                          # set 4.0 / 5.0 for the future comparison scenarios)
     side_slope: float = 4.0              # bank slope (horizontal per vertical)
 
-    # --- optional registered width method (see channel_designer.rules.methods) ---
+    # --- optional registered width method (see owd.rules.methods) ---
     # None: straight = width_multiple x beam, banded extra width below. A name: the method
     # sizes the straight width and each discrete bend; R2 stays radius_multiple x LOA.
     width_method: Optional[str] = None

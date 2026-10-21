@@ -2,8 +2,8 @@
 
 A thin layer over a width method (:mod:`.methods`, default ``"pianc"``) and
 :mod:`.design` (depth/UKC). For curvature-driven
-widening along a real centreline use :func:`channel_designer.rules.design.compute`; for a
-named standard and vessel class use :func:`channel_designer.rules.rulesets.channel_shape`.
+widening along a real centreline use :func:`owd.rules.design.compute`; for a
+named standard and vessel class use :func:`owd.rules.rulesets.channel_shape`.
 """
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def size_channel(inp: PIANCInputs, depth_m: float | None = None) -> PIANCChannel
     Default (``"pianc"``): straight bottom width = ``width_multiple_straight x beam``; bend
     width = straight + LOA²/(8R) at the design radius R = radius_multiple × LOA. For
     curvature-driven widening along a real surveyed centreline, use
-    :func:`channel_designer.rules.design.compute`.
+    :func:`owd.rules.design.compute`.
     """
     c = _rust.Call()
     r = _rust.call("simple", "size_channel", _call=c, inputs=inp, depth_m=depth_m,

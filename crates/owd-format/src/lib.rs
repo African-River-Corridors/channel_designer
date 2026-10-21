@@ -1,4 +1,4 @@
-//! The `eval` seam the Python package calls (`channel_designer._core`), and the `.cdesign` document.
+//! The `eval` seam the Python package calls (`owd._core`), and the `.cdesign` document.
 
 pub mod design;
 mod eval;

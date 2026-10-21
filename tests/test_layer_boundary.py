@@ -8,7 +8,7 @@ import ast
 import sys
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parents[1] / "src" / "channel_designer"
+SRC = Path(__file__).resolve().parents[1] / "src" / "owd"
 ALLOWED_THIRD_PARTY = {"numpy", "shapely", "vessel_designer"}
 HEAVY = {"rasterio", "geopandas", "fiona", "pyproj", "scipy", "affine", "osgeo", "gdal",
          "pandas", "matplotlib", "technical_drawings_for_agents"}
@@ -35,7 +35,7 @@ def test_calculation_layers_import_no_heavy_geo_stack():
             if mod in HEAVY:
                 bad.append(f"{rel}: {mod} (heavy)")
             elif (mod not in sys.stdlib_module_names and mod not in ALLOWED_THIRD_PARTY
-                  and mod != "channel_designer"):
+                  and mod != "owd"):
                 bad.append(f"{rel}: {mod} (not an allowed core dependency)")
     assert not bad, bad
 

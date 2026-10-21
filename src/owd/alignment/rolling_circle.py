@@ -26,7 +26,7 @@ vessel length, or smooth the exits first. Kept as is on purpose; a test pins it.
 Unresolved bends. The circle does not always lift the line to R_min. On a jagged input (a
 trace digitised at coarse vertices, with zigzags) more passes do not converge. The result
 says so: ``radius_ok``, ``measured_min_radius_m`` and the chord it was read on
-(:mod:`channel_designer.alignment.radius_check`). Check ``radius_ok`` before you use the line.
+(:mod:`owd.alignment.radius_check`). Check ``radius_ok`` before you use the line.
 """
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ from typing import List, Optional, Sequence, Tuple
 import numpy as np
 from shapely.geometry import LineString
 
-from channel_designer.alignment.radius_check import radius_ok
+from owd.alignment.radius_check import radius_ok
 
 
 @dataclass

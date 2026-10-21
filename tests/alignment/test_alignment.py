@@ -7,10 +7,10 @@ import numpy as np
 import pytest
 from shapely.geometry import LineString, Point
 
-from channel_designer.alignment import bends, centreline, limits, meanders, primitives, route
-from channel_designer.alignment.rolling_circle import rolling_circle
-from channel_designer.alignment.widths import measure_widths
-from channel_designer.synthetic import sine_generated_centreline, synthetic_river
+from owd.alignment import bends, centreline, limits, meanders, primitives, route
+from owd.alignment.rolling_circle import rolling_circle
+from owd.alignment.widths import measure_widths
+from owd.synthetic import sine_generated_centreline, synthetic_river
 
 
 def _straight(length=2000.0):
@@ -100,7 +100,7 @@ def test_property_rolling_circle_lifts_min_radius_to_target():
     # short kink at each arc exit. Measured on a 50 m chord (a vessel-length scale) the radius
     # holds; on a 10 m chord the kink reads as a tighter radius. Known issue, kept on
     # purpose: see KNOWN_ISSUES in the module docstring and docs/known-issues.md.
-    from channel_designer.alignment.limits import resample_line
+    from owd.alignment.limits import resample_line
     rmin, _ = route.min_radius_of_line(resample_line(res.centreline, 50.0))
     assert rmin >= 0.95 * r_min, rmin
     fine, _ = route.min_radius_of_line(resample_line(res.centreline, 10.0))

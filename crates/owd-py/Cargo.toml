@@ -1,6 +1,6 @@
 [package]
 name = "owd-py"
-description = "PyO3 bindings for the Python package: the parity seam as `channel_designer._core` (ticket 35). Not a default member."
+description = "PyO3 bindings for the Python package: the parity seam as `owd._core` (ticket 35). Not a default member."
 publish = false
 version.workspace = true
 edition.workspace = true

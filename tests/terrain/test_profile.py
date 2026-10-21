@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from shapely.geometry import LineString
 
-from channel_designer.terrain import line_profile
+from owd.terrain import line_profile
 
 
 def plane(a=2.0, bx=0.01, by=0.0):

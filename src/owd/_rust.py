@@ -1,4 +1,4 @@
-"""The bridge to the Rust core (``channel_designer._core``).
+"""The bridge to the Rust core (``owd._core``).
 
 Every public function of the package is a thin wrapper: it names the Rust entry point and function,
 encodes its arguments, and decodes the answer into the types the Python API has always returned
@@ -284,7 +284,7 @@ class _ReadOnlyConstants(types.ModuleType):
     def __setattr__(self, name, value):
         if name in type(self)._CORE_CONSTANTS and name in self.__dict__ and self.__dict__[name] != value:
             warnings.warn(
-                f"{self.__name__}.{name} is now fixed in the Rust core (channel_designer 0.2.0): "
+                f"{self.__name__}.{name} is now fixed in the Rust core (owd 0.2.0): "
                 "assigning it has no effect and will raise an error in 0.3.0.",
                 DeprecationWarning, stacklevel=2)
         super().__setattr__(name, value)

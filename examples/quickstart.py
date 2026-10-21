@@ -6,13 +6,13 @@ Runs in a few seconds with the core install (no DEM, no data files):
 
 The same code is the worked example in README.md; tests/test_examples.py runs it.
 """
-from channel_designer.alignment.meanders import find_meanders
-from channel_designer.alignment.rolling_circle import rolling_circle
-from channel_designer.alignment.route import optimise_route
-from channel_designer.rules import channel_shape
-from channel_designer.synthetic import synthetic_river
-from channel_designer.volumes.cut_model import widened_hb_from_shape
-from channel_designer.volumes.sections import section_volumes
+from owd.alignment.meanders import find_meanders
+from owd.alignment.rolling_circle import rolling_circle
+from owd.alignment.route import optimise_route
+from owd.rules import channel_shape
+from owd.synthetic import synthetic_river
+from owd.volumes.cut_model import widened_hb_from_shape
+from owd.volumes.sections import section_volumes
 
 
 def main():

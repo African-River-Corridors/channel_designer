@@ -12,7 +12,7 @@ solved exactly — no metaheuristic, no local optimum.
             ``terminal_min_level_m``
 
 Every cost is a caller-supplied callable returning a unitless WEIGHT, the same convention as
-:mod:`channel_designer.alignment.route`. The package prices nothing. A typical reach cost is
+:mod:`owd.alignment.route`. The package prices nothing. A typical reach cost is
 earthworks from a :class:`LevelTable` (:func:`earthworks_reach_cost`), plus any terms the
 caller cares about (flooded area, buildings, crossings), each weighted by the caller.
 
@@ -110,7 +110,7 @@ class Cascade:
         return [(r.start_m, r.end_m, r.level_m) for r in self.reaches]
 
     def as_explicit_weirs(self, structure_height_m: Optional[float] = None) -> list:
-        """Input for :func:`channel_designer.volumes.pools.place_weirs_explicit`."""
+        """Input for :func:`owd.volumes.pools.place_weirs_explicit`."""
         return [dict(chainage_m=w.chainage_m, pool_mwl_m=w.pool_level_m,
                      structure_height_m=structure_height_m) for w in self.weirs]
 
@@ -216,7 +216,7 @@ def build_level_table(line: LineString, terrain: TerrainSampler, river_polygon,
                       model: str = CUT_MODEL, station_m: float = STATION_M,
                       maxw_m: float = MAXW_M, chainage_m: Optional[Sequence[float]] = None,
                       **section_kwargs) -> LevelTable:
-    """Run :func:`channel_designer.volumes.sections.section_volumes` once per level, with the
+    """Run :func:`owd.volumes.sections.section_volumes` once per level, with the
     pool water level = that level and grade = level − depth, and keep the per-station areas.
 
     ``chainage_m`` (one per station) re-labels the stations onto the cascade's axis.
