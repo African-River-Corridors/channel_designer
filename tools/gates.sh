@@ -10,7 +10,9 @@
 #   1. cargo fmt --check
 #   2. clippy, warnings as errors (includes the banned-maths rule: crates/owd-core/clippy.toml and
 #      crates/owd-format/clippy.toml, which hold the same list)
-#   3. cargo test, with Python made unusable, to prove the Rust loop needs no Python
+#   3. cargo nextest (profile `pr`, .config/nextest.toml) and `cargo test --doc`, with Python made
+#      unusable, to prove the Rust loop needs no Python. The slowest tests run nightly instead
+#      (docs/agents/slow-tests.md); `GATES_NEXTEST_PROFILE=nightly` runs every test.
 #   4. pytest against the shipped package
 #
 # `owd-py` (the Python extension) is excluded from step 3 as well: PyO3's build script runs Python to find
@@ -48,6 +50,7 @@ need rustc
 need "$PY"
 cargo fmt --version >/dev/null 2>&1 || fail "rustfmt is not installed (rustup component add rustfmt)"
 cargo clippy --version >/dev/null 2>&1 || fail "clippy is not installed (rustup component add clippy)"
+cargo nextest --version >/dev/null 2>&1 || fail "cargo-nextest is not installed (cargo install cargo-nextest --locked)"
 "$PY" -c "import pytest" 2>/dev/null || fail "pytest is not importable by $PY (pip install -e '.[dev]')"
 
 # Note: "$@" runs inside `||`, so bash ignores `set -e` in it. A step that is a shell function
@@ -74,7 +77,11 @@ cargo_test_without_python() {
   done
   # Explicit `|| return 1`: `step` calls this function inside `||`, where bash ignores `set -e`,
   # so without it a failing cargo test would fall through and the step would report ok.
-  PATH="$shims:$PATH" CD_PYTHON="$shims/python3" cargo test --workspace --exclude owd-app --exclude owd-py --all-features || return 1
+  PATH="$shims:$PATH" CD_PYTHON="$shims/python3" cargo nextest run --workspace --exclude owd-app --exclude owd-py \
+    --all-features --profile "${GATES_NEXTEST_PROFILE:-pr}" || return 1
+  # nextest does not run doctests.
+  PATH="$shims:$PATH" CD_PYTHON="$shims/python3" cargo test --doc --workspace --exclude owd-app --exclude owd-py \
+    --all-features || return 1
   if [ -e "$marker" ]; then
     echo "gates: cargo test called Python:" >&2
     cat "$marker" >&2

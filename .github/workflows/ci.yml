@@ -31,6 +31,11 @@ jobs:
       - name: Install the pinned Rust toolchain (rust-toolchain.toml)
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
+      # The gate runs the Rust tests with cargo-nextest (pinned). The slowest tests run in
+      # nightly.yml instead; see docs/agents/slow-tests.md.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest@0.9.100
       # vessel_designer and technical_drawings_for_agents install from git. While those
       # repositories are private this step needs read access to them; after release it does not.
       - name: Install
