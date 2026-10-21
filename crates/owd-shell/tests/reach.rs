@@ -142,14 +142,10 @@ fn a_reach_becomes_a_study_with_marked_inputs_a_level_a_bed_and_an_answer() {
         "{notices:?}"
     );
 
-    s.set_bed(&[[0.0, 3.0]], Some("dry"), "2024-03-01").unwrap();
-    assert_eq!(
-        s.snapshot()["document"]["provenance"]["bed"]["mark"],
-        "user"
-    );
     s.run_fits().unwrap();
     let snap = s.snapshot();
     assert!(snap["document"]["fits"].is_object());
+
     assert_eq!(snap["fits_status"], "fresh");
     let stretches: &Value = &snap["reach_view"]["fits_stretches"]["PIANC-B"];
     assert!(
@@ -157,6 +153,11 @@ fn a_reach_becomes_a_study_with_marked_inputs_a_level_a_bed_and_an_answer() {
         "{stretches}"
     );
 
+    s.set_bed(&[[0.0, 3.0]], Some("dry"), "2024-03-01").unwrap();
+    assert_eq!(
+        s.snapshot()["document"]["provenance"]["bed"]["mark"],
+        "user"
+    );
     // A step on a design that changed meanwhile is not kept.
     let job = s
         .begin_reach(ReachStep::Banks)
@@ -165,4 +166,76 @@ fn a_reach_becomes_a_study_with_marked_inputs_a_level_a_bed_and_an_answer() {
         .unwrap();
     s.set_bed(&[[0.0, 2.0]], None, "2024-03-01").unwrap();
     assert!(s.keep_reach(job).unwrap_err().contains("changed"));
+}
+
+#[test]
+fn with_a_bed_model_a_level_and_the_dem_the_answer_is_full() {
+    use owd_format::design::Role;
+    use owd_format::geotiff::Dem;
+    // The straight, 400 m wide river of owd-format's tests/fits_full.rs, with a flat DEM at 12 m.
+    const UTM30: &str =
+        r#""crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:EPSG::32630"}}"#;
+    let at = |x: f64, y: f64| [x + 500_000.0, y + 600_000.0];
+    let mut s = AppState::new_design("t", "2026-10-21");
+    let polygon = format!(
+        r#"{{"type":"Polygon",{UTM30},"coordinates":[{}]}}"#,
+        serde_json::json!([
+            at(0.0, -200.0),
+            at(3000.0, -200.0),
+            at(3000.0, 200.0),
+            at(0.0, 200.0),
+            at(0.0, -200.0)
+        ])
+    );
+    let centre = format!(
+        r#"{{"type":"LineString",{UTM30},"coordinates":{}}}"#,
+        serde_json::json!([at(0.0, 0.0), at(3000.0, 0.0)])
+    );
+    s.load_inputs(
+        &[(Role::RiverPolygon, polygon), (Role::Centreline, centre)],
+        "2026-10-21",
+    )
+    .unwrap();
+    s.set_water(10.0, None).unwrap();
+    s.run_fits().unwrap();
+    assert!(
+        s.snapshot()["document"]["fits"]["results"]
+            .get("mode")
+            .is_none(),
+        "plan only"
+    );
+    s.set_bed(
+        &[
+            [0.0, 4.0],
+            [1100.0, 4.0],
+            [1200.0, 1.5],
+            [1500.0, 1.5],
+            [1600.0, 4.0],
+        ],
+        Some("dry"),
+        "2026-10-21",
+    )
+    .unwrap();
+    let (w, h) = (120, 40);
+    let dem = Dem {
+        width: w,
+        height: h,
+        data: vec![12.0; w * h],
+        geotransform: [50.0, 0.0, 499_500.0, 0.0, -50.0, 601_000.0],
+        nodata: None,
+        epsg: Some(32630),
+    };
+    let bytes = owd_format::design::dem_source::write_geotiff(&dem).unwrap();
+    s.load_dem(Path::new("dem.tif"), bytes, "2026-10-21")
+        .unwrap();
+    s.run_fits().unwrap();
+    let r = &s.snapshot()["document"]["fits"]["results"];
+    assert_eq!(r["mode"], "full");
+    assert!(
+        r["rulesets"][0]["classes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|c| c["depth_basis"] == "depth assumed, not measured")
+    );
 }

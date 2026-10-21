@@ -298,11 +298,26 @@ impl AppState {
         Ok(())
     }
 
-    /// Answer "what fits" over every vessel class (plan only until the full answer lands).
+    /// Answer "what fits" over every vessel class: plan only, or full (with depth and the verdict)
+    /// when the design has a bed model, a water level and its DEM.
     pub fn run_fits(&mut self) -> Result<(), String> {
         self.refuse_while_running()?;
         let mut s = self.session().clone();
-        s.run_fits(None).map_err(err)?;
+        let dem = self.usable_dem_for_reach();
+        let epsg = s.document()["project"]["crs"]["epsg"]
+            .as_u64()
+            .map(|c| c as u32);
+        let sampler = match dem.as_deref() {
+            Some(d) => Some(owd_format::design::terrain::dem_sampler(d, epsg).map_err(err)?),
+            None => None,
+        };
+        s.run_fits_with(
+            None,
+            sampler
+                .as_ref()
+                .map(|f| f as &dyn Fn(&[f64], &[f64]) -> Vec<f64>),
+        )
+        .map_err(err)?;
         self.replace_session(s);
         self.set_dirty();
         Ok(())
