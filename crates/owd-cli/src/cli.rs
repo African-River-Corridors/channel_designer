@@ -228,7 +228,7 @@ enum Command {
         #[arg(short = 'o', long = "output", value_name = "FILE")]
         output: Option<String>,
     },
-    /// Draw sheets of a design line option: cross sections and the typical section now, more kinds as they land. Writes, for
+    /// Draw sheets of a design line option: cross sections, the typical section and the setting-out table now, more kinds as they land. Writes, for
     /// each sheet, its drawing document, normalised content, SVG, PDF and DXF. `owd draw run FILE`
     /// reads one drawing document with the drawing crate and prints the result of clause 17.3.
     #[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
@@ -246,7 +246,7 @@ enum Command {
         /// The design line option, by id or name (default: the first).
         #[arg(long, value_name = "NAME")]
         option: Option<String>,
-        /// The kinds of sheet, comma separated: xs (cross sections), ts (typical section). Default: all.
+        /// The kinds of sheet, comma separated: xs (cross sections), ts (typical section), so (setting-out table and CSV). Default: all.
         #[arg(long, value_name = "KINDS")]
         sheets: Option<String>,
         /// The revision letter in the title block (default A).

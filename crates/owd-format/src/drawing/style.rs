@@ -7,6 +7,7 @@
 //! made it. No threshold of the gallery lives only in code.
 
 use super::gallery::GalleryParams;
+use super::setting_out::SettingOutParams;
 use super::typical::TypicalParams;
 use crate::design::hash::hash_value;
 use crate::design::schema::validate;
@@ -137,6 +138,20 @@ impl Style {
     /// The style as JSON.
     pub fn value(&self) -> &Value {
         &self.value
+    }
+
+    /// What the setting-out table reads.
+    pub fn setting_out(&self) -> SettingOutParams {
+        let v = &self.value;
+        SettingOutParams {
+            sheet_size: v["sheets"]["so"]["size"]
+                .as_str()
+                .unwrap_or("A3")
+                .to_string(),
+            landscape: v["sheets"]["so"]["orientation"] != "portrait",
+            spacing_m: v["setting_out"]["spacing_m"].as_f64().unwrap_or(100.0),
+            row_pitch_mm: v["setting_out"]["row_pitch_mm"].as_f64().unwrap_or(4.5),
+        }
     }
 
     /// What the typical section reads.

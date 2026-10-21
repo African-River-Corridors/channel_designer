@@ -727,6 +727,7 @@ pub(super) fn build(
             kind: SheetKind::CrossSections,
             number,
             document,
+            extra: Vec::new(),
         });
     }
     Ok(out)

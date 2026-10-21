@@ -676,3 +676,180 @@ fn a_typical_section_that_cannot_be_dimensioned_at_any_scale_says_so() {
         .to_string();
     assert!(e.contains("typical section does not fit"), "{e}");
 }
+
+// ---- the setting-out table (spec 0004, ticket 4) ------------------------------------------------
+
+fn so_with(style: Style) -> Vec<Sheet> {
+    let (text, dem) = example();
+    let o = DrawOptions {
+        sheets: vec![SheetKind::SettingOut],
+        style,
+        ..DrawOptions::default()
+    };
+    drawing::sheets_from_text(&text, Some(&dem), &o).unwrap()
+}
+
+fn so_table(spacing: f64) -> drawing::SettingOutTable {
+    let (text, _) = example();
+    drawing::setting_out_table(&Session::open(&text).unwrap(), "rolling-circle", spacing).unwrap()
+}
+
+fn csv_of(sheets: &[Sheet]) -> String {
+    let (_, bytes) = sheets
+        .iter()
+        .flat_map(|s| s.extra.iter())
+        .find(|(n, _)| n.ends_with(".csv"))
+        .expect("the first sheet carries the CSV");
+    String::from_utf8(bytes.clone()).unwrap()
+}
+
+fn drawn_rows(sheets: &[Sheet], viewport: &str, prefix: &str, cols: usize) -> Vec<Vec<String>> {
+    let mut rows = Vec::new();
+    for s in sheets {
+        let Some(vp) = s.document["viewports"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|v| v["id"] == viewport)
+        else {
+            continue;
+        };
+        let text = |id: String| {
+            vp["entities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|e| e["id"] == id)
+                .map(|e| e["text"].as_str().unwrap().to_string())
+        };
+        let mut r = 0;
+        while text(format!("{prefix}-r{r}-c0")).is_some() {
+            rows.push(
+                (0..cols)
+                    .map(|c| text(format!("{prefix}-r{r}-c{c}")).unwrap())
+                    .collect(),
+            );
+            r += 1;
+        }
+    }
+    rows
+}
+
+#[test]
+fn the_setting_out_sheet_is_accepted_and_holds_the_zone_and_datum() {
+    let sheets = so_with(Style::builtin());
+    assert!(sheets[0].number.contains("-SO-001"), "{}", sheets[0].number);
+    for s in &sheets {
+        let out = drawing::render(s).expect("otd accepts it");
+        assert!(out.warnings.is_empty(), "{:?}", out.warnings);
+        let header = s.document["notes"][0].as_str().unwrap();
+        assert!(
+            header.contains("WGS 84 / UTM ZONE 30N") && header.contains("EPSG:32630"),
+            "{header}"
+        );
+        assert!(header.contains("0.001 M"), "{header}");
+    }
+}
+
+#[test]
+fn every_coordinate_chainage_and_radius_equals_the_result_and_the_csv_holds_the_same_rows() {
+    let sheets = so_with(Style::builtin());
+    let t = so_table(100.0);
+    assert!(owd_format::drawing::check::setting_out(&sheets, &t).is_empty());
+    // An independent result: the station walk's own points, every 25 m of chainage.
+    let w = walk();
+    let drawn = drawn_rows(&sheets, "so-stations", "so-s", 5);
+    assert_eq!(drawn.len(), t.stations.len());
+    for (row, st) in drawn.iter().zip(&t.stations) {
+        if let Some(s) = w
+            .stations
+            .iter()
+            .find(|s| (s.chainage_m - st.chainage_m).abs() < 1e-9)
+        {
+            let e: f64 = row[1].parse().unwrap();
+            let n: f64 = row[2].parse().unwrap();
+            assert!(
+                (e - s.x).abs() <= 5.1e-4 && (n - s.y).abs() <= 5.1e-4,
+                "{row:?} vs walk ({}, {})",
+                s.x,
+                s.y
+            );
+            // The walk's heading is the direction of its segment too: bearing = 90 - heading.
+            let b: f64 = row[3].parse().unwrap();
+            let want = (90.0 - s.heading_rad.to_degrees()).rem_euclid(360.0);
+            let diff = ((b - want + 180.0).rem_euclid(360.0) - 180.0).abs();
+            assert!(
+                diff < 5.0,
+                "bearing {b} against the walk's heading {want} at {}",
+                st.chainage_m
+            );
+        }
+    }
+    // The CSV: every sheet row is in it, in order.
+    let csv = csv_of(&sheets);
+    let lines: Vec<Vec<&str>> = csv
+        .lines()
+        .skip(1)
+        .map(|l| l.split(',').collect())
+        .collect();
+    let stations: Vec<&Vec<&str>> = lines.iter().filter(|l| l[0] == "station").collect();
+    assert_eq!(stations.len(), drawn.len());
+    for (c, d) in stations.iter().zip(&drawn) {
+        assert_eq!(
+            (c[2], c[3], c[4]),
+            (d[1].as_str(), d[2].as_str(), d[3].as_str())
+        );
+    }
+    let bends = drawn_rows(&sheets, "so-bends", "so-b", 4);
+    assert_eq!(lines.iter().filter(|l| l[0] == "bend").count(), bends.len());
+    assert!(!bends.is_empty(), "the example has bends");
+}
+
+#[test]
+fn a_wrong_row_or_a_csv_that_differs_is_refused_naming_the_check() {
+    let t = so_table(100.0);
+    let good = so_with(Style::builtin());
+    let mut s = good.clone();
+    let e = s[0].document["viewports"][0]["entities"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|e| e["id"] == "so-s-r2-c1")
+        .unwrap();
+    e["text"] = Value::String("500136.625".into());
+    let found = owd_format::drawing::check::setting_out(&s, &t);
+    assert!(
+        found
+            .iter()
+            .any(|f| f.check == "setting-out-station" && f.sheet == s[0].number),
+        "{found:?}"
+    );
+    let mut s = good;
+    for (n, bytes) in &mut s[0].extra {
+        if n.ends_with(".csv") {
+            *bytes = String::from_utf8(bytes.clone())
+                .unwrap()
+                .replacen("500066.180", "500066.181", 1)
+                .into_bytes();
+        }
+    }
+    let found = owd_format::drawing::check::setting_out(&s, &t);
+    assert!(
+        found.iter().any(|f| f.check == "setting-out-csv"),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn the_spacing_comes_from_the_style_and_a_long_table_splits_over_sheets() {
+    let wide = so_with(Style::from_overlay(&json!({"setting_out": {"spacing_m": 500}})).unwrap());
+    let rows = |sheets: &[Sheet]| drawn_rows(sheets, "so-stations", "so-s", 5).len();
+    assert_eq!(rows(&wide), so_table(500.0).stations.len());
+    let fine = so_with(Style::from_overlay(&json!({"setting_out": {"spacing_m": 10}})).unwrap());
+    assert!(fine.len() >= 2, "300 rows do not fit one sheet");
+    assert_eq!(rows(&fine), so_table(10.0).stations.len());
+    for s in &fine {
+        assert!(drawing::render(s).is_ok());
+    }
+    assert!(owd_format::drawing::check::setting_out(&fine, &so_table(10.0)).is_empty());
+}

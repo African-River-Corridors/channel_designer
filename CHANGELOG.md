@@ -37,6 +37,12 @@ versions follow [Semantic Versioning](https://semver.org/).
   `owd draw --style FILE` lays the members of a file over the default; `--section-spacing`, `--sheet-size` and
   `--scale` override single values (`owd.draw(style=..., overrides=...)` in Python). An invalid style is refused
   with the field named. The SHA-256 of the style after the overrides is printed on every sheet.
+- **Setting-out table (spec 0004, ticket 4).** `owd draw` now also draws the setting-out table (kind `SO`) and
+  writes it as one CSV: a row per station at the style's spacing (`setting_out.spacing_m`, 100 m by default) with
+  chainage, easting, northing, bearing and the local radius on the radius-check chord, and a row per bend with start
+  and end chainage, least radius and deflection. Coordinates are in the design's UTM zone to 0.001 m, and the zone
+  and datum are on every sheet. The design line is a polyline, so there are no intersection-point rows. A long table
+  splits over sheets.
 - **Typical section (spec 0004, ticket 3).** `owd draw` now also draws the typical section (kind `TS`): the channel
   in section with its bottom width, design depth and side slope, the design water level, the design vessel for scale,
   and a detail that dimensions the under-keel clearance at a scale where it can be read. Each value has a note that

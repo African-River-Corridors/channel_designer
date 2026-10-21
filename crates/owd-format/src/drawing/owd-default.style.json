@@ -9,6 +9,10 @@
     "ts": {
       "size": "A1",
       "orientation": "landscape"
+    },
+    "so": {
+      "size": "A3",
+      "orientation": "landscape"
     }
   },
   "layers": {
@@ -72,5 +76,9 @@
       50,
       100
     ]
+  },
+  "setting_out": {
+    "spacing_m": 100,
+    "row_pitch_mm": 4.5
   }
 }
