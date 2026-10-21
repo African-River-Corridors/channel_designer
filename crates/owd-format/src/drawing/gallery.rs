@@ -28,6 +28,8 @@ pub struct GalleryParams {
     pub section_spacing_m: f64,
     /// Add the middle of each tight bend.
     pub bend_sections: bool,
+    /// Add the worst station of each constraint stretch of the screening.
+    pub worst_sections: bool,
     /// The scales to try, largest scale first (denominators of the standard's ratios).
     pub scales: Vec<u32>,
     /// The fewest panels side by side that a scale must allow.
@@ -78,6 +80,7 @@ pub(super) const PANEL_STRIDE_M: f64 = 10_000.0;
 pub(super) fn pick(
     walk: &SectionVolumes,
     option: &Value,
+    worst: &[f64],
     params: &GalleryParams,
 ) -> Vec<(usize, bool)> {
     let st = &walk.stations;
@@ -109,6 +112,12 @@ pub(super) fn pick(
     if params.bend_sections {
         for (chainage, _) in option_tight_bends(option) {
             picked.insert(nearest(chainage), true);
+        }
+    }
+    if params.worst_sections {
+        // a station already drawn is drawn once (a map keeps one entry a station)
+        for &chainage in worst {
+            picked.entry(nearest(chainage)).or_insert(false);
         }
     }
     picked.into_iter().collect()
@@ -604,7 +613,7 @@ pub(super) fn build(
         .as_array()
         .and_then(|a| a.iter().find(|o| o["id"] == option_id))
         .ok_or_else(|| DrawError::Input(format!("there is no option `{option_id}`")))?;
-    let picks = pick(walk, option, p);
+    let picks = pick(walk, option, &super::worst_chainages(session, option_id), p);
     if picks.is_empty() {
         return Err(DrawError::Missing(format!(
             "option `{option_id}` has no stations to draw"

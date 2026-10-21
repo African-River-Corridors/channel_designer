@@ -173,6 +173,19 @@ impl Style {
                         Some("infeasible-stretch") => {
                             Some(super::plan::LabelRule::InfeasibleStretch)
                         }
+                        Some("constraint-stretch") => {
+                            Some(super::plan::LabelRule::ConstraintStretch {
+                                fields: r["fields"]
+                                    .as_array()
+                                    .map(|f| {
+                                        f.iter()
+                                            .filter_map(Value::as_str)
+                                            .map(str::to_string)
+                                            .collect()
+                                    })
+                                    .unwrap_or_default(),
+                            })
+                        }
                         _ => None,
                     })
                     .collect()
@@ -256,6 +269,9 @@ impl Style {
             bend_sections: v["sections"]["extra"]
                 .as_array()
                 .is_some_and(|a| a.iter().any(|r| r["rule"] == "bend-middle")),
+            worst_sections: v["sections"]["extra"]
+                .as_array()
+                .is_some_and(|a| a.iter().any(|r| r["rule"] == "constraint-worst")),
             scales: g["scales"]
                 .as_array()
                 .map(|a| {

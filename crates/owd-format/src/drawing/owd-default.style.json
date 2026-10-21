@@ -29,6 +29,9 @@
     "extra": [
       {
         "rule": "bend-middle"
+      },
+      {
+        "rule": "constraint-worst"
       }
     ]
   },
@@ -105,6 +108,15 @@
       },
       {
         "rule": "infeasible-stretch"
+      },
+      {
+        "rule": "constraint-stretch",
+        "fields": [
+          "kind",
+          "deficit",
+          "works",
+          "chainage"
+        ]
       }
     ]
   }

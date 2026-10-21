@@ -520,7 +520,12 @@ pub fn plan(
         .cloned()
         .unwrap_or(Value::Null);
     let line = all_positions(&option["line"]);
-    let picks = super::gallery::pick(walk, &option, &options.style.gallery());
+    let picks = super::gallery::pick(
+        walk,
+        &option,
+        &super::worst_chainages(session, option_id),
+        &options.style.gallery(),
+    );
     let mut ends: Vec<(String, MatchEnd, MatchEnd)> = Vec::new();
     for sheet in sheets {
         let Some(vp) = sheet.document["viewports"]
@@ -595,6 +600,7 @@ pub fn plan(
             }
         }
     }
+    out.extend(plan_stretches(sheets, session, option_id, options));
     for pair in ends.windows(2) {
         let (this, _, end) = &pair[0];
         let (next, start, _) = &pair[1];
@@ -612,6 +618,124 @@ pub fn plan(
                 sheet: this.clone(),
                 check: "match-line",
                 message: format!("its end match line does not meet the start match line of {next}"),
+            });
+        }
+    }
+    out
+}
+
+/// The constraint stretches on the plan strips: each stretch the `constraint-stretch` rule covers has
+/// exactly one label and one band, no label or band names a stretch that is not there, and every
+/// value a label writes equals the stretch's own (the deficit and the chainages, to their 0.1 m).
+fn plan_stretches(
+    sheets: &[Sheet],
+    session: &crate::design::Session,
+    option_id: &str,
+    options: &super::DrawOptions,
+) -> Vec<Finding> {
+    use super::plan::{CONSTRAINT_KINDS, LabelRule};
+    let mut out = Vec::new();
+    let stretches = super::stretches(session, option_id);
+    let fields = options
+        .style
+        .plan()
+        .rules
+        .into_iter()
+        .find_map(|r| match r {
+            LabelRule::ConstraintStretch { fields } => Some(fields),
+            _ => None,
+        });
+    let strips: Vec<&Sheet> = sheets
+        .iter()
+        .filter(|s| !s.number.ends_with("-001"))
+        .collect();
+    let mut labels: std::collections::BTreeMap<usize, Vec<(String, String)>> = Default::default();
+    let mut bands: std::collections::BTreeMap<usize, usize> = Default::default();
+    for sheet in &strips {
+        let Some(vp) = sheet.document["viewports"]
+            .as_array()
+            .and_then(|a| a.first())
+        else {
+            continue;
+        };
+        for e in vp["entities"].as_array().into_iter().flatten() {
+            let Some(rest) = e["id"].as_str().and_then(|i| i.strip_prefix("stretch-")) else {
+                continue;
+            };
+            let (n, band) = match rest.split_once("-band-") {
+                Some((n, r)) => (n, Some(r)),
+                None => (rest, None),
+            };
+            let Ok(i) = n.parse::<usize>() else { continue };
+            match band {
+                Some("0") => *bands.entry(i).or_default() += 1,
+                Some(_) => {}
+                None => labels.entry(i).or_default().push((
+                    sheet.number.clone(),
+                    e["text"].as_str().unwrap_or("").to_string(),
+                )),
+            }
+        }
+    }
+    let covered = |i: usize| {
+        fields.is_some()
+            && stretches
+                .get(i)
+                .and_then(|x| x["kind"].as_str())
+                .is_some_and(|k| CONSTRAINT_KINDS.contains(&k))
+    };
+    let first = strips.first().map_or(String::new(), |s| s.number.clone());
+    for i in 0..stretches
+        .len()
+        .max(labels.keys().chain(bands.keys()).max().map_or(0, |m| m + 1))
+    {
+        let (n_labels, n_bands) = (
+            labels.get(&i).map_or(0, Vec::len),
+            bands.get(&i).copied().unwrap_or(0),
+        );
+        let want = usize::from(covered(i));
+        if n_labels != want || n_bands != want {
+            out.push(Finding {
+                sheet: labels.get(&i).and_then(|l| l.first()).map_or(first.clone(), |l| l.0.clone()),
+                check: "constraint-stretch",
+                message: format!(
+                    "stretch {i} has {n_labels} labels and {n_bands} bands on the plan; it should have {want} of each"
+                ),
+            });
+            continue;
+        }
+        let (Some((sheet, text)), Some(x)) =
+            (labels.get(&i).and_then(|l| l.first()), stretches.get(i))
+        else {
+            continue;
+        };
+        let mut wrong = Vec::new();
+        for part in text.split(" · ") {
+            if let Some(ch) = part.strip_prefix("CH ") {
+                let (a, b) = ch.split_once(" TO ").unwrap_or((ch, ch));
+                let start = x["start_chainage_m"].as_f64().unwrap_or(f64::NAN);
+                let end = x["end_chainage_m"].as_f64().unwrap_or(f64::NAN);
+                let ok = |t: &str, v: f64| {
+                    chainage_in(&format!("CH {t}")).is_some_and(|c| (c - v).abs() <= half_step(1))
+                };
+                if !ok(a, start) || !ok(b, end) {
+                    wrong.push(format!("chainage `{part}`"));
+                }
+            } else if let Some(d) = part.strip_suffix(" M").and_then(|d| d.parse::<f64>().ok()) {
+                let want = x["deficit"].as_f64().unwrap_or(f64::NAN);
+                if (d - want).abs() > half_step(1) {
+                    wrong.push(format!("deficit {d} (the result is {want})"));
+                }
+            }
+        }
+        if !wrong.is_empty() {
+            out.push(Finding {
+                sheet: sheet.clone(),
+                check: "constraint-stretch",
+                message: format!(
+                    "the label of stretch {i} differs from its result: {}",
+                    wrong.join(", ")
+                ),
             });
         }
     }

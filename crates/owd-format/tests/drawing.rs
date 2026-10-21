@@ -81,7 +81,16 @@ fn drawn_values_equal_the_walk_s_results() {
 #[test]
 fn sections_are_every_500_m_and_the_ground_is_the_walk_s_profile() {
     let w = walk();
-    let sheets = gallery();
+    // the spacing sections alone: no extra-section rule (bend middles, worst stations)
+    let (text, dem) = example();
+    let o = DrawOptions {
+        sheets: vec![SheetKind::CrossSections],
+        style: owd_format::drawing::Style::builtin()
+            .with_overrides(&[("sections.extra".to_string(), serde_json::json!([]))])
+            .unwrap(),
+        ..DrawOptions::default()
+    };
+    let sheets = drawing::sheets_from_text(&text, Some(&dem), &o).unwrap();
     let drawn: Vec<f64> = sheets
         .iter()
         .flat_map(viewports)

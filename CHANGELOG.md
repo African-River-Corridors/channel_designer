@@ -5,6 +5,16 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **Constraint stretches on the drawings (spec 0004, T9).** A new label rule, `constraint-stretch`, reads the
+  stretches the screening stores (spec 0007): width, depth or radius short. On the plan each stretch gets one
+  band along the line and one short label. Its `fields` choose what the label shows, in order (`kind`,
+  `deficit`, `works`, `chainage`), for example "WIDTH SHORT · 3.4 M · BANK CUT · CH 0+325.3 TO 0+625.5". A new
+  extra-section rule, `constraint-worst`, adds the worst station of each stretch to the cross-section
+  gallery, once. Both rules are in the default style; take them out to remove the bands, labels and
+  sections. Infeasible stretches keep their own rule. `owd draw` checks that each stretch has one band and
+  one label, and that the label's deficit and chainages equal the stretch's. A design with no stretch shows
+  none. The gallery of a design with stretches now has more sections by default.
+
 - **Layout review in `owd draw` (spec 0004, T7).** Each sheet now goes through `otd`'s layout review before it
   is written. An error fails `owd draw` (and `owd.draw`) and names the sheet and the finding, for example
   "sheet OWD-…-XS-001: layout review: error `text-overlap` in viewport xs-1: texts "A" and "B" overlap by
