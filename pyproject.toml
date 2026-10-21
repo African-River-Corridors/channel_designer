@@ -27,8 +27,8 @@ drawings = [
 dev = ["pytest>=8"]
 
 [project.urls]
-Repository = "https://github.com/African-River-Corridors/channel_designer"
-Issues = "https://github.com/African-River-Corridors/channel_designer/issues"
+Repository = "https://github.com/African-River-Corridors/open-waterway-designer"
+Issues = "https://github.com/African-River-Corridors/open-waterway-designer/issues"
 
 [build-system]
 requires = ["maturin>=1.7,<2"]

@@ -38,9 +38,6 @@ tools/old_names.py | holds the patterns it searches for
 tools/old_names_allowlist.txt | this file
 tests/test_old_names.py | tests the check
 
-# --- the old repo URL, until the URL ticket
+# --- the old repo URL: only where the check itself names it (every other file links the new URL)
 url: tools/old_names.py | the message and the pattern that name the old URL
 url: tests/test_old_names.py | plants the old URL to prove the check fails
-url: Cargo.toml | `repository` (updated after the repo rename)
-url: pyproject.toml | project URLs (updated after the repo rename)
-url: schema/owd.schema.json | schema `$id` (updated after the repo rename)

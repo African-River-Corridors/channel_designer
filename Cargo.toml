@@ -10,7 +10,7 @@ version = "0.2.0"
 edition = "2024"
 rust-version = "1.99"
 license = "Apache-2.0"
-repository = "https://github.com/African-River-Corridors/channel_designer"
+repository = "https://github.com/African-River-Corridors/open-waterway-designer"
 
 [workspace.dependencies]
 owd-core = { path = "crates/owd-core" }
