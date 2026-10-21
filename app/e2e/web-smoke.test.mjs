@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { remote } from "webdriverio";
 import { serve } from "./web-server.mjs";
+import { endpoints, serveReach } from "./reach-server.mjs";
 import { compare } from "../../tools/web_parity_compare.mjs";
 
 const here = import.meta.dirname;
@@ -56,7 +57,7 @@ async function start(options = {}) {
   return b;
 }
 const until = (b, what, check, timeout = 60000) => b.waitUntil(check, { timeout, interval: 150, timeoutMsg: `timed out waiting for: ${what}` });
-const tid = (b, id) => b.$(`[data-testid=${id}]`);
+const tid = (b, id) => b.$(`[data-testid="${id}"]`);
 const text = async (b, id) => (await tid(b, id)).getText();
 const exists = async (b, id) => (await tid(b, id)).isExisting();
 const loaded = (b) => until(b, "the app", async () => (await exists(b, "file-label")) && (await exists(b, "web-label")));
@@ -82,13 +83,27 @@ const sameAsNative = (page, native, what) => {
   }
 };
 
+let reach;
 before(async () => {
   ({ server, origin } = await serve(DIST));
+  reach = await serveReach();
 });
 after(async () => {
   for (const b of sessions) await b.deleteSession().catch(() => {});
   server?.close();
+  reach?.server.close();
 });
+
+/** The public hosts the web build may name: the open-data sources (spec 0012), the basemap, and links. */
+const PUBLIC_HOSTS = [
+  "overpass-api.de",
+  "earth-search.aws.element84.com",
+  "sentinel-cogs.s3.us-west-2.amazonaws.com",
+  "zenodo.org",
+  "soto.podaac.earthdatacloud.nasa.gov",
+  "storage.googleapis.com",
+  "copernicus-dem-30m.s3.eu-central-1.amazonaws.com",
+];
 
 describe("OWD web smoke tests", () => {
   it("loads with the web label and the desktop link, and has no Fetch DEM", async () => {
@@ -180,6 +195,74 @@ describe("OWD web smoke tests", () => {
       fs.mkdirSync(SHOTS, { recursive: true });
       await b.saveScreenshot(path.join(SHOTS, "web-bank-editor.png"));
     }
+  });
+
+  it("starts a study from a river: route, inputs with badges, a depth, the class table, and Use this vessel", async () => {
+    const b = await start({ args: ["--headless=new", "--no-sandbox", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--window-size=1500,950"] });
+    await b.url(`${origin}/owd/app`);
+    await loaded(b);
+    // The recorded answers stand in for the public sources.
+    await b.execute(async (at) => window.__owdPlatform.call("set_reach_endpoints", { endpoints: at }), endpoints(reach.origin));
+    await (await tid(b, "start-from-river")).click();
+    await (await tid(b, "reach-start")).setValue("-6.0715, 4.966");
+    await (await tid(b, "reach-end")).setValue("-6.07, 4.983");
+    await (await tid(b, "reach-route")).click();
+    await until(b, "the route", async () => (await exists(b, "reach-length")) && /km/.test(await text(b, "reach-length")));
+    assert.equal(await (await tid(b, "mark-route")).getAttribute("data-mark"), "default");
+    // The JRC tile has no CORS: it is listed as a link, downloaded, and given back.
+    const tile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "owd-jrc-")), "occurrence_10W_10Nv1_4_2021.tif");
+    fs.copyFileSync(path.resolve(here, "../../examples/reach/jrc_occurrence_sassandra_estuary.tif"), tile);
+    await pick(b, async () => (await tid(b, "reach-add-tile")).click(), tile);
+    await until(b, "the tile given", async () => (await (await tid(b, "reach-jrc-occurrence_10W_10Nv1_4_2021.tif")).getAttribute("data-given")) === "true");
+    // The DEM the level falls back on: a GLO-30 window, through the file picker.
+    await pick(b, async () => (await tid(b, "reach-load-dem")).click(), path.resolve(here, "../../examples/reach/glo30_sassandra_lower.tif"));
+    await until(b, "the DEM", async () => (await (await tid(b, "mark-dem")).getAttribute("data-mark")) === "user");
+    await (await tid(b, "reach-generate")).click();
+    await until(b, "the banks moved onto Sentinel-2", async () => (await (await tid(b, "reach-input-left_bank")).getText()).includes("sentinel2-l2a"), 120000);
+    await until(b, "the water level", async () => (await (await tid(b, "mark-water_level")).getAttribute("data-mark")) === "default", 120000);
+    for (const input of ["left_bank", "right_bank", "river_polygon", "centreline"]) {
+      const badge = await tid(b, `mark-${input}`);
+      assert.equal(await badge.getAttribute("data-mark"), "default", input);
+      const shown = await b.execute((el) => el.textContent, badge);
+      assert.match(shown, /◇\s*default/, `${input}: a shape and a word, not colour alone (${shown})`);
+    }
+    assert.match(await text(b, "map-notices"), /OpenStreetMap/);
+    assert.match(await text(b, "map-notices"), /Sentinel/);
+    await (await tid(b, "bed-depth")).setValue("3");
+    await (await tid(b, "bed-set")).click();
+    await until(b, "the depth", async () => (await (await tid(b, "mark-bed")).getAttribute("data-mark")) === "user");
+    await (await tid(b, "fits-run")).click();
+    await until(b, "the class table", async () => (await b.$$("[data-testid^=fits-row-]")).length > 3);
+    const row = (await b.$$("[data-testid^=fits-row-]"))[0];
+    const vessel = (await row.getAttribute("data-testid")).replace("fits-row-", "");
+    assert.match(await row.getText(), /✓ fits|✕ does not fit/, "the row says in words and a shape whether it fits");
+    await (await tid(b, `use-vessel-${vessel}`)).click();
+    await until(b, "the vessel set", async () => (await pageDoc(b)).stages.sizing.settings?.vessel_standard_id === vessel);
+    assert.match(await text(b, "notice"), /Vessel set/);
+    assert.equal(await (await b.$("select[aria-label='Vessel class']")).getValue(), vessel, "today's flow shows the vessel");
+    if (SHOTS) {
+      fs.mkdirSync(SHOTS, { recursive: true });
+      await b.saveScreenshot(path.join(SHOTS, "web-start-from-river.png"));
+    }
+  });
+
+  it("names no server of ours: every host in the web bundle is a public source", () => {
+    const hosts = new Set();
+    const walk = (dir) => {
+      for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, f.name);
+        if (f.isDirectory()) walk(p);
+        else if (/\.(js|wasm|html)$/.test(f.name)) for (const m of fs.readFileSync(p, "latin1").matchAll(/https?:\/\/([a-z0-9.-]+\.[a-z]{2,})/gi)) hosts.add(m[1].toLowerCase());
+      }
+    };
+    walk(DIST);
+    // Hosts that are not data sources: the basemap (EOX), and standards and docs that libraries name in
+    // comments and messages. None is a server of ours; a new host fails here until it is looked at.
+    const KNOWN = ["tiles.maps.eox.at", "cloudless.eox.at", "www.w3.org", "svelte.dev", "maplibre.org", "maplibre.invalid", "github.com", "wiki.openstreetmap.org", "json-schema.org"];
+    const allowed = (h) => [...PUBLIC_HOSTS, ...KNOWN].some((k) => h === k || h.startsWith(k));
+    const unknown = [...hosts].filter((h) => !allowed(h));
+    assert.deepEqual(unknown, [], `hosts in the web bundle that are neither a public source nor known: ${unknown.join(" ")}`);
+    for (const h of ["overpass-api.de", "earth-search.aws.element84.com", "zenodo.org", "soto.podaac.earthdatacloud.nasa.gov"]) assert.ok(hosts.has(h), `the bundle reads ${h}`);
   });
 
   it("opens a design and its DEM through the file picker, and a full run equals owd run", async () => {

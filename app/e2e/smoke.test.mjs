@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { remote } from "webdriverio";
+import { endpoints, serveReach } from "./reach-server.mjs";
 
 const here = import.meta.dirname;
 const EXAMPLE = path.resolve(here, "../../examples/synthetic-river.owd");
@@ -159,7 +160,7 @@ describe("Open Waterway Designer app smoke test", () => {
   });
 
   beforeEach(() => {
-    for (const f of ["open.txt", "save.txt", "discard.txt", "load.txt", "export.txt"]) forget(f);
+    for (const f of ["open.txt", "save.txt", "discard.txt", "load.txt", "export.txt", "jrc.txt", "reach-endpoints.json"]) forget(f);
   });
 
   it("shows the screening label on its status line from the start", async () => {
@@ -414,5 +415,50 @@ describe("Open Waterway Designer app smoke test", () => {
     assert.equal(fc.screening, "Screening \u2014 not for construction");
     assert.ok(fc.features.length >= 1);
     assert.ok(fc.features.every((f) => f.properties.screening === "Screening \u2014 not for construction" && Array.isArray(f.properties.failed_checks)));
+  });
+  it("starts a study from a river: route, inputs with badges, a depth, the class table, and Use this vessel", async () => {
+    // The recorded answers stand in for Overpass, Earth Search, Sentinel-2, Zenodo and Hydrocron.
+    const reach = await serveReach();
+    try {
+      const at = path.join(WORK, "reach-endpoints.json");
+      fs.writeFileSync(at, JSON.stringify(endpoints(reach.origin)));
+      answer("reach-endpoints.json", at);
+      answer("discard.txt", "yes");
+      await (await browser.$("[data-testid=start-from-river]")).click();
+      await (await browser.$("[data-testid=reach-start]")).setValue("-6.0715, 4.966");
+      await (await browser.$("[data-testid=reach-end]")).setValue("-6.07, 4.983");
+      await (await browser.$("[data-testid=reach-route]")).click();
+      await until("the route", async () => /km/.test((await text("reach-length").catch(() => "")) ?? ""), 60000);
+      assert.equal(await (await browser.$("[data-testid=mark-route]")).getAttribute("data-mark"), "default");
+      const tile = path.join(fs.mkdtempSync(path.join(WORK, "jrc-")), "occurrence_10W_10Nv1_4_2021.tif");
+      fs.copyFileSync(path.resolve(here, "../../examples/reach/jrc_occurrence_sassandra_estuary.tif"), tile);
+      answer("jrc.txt", tile);
+      await (await browser.$("[data-testid=reach-add-tile]")).click();
+      await until("the tile given", async () => (await (await browser.$("[data-testid='reach-jrc-occurrence_10W_10Nv1_4_2021.tif']")).getAttribute("data-given")) === "true");
+      answer("load.txt", path.resolve(here, "../../examples/reach/glo30_sassandra_lower.tif"));
+      await (await browser.$("[data-testid=reach-load-dem]")).click();
+      await until("the DEM", async () => (await (await browser.$("[data-testid=mark-dem]")).getAttribute("data-mark")) === "user");
+      await (await browser.$("[data-testid=reach-generate]")).click();
+      await until("the banks moved onto Sentinel-2", async () => (await text("reach-input-left_bank")).includes("sentinel2-l2a"), 120000);
+      await until("the water level", async () => (await (await browser.$("[data-testid=mark-water_level]")).getAttribute("data-mark")) === "default", 120000);
+      for (const input of ["left_bank", "right_bank", "river_polygon", "centreline"]) {
+        const badge = await browser.$(`[data-testid=mark-${input}]`);
+        assert.equal(await badge.getAttribute("data-mark"), "default", input);
+        assert.match(await badge.getText(), /default/, `${input}: a word, not colour alone`);
+      }
+      assert.match(await text("map-notices"), /OpenStreetMap/);
+      await (await browser.$("[data-testid=bed-depth]")).setValue("3");
+      await (await browser.$("[data-testid=bed-set]")).click();
+      await until("the depth", async () => (await (await browser.$("[data-testid=mark-bed]")).getAttribute("data-mark")) === "user");
+      await (await browser.$("[data-testid=fits-run]")).click();
+      await until("the class table", async () => (await browser.$$("[data-testid^=fits-row-]")).length > 3, 60000);
+      const row = (await browser.$$("[data-testid^=fits-row-]"))[0];
+      const vessel = (await row.getAttribute("data-testid")).replace("fits-row-", "");
+      await (await browser.$(`[data-testid=use-vessel-${vessel}]`)).click();
+      await until("the vessel set", async () => (await vesselChoices()).current === vessel);
+      assert.match(await text("notice"), /Vessel set/);
+    } finally {
+      reach.server.close();
+    }
   });
 });

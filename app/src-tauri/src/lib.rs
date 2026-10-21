@@ -406,7 +406,7 @@ async fn load_input(
         let bytes =
             std::fs::read(&file).map_err(|e| format!("cannot read {}: {e}", file.display()))?;
         let mut guard = lock(&state)?;
-        guard.load_dem(&file, bytes)?;
+        guard.load_dem(&file, bytes, &today())?;
         return finish(&window, &guard);
     }
     let role = input::role_of(&role)?;
@@ -534,6 +534,134 @@ fn run_stale(window: Window, state: State<Shared>) -> Reply {
     finish(&window, &guard)
 }
 
+// --- Start from a river (spec 0012, T10) -------------------------------------------------------
+
+/// Where the reach sources are. A debug build reads `reach-endpoints.json` from the test folder,
+/// so the smoke test can point them at recorded answers.
+fn reach_endpoints() -> owd_shell::reach::ReachEndpoints {
+    test_answer("reach-endpoints.json")
+        .flatten()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .map(|v| owd_shell::reach::ReachEndpoints::from_json(&v))
+        .unwrap_or_default()
+}
+
+/// Bumped by Cancel: a reach step that began before it is not kept.
+static REACH_TURN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Plan the reach and start a new study from it. Asks first when the design has unsaved changes.
+#[tauri::command]
+async fn reach_route(
+    app: AppHandle,
+    window: Window,
+    state: State<'_, Shared>,
+    river: Option<String>,
+    start: [f64; 2],
+    end: [f64; 2],
+    via: Vec<[f64; 2]>,
+) -> Reply {
+    if !confirm_discard(&app, &state)? {
+        return Ok(serde_json::Value::Null);
+    }
+    let at = reach_endpoints();
+    let plan = tauri::async_runtime::spawn_blocking(move || {
+        owd_shell::reach::plan_reach(
+            &owd_cli::reach_fetch::HttpFetch,
+            &at,
+            river.as_deref(),
+            start,
+            end,
+            &via,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let mut guard = lock(&state)?;
+    guard.start_reach(plan, &today())?;
+    finish(&window, &guard)
+}
+
+/// Give a JRC occurrence tile the user downloaded.
+#[tauri::command]
+fn reach_add_tile(app: AppHandle, window: Window, state: State<Shared>) -> Reply {
+    let file = match test_answer("jrc.txt") {
+        Some(answer) => answer.map(PathBuf::from),
+        None => app
+            .dialog()
+            .file()
+            .add_filter("JRC occurrence tile", &["tif"])
+            .blocking_pick_file()
+            .map(|p| p.into_path().map_err(|e| e.to_string()))
+            .transpose()?,
+    };
+    let Some(file) = file else {
+        return Ok(serde_json::Value::Null);
+    };
+    let bytes = std::fs::read(&file).map_err(|e| format!("cannot read {}: {e}", file.display()))?;
+    let name = file
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    let mut guard = lock(&state)?;
+    guard.reach_add_tile(&name, bytes)?;
+    finish(&window, &guard)
+}
+
+/// Run one step of the reach (`banks`, `edge_fit` or `level`) off the main thread, and keep its
+/// result unless Cancel came first.
+#[tauri::command]
+async fn reach_step(
+    window: Window,
+    state: State<'_, Shared>,
+    step: String,
+    percentile: Option<f64>,
+) -> Reply {
+    use std::sync::atomic::Ordering;
+    let step = owd_shell::reach::ReachStep::of(&step, percentile)?;
+    let turn = REACH_TURN.load(Ordering::SeqCst);
+    let job = lock(&state)?.begin_reach(step)?;
+    let at = reach_endpoints();
+    let date = today();
+    let job = tauri::async_runtime::spawn_blocking(move || {
+        job.run(&owd_cli::reach_fetch::HttpFetch, &at, &date)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    if REACH_TURN.load(Ordering::SeqCst) != turn {
+        return Err("cancelled".into());
+    }
+    let mut guard = lock(&state)?;
+    guard.keep_reach(job)?;
+    finish(&window, &guard)
+}
+
+/// Cancel the reach step that is running: its result is dropped.
+#[tauri::command]
+fn reach_cancel() {
+    REACH_TURN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Give the depth of a river with no survey: `points` are `[chainage, depth]`.
+#[tauri::command]
+fn set_bed(
+    window: Window,
+    state: State<Shared>,
+    points: Vec<[f64; 2]>,
+    season: Option<String>,
+) -> Reply {
+    let mut guard = lock(&state)?;
+    guard.set_bed(&points, season.as_deref(), &today())?;
+    finish(&window, &guard)
+}
+
+/// Answer "what fits" over every vessel class.
+#[tauri::command]
+fn run_fits(window: Window, state: State<Shared>) -> Reply {
+    let mut guard = lock(&state)?;
+    guard.run_fits()?;
+    finish(&window, &guard)
+}
+
 pub fn run() {
     let initial = AppState::new_design("Untitled channel design", &today());
     tauri::Builder::default()
@@ -563,6 +691,12 @@ pub fn run() {
             cancel_run,
             fetch_dem,
             basemap_tiles,
+            reach_route,
+            reach_add_tile,
+            reach_step,
+            reach_cancel,
+            set_bed,
+            run_fits,
         ])
         .on_window_event(|window, event| {
             // The unsaved-changes guard on close: ask first, then close for real.

@@ -173,6 +173,30 @@ export async function createWebPlatform(): Promise<Platform> {
     }
   }
 
+  /** Where the reach sources are: empty is the public services; a test points them at recordings. */
+  let reachAt = "";
+
+  /** One reach step in the worker. Cancel ends the worker, as for a stage, and the design comes back as it was. */
+  async function reachStep(step: string, percentile: number | null) {
+    const snap = await json<{ file_name: string; dirty: boolean }>("snapshot");
+    const before = { name: snap.file_name, text: await host.rpc<string>("save_text", snap.file_name), dem, dirty: snap.dirty || carriedDirty };
+    running = { stage: step, cancelled: false };
+    const mine = running;
+    try {
+      const result = await change<{ dirty: boolean; title: string; file_name: string }>("reach_step", step, percentile ?? undefined, reachAt);
+      carriedDirty = false;
+      return result;
+    } catch (e) {
+      if (mine.cancelled) {
+        await restart(before);
+        throw "cancelled: the design is as it was before the step (pick the reach again to make more inputs)";
+      }
+      throw e;
+    } finally {
+      if (running === mine) running = null;
+    }
+  }
+
   async function loadInput(role: string, given: unknown) {
     const file = given instanceof File ? given : await pickFile(role === "dem" ? ".tif,.tiff" : ".geojson,.json,.gpkg");
     if (!file) return null;
@@ -240,6 +264,24 @@ export async function createWebPlatform(): Promise<Platform> {
     },
     fetch_dem: () => Promise.reject("Fetching a DEM is not offered in the browser: load a GeoTIFF instead."),
     basemap_tiles: async () => null,
+    reach_route: async (a) => {
+      if (!confirmDiscard()) return null;
+      carriedDirty = false;
+      return change("reach_route", a.river ?? "", JSON.stringify({ start: a.start, end: a.end, via: a.via ?? [] }), reachAt);
+    },
+    reach_add_tile: async (a) => {
+      const file = a.file instanceof File ? a.file : await pickFile(".tif,.tiff");
+      if (!file) return null;
+      return change("reach_add_tile", file.name, await bytesOf(file));
+    },
+    reach_step: (a) => reachStep(a.step as string, (a.percentile as number | null) ?? null),
+    reach_cancel: async () => {
+      if (!running) return;
+      running.cancelled = true;
+      host.end(CANCELLED);
+    },
+    set_bed: (a) => change("set_bed", JSON.stringify(a.points), (a.season as string) ?? ""),
+    run_fits: () => change("run_fits"),
     open_example: openExample,
     export_file: async (a) => {
       const kind = a.kind as string;
@@ -306,7 +348,13 @@ export async function createWebPlatform(): Promise<Platform> {
       };
     },
   };
-  // The smoke test reads results through this; only a build in test mode has it.
-  if (import.meta.env.MODE === "test") (window as unknown as { __owdPlatform: Platform }).__owdPlatform = platform;
+  // The smoke test reads results through this, and points the reach sources at recorded answers;
+  // only a build in test mode has it.
+  if (import.meta.env.MODE === "test") {
+    commands.set_reach_endpoints = async (a) => {
+      reachAt = JSON.stringify(a.endpoints ?? {});
+    };
+    (window as unknown as { __owdPlatform: Platform }).__owdPlatform = platform;
+  }
   return platform;
 }

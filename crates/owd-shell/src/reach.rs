@@ -98,7 +98,10 @@ fn err(e: impl std::fmt::Display) -> String {
 }
 
 /// The DEM height at a longitude and latitude, from a DEM in WGS84 or in the study's UTM zone.
-fn dem_sampler(dem: &Dem, utm: owd_format::design::crs::Utm) -> Option<Box<dyn Fn([f64; 2]) -> f64 + '_>> {
+fn dem_sampler(
+    dem: &Dem,
+    utm: owd_format::design::crs::Utm,
+) -> Option<Box<dyn Fn([f64; 2]) -> f64 + '_>> {
     match dem.epsg {
         Some(4326) => Some(Box::new(move |p: [f64; 2]| dem.sample_bilinear(p[0], p[1]))),
         Some(e) if e == utm.epsg() => Some(Box::new(move |p: [f64; 2]| {
@@ -111,7 +114,12 @@ fn dem_sampler(dem: &Dem, utm: owd_format::design::crs::Utm) -> Option<Box<dyn F
 
 impl ReachJob {
     /// Run the step. `fetch` reaches the network; `date` is today (`YYYY-MM-DD`, from the shell).
-    pub fn run(mut self, fetch: &dyn Fetch, at: &ReachEndpoints, date: &str) -> Result<ReachJob, String> {
+    pub fn run(
+        mut self,
+        fetch: &dyn Fetch,
+        at: &ReachEndpoints,
+        date: &str,
+    ) -> Result<ReachJob, String> {
         match self.step {
             ReachStep::Banks => {
                 let plan = self.memo.plan.as_ref().ok_or("pick the reach first")?;
@@ -120,8 +128,13 @@ impl ReachJob {
                     .tiles
                     .iter()
                     .fold(DroppedFiles::new(), |d, (n, b)| d.with_file(n, b.to_vec()));
-                let jrc: &dyn Fetch = if self.memo.tiles.is_empty() { fetch } else { &dropped };
-                let b = banks_from_jrc(jrc, &plan.route.line(), &BankParams::default()).map_err(err)?;
+                let jrc: &dyn Fetch = if self.memo.tiles.is_empty() {
+                    fetch
+                } else {
+                    &dropped
+                };
+                let b =
+                    banks_from_jrc(jrc, &plan.route.line(), &BankParams::default()).map_err(err)?;
                 record_banks(&mut self.session, &b).map_err(err)?;
                 self.memo.banks = Some(b);
             }
@@ -159,20 +172,40 @@ impl ReachJob {
                     Datum::Egm2008,
                 )
                 .map_err(err)?;
-                let mark = if params == LevelParams::default() { Mark::Default } else { Mark::User };
+                let mark = if params == LevelParams::default() {
+                    Mark::Default
+                } else {
+                    Mark::User
+                };
                 let copernicus = !self.session.dem_source_tiles().is_empty();
-                let notice = copernicus.then_some(owd_format::design::dem_source::COPERNICUS_NOTICE);
-                record_level(&mut self.session, &level, mark, notice).map_err(err)?;
+                let notice =
+                    copernicus.then_some(owd_format::design::dem_source::COPERNICUS_NOTICE);
+                record_level(&mut self.session, &level, mark, notice, date).map_err(err)?;
             }
         }
         Ok(self)
     }
 }
 
+/// Plan a reach over Overpass: the route from a start, through via points, to an end. A river
+/// name, if given, is searched too. Network work only: it changes no state.
+pub fn plan_reach(
+    fetch: &dyn Fetch,
+    at: &ReachEndpoints,
+    river: Option<&str>,
+    start: [f64; 2],
+    end: [f64; 2],
+    via: &[[f64; 2]],
+) -> Result<Planned, String> {
+    let river = river.map(str::trim).filter(|r| !r.is_empty());
+    let ov = Overpass::with_endpoint(fetch, &at.overpass);
+    plan_points(&ov, river, start, end, via).map_err(err)
+}
+
 impl AppState {
     /// Start a new study from a reach: plan the route over Overpass from a start, an end and via
-    /// points, and record it in a new, unsaved design named after the river. The JRC tiles given so
-    /// far are kept.
+    /// points ([`plan_reach`]), and record it in a new, unsaved design ([`AppState::start_reach`]).
+    #[allow(clippy::too_many_arguments)]
     pub fn reach_route(
         &mut self,
         fetch: &dyn Fetch,
@@ -184,12 +217,25 @@ impl AppState {
         date: &str,
     ) -> Result<(), String> {
         self.refuse_while_running()?;
-        let river = river.map(str::trim).filter(|r| !r.is_empty());
-        let ov = Overpass::with_endpoint(fetch, &at.overpass);
-        let plan = plan_points(&ov, river, start, end, via).map_err(err)?;
+        let plan = plan_reach(fetch, at, river, start, end, via)?;
+        self.start_reach(plan, date)
+    }
+
+    /// Record a planned reach in a new, unsaved design named after the river. The JRC tiles given
+    /// so far are kept.
+    pub fn start_reach(&mut self, plan: Planned, date: &str) -> Result<(), String> {
+        self.refuse_while_running()?;
+        let title = plan
+            .spec
+            .river
+            .clone()
+            .unwrap_or_else(|| "Reach study".to_string());
         let tiles = std::mem::take(&mut self.reach_memo_mut().tiles);
-        let mut next = AppState::new_design(river.unwrap_or("Reach study"), date);
-        record_reach(next.session_mut(), &plan, date).map_err(err)?;
+        let mut next = AppState::new_design(&title, date);
+        if let Err(e) = record_reach(next.session_mut(), &plan, date) {
+            self.reach_memo_mut().tiles = tiles;
+            return Err(err(e));
+        }
         *next.reach_memo_mut() = ReachMemo {
             plan: Some(plan),
             banks: None,
@@ -237,7 +283,12 @@ impl AppState {
     }
 
     /// Give the depth of a river with no survey (a bed model): `points` are `[chainage, depth]`.
-    pub fn set_bed(&mut self, points: &[[f64; 2]], season: Option<&str>, date: &str) -> Result<(), String> {
+    pub fn set_bed(
+        &mut self,
+        points: &[[f64; 2]],
+        season: Option<&str>,
+        date: &str,
+    ) -> Result<(), String> {
         self.refuse_while_running()?;
         let mut s = self.session().clone();
         s.set_bed_model(points, season.filter(|t| !t.trim().is_empty()), date)
@@ -262,7 +313,7 @@ impl AppState {
     pub fn reach_view(&self) -> Value {
         let memo = self.reach_memo();
         let Some(plan) = &memo.plan else {
-            return json!({"route": null, "jrc_tiles": [], "dem_tiles": [], "has_mask_banks": false});
+            return json!({"route": null, "jrc_tiles": [], "dem_tiles": [], "has_mask_banks": false, "fits_stretches": self.fits_stretches()});
         };
         let line = plan.route.line();
         let given: Vec<&str> = memo.tiles.iter().map(|(n, _)| n.as_str()).collect();
@@ -279,6 +330,7 @@ impl AppState {
             .map(|(name, url)| json!({"name": name, "url": url}))
             .collect();
         json!({
+            "fits_stretches": self.fits_stretches(),
             "route": line.iter().map(|p| json!([p[0], p[1]])).collect::<Vec<_>>(),
             "length_m": plan.route.length_m,
             "as_drawn": plan.route.as_drawn_count(),
@@ -286,5 +338,50 @@ impl AppState {
             "dem_tiles": dem,
             "has_mask_banks": memo.banks.is_some(),
         })
+    }
+
+    /// The constraint stretches of the "what fits" answer, for the map: by ruleset and vessel
+    /// class, each with its kind and its two ends in longitude and latitude.
+    fn fits_stretches(&self) -> Value {
+        use owd_format::design::crs::Crs;
+        let doc = self.session().document();
+        let utm = doc["project"]["crs"]["epsg"]
+            .as_u64()
+            .and_then(|c| Crs::from_epsg(c as u32).ok())
+            .and_then(|c| match c {
+                Crs::Utm(u) => Some(u),
+                Crs::Wgs84 => None,
+            });
+        let (Some(utm), Some(rulesets)) = (utm, doc["fits"]["results"]["rulesets"].as_array())
+        else {
+            return json!({});
+        };
+        let ll = |p: &Value| -> Value {
+            match (p[0].as_f64(), p[1].as_f64()) {
+                (Some(x), Some(y)) => utm.inverse(x, y).map_or(Value::Null, |q| json!(q)),
+                _ => Value::Null,
+            }
+        };
+        let mut out = serde_json::Map::new();
+        for rs in rulesets {
+            let mut classes = serde_json::Map::new();
+            for c in rs["classes"].as_array().into_iter().flatten() {
+                let list: Vec<Value> = c["stretches"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|st| json!({"kind": st["kind"], "from": ll(&st["start"]), "to": ll(&st["end"])}))
+                    .collect();
+                classes.insert(
+                    c["vessel_standard_id"].as_str().unwrap_or("").to_string(),
+                    json!(list),
+                );
+            }
+            out.insert(
+                rs["ruleset_id"].as_str().unwrap_or("").to_string(),
+                Value::Object(classes),
+            );
+        }
+        Value::Object(out)
     }
 }

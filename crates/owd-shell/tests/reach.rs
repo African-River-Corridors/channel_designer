@@ -41,7 +41,10 @@ fn fetch() -> ReplayFetch {
         .with_response("https://zenodo.example/record", record)
         .with_response("https://zenodo.example/sword.zip", zip);
     for b in ["B03", "B04", "B08", "B11", "SCL"] {
-        f = f.with_response(&format!("{s2}/{b}.tif"), ex(&format!("s2_sassandra_{b}.tif")));
+        f = f.with_response(
+            &format!("{s2}/{b}.tif"),
+            ex(&format!("s2_sassandra_{b}.tif")),
+        );
     }
     for id in [
         "14560100021",
@@ -114,8 +117,13 @@ fn a_reach_becomes_a_study_with_marked_inputs_a_level_a_bed_and_an_answer() {
     s.load_dem(
         Path::new("glo30_sassandra_lower.tif"),
         ex("glo30_sassandra_lower.tif"),
+        "2024-03-01",
     )
     .unwrap();
+    assert_eq!(
+        s.snapshot()["document"]["provenance"]["dem"]["mark"],
+        "user"
+    );
     step(&mut s, &f, ReachStep::Level { percentile: None });
     let snap = s.snapshot();
     assert!(
@@ -129,7 +137,10 @@ fn a_reach_becomes_a_study_with_marked_inputs_a_level_a_bed_and_an_answer() {
         notices.iter().any(|n| n.contains("OpenStreetMap")),
         "{notices:?}"
     );
-    assert!(notices.iter().any(|n| n.contains("Sentinel")), "{notices:?}");
+    assert!(
+        notices.iter().any(|n| n.contains("Sentinel")),
+        "{notices:?}"
+    );
 
     s.set_bed(&[[0.0, 3.0]], Some("dry"), "2024-03-01").unwrap();
     assert_eq!(
@@ -137,8 +148,14 @@ fn a_reach_becomes_a_study_with_marked_inputs_a_level_a_bed_and_an_answer() {
         "user"
     );
     s.run_fits().unwrap();
-    let fits: &Value = &s.snapshot()["document"]["fits"];
-    assert!(fits.is_object(), "{fits}");
+    let snap = s.snapshot();
+    assert!(snap["document"]["fits"].is_object());
+    assert_eq!(snap["fits_status"], "fresh");
+    let stretches: &Value = &snap["reach_view"]["fits_stretches"]["PIANC-B"];
+    assert!(
+        stretches.as_object().is_some_and(|c| !c.is_empty()),
+        "{stretches}"
+    );
 
     // A step on a design that changed meanwhile is not kept.
     let job = s

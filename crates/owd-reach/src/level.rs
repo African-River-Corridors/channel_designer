@@ -509,12 +509,15 @@ pub fn level_from_sources(
 
 /// Record the level in a document as its water level profile (the one every stage reads), with its
 /// provenance: `default` for the shipped settings, `user` when the user chose the percentile.
-/// `dem_notice` is the licence notice of the document's DEM, carried when the DEM gave any of it.
+/// `dem_notice` is the licence notice of the document's DEM (Copernicus GLO-30), carried when the DEM
+/// gave any of it; `None` for a DEM of the user's own. `date` (`YYYY-MM-DD`, from the caller) dates
+/// a level the DEM alone gave.
 pub fn record_level(
     session: &mut Session,
     level: &LevelProfile,
     mark: Mark,
     dem_notice: Option<&str>,
+    date: &str,
 ) -> Result<(), ReachError> {
     let err = |e: owd_format::design::DesignError| ReachError::Input(e.to_string());
     session.set_water_profile(&level.points).map_err(err)?;
@@ -528,11 +531,16 @@ pub fn record_level(
         notices.push(sword.notice.to_string());
     }
     if used_dem {
-        notices.extend(dem_notice.map(str::to_string));
+        notices.push(
+            dem_notice
+                .unwrap_or("Water surface from the study's own DEM")
+                .to_string(),
+        );
     }
-    let (source, date) = match &level.swot_dates {
-        Some((a, b)) => ("swot-hydrocron", format!("{a}/{b}")),
-        None => ("cop-dem-glo30", "DEM".to_string()),
+    let (source, date) = match (&level.swot_dates, dem_notice) {
+        (Some((a, b)), _) => ("swot-hydrocron", format!("{a}/{b}")),
+        (None, Some(_)) => ("cop-dem-glo30", date.to_string()),
+        (None, None) => ("dem", date.to_string()),
     };
     let p = &level.params;
     let settings = json!({

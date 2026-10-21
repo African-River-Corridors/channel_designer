@@ -31,6 +31,60 @@ fn new_design() -> AppState {
     AppState::new_design("Untitled channel design", &today())
 }
 
+/// The network for the reach steps (spec 0012): a JS function `(url, start, length)` that returns
+/// the bytes as a `Uint8Array`, or throws. `start` is -1 for the whole file. The page's Worker gives
+/// one that makes a synchronous request, which a Worker may do.
+struct JsFetch(js_sys::Function);
+
+impl JsFetch {
+    fn call(&self, url: &str, start: f64, len: f64) -> Result<Vec<u8>, owd_reach::FetchError> {
+        self.0
+            .call3(
+                &JsValue::NULL,
+                &JsValue::from_str(url),
+                &JsValue::from_f64(start),
+                &JsValue::from_f64(len),
+            )
+            .map(|v| js_sys::Uint8Array::new(&v).to_vec())
+            .map_err(|e| {
+                let reason = e.as_string().unwrap_or_else(|| format!("{e:?}"));
+                if reason.contains("404") {
+                    owd_reach::FetchError::NotFound(url.to_string())
+                } else {
+                    owd_reach::FetchError::Failed {
+                        url: url.to_string(),
+                        reason,
+                    }
+                }
+            })
+    }
+}
+
+impl owd_reach::Fetch for JsFetch {
+    fn get(&self, url: &str) -> Result<Vec<u8>, owd_reach::FetchError> {
+        self.call(url, -1.0, -1.0)
+    }
+
+    fn get_range(&self, url: &str, start: u64, len: u64) -> Result<Vec<u8>, owd_reach::FetchError> {
+        self.call(url, start as f64, len as f64)
+    }
+}
+
+fn endpoints(json: &str) -> Result<owd_shell::reach::ReachEndpoints, String> {
+    if json.trim().is_empty() {
+        return Ok(Default::default());
+    }
+    let v: Value = serde_json::from_str(json).map_err(|e| format!("not endpoints: {e}"))?;
+    Ok(owd_shell::reach::ReachEndpoints::from_json(&v))
+}
+
+fn point(v: &Value) -> Result<[f64; 2], String> {
+    match (v[0].as_f64(), v[1].as_f64()) {
+        (Some(a), Some(b)) => Ok([a, b]),
+        _ => Err(format!("`{v}` is not [lon, lat]")),
+    }
+}
+
 /// The engine version, as written in a `.owd` file.
 #[wasm_bindgen]
 pub fn engine_version() -> String {
@@ -140,6 +194,63 @@ impl Session {
         self.edit(|s| s.edit_bank(side, edit, &date))
     }
 
+    /// Plan a reach and start a new study from it (spec 0012). `points` is JSON
+    /// `{"start": [lon, lat], "end": [lon, lat], "via": [[lon, lat], ...]}`.
+    pub fn reach_route(
+        &mut self,
+        river: &str,
+        points: &str,
+        at: &str,
+        fetch: js_sys::Function,
+    ) -> Js<String> {
+        let v: Value =
+            ok(serde_json::from_str(points).map_err(|e| format!("not reach points: {e}")))?;
+        let start = ok(point(&v["start"]))?;
+        let end = ok(point(&v["end"]))?;
+        let via = ok(v["via"]
+            .as_array()
+            .map(|a| a.iter().map(point).collect::<Result<Vec<_>, _>>())
+            .unwrap_or(Ok(Vec::new())))?;
+        let at = ok(endpoints(at))?;
+        let date = today();
+        let river = Some(river).filter(|r| !r.trim().is_empty());
+        self.edit(|s| s.reach_route(&JsFetch(fetch), &at, river, start, end, &via, &date))
+    }
+
+    /// Give a JRC occurrence tile the user downloaded and dropped in.
+    pub fn reach_add_tile(&mut self, name: &str, bytes: Vec<u8>) -> Js<String> {
+        self.edit(|s| s.reach_add_tile(name, bytes))
+    }
+
+    /// Run one reach step: `banks`, `edge_fit` or `level` (with an optional percentile).
+    pub fn reach_step(
+        &mut self,
+        step: &str,
+        percentile: Option<f64>,
+        at: &str,
+        fetch: js_sys::Function,
+    ) -> Js<String> {
+        let step = ok(owd_shell::reach::ReachStep::of(step, percentile))?;
+        let at = ok(endpoints(at))?;
+        let date = today();
+        let job = ok(self.state.begin_reach(step))?;
+        let job = ok(job.run(&JsFetch(fetch), &at, &date))?;
+        self.edit(|s| s.keep_reach(job))
+    }
+
+    /// Give the depth of a river with no survey. `points` is JSON `[[chainage, depth], ...]`.
+    pub fn set_bed(&mut self, points: &str, season: &str) -> Js<String> {
+        let pts: Vec<[f64; 2]> =
+            ok(serde_json::from_str(points).map_err(|e| format!("not a depth table: {e}")))?;
+        let date = today();
+        self.edit(|s| s.set_bed(&pts, Some(season), &date))
+    }
+
+    /// Answer "what fits" over every vessel class.
+    pub fn run_fits(&mut self) -> Js<String> {
+        self.edit(|s| s.run_fits())
+    }
+
     /// Undo the last bank edit.
     pub fn undo_bank_edit(&mut self) -> Js<String> {
         self.edit(|s| s.undo_bank_edit())
@@ -147,7 +258,8 @@ impl Session {
 
     /// Load the DEM from the bytes of a GeoTIFF.
     pub fn load_dem(&mut self, name: &str, bytes: Vec<u8>) -> Js<String> {
-        self.edit(|s| s.load_dem(Path::new(name), bytes))
+        let date = today();
+        self.edit(|s| s.load_dem(Path::new(name), bytes, &date))
     }
 
     pub fn set_water(&mut self, level: &str, fall: &str) -> Js<String> {

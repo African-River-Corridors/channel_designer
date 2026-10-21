@@ -306,8 +306,8 @@ impl AppState {
     }
 
     /// Reference a DEM file and keep it for the stages. A DEM the stages could not sample is
-    /// refused, with the CRS named.
-    pub fn load_dem(&mut self, file: &Path, bytes: Vec<u8>) -> Result<(), String> {
+    /// refused, with the CRS named. It is marked `user` in the provenance, dated `date`.
+    pub fn load_dem(&mut self, file: &Path, bytes: Vec<u8>, date: &str) -> Result<(), String> {
         self.refuse_while_running()?;
         let dem = read_bytes(&bytes).map_err(|e| format!("{}: {e}", file.display()))?;
         let epsg = self.project_epsg();
@@ -322,6 +322,18 @@ impl AppState {
             None => file.to_string_lossy().into_owned(),
         };
         self.session.set_dem(&rel, &bytes, &dem);
+        self.session
+            .set_provenance(
+                "dem",
+                owd_format::design::provenance::record(
+                    "user-file",
+                    date,
+                    "User-supplied data",
+                    owd_format::design::provenance::Mark::User,
+                    false,
+                ),
+            )
+            .map_err(message)?;
         self.dem = Some(Arc::new(dem));
         self.dem_bytes = Some(Arc::new(bytes));
         self.dem_file = Some(file.to_path_buf());
@@ -586,6 +598,11 @@ impl AppState {
             "can_undo_bank_edit": !self.bank_undo.is_empty(),
             "running": self.running.as_ref().map(|(s, _)| s.name()),
             "notices": self.session.notices(),
+            "fits_status": match self.session.fits_status() {
+                StageStatus::NotRun => "not_run",
+                StageStatus::Fresh => "fresh",
+                StageStatus::Stale => "stale",
+            },
             "reach_view": self.reach_view(),
         })
     }
@@ -802,7 +819,7 @@ mod tests {
         let file = dir.path().join("dem.tif");
         std::fs::write(&file, dem_bytes()).unwrap();
         let mut s = AppState::open(&dir.path().join("river.owd"), &worked_example(), None).unwrap();
-        s.load_dem(&file, dem_bytes()).unwrap();
+        s.load_dem(&file, dem_bytes(), "2026-10-21").unwrap();
         s.set_water(38.0, None).unwrap();
         (s, dir)
     }

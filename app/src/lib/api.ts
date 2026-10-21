@@ -78,7 +78,46 @@ export interface Snapshot {
   warnings: string[];
   /** The stage running on a worker now, if any. */
   running: StageName | null;
+  /** Every licence notice the inputs in use require (spec 0012). */
+  notices?: string[];
+  /** Whether the "what fits" answer is current. */
+  fits_status?: StageState;
+  /** What "Start from a river" shows besides the document (spec 0012). */
+  reach_view?: ReachView;
 }
+/** The planned route and the files it needs, as the session gives them. */
+export interface ReachView {
+  route: LonLat[] | null;
+  length_m?: number;
+  as_drawn?: number;
+  jrc_tiles: { name: string; url: string; given: boolean }[];
+  dem_tiles: { name: string; url: string }[];
+  has_mask_banks: boolean;
+  /** Constraint stretches of the answer, by ruleset then vessel class, with their ends in WGS84. */
+  fits_stretches: Record<string, Record<string, { kind: string; from: LonLat | null; to: LonLat | null }[]>>;
+}
+/** One vessel class in the "what fits" answer. */
+export interface FitsClass {
+  vessel_standard_id: string;
+  class_name: string;
+  family: string;
+  loa_m: number;
+  beam_m: number;
+  fits: boolean;
+  worst_width_deficit_m: number | null;
+  worst_radius_deficit_m: number | null;
+  stretch_count: number;
+  warnings: string[];
+  label: string;
+}
+export interface FitsResult {
+  label: string;
+  length_m: number;
+  rulesets: { ruleset_id: string; largest_fitting: string | null; classes: FitsClass[] }[];
+}
+/** A JSON part of the document the typed snapshot leaves open. */
+export const docPart = <T>(snap: Snapshot | null, ...path: string[]): T | undefined =>
+  path.reduce<unknown>((v, k) => (v && typeof v === "object" ? (v as Record<string, unknown>)[k] : undefined), snap?.document) as T | undefined;
 export interface Choices {
   rulesets: { id: string; label: string; family: string }[];
   vessels: {
@@ -239,3 +278,17 @@ export type BankEdit =
 export const editBank = (side: "left_bank" | "right_bank", edit: BankEdit) => invoke<Snapshot>("edit_bank", { side, edit });
 /** Undo the last bank edit. */
 export const undoBankEdit = () => invoke<Snapshot>("undo_bank_edit");
+
+/** Plan a reach (start, end and via points as [lon, lat]) and start a new study from it. null when the user keeps an unsaved design. */
+export const reachRoute = (river: string, start: LonLat, end: LonLat, via: LonLat[]) => invoke<Snapshot | null>("reach_route", { river, start, end, via });
+/** Give a JRC occurrence tile the user downloaded (a File in a browser). null on cancel. */
+export const reachAddTile = (file?: File) => invoke<Snapshot | null>("reach_add_tile", { file: file ?? null });
+export type ReachStepName = "banks" | "edge_fit" | "level";
+/** Run one step of the reach on the network. Rejects with the reason, or with `cancelled`. */
+export const reachStep = (step: ReachStepName, percentile?: number) => invoke<Snapshot>("reach_step", { step, percentile: percentile ?? null });
+/** Cancel the reach step that is running: its result is dropped. */
+export const reachCancel = () => invoke<void>("reach_cancel");
+/** Give the depth of a river with no survey: `[chainage, depth]` points, and a season label. */
+export const setBed = (points: [number, number][], season: string) => invoke<Snapshot>("set_bed", { points, season });
+/** Answer "what fits" over every vessel class. */
+export const runFits = () => invoke<Snapshot>("run_fits");
