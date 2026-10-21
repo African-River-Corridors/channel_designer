@@ -12,15 +12,101 @@
 //! Depth here is assumed, not measured: [`DEPTH_ASSUMED_LABEL`] goes on every output that used it.
 
 use crate::alignment::PyError;
-use crate::alignment::navigable::{Chained, cross_section};
-use crate::geom::overlay::contains_xy;
+use crate::alignment::navigable::Chained;
 use crate::geom::{Polygon, Pt, linear};
+use std::collections::HashMap;
 
 /// Said on every output that used a bed model.
 pub const DEPTH_ASSUMED_LABEL: &str = "depth assumed, not measured";
 
 /// The spacing of the cross-sections read along the centreline (m).
-pub const BED_STATION_M: f64 = 5.0;
+pub const BED_STATION_M: f64 = 10.0;
+
+/// How far from the centreline a bank is looked for (m). Water wider than this on one side counts
+/// as this wide: the bed is a parabola over this width, which is far wider than any reach screened.
+pub const BED_REACH_M: f64 = 5000.0;
+
+/// The size of a cell of the edge index (m).
+const CELL_M: f64 = 500.0;
+
+/// The edges of the water's rings, in a grid, so a station reads the banks near it and not every
+/// edge of a river hundreds of kilometres long.
+struct EdgeIndex {
+    edges: Vec<[Pt; 2]>,
+    cells: HashMap<(i64, i64), Vec<u32>>,
+}
+
+impl EdgeIndex {
+    fn new(water: &[Polygon]) -> EdgeIndex {
+        let mut edges = Vec::new();
+        for poly in water {
+            for ring in core::iter::once(&poly.exterior).chain(&poly.holes) {
+                edges.extend(ring.windows(2).map(|w| [w[0], w[1]]));
+            }
+        }
+        let cell = |v: f64| (v / CELL_M).floor() as i64;
+        let mut cells: HashMap<(i64, i64), Vec<u32>> = HashMap::new();
+        for (i, e) in edges.iter().enumerate() {
+            let (x0, x1) = (e[0][0].min(e[1][0]), e[0][0].max(e[1][0]));
+            let (y0, y1) = (e[0][1].min(e[1][1]), e[0][1].max(e[1][1]));
+            if !(x0.is_finite() && x1.is_finite() && y0.is_finite() && y1.is_finite()) {
+                continue;
+            }
+            for cx in cell(x0)..=cell(x1) {
+                for cy in cell(y0)..=cell(y1) {
+                    cells.entry((cx, cy)).or_default().push(i as u32);
+                }
+            }
+        }
+        EdgeIndex { edges, cells }
+    }
+
+    /// The distances from `p` to the water's edge along `+n` and `-n`, or `(0, 0)` when `p` is not
+    /// in the water (an even number of edges lie ahead of it). Edges are read to `BED_REACH_M`.
+    fn half_widths(&self, p: Pt, n: Pt) -> (f64, f64) {
+        let cell = |v: f64| (v / CELL_M).floor() as i64;
+        let (a, b) = (
+            [p[0] - n[0] * BED_REACH_M, p[1] - n[1] * BED_REACH_M],
+            [p[0] + n[0] * BED_REACH_M, p[1] + n[1] * BED_REACH_M],
+        );
+        let mut near: Vec<u32> = Vec::new();
+        for cx in cell(a[0].min(b[0]))..=cell(a[0].max(b[0])) {
+            for cy in cell(a[1].min(b[1]))..=cell(a[1].max(b[1])) {
+                if let Some(v) = self.cells.get(&(cx, cy)) {
+                    near.extend_from_slice(v);
+                }
+            }
+        }
+        near.sort_unstable();
+        near.dedup();
+        let (mut pos, mut neg, mut ahead) = (BED_REACH_M, BED_REACH_M, 0usize);
+        for &i in &near {
+            let [e0, e1] = self.edges[i as usize];
+            let d = [e1[0] - e0[0], e1[1] - e0[1]];
+            let den = n[0] * d[1] - n[1] * d[0];
+            if den == 0.0 {
+                continue;
+            }
+            let ap = [e0[0] - p[0], e0[1] - p[1]];
+            let u = (ap[0] * d[1] - ap[1] * d[0]) / den;
+            let v = (ap[0] * n[1] - ap[1] * n[0]) / den;
+            // Half-open, so a ray through a vertex counts one edge, not two.
+            if (0.0..1.0).contains(&v) {
+                if u > 0.0 {
+                    ahead += 1;
+                    pos = pos.min(u);
+                } else if u < 0.0 {
+                    neg = neg.min(-u);
+                }
+            }
+        }
+        if ahead % 2 == 1 {
+            (pos, neg)
+        } else {
+            (0.0, 0.0)
+        }
+    }
+}
 
 /// The depth at `chainage_m` on a table of `(chainage, depth)` points sorted by chainage: linear
 /// between points, flat beyond the ends. Two points at one chainage make a step: the later holds.
@@ -69,7 +155,6 @@ struct Section {
 pub struct BedModel {
     table: Vec<[f64; 2]>,
     centreline: Vec<Pt>,
-    water: Vec<Polygon>,
     sections: Vec<Section>,
 }
 
@@ -105,6 +190,7 @@ impl BedModel {
                 "the river centreline needs at least two points.",
             ));
         }
+        let index = EdgeIndex::new(water);
         let c = Chained::new(centreline);
         let len = c.length();
         let n = (len / BED_STATION_M).ceil().max(1.0) as usize;
@@ -114,7 +200,7 @@ impl BedModel {
                 let d = c.direction(s, BED_STATION_M);
                 let normal = [-d[1], d[0]];
                 let at = c.at(s);
-                let (left_m, right_m) = cross_section(at, normal, water);
+                let (left_m, right_m) = index.half_widths(at, normal);
                 Section {
                     chainage_m: s,
                     at,
@@ -141,7 +227,6 @@ impl BedModel {
         Ok(BedModel {
             table: table.to_vec(),
             centreline: centreline.to_vec(),
-            water: water.to_vec(),
             sections,
         })
     }
@@ -181,11 +266,10 @@ impl BedModel {
         self.depth_m(chainage_m) * parabola(offset_m, half)
     }
 
-    /// The depth below the water at `p`, or `None` when `p` is not in the water.
+    /// The depth below the water at `p`, or `None` when `p` is not in the water: farther from the
+    /// centreline than the bank on its side. (Water the centreline's cross-sections do not reach,
+    /// such as a bay, is read from the DEM.)
     pub fn depth_below_water_at(&self, p: Pt) -> Option<f64> {
-        if !contains_xy(&self.water, p) {
-            return None;
-        }
         let s = linear::project(&self.centreline, p);
         let (a, b, t) = self.between(s);
         let normal = if t < 0.5 { a.normal } else { b.normal };
@@ -194,7 +278,9 @@ impl BedModel {
             a.at[1] + (b.at[1] - a.at[1]) * t,
         ];
         let offset = (p[0] - at[0]) * normal[0] + (p[1] - at[1]) * normal[1];
-        Some(self.depth_below_water_m(s, offset))
+        let (left, right) = self.half_widths_m(s);
+        let half = if offset >= 0.0 { left } else { right };
+        (offset.abs() <= half).then(|| self.depth_below_water_m(s, offset))
     }
 
     /// The bed elevation at `p` for a water level of `water_level_m` there, or `None` when `p` is
