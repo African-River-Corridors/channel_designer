@@ -470,7 +470,7 @@ impl AppState {
     pub fn title(&self) -> String {
         let marker = if self.dirty { "\u{25cf} " } else { "" };
         format!(
-            "{marker}{} \u{2014} {} \u{2014} Channel Designer",
+            "{marker}{} \u{2014} {} \u{2014} Open Waterway Designer",
             self.file_name(),
             self.session.document()["project"]["title"]
                 .as_str()
@@ -563,14 +563,14 @@ mod tests {
         let mut s = AppState::open(Path::new("/x/river.cdesign"), &worked_example(), None).unwrap();
         assert_eq!(
             s.title(),
-            "river.cdesign \u{2014} Synthetic river \u{2014} Channel Designer"
+            "river.cdesign \u{2014} Synthetic river \u{2014} Open Waterway Designer"
         );
         s.set_sizing("PIANC-B", "CEMT_Va", Some(2.5)).unwrap();
         assert!(s.title().starts_with("\u{25cf} river.cdesign"));
         s.saved(Path::new("/x/other.cdesign"));
         assert_eq!(
             s.title(),
-            "other.cdesign \u{2014} Synthetic river \u{2014} Channel Designer"
+            "other.cdesign \u{2014} Synthetic river \u{2014} Open Waterway Designer"
         );
     }
 

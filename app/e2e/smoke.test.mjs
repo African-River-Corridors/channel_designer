@@ -97,14 +97,14 @@ function demTiff() {
 }
 
 
-/** The worked example with a DEM beside it, in a fresh folder. Returns the .cdesign path. */
+/** The worked example with a DEM beside it, in a fresh folder. Returns the .owd path. */
 function designWithDem(prefix) {
   const dir = fs.mkdtempSync(path.join(WORK, prefix));
   const tif = demTiff();
   fs.writeFileSync(path.join(dir, "dem.tif"), tif);
   const doc = JSON.parse(fs.readFileSync(EXAMPLE, "utf8"));
   doc.inputs.dem = { path: "dem.tif", sha256: crypto.createHash("sha256").update(tif).digest("hex"), crs: "EPSG:32630", nodata: -9999 };
-  const file = path.join(dir, "with-dem.cdesign");
+  const file = path.join(dir, "with-dem.owd");
   fs.writeFileSync(file, JSON.stringify(doc, null, 2));
   return file;
 }
@@ -141,7 +141,7 @@ async function open(file, expectName) {
   await until(`${expectName} to open`, async () => (await fileLabel()).includes(expectName));
 }
 
-describe("Channel Designer app smoke test", () => {
+describe("Open Waterway Designer app smoke test", () => {
   before(async () => {
     browser = await remote({
       hostname: "127.0.0.1",
@@ -186,7 +186,7 @@ describe("Channel Designer app smoke test", () => {
     assert.match(await fileLabel(), /\(unsaved\)/);
 
     // Save as: the unsaved marker goes.
-    const saved = path.join(WORK, "changed.cdesign");
+    const saved = path.join(WORK, "changed.owd");
     answer("save.txt", saved);
     await click("Save as");
     await until("the file to be saved", async () => !(await fileLabel()).includes("(unsaved)"));
@@ -199,7 +199,7 @@ describe("Channel Designer app smoke test", () => {
     const radiusAfter = await text("min-radius");
     await open(EXAMPLE, "synthetic-river.owd");
     assert.equal(await text("min-radius"), radiusBefore);
-    await open(saved, "changed.cdesign");
+    await open(saved, "changed.owd");
     assert.equal(await text("min-radius"), radiusAfter);
     assert.equal(await text("status-sizing"), "fresh");
   });
@@ -244,7 +244,7 @@ describe("Channel Designer app smoke test", () => {
   it("shows the DEM hillshade and an imagery-offline note when the tiles cannot load", async () => {
     // run.sh points every tile request at a dead address. The design names a DEM beside it.
     const file = designWithDem("hillshade-");
-    await open(file, "with-dem.cdesign");
+    await open(file, "with-dem.owd");
     await until("the offline note", async () => (await (await browser.$("[data-testid=offline-note]")).isExisting()), 30000);
     await until("the hillshade", async () => (await (await browser.$("[data-testid=plan-map]")).getAttribute("data-hillshade")) === "shown", 30000);
     assert.match(await text("offline-note"), /Imagery offline/);
@@ -273,7 +273,7 @@ describe("Channel Designer app smoke test", () => {
   });
 
   it("runs alignment, then volumes, and the stages turn fresh; editing the vessel makes them stale", async () => {
-    await open(designWithDem("run-"), "with-dem.cdesign");
+    await open(designWithDem("run-"), "with-dem.owd");
     await formShowsExample();
     assert.equal(await text("status-alignment"), "not run");
     await (await browser.$("[data-testid=run-alignment]")).click();
@@ -334,7 +334,7 @@ describe("Channel Designer app smoke test", () => {
     await until("the map to follow the table", async () => (await mapSelected()) === "rolling-circle", 30000);
   });
   it("moves the cross-section and the map marker with the station slider, from the volumes' own station walk", async () => {
-    await open(designWithDem("sections-"), "with-dem.cdesign");
+    await open(designWithDem("sections-"), "with-dem.owd");
     await formShowsExample();
     await (await browser.$("[data-testid=run-alignment]")).click();
     await until("alignment to be fresh", async () => (await text("status-alignment")) === "fresh", 60000);
@@ -373,7 +373,7 @@ describe("Channel Designer app smoke test", () => {
     await until("the sections to be withdrawn", async () => (await (await browser.$("[data-testid=section-note]")).isExisting()), 30000);
   });
   it("fills the option table, saves and reopens to the same table, and exports with the screening label", async () => {
-    await open(designWithDem("full-"), "with-dem.cdesign");
+    await open(designWithDem("full-"), "with-dem.owd");
     await formShowsExample();
     await (await browser.$("[data-testid=run-alignment]")).click();
     await until("alignment to be fresh", async () => (await text("status-alignment")) === "fresh", 60000);
@@ -390,12 +390,12 @@ describe("Channel Designer app smoke test", () => {
     const before = await tableRows();
 
     // Save, open something else, reopen: the same table.
-    const saved = path.join(WORK, "full-saved.cdesign");
+    const saved = path.join(WORK, "full-saved.owd");
     answer("save.txt", saved);
     await click("Save as");
     await until("the file to be saved", async () => !(await fileLabel()).includes("(unsaved)"));
     await open(EXAMPLE, "synthetic-river.owd");
-    await open(saved, "full-saved.cdesign");
+    await open(saved, "full-saved.owd");
     await until("the table to return", async () => (await tableRows()).length === before.length, 30000);
     assert.deepEqual(await tableRows(), before);
     assert.equal(await text("status-volumes"), "fresh");
