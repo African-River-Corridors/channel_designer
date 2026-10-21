@@ -11,8 +11,8 @@ from pathlib import Path
 SRC = Path(__file__).resolve().parents[1] / "src" / "owd"
 ALLOWED_THIRD_PARTY = {"numpy", "shapely", "vessel_designer"}
 HEAVY = {"rasterio", "geopandas", "fiona", "pyproj", "scipy", "affine", "osgeo", "gdal",
-         "pandas", "matplotlib", "technical_drawings_for_agents"}
-EXEMPT = {"volumes/raster.py", "drawings/sections.py"}
+         "pandas", "matplotlib"}
+EXEMPT = {"volumes/raster.py"}
 
 
 def _imports(path):

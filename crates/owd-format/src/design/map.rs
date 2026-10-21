@@ -95,6 +95,29 @@ fn tight_bends(pts: &[Pt], chain: &[f64], r_min: f64, chord: f64) -> Vec<(f64, f
     out
 }
 
+/// The tight bends of one design line option as `(chainage, least radius)`: the places where the
+/// radius, read the way the radius check reads it, is below the allowed radius. Empty when the
+/// option has no line or no radius limit. Drawings use this to find the middle of each bend.
+pub(crate) fn option_tight_bends(option: &Value) -> Vec<(f64, f64)> {
+    let pts = all_positions(&option["line"]);
+    if pts.len() < 2 {
+        return Vec::new();
+    }
+    let chain = compute_chainages(&pts);
+    let r_min = option["checks"]["r_min_m"].as_f64().unwrap_or(f64::NAN);
+    let chord = option["checks"]["radius_check_chord_m"]
+        .as_f64()
+        .filter(|x| x.is_finite() && *x > 0.0)
+        .unwrap_or_else(|| default_check_chord(r_min));
+    if !(r_min.is_finite() && chord.is_finite()) {
+        return Vec::new();
+    }
+    tight_bends(&pts, &chain, r_min, chord)
+        .into_iter()
+        .map(|(s, r, _)| (s, r))
+        .collect()
+}
+
 impl Session {
     /// The plan map's geometry in WGS84: the banks, the river centreline and polygon where there
     /// are any, and each design line option with its tight bends and chainage ticks. `bbox` is

@@ -18,12 +18,6 @@ dependencies = [
 [project.optional-dependencies]
 # Raster DEM I/O for the volume integrator and DEM-backed terrain samplers.
 dem = ["rasterio>=1.3", "scipy>=1.11", "affine>=2.4"]
-# Cross-section sheets (SVG/DXF). Pulls the drawing toolkit, pinned to 53c37c6: the last commit
-# before its 1.0 clean break (59fd7fc) removed the dxf, sheet, svg and titleblock modules that
-# drawings/sections.py uses. Porting to the 1.0 drawing-document API is a separate issue.
-drawings = [
-    "technical_drawings_for_agents @ git+https://github.com/African-River-Corridors/technical_drawings_for_agents@53c37c688d473be2eb3cc67e0c66326c0bde2754",
-]
 dev = ["pytest>=8"]
 
 [project.urls]

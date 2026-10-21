@@ -18,6 +18,9 @@ owd-core = { path = "crates/owd-core" }
 owd-format = { path = "crates/owd-format" }
 owd-shell = { path = "crates/owd-shell" }
 owd-reach = { path = "crates/owd-reach" }
+# The Drawing Format Standard in Rust lives in its own repository (open-technical-drawer, spec 0004, ADR 0009).
+# Pinned by git tag, as arc-rules is pinned in the sister project. Never a path or a branch.
+otd = { git = "https://github.com/African-River-Corridors/open-technical-drawer", tag = "v0.1.0" }
 # float_roundtrip, arbitrary_precision: read every number exactly as written, big ints too.
 # preserve_order: a JSON object keeps its key order, as a Python dict does.
 serde_json = { version = "1", features = ["float_roundtrip", "arbitrary_precision", "preserve_order"] }

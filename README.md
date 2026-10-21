@@ -16,7 +16,7 @@ measures the cut and dredge volumes.
 | **Volumes** | `owd.volumes` | Cut Model A and B cross-sections (wet batter, clearance-prism gate, benched face above the waterline), a station-by-station section integrator, a raster DEM integrator, weir-cascade pool levels, and the plan excavation footprint. Quantities only — m², m³ and face heights. |
 | **Terrain** | `owd.terrain` | Long profile of any line over a terrain sampler: chainage, levels, ascent and descent. Pure; it reads no files and fetches nothing. |
 | **Optimise** *(optional)* | `owd.optimise` | Weir sites and pool levels by an exact search over (site, level), and the least-cost channel through each pool by an A* search over arcs that never bend tighter than R_min. Costs are weights you supply. Core dependencies only. |
-| **Drawings** *(optional)* | `owd.drawings` | Cross-section gallery sheets as SVG (and DXF) with ISO 7200 title blocks, built on [`technical_drawings_for_agents`](https://github.com/African-River-Corridors/technical_drawings_for_agents). |
+| **Drawings** | `owd.draw` | Engineering drawings of a design line option, drawn by the Rust core through [`otd`](https://github.com/African-River-Corridors/open-technical-drawer), the [Drawing Format Standard](https://github.com/African-River-Corridors/technical_drawings_for_agents) in Rust: the cross-section gallery now (ISO 7200 title block, one scale, dredge and dry cut hatched, areas), as drawing documents, SVG, PDF and DXF. The same sheets as `owd draw`. Every sheet says "Screening — not for construction". |
 
 Vessel classes and dimensions come from
 [`vessel_designer`](https://github.com/African-River-Corridors/open-vessel-concept-drawings).
@@ -49,16 +49,22 @@ pip install "open-waterway-designer @ git+https://github.com/African-River-Corri
 Your scripts do not change. The 0.2.0 functions and classes have the names, arguments and results of
 0.1.x; see [CHANGELOG.md](CHANGELOG.md) for the few things that moved, and what is deprecated.
 
+### Drawings
+
+After the volumes stage, `owd draw design.owd --out sheets/` writes, for each sheet, the drawing document, the
+normalised content, SVG, PDF and DXF. `owd draw design.owd --document` prints the drawing documents only. In Python,
+`owd.draw("design.owd", out="sheets/")` gives the same files, byte for byte. Sheets are drawn by
+[`otd`](https://github.com/African-River-Corridors/open-technical-drawer), the Drawing Format Standard in Rust. Every
+sheet is marked "Screening — not for construction".
+
 Optional extras:
 
 | Extra | Adds | For |
 |---|---|---|
 | `[dem]` | rasterio, scipy, affine | nothing the package needs any more: the core reads GeoTIFFs itself. Kept so existing install commands work. |
-| `[drawings]` | technical_drawings_for_agents | cross-section sheets (`owd.drawings`) |
 | `[dev]` | pytest | running the tests |
 
-For example `pip install "open-waterway-designer[drawings]"`.
-Calling a drawing function without `[drawings]` raises an `ImportError` that says what to install.
+The `[drawings]` extra is gone: drawings are part of the package now (spec 0004).
 
 ## Renamed from channel_designer
 

@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 owd-core.workspace = true
+otd.workspace = true
 serde_json.workspace = true
 libm = "0.2"
 png = "0.18"

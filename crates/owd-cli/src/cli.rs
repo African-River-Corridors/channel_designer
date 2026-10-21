@@ -29,6 +29,15 @@ struct Out {
 }
 
 #[derive(Subcommand)]
+enum DrawSub {
+    /// Run one drawing document through the drawing crate and print the result (clause 17.3).
+    Run {
+        /// The drawing document.
+        document: String,
+    },
+}
+
+#[derive(Subcommand)]
 enum Command {
     /// Start a channel design: one file for one study.
     New {
@@ -219,6 +228,37 @@ enum Command {
         #[arg(short = 'o', long = "output", value_name = "FILE")]
         output: Option<String>,
     },
+    /// Draw sheets of a design line option: cross sections now, more kinds as they land. Writes, for
+    /// each sheet, its drawing document, normalised content, SVG, PDF and DXF. `owd draw run FILE`
+    /// reads one drawing document with the drawing crate and prints the result of clause 17.3.
+    #[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
+    Draw {
+        #[command(subcommand)]
+        sub: Option<DrawSub>,
+        /// The channel design (after the volumes stage). `-` is stdin.
+        doc: Option<String>,
+        /// Write the drawings into this folder.
+        #[arg(long, value_name = "DIR", required_unless_present = "document")]
+        out: Option<String>,
+        /// Print the drawing documents only, as one JSON object keyed by drawing number.
+        #[arg(long, conflicts_with = "out")]
+        document: bool,
+        /// The design line option, by id or name (default: the first).
+        #[arg(long, value_name = "NAME")]
+        option: Option<String>,
+        /// The kinds of sheet, comma separated: xs (cross sections).
+        #[arg(long, value_name = "KINDS")]
+        sheets: Option<String>,
+        /// The revision letter in the title block (default A).
+        #[arg(long, value_name = "REV")]
+        revision: Option<String>,
+        /// The date in the title block, YYYY-MM-DD (default: the date the design was created).
+        #[arg(long, value_name = "DATE")]
+        date: Option<String>,
+        /// Print a machine-readable result as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Rerun every stale stage, in order.
     Run {
         /// The channel design. `-` is stdin.
@@ -379,6 +419,32 @@ pub fn main() -> ExitCode {
             wgs84,
             output,
         } => commands::export(&doc, geojson, csv, wgs84, output.as_deref()),
+        Command::Draw {
+            sub: Some(DrawSub::Run { document }),
+            ..
+        } => commands::draw_run(&document),
+        Command::Draw {
+            doc,
+            out,
+            document,
+            option,
+            sheets,
+            revision,
+            date,
+            json,
+            ..
+        } => commands::draw(
+            &doc.unwrap_or_default(),
+            commands::DrawFlags {
+                out,
+                documents_only: document,
+                option,
+                sheets,
+                revision,
+                date,
+            },
+            json,
+        ),
         Command::Run { doc, out } => commands::run(&doc, &out.output, out.json),
         Command::Validate { doc, json } => commands::validate(&doc, json),
         Command::Status { doc, json } => commands::status(&doc, json),
