@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "svelte-check --tsconfig ./tsconfig.json && vite build",
+    "build": "node scripts/contrast.mjs && svelte-check --tsconfig ./tsconfig.json && vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
+    "contrast": "node scripts/contrast.mjs",
     "tauri": "tauri",
     "e2e": "bash e2e/run.sh"
   },
