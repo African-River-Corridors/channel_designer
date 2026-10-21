@@ -1,0 +1,70 @@
+# OWD docs. Built by website/build.py, which assembles _docs/ from the repo's own Markdown.
+site_name: OWD Docs
+site_description: Documentation for OWD, Open Waterway Designer.
+site_url: https://www.africanrivercorridors.com/owd/docs/
+repo_url: https://github.com/African-River-Corridors/open-waterway-designer
+repo_name: open-waterway-designer
+edit_uri: ""
+copyright: Apache 2.0 · Hosted by African River Corridors
+docs_dir: _docs
+use_directory_urls: false # page.html, served as /page (see hooks.py)
+
+hooks:
+  - hooks.py
+
+theme:
+  name: material
+  custom_dir: overrides
+  font: false # the fonts are bundled (assets/tokens.css)
+  favicon: assets/favicon.svg
+  palette:
+    scheme: owd
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - content.code.copy
+
+extra_css:
+  - assets/tokens.css
+  - assets/owd.css
+
+markdown_extensions:
+  - tables
+  - toc:
+      permalink: true
+  - admonition
+  - pymdownx.superfences
+  - pymdownx.highlight
+
+plugins:
+  - search
+
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn
+
+# "adr/" and "specs/" expand to every page in the folder (hooks.py).
+nav:
+  - Overview: index.md
+  - Roadmap: roadmap.md
+  - Glossary: glossary.md
+  - Known issues: known-issues.md
+  - Style guide: style-guide.md
+  - Decisions: adr/
+  - Specs: specs/
+  - Contribute:
+      - contributing.md
+      - code-of-conduct.md
+      - security.md
+  - Trademarks: trademarks.md
+  - Changelog: changelog.md
+
+extra:
+  homepage: /owd # the logo goes to the website
