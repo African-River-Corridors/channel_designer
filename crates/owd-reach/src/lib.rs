@@ -6,6 +6,7 @@
 
 pub mod banks;
 pub mod dem;
+pub mod edgefit;
 pub mod error;
 pub mod fetch;
 pub mod geo;
@@ -14,6 +15,7 @@ pub mod overpass;
 pub mod provenance;
 pub mod reach;
 pub mod route;
+pub mod sentinel2;
 pub mod sources;
 pub mod tiff;
 

@@ -264,6 +264,16 @@ enum Command {
         /// The JRC occurrence, in percent, from which a pixel is water (default 75, provisional).
         #[arg(long, value_name = "PERCENT", requires = "banks")]
         mask_threshold: Option<f64>,
+        /// Then move the mask banks onto the water edge in a dry-season, low-cloud Sentinel-2 scene
+        /// (Earth Search STAC; a few small windows of the scene are read). Needs --banks.
+        #[arg(long, requires = "banks")]
+        edge_fit: bool,
+        /// The most cloud, in percent of the scene, for a scene to be used (default 20, provisional).
+        #[arg(long, value_name = "PERCENT", requires = "edge_fit")]
+        max_cloud: Option<f64>,
+        /// Another STAC search endpoint for the Sentinel-2 scenes (default: Earth Search).
+        #[arg(long, value_name = "URL", requires = "edge_fit")]
+        stac: Option<String>,
         /// The study's title (default: the river's name).
         #[arg(long)]
         title: Option<String>,
@@ -565,6 +575,9 @@ pub fn main() -> ExitCode {
             banks,
             jrc_tile,
             mask_threshold,
+            edge_fit,
+            max_cloud,
+            stac,
             title,
             overpass,
             date,
@@ -573,6 +586,9 @@ pub fn main() -> ExitCode {
             banks,
             jrc_tile,
             mask_threshold,
+            edge_fit,
+            max_cloud,
+            stac,
             file,
             river,
             start,

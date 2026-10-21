@@ -359,3 +359,80 @@ fn a_river_the_mask_cannot_see_or_a_missing_tile_exits_2_with_what_to_do() {
     assert_eq!(o.status.code(), Some(2));
     assert!(!file.exists());
 }
+
+#[test]
+fn edge_fit_moves_the_mask_banks_onto_a_recorded_scene_and_records_the_scene() {
+    // In process, with every answer recorded: the river arm (Overpass), the JRC window (a dropped
+    // tile) and the Sentinel-2 search and band windows of 23 December 2023.
+    use owd_cli::commands::{ReachFlags, reach_with};
+    use owd_reach::{DroppedFiles, ReplayFetch};
+    let ex = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/reach");
+    let base = "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/29/N/RF/2023/12/S2B_29NRF_20231223_0_L2A";
+    let mut fetch = ReplayFetch::new()
+        .with_response_containing("out%20geom", arm_network())
+        .with_response_containing(
+            "earth-search.aws.element84.com/v1/search",
+            std::fs::read(ex.join("stac_search_sassandra.json")).unwrap(),
+        );
+    for band in ["B03", "B04", "B08", "B11", "SCL"] {
+        fetch = fetch.with_response(
+            &format!("{base}/{band}.tif"),
+            std::fs::read(ex.join(format!("s2_sassandra_{band}.tif"))).unwrap(),
+        );
+    }
+    let jrc = DroppedFiles::new().with_file(
+        "occurrence_10W_10Nv1_4_2021.tif",
+        std::fs::read(ex.join("jrc_occurrence_sassandra_estuary.tif")).unwrap(),
+    );
+    let dir = work_dir("edge-fit");
+    let file = dir.join("reach.owd");
+    let flags = |edge_fit: bool, max_cloud: Option<f64>| ReachFlags {
+        banks: true,
+        jrc_tile: Vec::new(),
+        mask_threshold: None,
+        edge_fit,
+        max_cloud,
+        stac: None,
+        file: file.to_str().unwrap().to_string(),
+        river: None,
+        start: Some("-6.0715,4.966".into()),
+        end: Some("-6.07,4.983".into()),
+        via: Vec::new(),
+        trace: None,
+        title: Some("Edge fit".into()),
+        overpass: None,
+        // Two years back from here holds the 2023-24 dry season.
+        date: Some("2024-03-01".into()),
+        json: true,
+    };
+    if let Err(e) = reach_with(flags(true, None), &fetch, &jrc) {
+        panic!("{}", e.message);
+    }
+    let d = doc(&file);
+    for input in ["left_bank", "right_bank", "centreline", "river_polygon"] {
+        let p = &d["provenance"][input];
+        assert_eq!(p["source"], "sentinel2-l2a", "{input}");
+        assert_eq!(p["date"], "2023-12-23");
+        assert_eq!(p["settings"]["scene_id"], "S2B_29NRF_20231223_0_L2A");
+        assert!(
+            p["notice"]
+                .as_str()
+                .unwrap()
+                .contains("Contains modified Copernicus Sentinel data 2023")
+        );
+    }
+    assert_eq!(d["low_confidence_width"]["source"], "sentinel2-l2a");
+    let v = run(&["validate", file.to_str().unwrap()]);
+    assert_eq!(
+        v.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&v.stderr)
+    );
+    // No scene clear enough: the run stops and says what to do.
+    let Err(e) = reach_with(flags(true, Some(0.001)), &fetch, &jrc) else {
+        panic!("a cloud limit no scene meets must fail");
+    };
+    assert!(e.message.contains("no Sentinel-2 scene"), "{}", e.message);
+    assert!(e.message.contains("Raise the cloud limit"), "{}", e.message);
+}

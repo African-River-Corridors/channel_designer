@@ -12,6 +12,18 @@ versions follow [Semantic Versioning](https://semver.org/).
   own data, and the WG 141 Middle Rhine worked example (5.3.3, p104) as a golden case with its known divergence: the
   example's totals add up against 3.0 B, not the 3.2 B it quotes. No result moves.
 
+- **Edge fit of the banks on Sentinel-2 (spec 0012, T4).** `owd reach ... --banks --edge-fit` then moves the mask
+  banks onto the water edge seen in a dry-season, low-cloud Sentinel-2 L2A scene, found in the Earth Search STAC
+  (the two years up to the study date, the dry-season months for its latitude, 20 % cloud or less: `--max-cloud`,
+  `--stac`). Only small windows of five bands are read, by range request, from the scene's Cloud Optimized
+  GeoTIFFs (DEFLATE and 16-bit pixels are now read too). Along each bank normal (±40 m) a colour model learnt
+  from the mask's own water and land scores every pixel, and a Viterbi path picks the edge: at most 30 m from
+  the mask bank and at most 1.5 m change per 5 m. Where the scene shows no clear edge (cloud, shadow, muddy water)
+  the mask bank is kept and the stretch is flagged `no-edge`; where the water runs on past 30 m the bank moves by
+  30 m and the stretch is flagged `at-shift-limit`; a fitted width under 3 pixels (30 m) is flagged `narrow`. The
+  inputs record the scene id and date, "Contains modified Copernicus Sentinel data [year]" and the JRC notice of
+  the seed, and name the limits provisional. On the recorded Sassandra estuary window the mask's 75 % line lies
+  inside the dry-season water, and most bank stations move out by metres.
 - **PIANC WG 141 sizing on the shared rules engine (spec 0007, T1).** OWD now pins `arc-rules` (the rules engine
   shared with open-vessel-concept-drawings) at its tag `v0.2.4`. The WG 141 coefficients are a Rule Set file,
   `pianc-wg141` version 0.3.0: twelve Rules (bottom width, minimum radius, design depth and bend widening for

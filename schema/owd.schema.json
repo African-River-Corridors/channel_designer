@@ -232,7 +232,7 @@
             "properties": {
               "from_m": { "type": "number" },
               "to_m": { "type": "number" },
-              "kind": { "enum": ["narrow", "no-water"] },
+              "kind": { "enum": ["narrow", "no-water", "no-edge", "at-shift-limit"] },
               "min_width_m": { "type": "number", "minimum": 0 }
             }
           }

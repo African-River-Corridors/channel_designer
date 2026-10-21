@@ -1285,6 +1285,9 @@ pub struct ReachFlags {
     pub banks: bool,
     pub jrc_tile: Vec<String>,
     pub mask_threshold: Option<f64>,
+    pub edge_fit: bool,
+    pub max_cloud: Option<f64>,
+    pub stac: Option<String>,
     pub file: String,
     pub river: Option<String>,
     pub start: Option<String>,
@@ -1416,6 +1419,39 @@ pub fn reach_with(
     } else {
         None
     };
+    let fitted = match &banks {
+        Some(b) if flags.edge_fit => {
+            use owd_reach::edgefit::{
+                FitParams, SceneQuery, default_range, fit_to_scene, record_edge_fit,
+            };
+            use owd_reach::sentinel2::{
+                DEFAULT_MAX_CLOUD_PCT, SEARCH_ENDPOINT, default_dry_months,
+            };
+            let max_cloud = flags.max_cloud.unwrap_or(DEFAULT_MAX_CLOUD_PCT);
+            if !(0.0..=100.0).contains(&max_cloud) {
+                return Err(input_error(
+                    "--max-cloud must be a percentage from 0 to 100",
+                ));
+            }
+            let (from, to) = default_range(&date).map_err(|e| input_error(e.to_string()))?;
+            let line = planned.route.line();
+            let q = SceneQuery {
+                endpoint: flags
+                    .stac
+                    .clone()
+                    .unwrap_or_else(|| SEARCH_ENDPOINT.to_string()),
+                from,
+                to,
+                months: default_dry_months(line[line.len() / 2][1]),
+                max_cloud_pct: max_cloud,
+            };
+            let f = fit_to_scene(fetch, b, &FitParams::default(), &q)
+                .map_err(|e| input_error(e.to_string()))?;
+            record_edge_fit(&mut session, &f).map_err(|e| input_error(e.to_string()))?;
+            Some(f)
+        }
+        _ => None,
+    };
     write(&flags.file, &session.to_text())?;
     let route = &planned.route;
     let ways = route.way_ids().len();
@@ -1451,6 +1487,24 @@ pub fn reach_with(
         ));
         human.push_str("\nSource: EC JRC/Google; Pekel et al. 2016, Nature 540, 418-422");
     }
+    if let Some(f) = &fitted {
+        let moved = f
+            .fit
+            .left_shift
+            .iter()
+            .chain(&f.fit.right_shift)
+            .filter(|d| d.abs() > 0.5)
+            .count();
+        let all = f.fit.left_shift.len() + f.fit.right_shift.len();
+        human.push_str(&format!(
+            "\nbanks moved onto the water edge in Sentinel-2 scene {} ({}, {:.1}% cloud): {moved} of {all} bank station(s) moved, at most {} m (a provisional default); {} stretch(es) to check",
+            f.scene.id, f.scene.date, f.scene.cloud_pct, f.fit.params.max_shift_m, f.fit.stretches.len()
+        ));
+        human.push_str(&format!(
+            "\nContains modified Copernicus Sentinel data {}",
+            &f.scene.date[..4]
+        ));
+    }
     human.push_str("\n© OpenStreetMap contributors (ODbL)");
     say(
         flags.file == "-",
@@ -1464,6 +1518,14 @@ pub fn reach_with(
                 "mask_threshold_pct": b.params.threshold_pct,
                 "stations": b.widths.len(),
                 "low_confidence_stretches": b.stretches.len(),
+            })),
+            "edge_fit": fitted.as_ref().map(|f| json!({
+                "scene_id": f.scene.id,
+                "scene_date": f.scene.date,
+                "scene_cloud_pct": f.scene.cloud_pct,
+                "max_shift_m": f.fit.params.max_shift_m,
+                "largest_shift_m": f.fit.left_shift.iter().chain(&f.fit.right_shift).fold(0.0f64, |a, d| a.max(d.abs())),
+                "low_confidence_stretches": f.fit.stretches.len(),
             })),
         }),
     );
