@@ -25,6 +25,8 @@ owd-format.workspace = true
 owd-reach.workspace = true
 owd-core.workspace = true
 arc-rules.workspace = true
+# `otd::Files`: `owd draw run` reads a document's images from its folder.
+otd.workspace = true
 clap = { version = "4.6.7", features = ["derive"] }
 serde_json.workspace = true
 ureq = { version = "3.4.2", default-features = false, features = ["rustls"] }

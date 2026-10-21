@@ -1419,13 +1419,27 @@ pub fn draw(doc: &str, flags: DrawFlags, json_mode: bool) -> Result {
 /// 17.3 as JSON. Used to compare the crate with the standard's Python reader.
 pub fn draw_run(path: &str) -> Result {
     let text = read(path)?;
-    let result = otd_run(&text);
+    // the files a document names (a plan's relief image) are next to it
+    let folder = Path::new(path)
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_default();
+    let result = owd_format::drawing::run_document_with(&text, &FolderFiles(folder));
     println!("{}", result);
     Ok(())
 }
 
-fn otd_run(text: &str) -> String {
-    owd_format::drawing::run_document(text).to_string()
+/// The files of a drawing document, read from its folder.
+struct FolderFiles(std::path::PathBuf);
+
+impl otd::Files for FolderFiles {
+    fn read(&self, relative_path: &str) -> Option<String> {
+        std::fs::read_to_string(self.0.join(relative_path)).ok()
+    }
+
+    fn read_bytes(&self, relative_path: &str) -> Option<Vec<u8>> {
+        std::fs::read(self.0.join(relative_path)).ok()
+    }
 }
 
 pub fn run(doc: &str, files: &[String], output: &Option<String>, json_mode: bool) -> Result {

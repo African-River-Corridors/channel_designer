@@ -26,13 +26,17 @@ def test_draw_returns_five_files_per_sheet_and_writes_them(tmp_path):
     assert files, "at least one sheet"
     for name, data in files.items():
         assert (tmp_path / name).read_bytes() == data
-    stems = {n.split(".", 1)[0] for n in files}
+    # a sheet's stem is that of its drawing document; a plan sheet also has its relief image
+    stems = {n[: -len(".drawing.json")] for n in files if n.endswith(".drawing.json")}
+    assert any(n.endswith("-relief.jpg") for n in files), "the plan sheets' relief"
     for stem in stems:
         for ext in ("drawing.json", "normalised.json", "svg", "pdf", "dxf"):
             assert f"{stem}.{ext}" in files
         assert files[f"{stem}.pdf"].startswith(b"%PDF")
         doc = json.loads(files[f"{stem}.drawing.json"])
-        assert doc["status"] == "concept" and doc["standard_version"] == "1.0"
+        # plan sheets hold an image, which needs standard 1.1 (clause 18.2.1)
+        version = "1.1" if "-pl-" in stem else "1.0"
+        assert doc["status"] == "concept" and doc["standard_version"] == version
 
 
 def test_draw_and_owd_draw_give_byte_identical_files(tmp_path):

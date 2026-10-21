@@ -112,13 +112,14 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as tmp_name:
         tmp = Path(tmp_name)
         for fixture in fixtures(args.owd, tmp):
-            proc = subprocess.run([args.owd, "draw", "--document", str(fixture)], capture_output=True, text=True)
+            # every file of every sheet, so that a document's images (the plan relief) are next to it
+            sheets = tmp / f"{fixture.stem}-sheets"
+            proc = subprocess.run([args.owd, "draw", str(fixture), "--out", str(sheets)], capture_output=True, text=True)
             if proc.returncode != 0:
-                problems.append(f"{fixture.name}: owd draw --document failed: {proc.stderr.strip()[:300]}")
+                problems.append(f"{fixture.name}: owd draw failed: {proc.stderr.strip()[:300]}")
                 continue
-            for number, document in json.loads(proc.stdout).items():
-                path = tmp / f"{fixture.stem}-{number}.json"
-                path.write_text(json.dumps(document))
+            for path in sorted(sheets.glob("*.drawing.json")):
+                number = path.name[: -len(".drawing.json")].upper()
                 rust = run_json([args.owd, "draw", "run", str(path)])
                 python = run_json([args.tool, "run", str(path)])
                 label = f"{fixture.name} / {number}"

@@ -154,6 +154,54 @@ impl Style {
         }
     }
 
+    /// What the plan sheets read.
+    pub fn plan(&self) -> super::plan::PlanParams {
+        let v = &self.value;
+        let pl = &v["plan"];
+        let r = &pl["relief"];
+        let num = |x: &Value| x.as_f64().unwrap_or(0.0);
+        let rules = pl["label_rules"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|r| match r["rule"].as_str() {
+                        Some("bend-tighter-than") => {
+                            Some(super::plan::LabelRule::BendTighterThan {
+                                k: r["k"].as_f64().unwrap_or(1.0),
+                            })
+                        }
+                        Some("infeasible-stretch") => {
+                            Some(super::plan::LabelRule::InfeasibleStretch)
+                        }
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        super::plan::PlanParams {
+            sheet_size: v["sheets"]["pl"]["size"]
+                .as_str()
+                .unwrap_or("A1")
+                .to_string(),
+            landscape: v["sheets"]["pl"]["orientation"] != "portrait",
+            strip_scale: pl["strip_scale"].as_u64().unwrap_or(5000) as u32,
+            overlap_m: num(&pl["overlap_m"]),
+            margin_m: num(&pl["margin_m"]),
+            tick_mm: num(&pl["tick_mm"]),
+            tick_label_every: pl["tick_label_every"].as_u64().unwrap_or(5).max(1) as usize,
+            light: otd::raster::Light {
+                azimuth_deg: num(&r["azimuth_deg"]),
+                altitude_deg: num(&r["altitude_deg"]),
+                z_factor: num(&r["z_factor"]),
+            },
+            pixel_mm: num(&r["pixel_mm"]),
+            quality: r["quality"].as_u64().unwrap_or(85) as u8,
+            rules,
+            grid: v["layers"]["GRID"] == true,
+            water: v["layers"]["WATER"] == true,
+        }
+    }
+
     /// What the typical section reads.
     pub fn typical(&self) -> TypicalParams {
         let v = &self.value;
