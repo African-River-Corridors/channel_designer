@@ -43,6 +43,9 @@ same commit.
 Foundation adds a dev-only render path: `app/mock.html` serves the real app with a fixed fake session
 (no Rust), so any view renders in a browser. Open `http://localhost:1420/mock.html?theme=light` or
 `?theme=dark` (`?theme=` sets `data-theme`). The file is not part of the production build.
+`app/scripts/shot.sh <name>` takes both screenshots in headless Chrome (needs `npm run dev` running).
+Ticket PRs commit their screenshots under `docs/design/app-restyle/` and link them by commit; the last
+ticket removes the folder.
 
 ## Tickets
 
