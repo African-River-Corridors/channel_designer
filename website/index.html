@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open Waterway Designer (OWD)</title>
+<meta name="description" content="Open Waterway Designer: explore the navigation possibilities of a river. An open-source screening tool for navigation channels.">
+<link rel="icon" href="/owd/favicon.svg">
+<link rel="stylesheet" href="/owd/tokens.css">
+<link rel="stylesheet" href="/owd/site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/owd"><img class="light-only" src="/owd/assets/logo/owd-lockup.svg" alt="OWD, Open Waterway Designer"><img class="dark-only" src="/owd/assets/logo/owd-lockup-reversed-clear.svg" alt="OWD, Open Waterway Designer"></a>
+  <nav><a href="/owd/docs">Docs</a><a href="https://github.com/African-River-Corridors/open-waterway-designer">Source</a></nav>
+</header>
+
+<main>
+  <section class="hero">
+    <p class="kicker">Open Waterway Designer</p>
+    <h1>Explore the navigation possibilities of a river.</h1>
+    <p class="lede">Give OWD a river and a vessel. It sizes a navigation channel to a named standard, lays design line options through the river as it is, and measures what each one would cut and dredge. Every number cites its source. Every failed check says why.</p>
+    <p class="cta"><a class="btn primary" href="/owd/docs">Read the docs</a><a class="btn" href="/owd/docs#install">Install</a></p>
+    <p class="notice">Screening tool. Not for construction.</p>
+    <figure class="plate">
+      <img class="light-only wide" src="/owd/assets/illustrations/before-after-cream.svg" alt="The same reach of river twice. Before: the reach as surveyed, with bars, an island and a shoal. After: three design line options drawn over it, each in its own colour and hatch, and the bank one option would cut.">
+      <img class="dark-only wide" src="/owd/assets/illustrations/before-after-dusk.svg" alt="">
+      <img class="light-only tall" src="/owd/assets/illustrations/before-after-stacked-cream.svg" alt="The same reach of river, before and after screening.">
+      <img class="dark-only tall" src="/owd/assets/illustrations/before-after-stacked-dusk.svg" alt="">
+      <figcaption>Before and after: one reach, as surveyed and as screened. Illustrative; drawn by script.</figcaption>
+    </figure>
+  </section>
+
+  <section class="principles">
+    <h2>How OWD works</h2>
+    <div class="grid">
+      <article><h3>Screening, not construction</h3><p>OWD compares options early, before you pay for a design. It does not approve a channel. Check every number against the standard and your own design basis.</p></article>
+      <article><h3>Cites its sources</h3><p>Width, bend widening, bend radius and depth come from a named rule set: PIANC WG 141 qualities A, B and C, or GB 50139. Each value names its clause, table and page.</p></article>
+      <article><h3>Shows where it fails</h3><p>An option that bends tighter than the minimum radius is marked on the map and in the table, with the radius it has and the radius it needs.</p></article>
+      <article><h3>Uses the river, not the bank</h3><p>The route search moves the line sideways where that cuts less ground, while it holds the minimum radius. Where an option leaves the river, the cut is measured, not hidden.</p></article>
+      <article><h3>Runs on your computer</h3><p>The engine is a Rust core with a desktop app, a command line and a Python package. It fetches one thing from the internet: map imagery, for the map view. Terrain comes from a DEM file you supply.</p></article>
+      <article><h3>Open and inspectable</h3><p>Apache 2.0. The code, the rule sets and their sources are in the repository. Read the working, or change it.</p></article>
+    </div>
+  </section>
+
+  <section class="teach">
+    <div class="text">
+      <h2>A channel in a bend</h2>
+      <p>A river is deep on the outside of a bend and shallow over the point bar on the inside. A navigation channel needs a set depth and width all the way along, and more width in the bends.</p>
+      <p>Where the bed stands above the channel, it must be dredged. Where the line leaves the river, the bank must be cut. OWD measures both, option by option, so you can see what each line would cost in ground moved.</p>
+    </div>
+    <figure>
+      <img class="light-only" src="/owd/assets/illustrations/block-diagram-bare.svg" alt="A cut-away block of a river bend: the point bar, the cut bank, the thalweg, design low water, the channel prism, and the part of the bed above the channel that must be dredged.">
+      <img class="dark-only" src="/owd/assets/illustrations/block-diagram-dusk.svg" alt="">
+      <figcaption>Teaching sketch, after H. N. Fisk (1944). Not to scale.</figcaption>
+    </figure>
+  </section>
+
+  <section class="steps">
+    <h2>Four stages</h2>
+    <ol>
+      <li><b>Sizing.</b> Choose a rule set and a vessel class. OWD gives the channel width, depth, bend widening and minimum radius.</li>
+      <li><b>Alignment.</b> Load the banks. OWD finds the centreline and lays design line options that the vessel can sail.</li>
+      <li><b>Optimise</b> (optional). Weir sites and pool levels, and the least-cost line through each pool. Costs are weights you supply.</li>
+      <li><b>Volumes.</b> Dredge and dry cut for each option, station by station, from a DEM. Quantities only; pricing is yours.</li>
+    </ol>
+    <h3>Install today</h3>
+    <pre><code>pip install "open-waterway-designer @ git+https://github.com/African-River-Corridors/open-waterway-designer"</code></pre>
+    <p class="note">Needs Python 3.12 or later and a <a href="https://rustup.rs">Rust toolchain</a>, because this builds the core from source. A PyPI release is coming. The desktop app has no release yet: build it from source. <a href="/owd/docs#install">Install notes</a></p>
+  </section>
+</main>
+
+<footer class="bottom">
+  <p><b>Hosted by African River Corridors.</b> Open Waterway Designer is open source under the Apache License 2.0. The name and mark follow the ARC open-source trademark policy.</p>
+  <p>Fonts: Public Sans, Libre Caslon Text and IBM Plex Mono, under the SIL Open Font License 1.1, served from this site.</p>
+</footer>
+</body>
+</html>
