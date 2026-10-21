@@ -28,5 +28,5 @@ ureq = { version = "3.4.2", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
 owd-core.workspace = true
-tiff = { version = "0.11.3", default-features = false }
+tiff = { version = "0.11.3", default-features = false, features = ["deflate"] }
 sha2 = "0.11.1"
