@@ -1,6 +1,6 @@
-//! The `cdesign` design commands (spec 0002, ticket 60), on the synthetic river given as GeoJSON in
+//! The `owd` design commands (spec 0002, ticket 60), on the synthetic river given as GeoJSON in
 //! UTM: the chain `new -> import -> size`, `status`, `validate`, `schema`, `--json`, `-o`, stdin
-//! and stdout, and the three exit codes.
+//! and stdout, and the three exit codes. The old `cdesign` name is an alias (spec 0006).
 //!
 //! Label: property
 
@@ -13,13 +13,13 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 fn run(args: &[&str], stdin: &str) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_cdesign"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_owd"))
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("cdesign runs");
+        .expect("owd runs");
     child
         .stdin
         .take()
@@ -43,7 +43,7 @@ fn code(o: &Output) -> i32 {
 
 /// A fresh directory for one test.
 fn work_dir(name: &str) -> PathBuf {
-    let d = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("cdesign-{name}"));
+    let d = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("owd-{name}"));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
@@ -88,7 +88,7 @@ fn river_files(dir: &Path) -> (String, String, String) {
 /// `new`, `import` and `size`, in files in `dir`. Returns the document path.
 fn build(dir: &Path) -> String {
     let (l, r, p) = river_files(dir);
-    let doc = dir.join("river.cdesign").to_str().unwrap().to_string();
+    let doc = dir.join("river.owd").to_str().unwrap().to_string();
     assert_eq!(
         code(&run(
             &[
@@ -223,7 +223,7 @@ fn schema_prints_the_published_schema_file() {
     let o = run(&["schema"], "");
     assert_eq!(code(&o), 0);
     let file = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schema/cdesign.schema.json"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schema/owd.schema.json"),
     )
     .unwrap();
     assert_eq!(out(&o), file);
@@ -280,8 +280,8 @@ fn the_chain_runs_through_stdin_and_stdout() {
 fn output_goes_where_dash_o_says_and_the_input_is_otherwise_rewritten_in_place() {
     let dir = work_dir("output");
     let (l, r, p) = river_files(&dir);
-    let doc = dir.join("a.cdesign").to_str().unwrap().to_string();
-    let copy = dir.join("b.cdesign").to_str().unwrap().to_string();
+    let doc = dir.join("a.owd").to_str().unwrap().to_string();
+    let copy = dir.join("b.owd").to_str().unwrap().to_string();
     run(&["new", &doc, "--title", "A", "--date", "2026-10-16"], "");
     let before = std::fs::read_to_string(&doc).unwrap();
     let o = run(
@@ -331,7 +331,7 @@ fn wgs84_input_is_reprojected_and_the_zone_is_reported() {
         line("[[-2.10,5.201],[-2.09,5.211],[-2.08,5.221]]"),
     )
     .unwrap();
-    let doc = dir.join("d.cdesign").to_str().unwrap().to_string();
+    let doc = dir.join("d.owd").to_str().unwrap().to_string();
     run(
         &["new", &doc, "--title", "Ankobra", "--date", "2026-10-16"],
         "",
@@ -357,7 +357,7 @@ fn wgs84_input_is_reprojected_and_the_zone_is_reported() {
 #[test]
 fn exit_code_0_is_success() {
     let dir = work_dir("exit0");
-    let doc = dir.join("x.cdesign").to_str().unwrap().to_string();
+    let doc = dir.join("x.owd").to_str().unwrap().to_string();
     assert_eq!(code(&run(&["new", &doc, "--title", "x"], "")), 0);
     assert_eq!(code(&run(&["status", &doc], "")), 0);
 }
@@ -394,7 +394,7 @@ fn exit_code_2_is_a_usage_or_input_error() {
     // An input error: a missing file, text that is not JSON, an unknown vessel, an unusable CRS.
     assert_eq!(
         code(&run(
-            &["status", dir.join("nope.cdesign").to_str().unwrap()],
+            &["status", dir.join("nope.owd").to_str().unwrap()],
             ""
         )),
         2
@@ -436,8 +436,8 @@ fn the_same_river_from_a_geopackage_and_from_geojson_gives_the_same_document() {
     let g = gdal_dir();
     let gpkg = g.join("river.gpkg");
     let gpkg = gpkg.to_str().unwrap();
-    let a = dir.join("a.cdesign").to_str().unwrap().to_string();
-    let b = dir.join("b.cdesign").to_str().unwrap().to_string();
+    let a = dir.join("a.owd").to_str().unwrap().to_string();
+    let b = dir.join("b.owd").to_str().unwrap().to_string();
     for d in [&a, &b] {
         run(&["new", d, "--title", "River", "--date", "2026-10-16"], "");
     }
@@ -483,7 +483,7 @@ fn the_same_river_from_a_geopackage_and_from_geojson_gives_the_same_document() {
 #[test]
 fn a_geopackage_with_several_layers_asks_for_one() {
     let dir = work_dir("gpkg-layers");
-    let doc = dir.join("a.cdesign").to_str().unwrap().to_string();
+    let doc = dir.join("a.owd").to_str().unwrap().to_string();
     run(
         &["new", &doc, "--title", "River", "--date", "2026-10-16"],
         "",
@@ -499,11 +499,11 @@ fn a_geopackage_with_several_layers_asks_for_one() {
 }
 
 /// The release binary has no dynamic SQLite dependency: SQLite is compiled in. The check lists
-/// the shared libraries of the built `cdesign` (`otool -L` on macOS, `ldd` on Linux). A debug and a
+/// the shared libraries of the built `owd` (`otool -L` on macOS, `ldd` on Linux). A debug and a
 /// release build link SQLite the same way (the `bundled` feature), and CI builds the debug one.
 #[test]
 fn the_binary_has_no_dynamic_sqlite_dependency() {
-    let exe = env!("CARGO_BIN_EXE_cdesign");
+    let exe = env!("CARGO_BIN_EXE_owd");
     let (tool, args): (&str, &[&str]) = if cfg!(target_os = "macos") {
         ("otool", &["-L"])
     } else if cfg!(target_os = "linux") {
@@ -529,7 +529,7 @@ fn the_binary_has_no_dynamic_sqlite_dependency() {
     );
     assert!(
         !listing.contains("sqlite"),
-        "cdesign links a SQLite library:\n{listing}"
+        "owd links a SQLite library:\n{listing}"
     );
 }
 
@@ -575,26 +575,85 @@ fn run_reruns_a_stale_stage_and_leaves_fresh_ones_alone() {
     );
 }
 
-/// `examples/synthetic-river.cdesign` is the worked example the app opens in its smoke test: the
+/// `examples/synthetic-river.owd` is the worked example the app opens in its smoke test: the
 /// synthetic river (UTM 30N), sized for CEMT IV on PIANC-B at 2.5 m. It is what the commands
 /// `new`, `import` and `size` write. To rewrite it after a deliberate change:
-/// `CDESIGN_UPDATE_EXAMPLE=1 cargo test -p owd-cli the_worked_example`.
+/// `OWD_UPDATE_EXAMPLE=1 cargo test -p owd-cli the_worked_example`.
 #[test]
 fn the_worked_example_file_is_what_the_commands_produce() {
     let dir = work_dir("example");
     let doc = build(&dir);
     let made = std::fs::read_to_string(&doc).unwrap();
-    let example =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/synthetic-river.cdesign");
-    if std::env::var_os("CDESIGN_UPDATE_EXAMPLE").is_some() {
+    let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/synthetic-river.owd");
+    if std::env::var_os("OWD_UPDATE_EXAMPLE").is_some() {
         std::fs::write(&example, &made).unwrap();
     }
-    let committed = std::fs::read_to_string(&example).expect("examples/synthetic-river.cdesign");
+    let committed = std::fs::read_to_string(&example).expect("examples/synthetic-river.owd");
     assert_eq!(
         committed, made,
-        "run with CDESIGN_UPDATE_EXAMPLE=1 to rewrite the example"
+        "run with OWD_UPDATE_EXAMPLE=1 to rewrite the example"
     );
     assert_eq!(code(&run(&["validate", example.to_str().unwrap()], "")), 0);
+}
+
+/// A `.cdesign` file is a `.owd` file under its old name (spec 0006): the same commands give the
+/// same answers on both.
+#[test]
+fn a_cdesign_file_opens_and_gives_the_same_results_as_the_owd_file() {
+    let dir = work_dir("old-extension");
+    let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/synthetic-river.owd");
+    let new_doc = dir.join("river.owd");
+    let old_doc = dir.join("river.cdesign");
+    std::fs::copy(&example, &new_doc).unwrap();
+    std::fs::copy(&example, &old_doc).unwrap();
+    for args in [
+        &["status"][..],
+        &["validate"],
+        &["export", "--csv"],
+        &["run", "--json"],
+    ] {
+        let with = |doc: &Path| {
+            let mut a = args.to_vec();
+            a.push(doc.to_str().unwrap());
+            run(&a, "")
+        };
+        let (n, o) = (with(&new_doc), with(&old_doc));
+        assert_eq!(code(&o), code(&n), "exit code of `{args:?}`");
+        assert_eq!(code(&n), 0, "{}", err(&n));
+        // Output that names the file differs only by the file name.
+        let norm = |t: String, name: &str| t.replace(name, "FILE");
+        assert_eq!(
+            norm(out(&o), "river.cdesign"),
+            norm(out(&n), "river.owd"),
+            "stdout of `{args:?}`"
+        );
+    }
+    // The document is not rewritten on the way through.
+    assert_eq!(
+        std::fs::read_to_string(&old_doc).unwrap(),
+        std::fs::read_to_string(&new_doc).unwrap()
+    );
+}
+
+#[test]
+fn new_warns_on_the_old_extension_and_is_quiet_on_the_new_one() {
+    let dir = work_dir("new-extension");
+    let mk = |name: &str| {
+        let f = dir.join(name);
+        run(
+            &[
+                "new",
+                f.to_str().unwrap(),
+                "--title",
+                "T",
+                "--date",
+                "2026-10-21",
+            ],
+            "",
+        )
+    };
+    assert!(err(&mk("a.cdesign")).contains("old extension"));
+    assert!(!err(&mk("a.owd")).contains("old extension"));
 }
 
 // --- the alignment stage (ticket 61) -------------------------------------------------------
@@ -648,7 +707,7 @@ fn align_with_sizing_stale_is_refused_and_names_the_size_command() {
     std::fs::write(&doc, text).unwrap();
     let o = run(&["align", &doc, "--method", "rolling-circle"], "");
     assert_eq!(code(&o), 1);
-    assert!(err(&o).contains("cdesign size"), "{}", err(&o));
+    assert!(err(&o).contains("owd size"), "{}", err(&o));
     let o = run(&["align", &doc, "--method", "nonsense"], "");
     assert_eq!(code(&o), 2);
 }
@@ -699,4 +758,43 @@ fn a_failed_fits_in_water_check_is_in_status_the_csv_and_the_geojson_and_exits_1
             .contains(&json!("fits_in_water"))
     );
     assert_eq!(props["notes"], "width only, no depth data");
+}
+
+/// Run the old-name binary.
+fn run_old(args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_cdesign"))
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("cdesign runs")
+}
+
+#[test]
+fn the_old_cdesign_name_is_an_alias_that_says_so_on_stderr_only() {
+    for args in [&["schema"][..], &["--version"][..], &["--help"][..]] {
+        let new = run(args, "");
+        let old = run_old(args);
+        assert_eq!(
+            out(&old),
+            out(&new),
+            "stdout of `cdesign {args:?}` equals `owd`"
+        );
+        assert_eq!(code(&old), code(&new));
+        assert!(
+            err(&old).contains("cdesign is now owd"),
+            "alias note on stderr: {}",
+            err(&old)
+        );
+        assert!(!err(&new).contains("cdesign is now owd"), "owd stays quiet");
+    }
+    // A failing command keeps its exit code under the alias.
+    assert_eq!(code(&run_old(&["status", "/no/such/file.cdesign"])), 2);
+}
+
+#[test]
+fn messages_name_the_owd_command_not_cdesign() {
+    let o = run(&["status", "/no/such/file.cdesign"], "");
+    assert!(err(&o).starts_with("owd: "), "{}", err(&o));
 }

@@ -5,8 +5,7 @@ use serde_json::Value;
 
 fn aligned() -> Session {
     let text = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/synthetic-river.cdesign"),
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/synthetic-river.owd"),
     )
     .unwrap();
     let mut s = Session::open(&text).unwrap();

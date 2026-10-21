@@ -415,7 +415,7 @@ impl AppState {
     }
 
     /// The design line options as GeoJSON in longitude and latitude, from the session: the screening
-    /// label, the checks and any failed check ride in the file. The same text as `cdesign export
+    /// label, the checks and any failed check ride in the file. The same text as `owd export
     /// --geojson --wgs84` on the saved file.
     pub fn export_geojson(&self) -> Result<String, String> {
         self.session
@@ -423,7 +423,7 @@ impl AppState {
             .map_err(message)
     }
 
-    /// The quantity table as CSV, from the session. The same text as `cdesign export --csv`.
+    /// The quantity table as CSV, from the session. The same text as `owd export --csv`.
     pub fn export_csv(&self) -> String {
         self.session
             .export_csv(self.dem_bytes.as_deref().map(|b| b.as_slice()))
@@ -517,9 +517,9 @@ mod tests {
 
     fn worked_example() -> String {
         std::fs::read_to_string(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/synthetic-river.cdesign"),
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/synthetic-river.owd"),
         )
-        .expect("examples/synthetic-river.cdesign")
+        .expect("examples/synthetic-river.owd")
     }
 
     fn stage_status(state: &AppState, name: &str) -> String {
@@ -602,9 +602,9 @@ mod tests {
         let mut s = AppState::open(Path::new("a.cdesign"), &worked_example(), None).unwrap();
         s.set_sizing("PIANC-B", "CEMT_Va", Some(2.4)).unwrap();
         let text = s.save_text();
-        // `cdesign validate`: the session's own validation, which the command runs.
+        // `owd validate`: the session's own validation, which the command runs.
         assert!(Session::open(&text).unwrap().validate().is_empty());
-        // `cdesign run` on the saved file changes nothing: every stage is fresh.
+        // `owd run` on the saved file changes nothing: every stage is fresh.
         let mut again = Session::open(&text).unwrap();
         assert_eq!(again.run_stale().unwrap(), vec![]);
         assert_eq!(again.to_text(), text);

@@ -190,7 +190,7 @@ impl Session {
                 }];
                 let profile = self.input_water_profile().ok_or_else(|| {
                     DesignError::Input(
-                        "the re-route needs a water level: set one with `cdesign import --water-level LEVEL` (a constant), `--water-slope` or `--water-table FILE`".into(),
+                        "the re-route needs a water level: set one with `owd import --water-level LEVEL` (a constant), `--water-slope` or `--water-table FILE`".into(),
                     )
                 })?;
                 let depth = shape["design_depth_m"].as_f64().unwrap_or(f64::NAN);
@@ -292,7 +292,7 @@ impl Session {
         for m in ran {
             if m == AlignMethod::Reroute && terrain.is_none() {
                 return Err(DesignError::NotAvailable(
-                    "the re-route needs a DEM: rerun it with `cdesign align --method reroute --dem FILE`".into(),
+                    "the re-route needs a DEM: rerun it with `owd align --method reroute --dem FILE`".into(),
                 ));
             }
             self.align(m, &Value::Null, terrain)?;

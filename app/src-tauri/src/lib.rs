@@ -88,7 +88,7 @@ fn pick_open(app: &AppHandle) -> Result<Option<PathBuf>, String> {
     match app
         .dialog()
         .file()
-        .add_filter("Channel design", &["cdesign"])
+        .add_filter("Channel design", &["owd"])
         .blocking_pick_file()
     {
         Some(picked) => Ok(Some(picked.into_path().map_err(|e| e.to_string())?)),
@@ -103,7 +103,7 @@ fn pick_save(app: &AppHandle) -> Result<Option<PathBuf>, String> {
         None => match app
             .dialog()
             .file()
-            .add_filter("Channel design", &["cdesign"])
+            .add_filter("Channel design", &["owd"])
             .set_file_name("channel-design.cdesign")
             .blocking_save_file()
         {
@@ -113,7 +113,7 @@ fn pick_save(app: &AppHandle) -> Result<Option<PathBuf>, String> {
     };
     Ok(picked.map(|mut p| {
         if p.extension().is_none() {
-            p.set_extension("cdesign");
+            p.set_extension("owd");
         }
         p
     }))
@@ -263,7 +263,7 @@ async fn station_near(
 
 /// Export the options as GeoJSON (`kind` = `geojson`, WGS84) or the quantity table as CSV (`csv`),
 /// through the session, to a file the user picks. Returns the path, or `null` on cancel. The text is
-/// the same as `cdesign export` gives for the saved file.
+/// the same as `owd export` gives for the saved file.
 #[tauri::command]
 async fn export_file(
     app: AppHandle,
@@ -494,7 +494,7 @@ fn cancel_run(state: State<Shared>) -> Result<bool, String> {
     Ok(lock(&state)?.cancel_run())
 }
 
-/// Fetch a Copernicus DEM for the reach with `cdesign fetch-dem`, beside the saved design, then
+/// Fetch a Copernicus DEM for the reach with `owd fetch-dem`, beside the saved design, then
 /// reload the design from the file. The design must be saved first: the tiles go next to it.
 #[tauri::command]
 async fn fetch_dem(window: Window, state: State<'_, Shared>) -> Reply {

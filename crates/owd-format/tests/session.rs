@@ -230,7 +230,7 @@ fn the_dem_warning_names_a_missing_or_changed_file() {
 #[test]
 fn the_published_schema_is_what_the_session_prints() {
     let file = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schema/cdesign.schema.json"),
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schema/owd.schema.json"),
     )
     .unwrap();
     assert_eq!(Session::schema_text(), file);

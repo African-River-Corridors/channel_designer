@@ -214,7 +214,7 @@ impl Session {
 
     pub(super) fn needs_water_profile(&self, stage: Stage) -> DesignError {
         DesignError::Input(format!(
-            "the {} stage needs a water level: set one with `cdesign import --water-level LEVEL` \
+            "the {} stage needs a water level: set one with `owd import --water-level LEVEL` \
              (a constant), `--water-slope` (a fall per metre of river chainage) or `--water-table FILE`",
             stage.name()
         ))
