@@ -269,7 +269,7 @@
   .attribution { position: absolute; right: 0; bottom: 0; margin: 0; padding: 1px 6px; font-size: 10px; background: var(--surface); color: var(--ink-3); z-index: 2; max-width: 100%; }
   .legend { position: absolute; left: var(--sp-3); top: var(--sp-3); margin: 0; padding: var(--sp-2) var(--sp-3); list-style: none; font-size: var(--fs-12); color: var(--ink); background: var(--surface); border: var(--lw-thin) solid var(--ink); z-index: 2; }
   .legend li { display: flex; gap: var(--sp-2); align-items: center; margin: 3px 0; }
-  .legend:empty { display: none; }
+  .legend:not(:has(li)) { display: none; }
   .bend-key { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; border: var(--lw-thin) solid var(--ink); font-size: var(--fs-11); font-weight: 700; color: var(--fail); }
   .offline { position: absolute; left: var(--sp-2); bottom: 28px; margin: 0; padding: 3px var(--sp-2); font-size: var(--fs-12); background: var(--warn-soft); color: var(--warn); border: var(--lw-thin) solid var(--rule-strong); border-radius: var(--radius); z-index: 2; }
   .fail { color: var(--fail); margin-left: var(--sp-2); font-weight: 600; }

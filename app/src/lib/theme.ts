@@ -36,3 +36,34 @@ export function resolve(colour: string): string {
   const m = /^var\(--([a-z0-9-]+)\)$/.exec(colour.trim());
   return m ? token(m[1]) : colour;
 }
+
+export type ThemeChoice = "auto" | "light" | "dark";
+const KEY = "owd-theme";
+
+/** The choice now in force: `auto` follows the OS (no `data-theme`), the others pin it. */
+export function currentTheme(): ThemeChoice {
+  const t = document.documentElement.dataset.theme;
+  return t === "light" || t === "dark" ? t : "auto";
+}
+
+/** Pin a theme or return to the OS setting, and remember it. Storage may be unavailable: then the choice lasts for the session. */
+export function setTheme(choice: ThemeChoice) {
+  if (choice === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = choice;
+  try {
+    if (choice === "auto") localStorage.removeItem(KEY);
+    else localStorage.setItem(KEY, choice);
+  } catch {
+    /* storage is blocked: nothing to remember */
+  }
+}
+
+/** Apply the remembered choice at start-up, before anything is drawn. */
+export function applyStoredTheme() {
+  try {
+    const t = localStorage.getItem(KEY);
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  } catch {
+    /* storage is blocked: follow the OS */
+  }
+}
