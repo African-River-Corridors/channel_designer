@@ -1184,17 +1184,25 @@ pub fn status(doc: &str, json_mode: bool) -> Result {
             }),
         );
     }
-    say(
-        false,
-        json_mode,
-        &human.join("\n"),
-        json!({
-            "stages": Value::Object(stages),
-            "stale": stale,
-            "options": options,
-            "warnings": session.dem_warning(bytes.as_deref()).into_iter().collect::<Vec<_>>(),
-        }),
-    );
+    // The answer to "what fits" is not a stage: it shows only when the document holds one.
+    let fits = session.fits_status();
+    if fits != StageStatus::NotRun {
+        human.push(format!("fits: {}", fits.name()));
+    }
+    let mut result = json!({
+        "stages": Value::Object(stages),
+        "stale": stale,
+        "options": options,
+        "warnings": session.dem_warning(bytes.as_deref()).into_iter().collect::<Vec<_>>(),
+    });
+    if fits != StageStatus::NotRun {
+        result["fits"] = json!(if fits == StageStatus::Stale {
+            "stale"
+        } else {
+            "fresh"
+        });
+    }
+    say(false, json_mode, &human.join("\n"), result);
     Ok(())
 }
 

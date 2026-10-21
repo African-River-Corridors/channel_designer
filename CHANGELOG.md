@@ -79,6 +79,13 @@ versions follow [Semantic Versioning](https://semver.org/).
   the CSV and GeoJSON exports all say so. A survey replaces the bed model (`owd bed --clear`) and nothing else
   in the document changes. The pool search (`optimise`) still reads the DEM. Documents without a bed model
   give the same results.
+- **`owd fits` (spec 0012, T8).** For a river with banks, `owd fits` says which vessel classes fit as it is.
+  It checks every vessel class, in size order, under each ruleset (`--ruleset`, default PIANC-B): the water
+  against the bend-widened bottom width, and the river's radius against R_min. Each class that does not fit
+  lists its stretches, with what the rule needs, what the river has and the shortfall. The largest class that
+  fits is named per ruleset. Every output says "width and radius only, no depth". The answer is stored in the
+  document's new `fits` part. It shows as stale when the banks or the centreline change, in `owd status` too,
+  and it never reruns by itself (`owd run` leaves it). Documents without a `fits` part give the same results.
 - **Web app (spec 0011).** The desktop app's front end now also runs in a browser, over a WebAssembly build
   of the same Rust core, at `africanrivercorridors.com/owd/app`. Nothing you load is uploaded. It opens a
   bundled example, or `.owd` files, GeoJSON or GeoPackage banks and a GeoTIFF DEM from your computer; Save and
