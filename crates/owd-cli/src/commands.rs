@@ -1328,6 +1328,24 @@ pub struct DrawFlags {
     pub section_spacing: Option<f64>,
     pub sheet_size: Option<String>,
     pub scale: Option<u32>,
+    pub orthophoto: Option<String>,
+    pub imagery: Option<String>,
+    pub imagery_cache: Option<String>,
+}
+
+/// How long one imagery tile request may take before the fetch gives up (and the sheet falls back).
+const IMAGERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The imagery tile cache: the flag, else `$XDG_CACHE_HOME/owd/imagery`, else `~/.cache/owd/imagery`.
+fn imagery_cache(flag: Option<String>) -> std::path::PathBuf {
+    flag.map(std::path::PathBuf::from).unwrap_or_else(|| {
+        std::env::var_os("XDG_CACHE_HOME")
+            .map(std::path::PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| Path::new(&h).join(".cache")))
+            .unwrap_or_else(|| std::path::PathBuf::from(".cache"))
+            .join("owd")
+            .join("imagery")
+    })
 }
 
 fn from_draw(e: owd_format::drawing::DrawError) -> Failure {
@@ -1375,8 +1393,35 @@ pub fn draw(doc: &str, flags: DrawFlags, json_mode: bool) -> Result {
         .with_overrides(&overrides)
         .map_err(|e| input_error(e.to_string()))?;
     options.style = style;
-    let sheets = drawing::sheets_from_text(&session.to_text(), bytes.as_deref(), &options)
-        .map_err(from_draw)?;
+    let ortho = match &flags.orthophoto {
+        Some(path) => {
+            let data =
+                std::fs::read(path).map_err(|e| input_error(format!("cannot read {path}: {e}")))?;
+            Some(
+                owd_format::geotiff::read_rgb_bytes(&data)
+                    .map_err(|e| input_error(format!("{path}: {e}")))?,
+            )
+        }
+        None => None,
+    };
+    let source = flags
+        .imagery
+        .as_deref()
+        .map(otd_imagery::Source::parse)
+        .transpose()
+        .map_err(|e| input_error(e.to_string()))?;
+    let tiles = otd_imagery::Cached {
+        dir: imagery_cache(flags.imagery_cache),
+        inner: otd_imagery::Http::new(IMAGERY_TIMEOUT),
+    };
+    let background = match (&ortho, source) {
+        (Some(rgb), _) => drawing::Background::Orthophoto(rgb),
+        (None, Some(_)) => drawing::Background::Imagery(&tiles),
+        (None, None) => drawing::Background::Relief,
+    };
+    let sheets =
+        drawing::sheets_from_text_with(&session.to_text(), bytes.as_deref(), &options, &background)
+            .map_err(from_draw)?;
     if flags.documents_only {
         let text = serde_json::to_string_pretty(&drawing::documents_json(&sheets))
             .map_err(|e| input_error(e.to_string()))?;

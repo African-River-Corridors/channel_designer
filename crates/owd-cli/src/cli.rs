@@ -401,6 +401,19 @@ enum Command {
         /// Override the style: draw the cross sections at this one scale (the denominator, for example 1000).
         #[arg(long, value_name = "N")]
         scale: Option<u32>,
+        /// Draw the plan sheets over this orthophoto (an 8 bit RGB GeoTIFF in WGS84 or the design's UTM
+        /// zone) instead of shaded relief.
+        #[arg(long, value_name = "GEOTIFF", conflicts_with = "imagery")]
+        orthophoto: Option<String>,
+        /// Draw the plan sheets over fetched imagery. The one source is `eox-cloudless-2016`
+        /// (EOxCloudless 2016, CC BY 4.0; later years need a paid licence for commercial use, so none is
+        /// offered). Each sheet prints its attribution. A failed fetch falls back to shaded relief.
+        #[arg(long, value_name = "SOURCE")]
+        imagery: Option<String>,
+        /// Where fetched imagery tiles are kept (default: `$XDG_CACHE_HOME/owd/imagery`, or
+        /// `~/.cache/owd/imagery`). Tiles are never written next to the drawings.
+        #[arg(long, value_name = "DIR")]
+        imagery_cache: Option<String>,
         /// Print a machine-readable result as JSON.
         #[arg(long)]
         json: bool,
@@ -823,6 +836,9 @@ pub fn main() -> ExitCode {
             section_spacing,
             sheet_size,
             scale,
+            orthophoto,
+            imagery,
+            imagery_cache,
             json,
             ..
         } => commands::draw(
@@ -838,6 +854,9 @@ pub fn main() -> ExitCode {
                 section_spacing,
                 sheet_size,
                 scale,
+                orthophoto,
+                imagery,
+                imagery_cache,
             },
             json,
         ),

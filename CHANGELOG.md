@@ -5,6 +5,24 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **Orthophoto and EOxCloudless imagery on plan sheets (spec 0004, T6).** Plan sheets can now be drawn over
+  other backdrops.
+  - `owd draw --orthophoto FILE` draws them over the user's orthophoto: an 8 bit RGB GeoTIFF in WGS84 or the
+    design's UTM zone, sampled at each pixel centre through OWD's own projection. It is white where the
+    file holds no pixel.
+  - `owd draw --imagery eox-cloudless-2016` fetches EOxCloudless 2016 through `otd-imagery` (otd v0.3.0).
+    No other source or year is offered: from 2018 the mosaics are CC BY-NC-SA 4.0 and need a paid licence
+    for commercial use. Every sheet that shows the imagery prints "EOxCloudless https://cloudless.eox.at
+    by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)" word for word, and notes
+    that the imagery is of 2016 and the river may have moved since.
+  - Tiles are cached in `$XDG_CACHE_HOME/owd/imagery` (or `~/.cache/owd/imagery`, or `--imagery-cache`),
+    never next to the drawings.
+  - A failed or slow fetch (30 s a tile) falls back to shaded relief for that sheet, with a warning, not an
+    error.
+  - The network crate is only in the command line (owd-format's `imagery` feature), not the web build.
+  - Plan notes are now cut at word boundaries to the standard's 120 characters, and the coordinates have a
+    note of their own. The backdrop's layer is now `BACKDROP`.
+
 - **Constraint stretches on the drawings (spec 0004, T9).** A new label rule, `constraint-stretch`, reads the
   stretches the screening stores (spec 0007): width, depth or radius short. On the plan each stretch gets one
   band along the line and one short label. Its `fields` choose what the label shows, in order (`kind`,

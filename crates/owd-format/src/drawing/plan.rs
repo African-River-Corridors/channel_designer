@@ -103,8 +103,28 @@ const TEXT_GAP_MM: f64 = 0.5;
 const PLACE_TRIES: usize = 8;
 /// Strip ends fall on this step of chainage, in metres.
 const STRIP_STEP_M: f64 = 10.0;
-/// The layer of the relief (a layer of the document, not of the standard's table).
-const RELIEF_LAYER: &str = "RELIEF";
+/// The layer of the backdrop image (a layer of the document, not of the standard's table).
+const BACKDROP_LAYER: &str = "BACKDROP";
+
+/// What a plan is drawn over.
+pub enum Background<'a> {
+    /// Shaded relief of the design DEM: the default.
+    Relief,
+    /// The user's orthophoto, in WGS84 or the design's UTM zone; white where it holds no pixel.
+    Orthophoto(&'a crate::geotiff::Rgb),
+    /// EOxCloudless 2016, fetched through these tiles. A failed fetch falls back to the relief.
+    #[cfg(feature = "imagery")]
+    Imagery(&'a dyn otd_imagery::TileFetch),
+}
+
+/// What a viewport's backdrop turned out to be.
+#[derive(Clone, Copy, PartialEq)]
+enum Shown {
+    Relief,
+    Orthophoto,
+    #[cfg(feature = "imagery")]
+    Imagery,
+}
 
 /// The labels of an option under the rules, in chainage order: the bends of the bend catalogue
 /// (the setting-out table's) whose least radius is below `k x checks.r_min_m`, the stored
@@ -631,6 +651,108 @@ fn grid_step(k: f64) -> f64 {
     nice_step(60.0 / k)
 }
 
+/// The backdrop of a viewport, with what it shows and a warning when it is not what was asked.
+#[allow(clippy::too_many_arguments)]
+fn backdrop(
+    stem: &str,
+    background: &Background,
+    terrain: Terrain,
+    epsg: u64,
+    w: &Win,
+    frame: &Rect,
+    p: &PlanParams,
+) -> Result<(Backdrop, Shown, Option<String>), DrawError> {
+    let cols = ((frame.w / p.pixel_mm).ceil() as usize).max(2);
+    let rows = ((frame.h / p.pixel_mm).ceil() as usize).max(2);
+    let centres = || {
+        let (dx, dy) = ((w[2] - w[0]) / cols as f64, (w[3] - w[1]) / rows as f64);
+        let mut xs = Vec::with_capacity(cols * rows);
+        let mut ys = Vec::with_capacity(cols * rows);
+        for r in 0..rows {
+            for c in 0..cols {
+                xs.push(w[0] + (c as f64 + 0.5) * dx);
+                ys.push(w[3] - (r as f64 + 0.5) * dy);
+            }
+        }
+        (xs, ys)
+    };
+    match background {
+        Background::Relief => Ok((
+            relief(&format!("{stem}-relief.jpg"), terrain, w, frame, p)?,
+            Shown::Relief,
+            None,
+        )),
+        Background::Orthophoto(rgb) => {
+            let sample = crate::design::terrain::rgb_sampler(rgb, u32::try_from(epsg).ok())?;
+            let (xs, ys) = centres();
+            let cells = sample(&xs, &ys)
+                .into_iter()
+                .map(|c| c.unwrap_or([255, 255, 255]))
+                .collect();
+            let grid = Grid::new(cols, rows, *w, cells)
+                .map_err(|e| DrawError::Input(format!("the orthophoto grid: {e}")))?;
+            let b = Backdrop::colour(&format!("{stem}-orthophoto.jpg"), &grid, p.quality)
+                .map_err(|e| DrawError::Input(format!("the orthophoto: {e}")))?;
+            Ok((b, Shown::Orthophoto, None))
+        }
+        #[cfg(feature = "imagery")]
+        Background::Imagery(tiles) => {
+            let utm = match crate::design::crs::Crs::from_epsg(epsg as u32) {
+                Ok(crate::design::crs::Crs::Utm(u)) => u,
+                _ => {
+                    return Err(DrawError::Input(format!(
+                        "fetched imagery needs the design in a UTM zone; EPSG:{epsg} is not one"
+                    )));
+                }
+            };
+            let inverse = utm.inverse_fn().map_err(DrawError::Input)?;
+            let to_lon_lat = |q: [f64; 2]| inverse(q).unwrap_or([f64::NAN; 2]);
+            let request = otd_imagery::Request {
+                bbox_m: *w,
+                cols,
+                rows,
+                to_lon_lat: &to_lon_lat,
+            };
+            match otd_imagery::fetch(otd_imagery::Source::EoxCloudless2016, *tiles, &request) {
+                Ok(img) => {
+                    let b = Backdrop::colour(&format!("{stem}-imagery.jpg"), &img.grid, p.quality)
+                        .map_err(|e| DrawError::Input(format!("the imagery: {e}")))?;
+                    Ok((b, Shown::Imagery, None))
+                }
+                Err(e) => Ok((
+                    relief(&format!("{stem}-relief.jpg"), terrain, w, frame, p)?,
+                    Shown::Relief,
+                    Some(format!("{e}; the sheet shows shaded relief instead")),
+                )),
+            }
+        }
+    }
+}
+
+/// The most characters a note may hold (the schema of the standard, clause 14.10.1).
+const NOTE_MAX_CHARS: usize = 120;
+
+/// Notes cut at word boundaries so that none is longer than the standard allows.
+fn wrap_notes(lines: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in lines {
+        let mut current = String::new();
+        for word in line.split(' ') {
+            if !current.is_empty()
+                && current.chars().count() + 1 + word.chars().count() > NOTE_MAX_CHARS
+            {
+                out.push(std::mem::take(&mut current));
+            }
+            if !current.is_empty() {
+                current.push(' ');
+            }
+            current.push_str(word);
+        }
+        out.push(current);
+    }
+    out
+}
+
 /// The UTM grid of a window: lines on a nice step.
 fn utm_grid(w: &Win, k: f64, out: &mut Vec<Value>) {
     let step = grid_step(k);
@@ -773,6 +895,7 @@ pub(super) fn build(
     walk: &SectionVolumes,
     terrain: Terrain,
     options: &DrawOptions,
+    background: &Background,
 ) -> Result<Vec<Sheet>, DrawError> {
     let p = options.style.plan();
     let gp: GalleryParams = options.style.gallery();
@@ -828,7 +951,63 @@ pub(super) fn build(
         p: &p,
     };
 
-    let notes_len = 5;
+    #[cfg(feature = "imagery")]
+    let fetched = matches!(background, Background::Imagery(_));
+    let rules = if p.rules.is_empty() {
+        "NONE".to_string()
+    } else {
+        p.rules
+            .iter()
+            .map(|r| r.name().to_ascii_uppercase())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let notes = |scale: u32, shown: Shown| {
+        let over = match shown {
+            Shown::Relief => "ON SHADED RELIEF OF THE DESIGN DEM".to_string(),
+            Shown::Orthophoto => "OVER THE ORTHOPHOTO GIVEN".to_string(),
+            #[cfg(feature = "imagery")]
+            Shown::Imagery => {
+                "OVER EOXCLOUDLESS 2016 (SENTINEL-2, 10 M). THE RIVER MAY HAVE MOVED SINCE 2016"
+                    .to_string()
+            }
+        };
+        // without the `imagery` feature no line is added
+        #[cfg_attr(not(feature = "imagery"), allow(unused_mut))]
+        let mut lines = vec![
+            format!("PLAN AT 1:{scale} {over}."),
+            format!("COORDINATES {} (EPSG {epsg}), METRES.", clean(&crs)),
+            "WATER EDGE: THE RIVER BANK LINES OF THE DESIGN. FOOTPRINT: TOE AND TOP OF CUT AT THE STATIONS OF THE VOLUMES STAGE.".to_string(),
+            format!("SN: SECTION N OF THE CROSS-SECTION GALLERY. LABEL RULES: {rules}."),
+            "SCREENING – NOT FOR CONSTRUCTION.".to_string(),
+            format!("SHEET STYLE {} SHA-256 {}", clean(options.style.name()), options.style.hash()),
+        ];
+        #[cfg(feature = "imagery")]
+        if fetched {
+            lines.push(match shown {
+                Shown::Imagery => otd_imagery::ATTRIBUTION.to_string(),
+                _ => {
+                    "EOXCLOUDLESS 2016 COULD NOT BE FETCHED FOR THIS SHEET: IT SHOWS SHADED RELIEF."
+                        .to_string()
+                }
+            });
+        }
+        wrap_notes(&lines)
+    };
+
+    // the strip holds the most notes any sheet may have: its own backdrop, or the relief it falls
+    // back to, at the widest scale written (the imagery's attribution has a line of its own)
+    let asked = match background {
+        Background::Relief => Shown::Relief,
+        Background::Orthophoto(_) => Shown::Orthophoto,
+        #[cfg(feature = "imagery")]
+        Background::Imagery(_) => Shown::Imagery,
+    };
+    let notes_len = [asked, Shown::Relief]
+        .iter()
+        .map(|&shown| notes(u32::MAX, shown).len())
+        .max()
+        .unwrap_or(0);
     let layout = furniture::layout(&p.sheet_size, p.landscape, notes_len).ok_or_else(|| {
         DrawError::Input(format!(
             "the sheet size `{}` is not one of the standard's",
@@ -877,32 +1056,20 @@ pub(super) fn build(
     let numbers: Vec<String> = (1..=count)
         .map(|n| furniture::drawing_number(&code, SheetKind::Plan.code(), n))
         .collect();
-    let rules = if p.rules.is_empty() {
-        "NONE".to_string()
-    } else {
-        p.rules
-            .iter()
-            .map(|r| r.name().to_ascii_uppercase())
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-    let notes = |scale: u32| {
-        vec![
-            format!("PLAN AT 1:{scale} ON SHADED RELIEF OF THE DESIGN DEM. COORDINATES {} (EPSG {epsg}), METRES.", clean(&crs)),
-            "WATER EDGE: THE RIVER BANK LINES OF THE DESIGN. FOOTPRINT: TOE AND TOP OF CUT AT THE STATIONS OF THE VOLUMES STAGE.".to_string(),
-            format!("SN: SECTION N OF THE CROSS-SECTION GALLERY. LABEL RULES: {rules}."),
-            "SCREENING – NOT FOR CONSTRUCTION.".to_string(),
-            format!("SHEET STYLE {} SHA-256 {}", clean(options.style.name()), options.style.hash()),
-        ]
-    };
-
     let mut out = Vec::new();
     // sheet 1: the overview, with the strips as a key
     {
         let w = window_on(&whole, &frame, k_over);
-        let path = format!("{}-relief.jpg", numbers[0].to_ascii_lowercase());
-        let backdrop = relief(&path, terrain, &w, &frame, &p)?;
-        let mut ents = vec![backdrop.entity(RELIEF_LAYER, 1.0, Some("relief"))];
+        let (backdrop, shown, warning) = backdrop(
+            &numbers[0].to_ascii_lowercase(),
+            background,
+            terrain,
+            epsg,
+            &w,
+            &frame,
+            &p,
+        )?;
+        let mut ents = vec![backdrop.entity(BACKDROP_LAYER, 1.0, Some("backdrop"))];
         let mut placer = Placer::new(k_over, w);
         for (i, &(s0, s1)) in ranges.iter().enumerate() {
             let b = window_on(
@@ -942,9 +1109,10 @@ pub(super) fn build(
             option_name,
             options,
             &date,
-            &notes(over_scale),
+            &notes(over_scale, shown),
             viewport("plan", &frame, &w, over_scale, ents),
             backdrop,
+            warning,
         ));
     }
     // sheets 2..: the strips
@@ -955,9 +1123,16 @@ pub(super) fn build(
             &frame,
             k_strip,
         );
-        let path = format!("{}-relief.jpg", numbers[n - 1].to_ascii_lowercase());
-        let backdrop = relief(&path, terrain, &w, &frame, &p)?;
-        let mut ents = vec![backdrop.entity(RELIEF_LAYER, 1.0, Some("relief"))];
+        let (backdrop, shown, warning) = backdrop(
+            &numbers[n - 1].to_ascii_lowercase(),
+            background,
+            terrain,
+            epsg,
+            &w,
+            &frame,
+            &p,
+        )?;
+        let mut ents = vec![backdrop.entity(BACKDROP_LAYER, 1.0, Some("backdrop"))];
         let mut placer = Placer::new(k_strip, w);
         // match lines: at the start, to the strip before; at the end, to the strip after
         for (which, s, other) in [
@@ -1042,9 +1217,10 @@ pub(super) fn build(
             option_name,
             options,
             &date,
-            &notes(p.strip_scale),
+            &notes(p.strip_scale, shown),
             viewport("plan", &frame, &w, p.strip_scale, ents),
             backdrop,
+            warning,
         ));
     }
     Ok(out)
@@ -1065,7 +1241,7 @@ fn viewport(id: &str, frame: &Rect, w: &Win, scale: u32, entities: Vec<Value>) -
 /// The layers of a plan sheet, with the colours of the colour print profile (clause 8.6.5).
 fn layers(p: &PlanParams) -> Vec<Value> {
     let mut out = vec![
-        json!({"name": RELIEF_LAYER, "role": "thin", "line_type": "continuous", "aci": 251}),
+        json!({"name": BACKDROP_LAYER, "role": "thin", "line_type": "continuous", "aci": 251}),
         json!({"name": "OUTLINE", "print_colour": "#C0392B"}),
         json!({"name": "OBJECT"}),
         json!({"name": "ANNO"}),
@@ -1096,6 +1272,7 @@ fn sheet(
     notes: &[String],
     viewport: Value,
     backdrop: Backdrop,
+    warning: Option<String>,
 ) -> Sheet {
     let titles = Titles {
         design: clean(title),
@@ -1125,5 +1302,6 @@ fn sheet(
         number: number.to_string(),
         document,
         extra: vec![(backdrop.path.clone(), backdrop.jpeg)],
+        warnings: warning.into_iter().collect(),
     }
 }

@@ -539,6 +539,7 @@ pub(super) fn build(
             number,
             document,
             extra,
+            warnings: Vec::new(),
         });
     }
     Ok(out)

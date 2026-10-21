@@ -412,3 +412,81 @@ pub fn read_bytes(bytes: &[u8]) -> Result<Dem, GeoTiffError> {
         epsg,
     })
 }
+
+/// An RGB image in memory (an orthophoto): row-major, north row first, as the file stores it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Rgb {
+    pub width: usize,
+    pub height: usize,
+    pub data: Vec<[u8; 3]>,
+    /// As [`Dem::geotransform`].
+    pub geotransform: [f64; 6],
+    pub epsg: Option<u32>,
+}
+
+impl Rgb {
+    /// The pixel that holds a world point, or `None` outside the image.
+    pub fn sample_nearest(&self, x: f64, y: f64) -> Option<[u8; 3]> {
+        let [a, _, c, _, e, f] = self.geotransform;
+        let col = ((x - c) / a).floor();
+        let row = ((y - f) / e).floor();
+        (col >= 0.0 && row >= 0.0 && col < self.width as f64 && row < self.height as f64)
+            .then(|| self.data[row as usize * self.width + col as usize])
+    }
+}
+
+/// Read an RGB GeoTIFF held in memory: 8 bit samples, 3 bands (or 4, the fourth an alpha that is
+/// dropped), pixel-interleaved; uncompressed, DEFLATE or LZW; north up. Anything else is refused
+/// with a message that names it.
+pub fn read_rgb_bytes(bytes: &[u8]) -> Result<Rgb, GeoTiffError> {
+    let mut d = Decoder::new(Cursor::new(bytes)).map_err(corrupt)?;
+    let (w, h) = d.dimensions().map_err(corrupt)?;
+    let bands = d
+        .find_tag_unsigned::<u16>(Tag::SamplesPerPixel)
+        .map_err(corrupt)?
+        .unwrap_or(1);
+    if !matches!(bands, 3 | 4) {
+        return unsupported(format!(
+            "{bands} band(s); an orthophoto is read as 3 bands (red, green, blue) or 4 with alpha"
+        ));
+    }
+    let planar = d
+        .find_tag_unsigned::<u16>(Tag::PlanarConfiguration)
+        .map_err(corrupt)?
+        .unwrap_or(1);
+    if planar != 1 {
+        return unsupported(
+            "bands stored as separate planes; the reader handles interleaved pixels",
+        );
+    }
+    let compression = d
+        .find_tag_unsigned::<u16>(Tag::Compression)
+        .map_err(corrupt)?
+        .unwrap_or(1);
+    if !matches!(compression, 1 | 5 | 8 | 32946) {
+        return unsupported(format!(
+            "compression {}; the reader handles uncompressed, DEFLATE and LZW",
+            compression_name(compression)
+        ));
+    }
+    let (epsg, pixel_is_point) = geo_keys(&mut d)?;
+    let gt = geotransform(&mut d, pixel_is_point)?;
+    let DecodingResult::U8(v) = d.read_image().map_err(corrupt)? else {
+        return unsupported("samples that are not 8 bit; an orthophoto is read as 8 bit RGB");
+    };
+    let (width, height, n) = (w as usize, h as usize, usize::from(bands));
+    if v.len() != width * height * n {
+        return Err(GeoTiffError::Corrupt(format!(
+            "the image holds {} samples, expected {}",
+            v.len(),
+            width * height * n
+        )));
+    }
+    Ok(Rgb {
+        width,
+        height,
+        data: v.chunks(n).map(|p| [p[0], p[1], p[2]]).collect(),
+        geotransform: gt,
+        epsg,
+    })
+}
