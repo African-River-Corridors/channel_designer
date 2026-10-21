@@ -194,14 +194,18 @@ enum Command {
         out: Out,
     },
     /// Download the Copernicus GLO-30 DEM tiles that cover the river, write them next to the
-    /// document with their licence notice, and record them as the DEM. The only command that uses
-    /// the network.
+    /// document with their licence notice, and record them as the DEM. With `owd reach`, one of the
+    /// two commands that use the network.
     FetchDem {
         /// The channel design. `-` is not allowed: files are written next to it.
         doc: String,
         /// Metres to add around the river on every side (default 1000).
         #[arg(long, value_name = "METRES", default_value_t = 1000.0)]
         margin: f64,
+        /// Fetch for this box instead of the river's extent: `west,south,east,north` in degrees.
+        /// A study started from a river reach (`owd reach`) with no banks yet uses its reach.
+        #[arg(long, value_name = "W,S,E,N", allow_hyphen_values = true)]
+        bbox: Option<String>,
         /// Where the tiles come from: an http(s) URL laid out as `<url>/<tile>/<tile>.tif`, or a
         /// folder with the same layout (default: the public Copernicus open-data bucket).
         #[arg(long, value_name = "URL_OR_FOLDER")]
@@ -547,9 +551,10 @@ pub fn main() -> ExitCode {
         Command::FetchDem {
             doc,
             margin,
+            bbox,
             mirror,
             json,
-        } => commands::fetch_dem(&doc, margin, mirror.as_deref(), json),
+        } => commands::fetch_dem(&doc, margin, mirror.as_deref(), bbox.as_deref(), json),
         Command::Reach {
             file,
             river,

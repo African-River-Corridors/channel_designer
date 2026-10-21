@@ -788,8 +788,41 @@ pub fn volumes(doc: &str, flags: VolumesFlags, output: &Option<String>, json_mod
 /// Largest number of tiles one `fetch-dem` will take: a reach this wide wants a DEM of its own.
 const MAX_TILES: usize = 16;
 
-pub fn fetch_dem(doc: &str, margin: f64, mirror: Option<&str>, json_mode: bool) -> Result {
-    fetch_dem_with(doc, margin, mirror, json_mode, &crate::fetch::Mirror)
+pub fn fetch_dem(
+    doc: &str,
+    margin: f64,
+    mirror: Option<&str>,
+    bbox: Option<&str>,
+    json_mode: bool,
+) -> Result {
+    fetch_dem_with(doc, margin, mirror, bbox, json_mode, &crate::fetch::Mirror)
+}
+
+/// `--bbox west,south,east,north` in degrees.
+fn parse_bbox(s: &str) -> core::result::Result<[f64; 4], Failure> {
+    let bad = || {
+        input_error(format!(
+            "`{s}` is not `west,south,east,north` in degrees (for example -6.2,4.9,-5.9,5.2)"
+        ))
+    };
+    let v: Vec<f64> = s
+        .split(',')
+        .map(|x| x.trim().parse::<f64>())
+        .collect::<core::result::Result<_, _>>()
+        .map_err(|_| bad())?;
+    let [w, so, e, n] = v[..] else {
+        return Err(bad());
+    };
+    if !(w < e
+        && so < n
+        && w.abs() <= 180.0
+        && e.abs() <= 180.0
+        && so.abs() <= 90.0
+        && n.abs() <= 90.0)
+    {
+        return Err(bad());
+    }
+    Ok([w, so, e, n])
 }
 
 /// `fetch-dem` with the fetcher given, so a test can serve a recorded response.
@@ -797,6 +830,7 @@ pub fn fetch_dem_with(
     doc: &str,
     margin: f64,
     mirror: Option<&str>,
+    bbox: Option<&str>,
     json_mode: bool,
     fetcher: &dyn crate::fetch::Fetcher,
 ) -> Result {
@@ -815,7 +849,14 @@ pub fn fetch_dem_with(
     }
     let mut session = open(doc)?;
     let mirror = mirror.unwrap_or(DEFAULT_MIRROR);
-    let bbox = session.extent_wgs84(margin).map_err(from_design)?;
+    // The box the DEM must cover: the one given, else the document's river, else its reach.
+    let bbox = match bbox {
+        Some(b) => {
+            let b = owd_reach::dem::widen(parse_bbox(b)?, margin);
+            (b[0], b[1], b[2], b[3])
+        }
+        None => session.extent_wgs84(margin).map_err(from_design)?,
+    };
     let tiles = tiles_for(bbox);
     if tiles.len() > MAX_TILES {
         return Err(input_error(format!(
@@ -866,11 +907,19 @@ pub fn fetch_dem_with(
     let mut records = Vec::new();
     let mut dems = Vec::new();
     let mut fetched = 0;
+    let mut withheld: Vec<owd_format::design::dem_source::TileId> = Vec::new();
     for (t, rel, path, found) in plan {
         let bytes = match found {
             Some(b) => b,
             None => {
-                let b = fetcher.get(t, mirror).map_err(input_error)?;
+                let b = match fetcher.get(t, mirror) {
+                    Ok(b) => b,
+                    Err(crate::fetch::GetError::Withheld) => {
+                        withheld.push(t);
+                        continue;
+                    }
+                    Err(crate::fetch::GetError::Failed(m)) => return Err(input_error(m)),
+                };
                 std::fs::create_dir_all(&tiles_dir).map_err(|e| {
                     input_error(format!("cannot create {}: {e}", tiles_dir.display()))
                 })?;
@@ -884,6 +933,15 @@ pub fn fetch_dem_with(
         records.push(crate::fetch::record(t, mirror, &rel, &bytes));
     }
 
+    if !withheld.is_empty() {
+        // Named, never skipped: a DEM with a missing tile has a hole.
+        return Err(input_error(owd_reach::dem::withheld_message(
+            &withheld
+                .iter()
+                .map(|t| owd_reach::dem::DemTile(*t))
+                .collect::<Vec<_>>(),
+        )));
+    }
     // One tile is the DEM as it is. Tiles on one grid are joined into one file, with no resampling.
     let (dem_rel, dem_bytes, dem) = if dems.len() == 1 {
         let (d, b) = dems.remove(0);
@@ -910,6 +968,16 @@ pub fn fetch_dem_with(
     };
     session.set_dem(&dem_rel, &dem_bytes, &dem);
     session.set_dem_source(&records).map_err(from_design)?;
+    // Every generated input says where it came from (spec 0012): a `default`, with the DEM notice.
+    let made = today();
+    let rec = owd_reach::provenance::provenance_record(
+        "cop-dem-glo30",
+        &made,
+        owd_format::design::provenance::Mark::Default,
+        false,
+    )
+    .map_err(input_error)?;
+    session.set_provenance("dem", rec).map_err(from_design)?;
 
     let notice = format!(
         "{SOURCE_NAME}\n\n{COPERNICUS_NOTICE}\n\nTiles:\n{}\n",

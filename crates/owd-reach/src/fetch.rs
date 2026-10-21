@@ -11,6 +11,9 @@ use std::fmt;
 pub enum FetchError {
     /// The host answered with an error status, or the request did not complete.
     Failed { url: String, reason: String },
+    /// The host has no such file (HTTP 404, or 403 where a bucket hides what it does not hold). The
+    /// Copernicus DEM, for one, has no tiles over much of the sea.
+    NotFound(String),
     /// A replay has no recording for this request.
     NotRecorded(String),
 }
@@ -19,6 +22,7 @@ impl fmt::Display for FetchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             FetchError::Failed { url, reason } => write!(f, "cannot fetch {url}: {reason}"),
+            FetchError::NotFound(url) => write!(f, "the source has no file at {url}"),
             FetchError::NotRecorded(r) => write!(f, "no recorded response for {r}"),
         }
     }

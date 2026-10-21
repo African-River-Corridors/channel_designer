@@ -13,6 +13,12 @@ versions follow [Semantic Versioning](https://semver.org/).
   sizes through the engine and gives the same numbers bit for bit. New: `owd_core::rules::engine`, and
   `docs/rules/codification.md` (how a Rule is written, cited and verified).
 
+- **A DEM for a reach (spec 0012, T5).** `owd fetch-dem DOC --bbox WEST,SOUTH,EAST,NORTH` fetches the Copernicus
+  GLO-30 tiles for a box, and a study started with `owd reach` that has no banks yet fetches for its reach. The
+  DEM is marked `default` in the document, with the Copernicus notice. A tile the source does not hold (much of the
+  sea) is now named, with every other missing tile, and nothing is changed; before, the first missing tile stopped
+  the run. For the web, `owd-reach` lists the tiles as plain download links and makes one DEM from the files the
+  user drops back in (the bucket sends no CORS header, and there is no proxy); the result equals the native fetch.
 - **Bank-line editor, desktop and web (spec 0012, T11).** "Edit banks" on the plan map: move, add and delete
   vertices, or redraw one stretch (it replaces the bank between the two nearest vertices). A bank always stays
   one line: an edit that would cross the other bank, or the bank itself, is refused with a message and changes
