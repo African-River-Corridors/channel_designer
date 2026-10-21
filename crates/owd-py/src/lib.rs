@@ -14,7 +14,7 @@
 use owd_format::host::{Host, Val, with_host};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyTuple;
+use pyo3::types::{PyBytes, PyTuple};
 use std::sync::{Arc, Mutex};
 
 struct PyHost {
@@ -101,6 +101,29 @@ fn eval(
     Ok(out.to_string())
 }
 
+/// Draw a design (spec 0004): the files of every sheet, as `(name, bytes)` pairs. `design` is the text
+/// of the `.owd` file, `dem` the bytes of the DEM file it names, `options_json` the draw options (see
+/// `owd_format::drawing::DrawOptions::from_json`). The same call as `owd draw`, so the bytes are the same.
+#[pyfunction]
+#[pyo3(signature = (design, dem=None, options_json="{}"))]
+fn draw<'py>(
+    py: Python<'py>,
+    design: &str,
+    dem: Option<&[u8]>,
+    options_json: &str,
+) -> PyResult<Vec<(String, Bound<'py, PyBytes>)>> {
+    let options: serde_json::Value = serde_json::from_str(options_json)
+        .map_err(|e| PyValueError::new_err(format!("the options are not JSON: {e}")))?;
+    let options = owd_format::drawing::DrawOptions::from_json(&options)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let files = owd_format::drawing::files_from_text(design, dem, &options)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(files
+        .into_iter()
+        .map(|(name, data)| (name, PyBytes::new(py, &data)))
+        .collect())
+}
+
 /// The names of every entry point the core knows.
 #[pyfunction]
 fn entry_points() -> Vec<&'static str> {
@@ -111,6 +134,7 @@ fn entry_points() -> Vec<&'static str> {
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(eval, m)?)?;
     m.add_function(wrap_pyfunction!(entry_points, m)?)?;
+    m.add_function(wrap_pyfunction!(draw, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

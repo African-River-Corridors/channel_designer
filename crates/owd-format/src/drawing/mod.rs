@@ -1,0 +1,367 @@
+//! Drawings (spec 0004, ADR 0009): the design document and its stage results in, drawing documents
+//! of the Drawing Format Standard out. `otd` turns a drawing document into normalised content, SVG,
+//! PDF and DXF. This module owns what a sheet shows; it owns no layout engine, no text width table,
+//! no hatch and no writer.
+//!
+//! The builder computes no engineering value. Every number it draws is a result the design
+//! already holds (the station walk the volumes stage sums). [`check`] reads the finished drawing
+//! documents back and fails when a drawn value differs from its result.
+
+pub mod check;
+mod furniture;
+mod gallery;
+
+use crate::design::terrain::dem_sampler;
+use crate::design::{DemCheck, DesignError, Session, Terrain};
+use otd::{NoFiles, RunResult};
+use serde_json::{Value, json};
+use std::collections::BTreeMap;
+
+pub use check::Finding;
+pub use gallery::GalleryParams;
+
+/// The kinds of sheet. Each has a code in the drawing number: `OWD-<design>-<code>-<nnn>`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SheetKind {
+    /// The cross-section gallery.
+    CrossSections,
+}
+
+impl SheetKind {
+    pub const ALL: &'static [SheetKind] = &[SheetKind::CrossSections];
+
+    /// The kind code in the drawing number.
+    pub fn code(self) -> &'static str {
+        match self {
+            SheetKind::CrossSections => "XS",
+        }
+    }
+
+    /// The word the command line uses for the kind.
+    pub fn word(self) -> &'static str {
+        match self {
+            SheetKind::CrossSections => "xs",
+        }
+    }
+
+    pub fn from_word(word: &str) -> Option<SheetKind> {
+        Self::ALL.iter().copied().find(|k| k.word() == word)
+    }
+}
+
+/// What `draw` is asked for.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DrawOptions {
+    /// The design line option, by id or name. `None` is the first option.
+    pub option: Option<String>,
+    /// The kinds of sheet to draw.
+    pub sheets: Vec<SheetKind>,
+    /// The revision letter in the title block.
+    pub revision: String,
+    /// The date in the title block, `YYYY-MM-DD`. `None` is the date the design was created, so
+    /// the same design always gives the same drawing documents.
+    pub date: Option<String>,
+    pub gallery: GalleryParams,
+}
+
+impl Default for DrawOptions {
+    fn default() -> Self {
+        DrawOptions {
+            option: None,
+            sheets: SheetKind::ALL.to_vec(),
+            revision: "A".into(),
+            date: None,
+            gallery: GalleryParams::default(),
+        }
+    }
+}
+
+/// One sheet: a drawing document and what names it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Sheet {
+    pub kind: SheetKind,
+    /// The drawing number, for example `OWD-SYNTHETIC-XS-001`.
+    pub number: String,
+    pub document: Value,
+}
+
+impl Sheet {
+    /// The file-name stem of the sheet: its drawing number in lower case.
+    pub fn stem(&self) -> String {
+        self.number.to_ascii_lowercase()
+    }
+
+    /// The document as text. One writer, so the command line and Python give the same bytes.
+    pub fn document_text(&self) -> String {
+        let mut text = serde_json::to_string_pretty(&self.document).unwrap_or_default();
+        text.push('\n');
+        text
+    }
+}
+
+/// Why a drawing could not be made.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DrawError {
+    /// The design is not ready, or the input is wrong.
+    Input(String),
+    /// A value the sheet needs is not in the design. The ticket stops and reports it.
+    Missing(String),
+    /// A drawn value differs from its result.
+    Checks(Vec<Finding>),
+    /// `otd` refused a drawing document (the standard's clause numbers).
+    Format { sheet: String, clauses: Vec<String> },
+}
+
+impl core::fmt::Display for DrawError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            DrawError::Input(m) | DrawError::Missing(m) => write!(f, "{m}"),
+            DrawError::Checks(found) => {
+                for (i, x) in found.iter().enumerate() {
+                    if i > 0 {
+                        writeln!(f)?;
+                    }
+                    write!(f, "{x}")?;
+                }
+                Ok(())
+            }
+            DrawError::Format { sheet, clauses } => write!(
+                f,
+                "sheet {sheet}: the Drawing Format Standard refuses the drawing document: clause {}",
+                clauses.join(", clause ")
+            ),
+        }
+    }
+}
+
+impl std::error::Error for DrawError {}
+
+impl From<DesignError> for DrawError {
+    fn from(e: DesignError) -> Self {
+        DrawError::Input(e.to_string())
+    }
+}
+
+/// The drawing documents of a design line option, checked against the design's results.
+pub fn sheets(
+    session: &Session,
+    terrain: Terrain,
+    options: &DrawOptions,
+) -> Result<Vec<Sheet>, DrawError> {
+    let option_id = resolve_option(session, options.option.as_deref())?;
+    let walk = session.option_section_walk(&option_id, terrain)?;
+    let mut out = Vec::new();
+    for kind in &options.sheets {
+        match kind {
+            SheetKind::CrossSections => {
+                let built = gallery::build(session, &option_id, &walk, options)?;
+                let findings = check::gallery(&built, &walk);
+                if !findings.is_empty() {
+                    return Err(DrawError::Checks(findings));
+                }
+                out.extend(built);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The id of the option asked for: by id or by name, or the first option.
+fn resolve_option(session: &Session, asked: Option<&str>) -> Result<String, DrawError> {
+    let list = session.document()["options"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let found = match asked {
+        None => list.first(),
+        Some(a) => list.iter().find(|o| o["id"] == a || o["name"] == a),
+    };
+    match (found, asked) {
+        (Some(o), _) => Ok(o["id"].as_str().unwrap_or_default().to_string()),
+        (None, Some(a)) => Err(DrawError::Input(format!(
+            "there is no design line option `{a}`"
+        ))),
+        (None, None) => Err(DrawError::Input(
+            "the design has no design line option to draw: run `owd align` first".into(),
+        )),
+    }
+}
+
+/// Every output of one sheet.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SheetOutput {
+    pub number: String,
+    pub stem: String,
+    pub document: String,
+    pub normalised: String,
+    pub svg: String,
+    pub pdf: Vec<u8>,
+    pub dxf: String,
+    /// Notes from the DXF writer (what it could not draw).
+    pub warnings: Vec<String>,
+}
+
+/// Make every output of a sheet with `otd`.
+pub fn render(sheet: &Sheet) -> Result<SheetOutput, DrawError> {
+    let text = sheet.document_text();
+    let norm = match otd::run_text(&text, &NoFiles) {
+        RunResult::Ok(n) => n,
+        RunResult::Errors(set) => {
+            return Err(DrawError::Format {
+                sheet: sheet.number.clone(),
+                clauses: set.into_iter().collect(),
+            });
+        }
+    };
+    let parsed = otd::json::parse(&text).map_err(|_| {
+        DrawError::Input(format!("sheet {}: the document is not JSON", sheet.number))
+    })?;
+    let dxf = otd::render::dxf::to_dxf(&parsed, &norm, &NoFiles);
+    let mut normalised = serde_json::to_string_pretty(&norm.to_value()).unwrap_or_default();
+    normalised.push('\n');
+    Ok(SheetOutput {
+        number: sheet.number.clone(),
+        stem: sheet.stem(),
+        document: text,
+        normalised,
+        svg: otd::render::svg::to_svg(&norm, &otd::render::svg::SvgOptions::default()),
+        pdf: otd::render::pdf::to_pdf(&norm),
+        dxf: dxf.text,
+        warnings: dxf.warnings,
+    })
+}
+
+/// The drawing documents as one JSON object, keyed by drawing number (`owd draw --document`).
+pub fn documents_json(sheets: &[Sheet]) -> Value {
+    let map: BTreeMap<&str, &Value> = sheets
+        .iter()
+        .map(|s| (s.number.as_str(), &s.document))
+        .collect();
+    json!(map)
+}
+
+impl SheetOutput {
+    /// The files of the sheet, by name: the drawing document, the normalised content, SVG, PDF
+    /// and DXF. The command line and Python both write exactly these.
+    pub fn files(&self) -> Vec<(String, Vec<u8>)> {
+        let name = |ext: &str| format!("{}.{ext}", self.stem);
+        vec![
+            (name("drawing.json"), self.document.clone().into_bytes()),
+            (
+                name("normalised.json"),
+                self.normalised.clone().into_bytes(),
+            ),
+            (name("svg"), self.svg.clone().into_bytes()),
+            (name("pdf"), self.pdf.clone()),
+            (name("dxf"), self.dxf.clone().into_bytes()),
+        ]
+    }
+}
+
+/// Draw a design given as text, with the bytes of the DEM file it names (if any). The DEM must be
+/// the file whose hash the design recorded: a drawn section is what the volumes stage summed.
+pub fn sheets_from_text(
+    design: &str,
+    dem: Option<&[u8]>,
+    options: &DrawOptions,
+) -> Result<Vec<Sheet>, DrawError> {
+    let session = Session::open(design)?;
+    let name = session.dem_path().unwrap_or("DEM").to_string();
+    let grid = match session.dem_check(dem) {
+        DemCheck::Matches => crate::geotiff::read_bytes(dem.unwrap_or_default())
+            .map_err(|e| DrawError::Input(format!("{name}: {e}")))?,
+        DemCheck::Changed => {
+            return Err(DrawError::Input(format!(
+                "the DEM `{name}` has changed since its hash was recorded: run `owd volumes --dem {name}` first"
+            )));
+        }
+        DemCheck::Missing => {
+            return Err(DrawError::Input(format!(
+                "the DEM `{name}` is missing: the sections are drawn from the terrain it gives"
+            )));
+        }
+        DemCheck::NoDem => {
+            return Err(DrawError::Input(
+                "the design has no DEM: the sections are drawn from the terrain it gives".into(),
+            ));
+        }
+    };
+    let epsg = session.document()["project"]["crs"]["epsg"]
+        .as_u64()
+        .map(|c| c as u32);
+    let sampler = dem_sampler(&grid, epsg)?;
+    sheets(&session, &sampler, options)
+}
+
+/// Every file of every sheet of a design: the one call that `owd draw` and `owd.draw` share.
+pub fn files_from_text(
+    design: &str,
+    dem: Option<&[u8]>,
+    options: &DrawOptions,
+) -> Result<Vec<(String, Vec<u8>)>, DrawError> {
+    let mut out = Vec::new();
+    for sheet in sheets_from_text(design, dem, options)? {
+        out.extend(render(&sheet)?.files());
+    }
+    Ok(out)
+}
+
+impl DrawOptions {
+    /// Read the options from JSON: `option`, `sheets` (a list of kind words), `revision`, `date`.
+    /// A key that is not here is not accepted, so a mistyped option does not pass quietly.
+    pub fn from_json(v: &Value) -> Result<DrawOptions, DrawError> {
+        let mut o = DrawOptions::default();
+        let Some(map) = v.as_object() else {
+            return Err(DrawError::Input("the options are not a JSON object".into()));
+        };
+        for (k, v) in map {
+            match k.as_str() {
+                "option" => o.option = v.as_str().map(str::to_string),
+                "revision" => o.revision = v.as_str().unwrap_or("A").to_string(),
+                "date" => o.date = v.as_str().map(str::to_string),
+                "sheets" => {
+                    let words: Vec<&str> = v
+                        .as_array()
+                        .map(|a| a.iter().filter_map(Value::as_str).collect())
+                        .unwrap_or_default();
+                    o.sheets = SheetKind::parse_list(&words.join(","))?;
+                }
+                other => {
+                    return Err(DrawError::Input(format!("unknown draw option `{other}`")));
+                }
+            }
+        }
+        Ok(o)
+    }
+}
+
+impl SheetKind {
+    /// A comma list of kind words (`xs`), in the order given, without repeats.
+    pub fn parse_list(list: &str) -> Result<Vec<SheetKind>, DrawError> {
+        let mut out: Vec<SheetKind> = Vec::new();
+        for w in list.split(',').map(str::trim).filter(|w| !w.is_empty()) {
+            let k = SheetKind::from_word(w).ok_or_else(|| {
+                DrawError::Input(format!(
+                    "unknown sheet kind `{w}`; the kinds are: {}",
+                    SheetKind::ALL
+                        .iter()
+                        .map(|k| k.word())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ))
+            })?;
+            if !out.contains(&k) {
+                out.push(k);
+            }
+        }
+        if out.is_empty() {
+            return Err(DrawError::Input("give at least one sheet kind".into()));
+        }
+        Ok(out)
+    }
+}
+
+/// The result of one drawing document through `otd`, as the runner of clause 17.3 prints it.
+pub fn run_document(text: &str) -> Value {
+    otd::run_text(text, &NoFiles).to_value()
+}

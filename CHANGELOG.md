@@ -11,6 +11,19 @@ versions follow [Semantic Versioning](https://semver.org/).
   it. A document can now record a `provenance` for each input (source, date, notice, mark `default`, `edited`
   or `user`); GeoJSON and CSV exports carry the notices. A document without provenance gives the same results
   and the same exports as before.
+- **Engineering drawings through the Open Technical Drawer (spec 0004, ticket 1).** New `owd draw FILE --out DIR`
+  draws the cross-section gallery of a design line option: sections every 500 m and at the middle of each tight
+  bend, one scale for all, on as many A3 sheets as needed, with the ground, the design cut face, the water level,
+  the dredge and the dry cut hatched, and their areas. Each sheet has the standard's ISO 7200 title block, the
+  drawing number `OWD-<design>-XS-<nnn>`, the status `concept` and the line "Screening — not for construction".
+  For each sheet it writes the drawing document, the normalised content, SVG, PDF and DXF. `owd draw FILE
+  --document` prints the drawing documents; `owd draw run FILE` reads one with the drawing crate. `owd.draw(...)`
+  in Python gives the same files, byte for byte. Drawing is done by [`otd`](https://github.com/African-River-Corridors/open-technical-drawer)
+  (the Drawing Format Standard in Rust, pinned by tag `v0.1.0`), and OWD checks that every drawn value equals the
+  design's result: a sheet with a wrong number fails the command and names the sheet and the check. CI compares
+  `otd`'s normalised content with the standard's Python reader for OWD's own drawing documents.
+  **Removed:** `owd.drawings` and the `[drawings]` extra (they drew through an API that the Drawing Format Standard
+  dropped in 1.0). Use `owd.draw` or `owd draw`.
 - **Web app (spec 0011).** The desktop app's front end now also runs in a browser, over a WebAssembly build
   of the same Rust core, at `africanrivercorridors.com/owd/app`. Nothing you load is uploaded. It opens a
   bundled example, or `.owd` files, GeoJSON or GeoPackage banks and a GeoTIFF DEM from your computer; Save and

@@ -962,6 +962,95 @@ pub fn export(doc: &str, geojson: bool, csv: bool, wgs84: bool, output: Option<&
     write(output.unwrap_or("-"), &text)
 }
 
+/// The flags of `owd draw`.
+pub struct DrawFlags {
+    pub out: Option<String>,
+    pub documents_only: bool,
+    pub option: Option<String>,
+    pub sheets: Option<String>,
+    pub revision: Option<String>,
+    pub date: Option<String>,
+}
+
+fn from_draw(e: owd_format::drawing::DrawError) -> Failure {
+    use owd_format::drawing::DrawError;
+    let code = match e {
+        DrawError::Input(_) | DrawError::Missing(_) => 2,
+        DrawError::Checks(_) | DrawError::Format { .. } => 1,
+    };
+    Failure {
+        message: e.to_string(),
+        code,
+    }
+}
+
+pub fn draw(doc: &str, flags: DrawFlags, json_mode: bool) -> Result {
+    use owd_format::drawing::{self, DrawOptions, SheetKind};
+    let (session, bytes) = open_with_dem(doc)?;
+    let mut options = DrawOptions {
+        option: flags.option,
+        date: flags.date,
+        ..DrawOptions::default()
+    };
+    if let Some(list) = &flags.sheets {
+        options.sheets = SheetKind::parse_list(list).map_err(from_draw)?;
+    }
+    if let Some(r) = flags.revision {
+        options.revision = r;
+    }
+    let sheets = drawing::sheets_from_text(&session.to_text(), bytes.as_deref(), &options)
+        .map_err(from_draw)?;
+    if flags.documents_only {
+        let text = serde_json::to_string_pretty(&drawing::documents_json(&sheets))
+            .map_err(|e| input_error(e.to_string()))?;
+        println!("{text}");
+        return Ok(());
+    }
+    let out = flags.out.unwrap_or_default();
+    std::fs::create_dir_all(&out).map_err(|e| input_error(format!("cannot create {out}: {e}")))?;
+    let mut written = Vec::new();
+    let mut listed = Vec::new();
+    for sheet in &sheets {
+        let output = drawing::render(sheet).map_err(from_draw)?;
+        for w in &output.warnings {
+            eprintln!("owd: warning: sheet {}: {w}", output.number);
+        }
+        let mut names = Vec::new();
+        for (name, data) in output.files() {
+            let path = Path::new(&out).join(&name);
+            std::fs::write(&path, data)
+                .map_err(|e| input_error(format!("cannot write {}: {e}", path.display())))?;
+            written.push(path.display().to_string());
+            names.push(name);
+        }
+        listed.push(json!({"number": output.number, "files": names}));
+    }
+    say(
+        false,
+        json_mode,
+        &written
+            .iter()
+            .map(|w| format!("wrote {w}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        json!({"ok": true, "sheets": listed}),
+    );
+    Ok(())
+}
+
+/// `owd draw run FILE`: one drawing document through the drawing crate; prints the result of clause
+/// 17.3 as JSON. Used to compare the crate with the standard's Python reader.
+pub fn draw_run(path: &str) -> Result {
+    let text = read(path)?;
+    let result = otd_run(&text);
+    println!("{}", result);
+    Ok(())
+}
+
+fn otd_run(text: &str) -> String {
+    owd_format::drawing::run_document(text).to_string()
+}
+
 pub fn run(doc: &str, output: &Option<String>, json_mode: bool) -> Result {
     let (mut session, bytes) = open_with_dem(doc)?;
     // The DEM is used only when it is the file whose hash was recorded.

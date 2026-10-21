@@ -28,8 +28,7 @@ Both must pass (installing from source builds the Rust core, so it needs a Rust 
 
 - `rules`, `alignment` and `volumes` are calculation code: numpy and shapely only, no file I/O.
   Paths, CRS and DEMs come in as arguments. `tests/test_layer_boundary.py` enforces this.
-- Heavy dependencies stay optional: raster I/O lives behind the `[dem]` extra, drawings behind
-  `[drawings]`.
+- Heavy dependencies stay optional: raster I/O lives behind the `[dem]` extra.
 - Every new calculation comes with tests: a golden case (a worked number with its source), a property
   (an invariant), and a feasibility check (the checks fire when they should). Tests use synthetic
   geometry built in code — never project data.
