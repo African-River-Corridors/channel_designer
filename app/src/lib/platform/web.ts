@@ -1,0 +1,310 @@
+// The browser adapter: the owd-web WebAssembly session, in a Web Worker on this page. No server sees a
+// design or a DEM. Where the desktop opens a dialog or writes a file, the browser picks a file or
+// downloads one. A run that is cancelled ends the worker, and a new worker starts from the design as
+// it was before the run. Errors thrown by the session are strings; they become rejected promises.
+import type { FileDropEvent, Platform } from "./types";
+
+const LAST_DESIGN = "owd.lastDesign";
+const DEFAULT_NAME = "waterway-design.owd";
+const EXAMPLE = "river-example.owd";
+const EXAMPLE_DEM = "river-dem.tif";
+const DISCARD = "The channel design has unsaved changes. Discard them?";
+
+/** Storage may be missing or throw (private window, blocked site data): every use is guarded. */
+function readKey(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function writeKey(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    /* not remembered */
+  }
+}
+
+/** The worker, and the requests waiting on it. */
+class Host {
+  private worker: Worker;
+  private next = 1;
+  private waiting = new Map<number, { ok: (v: unknown) => void; fail: (e: unknown) => void }>();
+  constructor(private onProgress: (n: number) => void) {
+    this.worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
+    this.worker.onmessage = (e: MessageEvent) => {
+      if ("progress" in e.data) return this.onProgress(e.data.progress as number);
+      const w = this.waiting.get(e.data.id);
+      this.waiting.delete(e.data.id);
+      if (!w) return;
+      if (e.data.ok) w.ok(e.data.result);
+      else w.fail(e.data.error);
+    };
+    this.worker.onerror = (e) => this.failAll(e.message || "the session stopped unexpectedly");
+  }
+  rpc<T>(method: string, ...args: unknown[]): Promise<T> {
+    return new Promise<T>((ok, fail) => {
+      const id = this.next++;
+      this.waiting.set(id, { ok: ok as (v: unknown) => void, fail });
+      this.worker.postMessage({ id, method, args });
+    });
+  }
+  private failAll(why: string) {
+    for (const w of this.waiting.values()) w.fail(why);
+    this.waiting.clear();
+  }
+  /** End the worker. Every waiting request fails with `why`. */
+  end(why: string) {
+    this.worker.terminate();
+    this.failAll(why);
+  }
+}
+
+const CANCELLED = "cancelled";
+
+function download(name: string, data: BlobPart, type: string) {
+  const url = URL.createObjectURL(new Blob([data], { type }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.style.display = "none";
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+/** Ask for a file with the browser's picker. null when the user cancels. */
+function pickFile(accept: string): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    input.dataset.testid = "file-picker";
+    // Present but out of sight, so a test can fill it in.
+    input.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;";
+    const done = (file: File | null) => {
+      input.remove();
+      resolve(file);
+    };
+    input.addEventListener("change", () => done(input.files?.[0] ?? null));
+    input.addEventListener("cancel", () => done(null));
+    document.body.append(input);
+    input.click();
+  });
+}
+
+const bytesOf = async (file: File) => new Uint8Array(await file.arrayBuffer());
+
+export async function createWebPlatform(): Promise<Platform> {
+  const progressHandlers = new Set<(n: number) => void>();
+  const onProgress = (n: number) => progressHandlers.forEach((h) => h(n));
+  let host = new Host(onProgress);
+  await host.rpc("ping");
+
+  /** The DEM the session holds, kept so a restart can give it back. */
+  let dem: Uint8Array | null = null;
+  /** Whether the design has unsaved changes, as the last snapshot said (or as it was before a restart). */
+  let dirty = false;
+  let carriedDirty = false;
+  let running: { stage: string; cancelled: boolean } | null = null;
+
+  const json = async <T>(method: string, ...args: unknown[]): Promise<T> => JSON.parse(await host.rpc<string>(method, ...args)) as T;
+
+  /** A snapshot: note its title and unsaved flag, and remember the design for a reload. */
+  function follow<T extends { dirty: boolean; title: string; file_name: string }>(snap: T): T {
+    if (carriedDirty) snap.dirty = true;
+    dirty = snap.dirty;
+    try {
+      document.title = snap.title;
+    } catch {
+      /* no document title to set */
+    }
+    host
+      .rpc<string>("save_text", snap.file_name)
+      .then((text) => writeKey(LAST_DESIGN, JSON.stringify({ name: snap.file_name, text })))
+      .catch(() => {});
+    return snap;
+  }
+  const change = async <T extends { dirty: boolean; title: string; file_name: string }>(method: string, ...args: unknown[]) => follow(await json<T>(method, ...args));
+
+  const fileName = (snap: { file_name: string }) => (/\.(owd|cdesign)$/.test(snap.file_name) ? snap.file_name : DEFAULT_NAME);
+  const confirmDiscard = () => !dirty || window.confirm(DISCARD);
+
+  async function saveNamed(name: string) {
+    const text = await host.rpc<string>("save_text", name);
+    download(name, text, "application/json");
+    carriedDirty = false;
+    return change("saved", name);
+  }
+
+  /** Bring back the design as it stood before a run, in a new worker. */
+  async function restart(before: { name: string; text: string; dem: Uint8Array | null; dirty: boolean }) {
+    host = new Host(onProgress);
+    await host.rpc("ping");
+    dem = before.dem;
+    await host.rpc("open_text", before.name, before.text, before.dem ?? undefined);
+    carriedDirty = before.dirty;
+  }
+
+  async function runStage(stage: string, method: string | null) {
+    const snap = await json<{ file_name: string; dirty: boolean }>("snapshot");
+    const before = { name: snap.file_name, text: await host.rpc<string>("save_text", snap.file_name), dem, dirty: snap.dirty || carriedDirty };
+    running = { stage, cancelled: false };
+    const mine = running;
+    try {
+      const result = await json<{ dirty: boolean; title: string; file_name: string }>("run_stage", stage, method ?? undefined);
+      carriedDirty = false;
+      return follow(result);
+    } catch (e) {
+      // Cancel ended the worker; so can a stage that stopped unexpectedly. Either way the design is as it was.
+      let alive = true;
+      if (!mine.cancelled) await host.rpc("ping").catch(() => (alive = false));
+      if (mine.cancelled || !alive) {
+        await restart(before);
+        const back = await change<{ dirty: boolean; title: string; file_name: string }>("snapshot");
+        if (mine.cancelled) return { ...back, run: { stage, outcome: "cancelled" } };
+        throw "the stage stopped unexpectedly: the design is as it was";
+      }
+      throw e;
+    } finally {
+      if (running === mine) running = null;
+    }
+  }
+
+  async function loadInput(role: string, given: unknown) {
+    const file = given instanceof File ? given : await pickFile(role === "dem" ? ".tif,.tiff" : ".geojson,.json,.gpkg");
+    if (!file) return null;
+    const bytes = await bytesOf(file);
+    if (role === "dem") {
+      const snap = await change("load_dem", file.name, bytes);
+      dem = bytes;
+      return snap;
+    }
+    return change("load_input", role, file.name, bytes, undefined);
+  }
+
+  async function openExample() {
+    if (!confirmDiscard()) return null;
+    const base = import.meta.env.BASE_URL;
+    const [text, tif] = await Promise.all([fetch(`${base}examples/${EXAMPLE}`).then((r) => (r.ok ? r.text() : Promise.reject(`cannot load the example (${r.status})`))), fetch(`${base}examples/${EXAMPLE_DEM}`).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(`cannot load the example DEM (${r.status})`)))]);
+    dem = new Uint8Array(tif);
+    carriedDirty = false;
+    return change("open_text", EXAMPLE, text, dem);
+  }
+
+  const commands: Record<string, (args: Record<string, unknown>) => Promise<unknown>> = {
+    snapshot: () => change("snapshot"),
+    sizing_choices: () => json("sizing_choices"),
+    new_file: async () => {
+      if (!confirmDiscard()) return null;
+      dem = null;
+      carriedDirty = false;
+      return change("new_design");
+    },
+    open_file: async () => {
+      if (!confirmDiscard()) return null;
+      const file = await pickFile(".owd,.cdesign");
+      if (!file) return null;
+      const text = await file.text();
+      dem = null;
+      carriedDirty = false;
+      return change("open_text", file.name, text, undefined);
+    },
+    save: async () => saveNamed(fileName(await json("snapshot"))),
+    save_as: async () => {
+      const name = window.prompt("File name", fileName(await json("snapshot")));
+      if (name === null || name.trim() === "") return null;
+      const clean = name.trim();
+      return saveNamed(/\.owd$/.test(clean) ? clean : `${clean}.owd`);
+    },
+    set_sizing: (a) => change("set_sizing", a.rulesetId, a.vesselStandardId, a.draught),
+    run_stale: () => change("run_stale"),
+    map_geometry: () => json("map_geometry"),
+    option_table: () => json("option_table"),
+    hillshade: () => json("hillshade"),
+    long_section: (a) => json("long_section", a.option),
+    cross_section: (a) => json("cross_section", a.option, a.chainage),
+    station_near: (a) => host.rpc("station_near", a.option, a.lon, a.lat),
+    load_input: (a) => loadInput(a.role as string, a.path),
+    set_water: (a) => change("set_water", a.level, a.fall),
+    run_stage: (a) => runStage(a.stage as string, (a.method as string | null) ?? null),
+    cancel_run: async () => {
+      if (!running) return false;
+      running.cancelled = true;
+      host.end(CANCELLED);
+      return true;
+    },
+    fetch_dem: () => Promise.reject("Fetching a DEM is not offered in the browser: load a GeoTIFF instead."),
+    basemap_tiles: async () => null,
+    open_example: openExample,
+    export_file: async (a) => {
+      const kind = a.kind as string;
+      if (kind !== "geojson" && kind !== "csv") throw `\`${kind}\` is not an export: use geojson or csv`;
+      const snap = await json<{ file_name: string }>("snapshot");
+      const base = fileName(snap).replace(/\.(owd|cdesign)$/, "");
+      const text = await host.rpc<string>(kind === "geojson" ? "export_geojson" : "export_csv");
+      const name = `${base}.${kind}`;
+      download(name, text, kind === "geojson" ? "application/geo+json" : "text/csv");
+      return name;
+    },
+  };
+
+  // Bring back the last design, if there is one. Any failure leaves the empty design.
+  try {
+    const raw = readKey(LAST_DESIGN);
+    if (raw) {
+      const last = JSON.parse(raw) as { name: string; text: string };
+      await host.rpc("open_text", last.name, last.text, undefined);
+    }
+  } catch {
+    /* ignore: the empty design stays */
+  }
+
+  window.addEventListener("beforeunload", (e) => {
+    if (dirty) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+  });
+
+  const platform: Platform = {
+    kind: "web",
+    call: (command, args) => {
+      const run = commands[command];
+      return (run ? run(args ?? {}) : Promise.reject(`\`${command}\` is not available in the browser`)) as Promise<never>;
+    },
+    onProgress: async (handler) => {
+      progressHandlers.add(handler);
+      return () => progressHandlers.delete(handler);
+    },
+    onFileDrop: async (handler: (e: FileDropEvent) => void) => {
+      const over = (e: DragEvent) => {
+        if (!e.dataTransfer?.types.includes("Files")) return;
+        e.preventDefault();
+        handler({ type: "over", x: e.clientX, y: e.clientY });
+      };
+      const leave = (e: DragEvent) => {
+        if (e.relatedTarget === null) handler({ type: "leave" });
+      };
+      const drop = (e: DragEvent) => {
+        const file = e.dataTransfer?.files[0];
+        if (!file) return;
+        e.preventDefault();
+        handler({ type: "drop", x: e.clientX, y: e.clientY, name: file.name, file });
+      };
+      window.addEventListener("dragover", over);
+      window.addEventListener("dragleave", leave);
+      window.addEventListener("drop", drop);
+      return () => {
+        window.removeEventListener("dragover", over);
+        window.removeEventListener("dragleave", leave);
+        window.removeEventListener("drop", drop);
+      };
+    },
+  };
+  // The smoke test reads results through this; only a build in test mode has it.
+  if (import.meta.env.MODE === "test") (window as unknown as { __owdPlatform: Platform }).__owdPlatform = platform;
+  return platform;
+}

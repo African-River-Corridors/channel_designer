@@ -1,5 +1,8 @@
-// The only door to the Rust side. Every function forwards to a Tauri command; none computes.
-import { invoke } from "@tauri-apps/api/core";
+// The only door to the Rust side. Every function forwards to a command (a Tauri command on the desktop,
+// the WebAssembly session in a browser, see lib/platform); none computes.
+import { platform } from "./platform";
+
+const invoke = <T>(command: string, args?: Record<string, unknown>) => platform().call<T>(command, args);
 
 export type StageName = "sizing" | "alignment" | "optimise" | "volumes";
 export type StageState = "not_run" | "fresh" | "stale";
@@ -124,8 +127,8 @@ export const hillshade = () => invoke<Hillshade | null>("hillshade");
 export const basemapTiles = () => invoke<string | null>("basemap_tiles");
 
 export type InputRole = "left_bank" | "right_bank" | "centreline" | "river_polygon" | "dem";
-/** Load one input. With no path the user picks a file; null comes back on cancel. Rejects with the session's reason. */
-export const loadInput = (role: InputRole, path?: string) => invoke<Snapshot | null>("load_input", { role, path: path ?? null });
+/** Load one input. With no path the user picks a file (a dropped file is a path on the desktop, a File in a browser); null comes back on cancel. Rejects with the session's reason. */
+export const loadInput = (role: InputRole, path?: string | File) => invoke<Snapshot | null>("load_input", { role, path: path ?? null });
 /** The water level at the river's start, and optionally a fall per metre (both as typed). */
 export const setWater = (level: string, fall: string) => invoke<Snapshot>("set_water", { level, fall });
 export type RunMethod = "rolling_circle" | "reroute";
@@ -208,3 +211,6 @@ export const stationNear = (option: string, lon: number, lat: number) => invoke<
 
 /** Export through the session to a file the user picks. Returns the path, or null when they cancel. Rejects with the reason (for example: no options yet). */
 export const exportFile = (kind: "geojson" | "csv") => invoke<string | null>("export_file", { kind });
+
+/** Web only: open the bundled example (a short synthetic river with its DEM). null when the user cancels. */
+export const openExample = () => invoke<Snapshot | null>("open_example");

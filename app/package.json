@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "node scripts/contrast.mjs && svelte-check --tsconfig ./tsconfig.json && vite build",
+    "build:web": "svelte-check --tsconfig ./tsconfig.json && vite build --config vite.web.config.ts",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "contrast": "node scripts/contrast.mjs",
     "tauri": "tauri",

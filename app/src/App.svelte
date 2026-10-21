@@ -9,6 +9,7 @@
   import { BASEMAP_TILES } from "./lib/basemap";
   import MapPanel from "./lib/MapPanel.svelte";
   import LeftPanel from "./lib/LeftPanel.svelte";
+  import { platform } from "./lib/platform";
   import markLight from "./assets/owd-mark.svg";
   import markDark from "./assets/owd-mark-reversed-clear.svg";
 
@@ -73,7 +74,9 @@
     }
   }
 
-  async function load(role: InputRole, path?: string) {
+  const isWeb = platform().kind === "web";
+
+  async function load(role: InputRole, path?: string | File) {
     await fileAction(() => api.loadInput(role, path));
   }
 
@@ -92,9 +95,9 @@
     await fileAction(api.fetchDem);
   }
 
-  /** The row under a window position given in physical pixels, for drag and drop. */
+  /** The row under a window position given in CSS pixels, for drag and drop. */
   function rowAt(x: number, y: number): InputRole | null {
-    const el = document.elementFromPoint(x / window.devicePixelRatio, y / window.devicePixelRatio);
+    const el = document.elementFromPoint(x, y);
     return (el?.closest("[data-drop-role]")?.getAttribute("data-drop-role") as InputRole | null) ?? null;
   }
 
@@ -259,29 +262,24 @@
 
   onMount(() => {
     const undo: (() => void)[] = [];
-    // Outside the Tauri window (a browser, a test) these have nothing to listen to.
-    import("@tauri-apps/api/event")
-      .then(({ listen }) => listen<number>("stage-progress", (e) => (samples = e.payload)))
+    // Outside the Tauri window (a browser test of the desktop build) these have nothing to listen to.
+    platform()
+      .onProgress((n) => (samples = n))
       .then((un) => undo.push(un))
       .catch(() => {});
-    import("@tauri-apps/api/webview")
-      .then(({ getCurrentWebview }) =>
-        getCurrentWebview().onDragDropEvent((e) => {
-          const p = e.payload;
-          if (p.type === "leave") dropTarget = null;
-          else if (p.type === "over") dropTarget = rowAt(p.position.x, p.position.y);
-          else if (p.type === "drop") {
-            const role = rowAt(p.position.x, p.position.y);
-            dropTarget = null;
-            const file = p.paths[0];
-            if (!file) return;
-            // A GeoTIFF is the DEM wherever it lands; vector data must land on its own row.
-            if (/\.tiff?$/i.test(file)) load("dem", file);
-            else if (role) load(role, file);
-            else error = "Drop the file on the row it belongs to: left bank, right bank, river polygon or centreline.";
-          }
-        }),
-      )
+    platform()
+      .onFileDrop((e) => {
+        if (e.type === "leave") dropTarget = null;
+        else if (e.type === "over") dropTarget = rowAt(e.x, e.y);
+        else {
+          const role = rowAt(e.x, e.y);
+          dropTarget = null;
+          // A GeoTIFF is the DEM wherever it lands; vector data must land on its own row.
+          if (/\.tiff?$/i.test(e.name)) load("dem", e.file);
+          else if (role) load(role, e.file);
+          else error = "Drop the file on the row it belongs to: left bank, right bank, river polygon or centreline.";
+        }
+      })
       .then((un) => undo.push(un))
       .catch(() => {});
     guard(async () => {
@@ -320,6 +318,7 @@
   <header>
     <span class="brand"><img class="mark-light" src={markLight} alt="OWD" /><img class="mark-dark" src={markDark} alt="OWD" /></span>
     <button onclick={() => openDoc(api.newFile)}>New</button>
+    {#if isWeb}<button onclick={() => openDoc(api.openExample)} data-testid="open-example" title="A short synthetic river with its DEM">Open the example</button>{/if}
     <button onclick={() => openDoc(api.openFile)}>Open</button>
     <button onclick={() => fileAction(api.save)}>Save</button>
     <button onclick={() => fileAction(api.saveAs)}>Save as</button>
@@ -335,6 +334,9 @@
         <option value="dark">Dark</option>
       </select>
     </label>
+    {#if isWeb}
+      <span class="meta" data-testid="web-label">Web version: runs in this browser, nothing is uploaded. <a href="/owd/docs#install">Get the desktop app</a></span>
+    {/if}
     {#if snap}
       <span class="meta" data-testid="file-label">{snap.file_name}{snap.dirty ? " (unsaved)" : ""}</span>
       <span class="meta" data-testid="study-title">{snap.document.project.title}</span>
