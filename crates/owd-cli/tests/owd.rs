@@ -1,6 +1,6 @@
-//! The `cdesign` design commands (spec 0002, ticket 60), on the synthetic river given as GeoJSON in
+//! The `owd` design commands (spec 0002, ticket 60), on the synthetic river given as GeoJSON in
 //! UTM: the chain `new -> import -> size`, `status`, `validate`, `schema`, `--json`, `-o`, stdin
-//! and stdout, and the three exit codes.
+//! and stdout, and the three exit codes. The old `cdesign` name is an alias (spec 0006).
 //!
 //! Label: property
 
@@ -13,13 +13,13 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 fn run(args: &[&str], stdin: &str) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_cdesign"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_owd"))
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("cdesign runs");
+        .expect("owd runs");
     child
         .stdin
         .take()
@@ -43,7 +43,7 @@ fn code(o: &Output) -> i32 {
 
 /// A fresh directory for one test.
 fn work_dir(name: &str) -> PathBuf {
-    let d = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("cdesign-{name}"));
+    let d = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("owd-{name}"));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
@@ -499,11 +499,11 @@ fn a_geopackage_with_several_layers_asks_for_one() {
 }
 
 /// The release binary has no dynamic SQLite dependency: SQLite is compiled in. The check lists
-/// the shared libraries of the built `cdesign` (`otool -L` on macOS, `ldd` on Linux). A debug and a
+/// the shared libraries of the built `owd` (`otool -L` on macOS, `ldd` on Linux). A debug and a
 /// release build link SQLite the same way (the `bundled` feature), and CI builds the debug one.
 #[test]
 fn the_binary_has_no_dynamic_sqlite_dependency() {
-    let exe = env!("CARGO_BIN_EXE_cdesign");
+    let exe = env!("CARGO_BIN_EXE_owd");
     let (tool, args): (&str, &[&str]) = if cfg!(target_os = "macos") {
         ("otool", &["-L"])
     } else if cfg!(target_os = "linux") {
@@ -529,7 +529,7 @@ fn the_binary_has_no_dynamic_sqlite_dependency() {
     );
     assert!(
         !listing.contains("sqlite"),
-        "cdesign links a SQLite library:\n{listing}"
+        "owd links a SQLite library:\n{listing}"
     );
 }
 
@@ -648,7 +648,7 @@ fn align_with_sizing_stale_is_refused_and_names_the_size_command() {
     std::fs::write(&doc, text).unwrap();
     let o = run(&["align", &doc, "--method", "rolling-circle"], "");
     assert_eq!(code(&o), 1);
-    assert!(err(&o).contains("cdesign size"), "{}", err(&o));
+    assert!(err(&o).contains("owd size"), "{}", err(&o));
     let o = run(&["align", &doc, "--method", "nonsense"], "");
     assert_eq!(code(&o), 2);
 }
@@ -699,4 +699,43 @@ fn a_failed_fits_in_water_check_is_in_status_the_csv_and_the_geojson_and_exits_1
             .contains(&json!("fits_in_water"))
     );
     assert_eq!(props["notes"], "width only, no depth data");
+}
+
+/// Run the old-name binary.
+fn run_old(args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_cdesign"))
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("cdesign runs")
+}
+
+#[test]
+fn the_old_cdesign_name_is_an_alias_that_says_so_on_stderr_only() {
+    for args in [&["schema"][..], &["--version"][..], &["--help"][..]] {
+        let new = run(args, "");
+        let old = run_old(args);
+        assert_eq!(
+            out(&old),
+            out(&new),
+            "stdout of `cdesign {args:?}` equals `owd`"
+        );
+        assert_eq!(code(&old), code(&new));
+        assert!(
+            err(&old).contains("cdesign is now owd"),
+            "alias note on stderr: {}",
+            err(&old)
+        );
+        assert!(!err(&new).contains("cdesign is now owd"), "owd stays quiet");
+    }
+    // A failing command keeps its exit code under the alias.
+    assert_eq!(code(&run_old(&["status", "/no/such/file.cdesign"])), 2);
+}
+
+#[test]
+fn messages_name_the_owd_command_not_cdesign() {
+    let o = run(&["status", "/no/such/file.cdesign"], "");
+    assert!(err(&o).starts_with("owd: "), "{}", err(&o));
 }

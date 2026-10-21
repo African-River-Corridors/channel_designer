@@ -1,6 +1,6 @@
 [package]
 name = "owd-cli"
-description = "The cdesign command-line tool: a thin layer over owd-format."
+description = "The owd command-line tool (Open Waterway Designer): a thin layer over owd-format."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,8 +12,13 @@ name = "owd_cli"
 path = "src/lib.rs"
 
 [[bin]]
-name = "cdesign"
+name = "owd"
 path = "src/main.rs"
+
+# The old name, an alias of `owd` for one release (spec 0006).
+[[bin]]
+name = "cdesign"
+path = "src/bin/cdesign.rs"
 
 [dependencies]
 owd-format.workspace = true
