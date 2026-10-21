@@ -29,6 +29,47 @@ struct Out {
 }
 
 #[derive(Subcommand)]
+enum WaterwaySub {
+    /// Mark a reach. Reaches may not overlap; chainage not marked is a free-flowing river.
+    Add {
+        /// The channel design. `-` is stdin.
+        doc: String,
+        /// Where the reach starts, metres of river chainage.
+        #[arg(long, value_name = "M")]
+        from: f64,
+        /// Where it ends (default: the end of the river).
+        #[arg(long, value_name = "M")]
+        to: Option<f64>,
+        /// canal, impounded-river or free-flowing-river.
+        #[arg(long)]
+        waterway: String,
+        /// Claim the reduced GB 50139 radius on this canal reach (WG 141 A.3.2). Recorded as typed.
+        #[arg(long)]
+        claim_reduced_radius: bool,
+        #[command(flatten)]
+        out: Out,
+    },
+    /// List the marked reaches.
+    List {
+        /// The channel design. `-` is stdin.
+        doc: String,
+        /// Print a machine-readable result as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove the reach that starts at a chainage.
+    Remove {
+        /// The channel design. `-` is stdin.
+        doc: String,
+        /// The chainage the reach starts at, metres.
+        #[arg(long, value_name = "M")]
+        from: f64,
+        #[command(flatten)]
+        out: Out,
+    },
+}
+
+#[derive(Subcommand)]
 enum DrawSub {
     /// Run one drawing document through the drawing crate and print the result (clause 17.3).
     Run {
@@ -400,6 +441,12 @@ enum Command {
         #[command(flatten)]
         out: Out,
     },
+    /// Mark reaches of the river as canal, impounded river or free-flowing river (spec 0007), so
+    /// Rules written for one kind apply only there. Chainage is along the river centreline.
+    Waterway {
+        #[command(subcommand)]
+        action: WaterwaySub,
+    },
     /// List the Rule Sets, show one with its Rules and their status, or list the Measures.
     Rules {
         /// `show` to print one set.
@@ -571,6 +618,28 @@ pub fn main() -> ExitCode {
             &out.output,
             out.json,
         ),
+        Command::Waterway { action } => match action {
+            WaterwaySub::Add {
+                doc,
+                from,
+                to,
+                waterway,
+                claim_reduced_radius,
+                out,
+            } => commands::waterway_add(
+                &doc,
+                from,
+                to,
+                &waterway,
+                claim_reduced_radius,
+                &out.output,
+                out.json,
+            ),
+            WaterwaySub::List { doc, json } => commands::waterway_list(&doc, json),
+            WaterwaySub::Remove { doc, from, out } => {
+                commands::waterway_remove(&doc, from, &out.output, out.json)
+            }
+        },
         Command::Rules {
             action,
             id,

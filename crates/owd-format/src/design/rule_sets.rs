@@ -32,7 +32,8 @@ pub fn old_ruleset(
         "CN-reduced" => {
             return Err(DesignError::Input(
                 "CN-reduced is now gb50139 with range_end strict on a canal reach with the \
-                 reduced-radius claim; reaches are not in the document yet"
+                 reduced-radius claim: mark the reach with `owd waterway add --waterway canal \
+                 --claim-reduced-radius`, then size with --rule-set gb50139 --set-input range_end=strict"
                     .into(),
             ));
         }
@@ -238,7 +239,8 @@ impl Session {
     /// The engine selection of the sizing settings. A set the library does not hold, or holds with
     /// another content hash, is refused.
     pub fn selection(&self) -> Result<Selection, DesignError> {
-        selection_of(&self.library, &self.sizing_settings())
+        Ok(selection_of(&self.library, &self.sizing_settings())?
+            .with_reaches(waterway_reaches(&self.doc)))
     }
 
     /// The channel shape of the sizing settings.
@@ -248,7 +250,8 @@ impl Session {
                 "the sizing stage has no vessel class: choose one first".into(),
             ));
         };
-        let selection = selection_of(&self.library, settings)?;
+        let selection =
+            selection_of(&self.library, settings)?.with_reaches(waterway_reaches(&self.doc));
         channel_shape_for(&selection, vessel, settings["draught_m"].as_f64())
             .map_err(|e| DesignError::Input(e.raw_message().to_string()))
     }
@@ -366,4 +369,151 @@ fn selection_of(library: &Library, settings: &Value) -> Result<Selection, Design
         .unwrap_or_default();
     Selection::from_library(library, &refs, inputs)
         .map_err(|e| DesignError::Input(e.raw_message().to_string()))
+}
+
+/// The reaches of the river as the rules read them: the marked reaches in chainage order, with the
+/// chainage they leave uncovered as free-flowing reaches with no claim. No reach marked: the whole
+/// river is one free-flowing reach.
+fn waterway_reaches(doc: &Value) -> Vec<engine::WaterwayReach> {
+    let marked = doc["inputs"]["waterway_reaches"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    if marked.is_empty() {
+        return vec![engine::WaterwayReach::whole_river()];
+    }
+    let free = |label: String| engine::WaterwayReach {
+        label,
+        ..engine::WaterwayReach::whole_river()
+    };
+    let mut out = Vec::new();
+    let mut at = 0.0_f64;
+    for r in &marked {
+        let start = r["start_m"].as_f64().unwrap_or(0.0);
+        let end = r["end_m"].as_f64();
+        if start > at {
+            out.push(free(format!("{at} to {start} m")));
+        }
+        let claim = r["reduced_radius_claim"]
+            .as_str()
+            .unwrap_or("no")
+            .to_string();
+        out.push(engine::WaterwayReach {
+            label: match end {
+                Some(e) => format!("{start} to {e} m"),
+                None => format!("{start} m to the end"),
+            },
+            waterway: r["waterway"]
+                .as_str()
+                .unwrap_or("free-flowing-river")
+                .to_string(),
+            claim_typed: claim == "yes",
+            claim,
+        });
+        at = end.unwrap_or(f64::INFINITY);
+    }
+    if at.is_finite() {
+        out.push(free(format!("{at} m to the end")));
+    }
+    out
+}
+
+impl Session {
+    /// Mark a reach of the river, by chainage on its centreline (`end_m` `None`: to the end of the
+    /// river), with its waterway kind and the reduced-radius claim. Reaches may not overlap, and the
+    /// claim is for a canal reach only. Nothing runs: the sizing stage goes stale.
+    pub fn add_waterway_reach(
+        &mut self,
+        start_m: f64,
+        end_m: Option<f64>,
+        waterway: &str,
+        claim_reduced_radius: bool,
+    ) -> Result<(), DesignError> {
+        if !(start_m.is_finite() && start_m >= 0.0) {
+            return Err(DesignError::Input(
+                "a reach starts at a chainage of 0 m or more".into(),
+            ));
+        }
+        if let Some(e) = end_m
+            && !(e.is_finite() && e > start_m)
+        {
+            return Err(DesignError::Input("a reach ends after it starts".into()));
+        }
+        let kinds = engine::INPUTS
+            .iter()
+            .find(|(n, _)| *n == engine::WATERWAY)
+            .expect("listed")
+            .1;
+        if !kinds.contains(&waterway) {
+            return Err(DesignError::Input(format!(
+                "the waterway is `{waterway}`; it must be one of {}",
+                kinds.join(", ")
+            )));
+        }
+        if claim_reduced_radius && waterway != "canal" {
+            return Err(DesignError::Input(
+                "the reduced GB 50139 radius is for canal sections only (WG 141 A.3.2): claim it on \
+                 a canal reach"
+                    .into(),
+            ));
+        }
+        let mut list = self.doc["inputs"]["waterway_reaches"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let end = end_m.unwrap_or(f64::INFINITY);
+        for r in &list {
+            let (s, e) = (
+                r["start_m"].as_f64().unwrap_or(0.0),
+                r["end_m"].as_f64().unwrap_or(f64::INFINITY),
+            );
+            if start_m < e && s < end {
+                return Err(DesignError::Input(format!(
+                    "the reach overlaps the one from {s} m; remove that one first"
+                )));
+            }
+        }
+        list.push(json!({
+            "start_m": start_m,
+            "end_m": end_m,
+            "waterway": waterway,
+            "reduced_radius_claim": if claim_reduced_radius { "yes" } else { "no" },
+        }));
+        list.sort_by(|a, b| {
+            a["start_m"]
+                .as_f64()
+                .partial_cmp(&b["start_m"].as_f64())
+                .unwrap_or(core::cmp::Ordering::Equal)
+        });
+        self.doc["inputs"]["waterway_reaches"] = json!(list);
+        Ok(())
+    }
+
+    /// The marked reaches, in chainage order.
+    pub fn waterway_reaches(&self) -> Vec<Value> {
+        self.doc["inputs"]["waterway_reaches"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// Remove the marked reach that starts at `start_m`.
+    pub fn remove_waterway_reach(&mut self, start_m: f64) -> Result<(), DesignError> {
+        let mut list = self.waterway_reaches();
+        let before = list.len();
+        list.retain(|r| r["start_m"].as_f64() != Some(start_m));
+        if list.len() == before {
+            return Err(DesignError::Input(format!(
+                "no reach starts at {start_m} m; see `owd waterway list`"
+            )));
+        }
+        if list.is_empty() {
+            if let Some(o) = self.doc["inputs"].as_object_mut() {
+                o.remove("waterway_reaches");
+            }
+        } else {
+            self.doc["inputs"]["waterway_reaches"] = json!(list);
+        }
+        Ok(())
+    }
 }

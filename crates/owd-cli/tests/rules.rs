@@ -129,3 +129,59 @@ fn size_takes_rule_sets_set_inputs_and_a_set_file_loaded_at_run_time() {
         String::from_utf8_lossy(&o.stderr)
     );
 }
+
+#[test]
+fn waterway_marks_lists_and_removes_reaches_and_the_claim_sizes_the_canal() {
+    let dir = work_dir("waterway");
+    let doc = dir.join("d.owd");
+    let doc = doc.to_str().unwrap();
+    assert!(
+        run(&["new", doc, "--title", "T", "--date", "2026-10-21"])
+            .status
+            .success()
+    );
+    let o = json(&run(&[
+        "waterway",
+        "add",
+        doc,
+        "--from",
+        "0",
+        "--waterway",
+        "canal",
+        "--claim-reduced-radius",
+        "--json",
+    ]));
+    assert_eq!(o["waterway_reaches"][0]["reduced_radius_claim"], "yes");
+    let sized = json(&run(&[
+        "size",
+        doc,
+        "--rule-set",
+        "gb50139",
+        "--set-input",
+        "range_end=strict",
+        "--vessel",
+        "CN_III_motor",
+        "--json",
+    ]));
+    let loa = sized["sizing"]["loa_m"].as_f64().unwrap();
+    assert_eq!(sized["sizing"]["min_bend_radius_m"], 3.0 * loa);
+    let list = json(&run(&["waterway", "list", doc, "--json"]));
+    assert_eq!(list["waterway_reaches"].as_array().unwrap().len(), 1);
+    // A claim off a canal is refused.
+    assert!(
+        !run(&[
+            "waterway",
+            "add",
+            doc,
+            "--from",
+            "5000",
+            "--waterway",
+            "free-flowing-river",
+            "--claim-reduced-radius"
+        ])
+        .status
+        .success()
+    );
+    let o = json(&run(&["waterway", "remove", doc, "--from", "0", "--json"]));
+    assert_eq!(o["waterway_reaches"], serde_json::json!([]));
+}

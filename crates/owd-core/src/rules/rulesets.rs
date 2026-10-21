@@ -630,13 +630,25 @@ fn engine_selection(rs: &Ruleset) -> Result<Option<Selection>, RuleError> {
         "PIANC-B" => ("pianc-wg141", engine::SE_QUALITY, "B"),
         "PIANC-C" => ("pianc-wg141", engine::SE_QUALITY, "C"),
         "CN" => ("gb50139", engine::RANGE_END, "permissive"),
-        "CN-conservative" => ("gb50139", engine::RANGE_END, "strict"),
+        "CN-conservative" | "CN-reduced" => ("gb50139", engine::RANGE_END, "strict"),
         _ => return Ok(None),
     };
     if !builtin_rulesets().contains(rs) {
         return Ok(None);
     }
-    Selection::built_in(&[set], &[(input, value)]).map(Some)
+    let selection = Selection::built_in(&[set], &[(input, value)])?;
+    // CN-reduced is GB 50139 at the strict end on a canal reach with the reduced-radius claim, over
+    // the whole line (spec 0007 T4).
+    Ok(Some(if rs.ruleset_id == "CN-reduced" {
+        selection.with_reaches(vec![engine::WaterwayReach {
+            label: "the whole river".into(),
+            waterway: "canal".into(),
+            claim: "yes".into(),
+            claim_typed: true,
+        }])
+    } else {
+        selection
+    }))
 }
 
 /// The channel a selection of Rule Sets requires for a vessel class (spec 0007): the governing limit

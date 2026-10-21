@@ -87,17 +87,66 @@
       "applies_when": {
         "formation": [
           "pushed_convoy"
+        ],
+        "reduced_radius_claim": [
+          "no"
         ]
       },
       "kind": "formula",
       "measure": {
-        "id": "channel.min-bend-radius"
+        "id": "station.radius"
       },
       "compare": "ge",
       "limit": {
         "shape": "multiple",
         "unit": "m",
         "k": 3.0,
+        "x": "vessel.loa"
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": true,
+      "evaluated": true,
+      "finding": null,
+      "since": "0.3.0"
+    },
+    {
+      "id": "gb50139/A.3.2/min-bend-radius-reduced-convoy",
+      "title": "Minimum bend radius, pushed convoy, reduced on a canal reach where the user claims it: at least 2 x L",
+      "origin": "national-practice",
+      "source": {
+        "document": "GB 50139 Navigation standard of inland waterway, as summarised in PIANC InCom WG 141 Appendix A.3",
+        "edition": "read in WG 141 Appendix A.3 (PIANC Report 141, 2019); GB 50139 itself not held",
+        "locator": "A.3.2",
+        "page": "164",
+        "access": "paywalled"
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-21",
+        "review": "#162"
+      },
+      "verified": false,
+      "applies_when": {
+        "formation": [
+          "pushed_convoy"
+        ],
+        "reduced_radius_claim": [
+          "yes"
+        ],
+        "waterway": [
+          "canal"
+        ]
+      },
+      "kind": "formula",
+      "measure": {
+        "id": "station.radius"
+      },
+      "compare": "ge",
+      "limit": {
+        "shape": "multiple",
+        "unit": "m",
+        "k": 2.0,
         "x": "vessel.loa"
       },
       "tolerance": 0,
@@ -127,17 +176,66 @@
       "applies_when": {
         "formation": [
           "motor_vessel"
+        ],
+        "reduced_radius_claim": [
+          "no"
         ]
       },
       "kind": "formula",
       "measure": {
-        "id": "channel.min-bend-radius"
+        "id": "station.radius"
       },
       "compare": "ge",
       "limit": {
         "shape": "multiple",
         "unit": "m",
         "k": 4.0,
+        "x": "vessel.loa"
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": true,
+      "evaluated": true,
+      "finding": null,
+      "since": "0.3.0"
+    },
+    {
+      "id": "gb50139/A.3.2/min-bend-radius-reduced-motor",
+      "title": "Minimum bend radius, motor vessel, reduced on a canal reach where the user claims it: at least 3 x L",
+      "origin": "national-practice",
+      "source": {
+        "document": "GB 50139 Navigation standard of inland waterway, as summarised in PIANC InCom WG 141 Appendix A.3",
+        "edition": "read in WG 141 Appendix A.3 (PIANC Report 141, 2019); GB 50139 itself not held",
+        "locator": "A.3.2",
+        "page": "164",
+        "access": "paywalled"
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-21",
+        "review": "#162"
+      },
+      "verified": false,
+      "applies_when": {
+        "formation": [
+          "motor_vessel"
+        ],
+        "reduced_radius_claim": [
+          "yes"
+        ],
+        "waterway": [
+          "canal"
+        ]
+      },
+      "kind": "formula",
+      "measure": {
+        "id": "station.radius"
+      },
+      "compare": "ge",
+      "limit": {
+        "shape": "multiple",
+        "unit": "m",
+        "k": 3.0,
         "x": "vessel.loa"
       },
       "tolerance": 0,

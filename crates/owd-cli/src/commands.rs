@@ -411,6 +411,88 @@ pub fn size(doc: &str, flags: SizeFlags, output: &Option<String>, json_mode: boo
     Ok(())
 }
 
+/// `owd waterway add`: mark a reach of the river.
+pub fn waterway_add(
+    doc: &str,
+    from: f64,
+    to: Option<f64>,
+    waterway: &str,
+    claim: bool,
+    output: &Option<String>,
+    json_mode: bool,
+) -> Result {
+    let mut session = open(doc)?;
+    session
+        .add_waterway_reach(from, to, waterway, claim)
+        .map_err(from_design)?;
+    let dest = destination(doc, output);
+    write(&dest, &session.to_text())?;
+    let human = format!(
+        "marked {} m to {} as {waterway}{}; the sizing stage is now stale",
+        from,
+        to.map_or("the end of the river".to_string(), |t| format!("{t} m")),
+        if claim {
+            ", with the reduced-radius claim"
+        } else {
+            ""
+        }
+    );
+    say(
+        dest == "-",
+        json_mode,
+        &human,
+        json!({"ok": true, "waterway_reaches": session.waterway_reaches()}),
+    );
+    Ok(())
+}
+
+/// `owd waterway list`.
+pub fn waterway_list(doc: &str, json_mode: bool) -> Result {
+    let session = open(doc)?;
+    let reaches = session.waterway_reaches();
+    let human = if reaches.is_empty() {
+        "no reach marked: the whole river is a free-flowing river with no claim".to_string()
+    } else {
+        reaches
+            .iter()
+            .map(|r| {
+                format!(
+                    "{} m to {}: {}, reduced_radius_claim {}",
+                    r["start_m"],
+                    r["end_m"]
+                        .as_f64()
+                        .map_or("the end".to_string(), |e| format!("{e} m")),
+                    r["waterway"].as_str().unwrap_or(""),
+                    r["reduced_radius_claim"].as_str().unwrap_or("")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    say(
+        false,
+        json_mode,
+        &human,
+        json!({"waterway_reaches": reaches}),
+    );
+    Ok(())
+}
+
+/// `owd waterway remove`.
+pub fn waterway_remove(doc: &str, from: f64, output: &Option<String>, json_mode: bool) -> Result {
+    let mut session = open(doc)?;
+    session.remove_waterway_reach(from).map_err(from_design)?;
+    let dest = destination(doc, output);
+    write(&dest, &session.to_text())?;
+    say(
+        dest == "-",
+        json_mode,
+        &format!("removed the reach from {from} m"),
+        json!({"ok": true, "waterway_reaches": session.waterway_reaches()}),
+    );
+    Ok(())
+}
+
 /// `owd rules`: the Rule Sets, one set with its Rules (`show ID`), or the Measures (`--measures`).
 pub fn rules(
     action: Option<&str>,

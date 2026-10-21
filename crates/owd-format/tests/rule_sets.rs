@@ -188,3 +188,88 @@ fn changing_the_selection_marks_sizing_and_every_later_stage_stale() {
         "pianc-wg141@0.3.0 + gb50139@0.3.0 (se_quality B, range_end strict)"
     );
 }
+
+/// Spec 0007 T4: one canal reach over the whole line with the claim, `gb50139` strict, gives the
+/// old CN-reduced result bit for bit; marking a reach makes sizing stale.
+#[test]
+fn a_claimed_canal_reach_over_the_whole_line_gives_cn_reduced() {
+    let mut s = Session::new("t", "2026-10-21");
+    s.set_rule_sets(&["gb50139"], &[("range_end", "strict")])
+        .unwrap();
+    s.set_vessel("CN_III_convoy_2ab", None).unwrap();
+    s.run_stage(Stage::Sizing).unwrap();
+    assert_eq!(s.stage_status(Stage::Sizing), StageStatus::Fresh);
+    s.add_waterway_reach(0.0, None, "canal", true).unwrap();
+    assert_eq!(s.stage_status(Stage::Sizing), StageStatus::Stale);
+    s.run_stage(Stage::Sizing).unwrap();
+    let r = &s.document()["stages"]["sizing"]["results"];
+    let o = channel_shape(
+        &RulesetRegistry::new(),
+        "CN-reduced",
+        "CN_III_convoy_2ab",
+        None,
+    )
+    .unwrap();
+    for (k, v) in [
+        ("bottom_width_straight_m", o.bottom_width_straight_m),
+        ("min_bend_radius_m", o.min_bend_radius_m),
+        ("design_depth_m", o.design_depth_m),
+        ("bend_widening_at_rmin_m", o.bend_widening_at_rmin_m),
+    ] {
+        assert_eq!(r[k].as_f64().unwrap().to_bits(), v.to_bits(), "{k}");
+    }
+    assert_eq!(r["warnings"], json!(o.warnings));
+    // The document keeps the reach, and it validates and reopens.
+    let back = Session::open(&s.to_text()).unwrap();
+    assert_eq!(back.waterway_reaches().len(), 1);
+    assert_eq!(back.stage_status(Stage::Sizing), StageStatus::Fresh);
+}
+
+#[test]
+fn a_canal_reach_and_the_rest_of_the_river_size_to_the_river_rmin() {
+    let mut s = Session::new("t", "2026-10-21");
+    s.set_rule_sets(&["gb50139"], &[("range_end", "strict")])
+        .unwrap();
+    s.set_vessel("CN_III_motor", None).unwrap();
+    s.add_waterway_reach(0.0, Some(2000.0), "canal", true)
+        .unwrap();
+    s.run_stage(Stage::Sizing).unwrap();
+    let r = &s.document()["stages"]["sizing"]["results"];
+    let loa = r["loa_m"].as_f64().unwrap();
+    // The river after 2,000 m keeps the 4L motor-vessel radius; the line takes it.
+    assert_eq!(r["min_bend_radius_m"], json!(4.0 * loa));
+}
+
+#[test]
+fn reaches_are_checked_and_removed() {
+    let mut s = Session::new("t", "2026-10-21");
+    let e = s
+        .add_waterway_reach(0.0, None, "free-flowing-river", true)
+        .unwrap_err();
+    assert!(e.to_string().contains("canal"), "{e}");
+    assert!(s.add_waterway_reach(0.0, None, "lake", false).is_err());
+    assert!(
+        s.add_waterway_reach(500.0, Some(100.0), "canal", false)
+            .is_err()
+    );
+    s.add_waterway_reach(1000.0, Some(2000.0), "impounded-river", false)
+        .unwrap();
+    s.add_waterway_reach(0.0, Some(1000.0), "canal", true)
+        .unwrap();
+    let e = s
+        .add_waterway_reach(1500.0, None, "canal", false)
+        .unwrap_err();
+    assert!(e.to_string().contains("overlaps"), "{e}");
+    let starts: Vec<f64> = s
+        .waterway_reaches()
+        .iter()
+        .map(|r| r["start_m"].as_f64().unwrap())
+        .collect();
+    assert_eq!(starts, [0.0, 1000.0]);
+    assert!(s.validate().is_empty(), "{:?}", s.validate());
+    s.remove_waterway_reach(0.0).unwrap();
+    s.remove_waterway_reach(1000.0).unwrap();
+    assert!(s.waterway_reaches().is_empty());
+    assert!(s.document()["inputs"].get("waterway_reaches").is_none());
+    assert!(s.remove_waterway_reach(5.0).is_err());
+}

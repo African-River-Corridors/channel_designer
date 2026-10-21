@@ -296,6 +296,10 @@ impl Session {
         // The content of every selected Rule Set, as the engine holds it now: a changed set makes the
         // sizing stage, and so every stage after it, stale.
         dep["rule_sets"] = self.selected_set_hashes();
+        // The marked reaches decide which radius Rule applies where, so sizing depends on them.
+        if let Some(r) = self.doc["inputs"].get("waterway_reaches") {
+            dep["waterway_reaches"] = r.clone();
+        }
         if stage != Stage::Sizing {
             dep["inputs"] = self.doc["inputs"].clone();
             // The DEM is identified by its hash, not by where the file sits: moving a design and its

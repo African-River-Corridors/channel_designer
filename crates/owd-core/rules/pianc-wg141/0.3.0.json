@@ -160,7 +160,7 @@
       },
       "kind": "formula",
       "measure": {
-        "id": "channel.min-bend-radius"
+        "id": "station.radius"
       },
       "compare": "ge",
       "limit": {
@@ -200,7 +200,7 @@
       },
       "kind": "formula",
       "measure": {
-        "id": "channel.min-bend-radius"
+        "id": "station.radius"
       },
       "compare": "ge",
       "limit": {
@@ -240,7 +240,7 @@
       },
       "kind": "formula",
       "measure": {
-        "id": "channel.min-bend-radius"
+        "id": "station.radius"
       },
       "compare": "ge",
       "limit": {

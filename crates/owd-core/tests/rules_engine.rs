@@ -9,9 +9,16 @@ use owd_core::rules::engine::{self, BUILT_IN, ChannelDomain};
 use owd_core::rules::rulesets::{RulesetRegistry, channel_shape, channel_shape_legacy};
 use owd_core::rules::vessel_catalogue;
 
-const ENGINE: [&str; 5] = ["PIANC-A", "PIANC-B", "PIANC-C", "CN", "CN-conservative"];
+const ENGINE: [&str; 6] = [
+    "PIANC-A",
+    "PIANC-B",
+    "PIANC-C",
+    "CN",
+    "CN-conservative",
+    "CN-reduced",
+];
 
-/// Every PIANC and GB ruleset (CN-reduced waits for reaches, T4) × every built-in vessel class × a spread of draughts (the nominal one and
+/// Every PIANC and GB ruleset (CN-reduced: one claimed canal reach over the whole line) × every built-in vessel class × a spread of draughts (the nominal one and
 /// four overrides from shallow to deep): the engine path gives the old shape bit for bit, and the
 /// same bend widening at every radius the water checks read, a straight included.
 #[test]
@@ -70,7 +77,7 @@ fn the_engine_gives_the_old_channel_shape_bit_for_bit() {
             }
         }
     }
-    assert!(n >= 5 * 5 * 10, "only {n} cases");
+    assert!(n >= 6 * 5 * 10, "only {n} cases");
 }
 
 /// The check above can fail: a set whose quality B width is one bit off is caught.
@@ -83,6 +90,7 @@ fn the_parity_check_catches_a_one_bit_change() {
     let selection = engine::Selection {
         sets: vec![std::sync::Arc::new(set)],
         inputs: vec![(engine::SE_QUALITY.into(), "B".into())],
+        reaches: vec![engine::WaterwayReach::whole_river()],
     };
     let reg = RulesetRegistry::new();
     let old = channel_shape_legacy(&reg, "PIANC-B", "CEMT_IV", None).unwrap();
@@ -205,7 +213,7 @@ fn the_one_rule_widening_equals_the_engines_governing_limit() {
 fn every_gb_rule_is_national_practice_read_in_wg141_appendix_a3() {
     let set = engine::built_in().lookup("gb50139").unwrap();
     assert_eq!(set.key(), "gb50139@0.3.0");
-    assert_eq!(set.rules.len(), 9);
+    assert_eq!(set.rules.len(), 11);
     for r in &set.rules {
         assert_eq!(
             r.origin,
@@ -285,7 +293,21 @@ fn mapped(ruleset: &str) -> engine::Selection {
         "CN" => ("gb50139", engine::RANGE_END, "permissive"),
         _ => ("gb50139", engine::RANGE_END, "strict"),
     };
-    engine::Selection::built_in(&[set, engine::OWD_SET], &[(input, value)]).unwrap()
+    let s = engine::Selection::built_in(&[set, engine::OWD_SET], &[(input, value)]).unwrap();
+    if ruleset == "CN-reduced" {
+        s.with_reaches(vec![canal(true)])
+    } else {
+        s
+    }
+}
+
+fn canal(claim: bool) -> engine::WaterwayReach {
+    engine::WaterwayReach {
+        label: "0 to 2000 m".into(),
+        waterway: "canal".into(),
+        claim: if claim { "yes" } else { "no" }.into(),
+        claim_typed: claim,
+    }
 }
 
 /// A shape sized from a selection (with the `owd` checks) equals the old ruleset's, numbers,
@@ -394,4 +416,78 @@ fn one_set_selected_twice_changes_nothing() {
         engine::size(&once, &vessel).unwrap(),
         engine::size(&twice, &vessel).unwrap()
     );
+}
+
+/// A line with one canal reach (claim made) and one river reach sizes its alignment to the river
+/// reach's R_min. At the line's stations the reduced Rule is `not applicable` on river stations and
+/// tested on canal ones; the claim shows in the trace as a typed input.
+#[test]
+fn a_canal_and_a_river_reach_size_to_the_river_rmin_and_the_reduced_rule_applies_on_canal_only() {
+    let vessel = engine::Vessel {
+        loa_m: 110.0,
+        beam_m: 11.4,
+        draught_m: 2.5,
+        formation: "motor_vessel".into(),
+        class_name: "IV".into(),
+    };
+    let river = engine::WaterwayReach {
+        label: "2000 m to the end".into(),
+        ..engine::WaterwayReach::whole_river()
+    };
+    let gb = |reaches| {
+        engine::Selection::built_in(&["gb50139", "owd"], &[(engine::RANGE_END, "strict")])
+            .unwrap()
+            .with_reaches(reaches)
+    };
+    let both = gb(vec![canal(true), river.clone()]);
+    let sized = engine::size(&both, &vessel).unwrap();
+    // Motor vessel: 4L on the river, 3L (reduced) on the claimed canal. The line takes 4L.
+    assert_eq!(sized.min_bend_radius_m, 4.0 * 110.0);
+    let only_canal = engine::size(&gb(vec![canal(true)]), &vessel).unwrap();
+    assert_eq!(only_canal.min_bend_radius_m, 3.0 * 110.0);
+    // Without the claim the canal takes the normal rule.
+    let unclaimed = engine::size(&gb(vec![canal(false)]), &vessel).unwrap();
+    assert_eq!(unclaimed.min_bend_radius_m, 4.0 * 110.0);
+    // Stations of a line: two on the canal, two on the river.
+    let stations: Vec<engine::Station> = [(0, 330.0), (0, 500.0), (1, 450.0), (1, 900.0)]
+        .iter()
+        .enumerate()
+        .map(|(i, (reach, r))| engine::Station {
+            label: format!("station {i}"),
+            reach: *reach,
+            radius_m: *r,
+        })
+        .collect();
+    let trace = both.check_stations(&vessel, &sized, &stations);
+    let reduced: Vec<(&str, &str)> = trace
+        .rows
+        .iter()
+        .filter(|r| r.rule.as_deref() == Some("gb50139/A.3.2/min-bend-radius-reduced-motor"))
+        .map(|r| (r.object.as_deref().unwrap(), r.outcome.key()))
+        .collect();
+    assert_eq!(
+        reduced,
+        [
+            ("station 0", "pass"),
+            ("station 1", "pass"),
+            ("station 2", "not applicable"),
+            ("station 3", "not applicable")
+        ]
+    );
+    // Each station checks its own reach's Rule: 450 m on the river passes 4L = 440 m.
+    let normal: Vec<&str> = trace
+        .rows
+        .iter()
+        .filter(|r| r.rule.as_deref() == Some("gb50139/A.3.2/min-bend-radius-motor"))
+        .map(|r| r.outcome.key())
+        .collect();
+    assert_eq!(normal, ["not applicable", "not applicable", "pass", "pass"]);
+    // The sizing trace names each reach with its claim, marked typed.
+    let sizing = both.check(&vessel, &sized);
+    assert!(sizing.rows.iter().any(|r| {
+        r.rule.as_deref() == Some("gb50139/A.3.2/min-bend-radius-reduced-motor")
+            && r.object
+                .as_deref()
+                .is_some_and(|o| o.contains("canal, reduced_radius_claim yes typed"))
+    }));
 }
