@@ -122,8 +122,10 @@ fn build(dir: &Path) -> String {
         &[
             "size",
             &doc,
-            "--ruleset",
-            "PIANC-B",
+            "--rule-set",
+            "pianc-wg141",
+            "--set-input",
+            "se_quality=B",
             "--vessel",
             "CEMT_IV",
             "--draught",
@@ -163,8 +165,10 @@ fn the_size_command_gives_what_channel_shape_gives() {
         &[
             "size",
             &doc,
-            "--ruleset",
-            "PIANC-B",
+            "--rule-set",
+            "pianc-wg141",
+            "--set-input",
+            "se_quality=B",
             "--vessel",
             "CEMT_IV",
             "--draught",
@@ -264,8 +268,10 @@ fn the_chain_runs_through_stdin_and_stdout() {
         &[
             "size",
             "-",
-            "--ruleset",
-            "PIANC-B",
+            "--rule-set",
+            "pianc-wg141",
+            "--set-input",
+            "se_quality=B",
             "--vessel",
             "CEMT_IV",
             "-o",
@@ -313,7 +319,16 @@ fn output_goes_where_dash_o_says_and_the_input_is_otherwise_rewritten_in_place()
     );
     assert_ne!(std::fs::read_to_string(&copy).unwrap(), before);
     run(
-        &["size", &doc, "--ruleset", "PIANC-B", "--vessel", "CEMT_IV"],
+        &[
+            "size",
+            &doc,
+            "--rule-set",
+            "pianc-wg141",
+            "--set-input",
+            "se_quality=B",
+            "--vessel",
+            "CEMT_IV",
+        ],
         "",
     );
     assert_ne!(
@@ -394,22 +409,9 @@ fn exit_code_1_is_a_failed_check() {
 fn exit_code_2_is_a_usage_or_input_error() {
     let dir = work_dir("exit2");
     let doc = build(&dir);
-    // A usage error: an unknown command, a missing required option.
+    // A usage error: an unknown command, an option with no value.
     assert_eq!(code(&run(&["frobnicate"], "")), 2);
-    assert_eq!(
-        code(&run(
-            &[
-                "size",
-                &doc,
-                "--ruleset",
-                "PIANC-B",
-                "--rule-set",
-                "gb50139"
-            ],
-            ""
-        )),
-        2
-    );
+    assert_eq!(code(&run(&["size", &doc, "--set-input"], "")), 2);
     // An input error: a missing file, text that is not JSON, an unknown vessel, an unusable CRS.
     assert_eq!(
         code(&run(
@@ -420,7 +422,16 @@ fn exit_code_2_is_a_usage_or_input_error() {
     );
     assert_eq!(code(&run(&["status", "-"], "not json")), 2);
     let o = run(
-        &["size", &doc, "--ruleset", "PIANC-B", "--vessel", "NOPE"],
+        &[
+            "size",
+            &doc,
+            "--rule-set",
+            "pianc-wg141",
+            "--set-input",
+            "se_quality=B",
+            "--vessel",
+            "NOPE",
+        ],
         "",
     );
     assert_eq!(code(&o), 2);

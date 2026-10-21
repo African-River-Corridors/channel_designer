@@ -783,13 +783,14 @@ fn only_formula(
     Some((def.value)(shape, coefficients, &mut operand))
 }
 
-/// The selection an old ruleset name maps to (spec 0007, "Rule Sets at 0.3.0"), with the `owd`
-/// checks: PIANC-A, B and C are `pianc-wg141` at that quality; CN and CN-conservative are
-/// `gb50139` at the permissive or strict end; CN-reduced is `gb50139` strict on one canal reach
-/// over the whole line, with the reduced-radius claim. Kept for the app's ruleset list and `owd
-/// fits` until the app's Rule Set picker lands.
-pub fn selection_for_old_ruleset(name: &str) -> Result<Selection, RuleError> {
-    let (set, input, value) = match name {
+/// The Rule Set and the one set input an old ruleset name maps to (spec 0007, "Rule Sets at
+/// 0.3.0"): PIANC-A, B and C are `pianc-wg141` at that quality; CN and CN-conservative are
+/// `gb50139` at the permissive or strict end. CN-reduced is `gb50139` strict too, and needs a canal
+/// reach with the reduced-radius claim besides (see [`selection_for_old_ruleset`]).
+pub fn old_name_choice(
+    name: &str,
+) -> Result<(&'static str, &'static str, &'static str), RuleError> {
+    Ok(match name {
         "PIANC-A" => ("pianc-wg141", SE_QUALITY, "A"),
         "PIANC-B" => ("pianc-wg141", SE_QUALITY, "B"),
         "PIANC-C" => ("pianc-wg141", SE_QUALITY, "C"),
@@ -801,7 +802,14 @@ pub fn selection_for_old_ruleset(name: &str) -> Result<Selection, RuleError> {
                 OLD_RULESETS.join(", ")
             )));
         }
-    };
+    })
+}
+
+/// The selection an old ruleset name maps to, with the `owd` checks (see [`old_name_choice`]).
+/// CN-reduced is `gb50139` strict on one canal reach over the whole line, with the reduced-radius
+/// claim. Kept for `owd fits`, whose choices are the old names.
+pub fn selection_for_old_ruleset(name: &str) -> Result<Selection, RuleError> {
+    let (set, input, value) = old_name_choice(name)?;
     let selection = Selection::built_in(&[set, OWD_SET], &[(input, value)])?;
     Ok(if name == "CN-reduced" {
         selection.with_reaches(vec![WaterwayReach {

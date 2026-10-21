@@ -38,7 +38,9 @@ fn design(centreline: &[Pt], vessel: &str) -> Session {
         (Role::RiverPolygon, &polygon),
     ])
     .unwrap();
-    s.set_sizing("PIANC-B", vessel, Some(2.5)).unwrap();
+    s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+        .unwrap();
+    s.set_vessel(vessel, Some(2.5)).unwrap();
     s.run_stage(Stage::Sizing).unwrap();
     s
 }
@@ -139,7 +141,9 @@ fn an_option_that_fails_r_min_carries_radius_ok_false_in_the_document() {
 #[test]
 fn align_with_a_stale_or_missing_sizing_is_refused_and_names_sizing() {
     let mut s = design(&river_line(), "CEMT_IV");
-    s.set_sizing("PIANC-B", "CEMT_Va", Some(2.5)).unwrap();
+    s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+        .unwrap();
+    s.set_vessel("CEMT_Va", Some(2.5)).unwrap();
     assert_eq!(
         s.align(AlignMethod::RollingCircle, &Value::Null, None)
             .unwrap_err(),
@@ -265,7 +269,9 @@ fn a_stage_run_runs_the_rolling_circle_and_a_new_vessel_makes_it_stale_then_run_
         json!(["rolling_circle"])
     );
     // A new vessel makes alignment stale; sizing first, then run reruns it.
-    s.set_sizing("PIANC-B", "CEMT_Va", Some(2.5)).unwrap();
+    s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+        .unwrap();
+    s.set_vessel("CEMT_Va", Some(2.5)).unwrap();
     assert_eq!(s.stage_status(Stage::Alignment), StageStatus::Stale);
     assert_eq!(
         s.run_stale().unwrap(),

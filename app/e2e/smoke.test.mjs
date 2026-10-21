@@ -126,6 +126,18 @@ async function chooseVessel(value) {
   });
 }
 
+/** Choose a value in a list by its test id, and send the change event once, as a user's pick does. */
+const choose = (testid, value) =>
+  browser.execute(
+    (id, v) => {
+      const select = document.querySelector(`[data-testid=${id}]`);
+      select.value = v;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    },
+    testid,
+    value,
+  );
+
 /** The worked example is sized for this class. After an open the form takes a moment to show it. */
 const EXAMPLE_VESSEL = "CEMT_IV";
 const formShowsExample = () => until("the form to show the example's vessel", async () => (await vesselChoices()).current === EXAMPLE_VESSEL);
@@ -302,6 +314,70 @@ describe("Open Waterway Designer app smoke test", () => {
     await click("Open");
     await until("the refusal to be shown", async () => ((await (await browser.$("[data-testid=error]")).getText()) ?? "").includes("rename it to `.owd`"));
     assert.doesNotMatch(await fileLabel(), /old-name/);
+  });
+  it("picks a second Rule Set and its input, runs, and shows the verdict, the design basis and the constraint stretches on the table and the map", async () => {
+    await open(designWithDem("rules-"), "with-dem.owd");
+    await formShowsExample();
+    // One set, as the example has it, with its mark in words.
+    assert.equal(await (await browser.$("[data-testid=rule-set-0]")).getValue(), "pianc-wg141");
+    assert.match(await text("source-set-0"), /typed/);
+    assert.match(await text("always-owd"), /Always applied/);
+    assert.equal(await (await browser.$("[data-testid=rule-set-1]")).isExisting(), false);
+    // Add GB 50139: it has no default end of range, so the form asks for one before it sends.
+    await (await browser.$("[data-testid=add-rule-set]")).click();
+    await until("the second set", async () => (await (await browser.$("[data-testid=rule-set-1]")).isExisting()) && (await (await browser.$("[data-testid=rule-set-1]")).getValue()) === "gb50139");
+    assert.match(await text("rule-set-missing"), /range/);
+    assert.match(await text("source-set-1"), /not sent yet/);
+    await choose("set-input-range_end", "strict");
+    await until("sizing under both sets", async () => (await text("shape-rule-sets")).includes("gb50139@0.3.0"));
+    assert.match(await text("source-input-range_end"), /typed/);
+    assert.match(await text("source-set-1"), /typed/);
+    // The design basis: each quantity with its governing Rule, and every Rule unverified, in words.
+    const basis = await browser.execute(() =>
+      [...document.querySelectorAll("[data-testid=basis-row]")].map((r) => ({ q: r.dataset.quantity, status: r.querySelector("[data-testid=basis-status]").textContent })),
+    );
+    assert.ok(basis.length >= 3, JSON.stringify(basis));
+    for (const b of basis) assert.match(b.status, /unverified/, b.q);
+    assert.match(await text("rules-notice"), /unverified/);
+    // Run alignment and volumes.
+    await (await browser.$("[data-testid=run-alignment]")).click();
+    await until("alignment to be fresh", async () => (await text("status-alignment")) === "fresh", 60000);
+    await (await browser.$("[data-testid=water-level]")).setValue("38");
+    await (await browser.$("[data-testid=set-water]")).click();
+    await until("the water level to be set", async () => !(await (await browser.$("[data-testid=error]")).isExisting()));
+    await (await browser.$("[data-testid=run-volumes]")).click();
+    await until("volumes to be fresh", async () => (await text("status-volumes")) === "fresh", 120000);
+    // The verdict per option, in words and a shape.
+    await until("a verdict", async () => (await browser.$$("[data-testid=verdict]")).length > 0, 30000);
+    const verdicts = await browser.execute(() => [...document.querySelectorAll("[data-testid=verdict]")].map((v) => [v.dataset.verdict, v.textContent.trim()]));
+    for (const [v, words] of verdicts) {
+      assert.ok(["navigable-as-is", "navigable-with-works", "not-navigable"].includes(v), v);
+      assert.match(words, new RegExp(v.replace(/-/g, " ")));
+    }
+    // The constraint stretches of the selected option, with the screening notices.
+    const tab = await browser.$("[data-testid=tab-stretches]");
+    await tab.scrollIntoView();
+    await browser.execute((el) => el.click(), tab);
+    await until("the stretch table", async () => (await browser.$$("[data-testid=stretch-row]")).length > 0, 30000);
+    assert.match(await text("screening-notice"), /Screening/);
+    assert.match(await text("screening-notice"), /unverified/);
+    const first = await browser.execute(() => {
+      const r = document.querySelector("[data-testid=stretch-row]");
+      return { kind: r.dataset.kind, text: r.textContent.replace(/\s+/g, " ").trim() };
+    });
+    assert.ok(first.text.includes(first.kind), "the kind is a word");
+    // Picking a row draws it on the map.
+    const option = await (await browser.$("[data-testid=plan-map]")).getAttribute("data-selected");
+    const row = await browser.$("[data-testid=stretch-row][data-index='0']");
+    await row.scrollIntoView();
+    await browser.execute((el) => el.click(), row);
+    await until("the map to show the picked stretch", async () => (await (await browser.$("[data-testid=plan-map]")).getAttribute("data-stretch")) === `${option}:0`, 30000);
+    // Removing the second set sizes again under one set, and the later stages go stale.
+    const remove = await browser.$("[data-testid=remove-rule-set-1]");
+    await remove.scrollIntoView();
+    await browser.execute((el) => el.click(), remove);
+    await until("one set again", async () => !(await text("shape-rule-sets")).includes("gb50139"));
+    await until("volumes to go stale", async () => (await text("status-volumes")) === "stale");
   });
   it("sorts a failing option first with a red mark and its numbers, and selecting a row selects the option on the map", async () => {
     // Two options in the document, the passing one first. The failing one reads 222 m against R_min 330 m.

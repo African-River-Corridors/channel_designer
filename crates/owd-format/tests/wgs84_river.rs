@@ -71,7 +71,9 @@ fn volumes(wgs84: bool) -> (Session, Value) {
     let texts = inputs(wgs84);
     let items: Vec<(Role, &str)> = texts.iter().map(|(r, t)| (*r, t.as_str())).collect();
     s.import(&items).unwrap();
-    s.set_sizing("PIANC-B", "CEMT_IV", Some(2.5)).unwrap();
+    s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+        .unwrap();
+    s.set_vessel("CEMT_IV", Some(2.5)).unwrap();
     s.run_stage(Stage::Sizing).unwrap();
     s.align(AlignMethod::RollingCircle, &Value::Null, None)
         .unwrap();

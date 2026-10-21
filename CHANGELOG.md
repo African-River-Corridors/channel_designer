@@ -5,6 +5,21 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **The app's Rule Set picker, and the last of the old names (spec 0007, T6 and T8 part 2).** The inputs panel
+  picks one Rule Set or two, with their set inputs (quality A, B or C for `pianc-wg141`; the permissive or strict
+  end for `gb50139`), each marked `default` or `typed` in words and a shape. A pick goes through the session and
+  sizes at once; the later stages go stale. The app now shows the design basis (each quantity with its governing
+  Rule, sets, citation, origin and status), the verdict of each option, and a table of constraint stretches;
+  picking a stretch draws it on the map and moves the map to it. Every result says that each Rule is unverified.
+  **Removed:** `owd size --ruleset` (use `--rule-set pianc-wg141 --set-input se_quality=B` for the old PIANC-B),
+  `Session::set_sizing(ruleset_id, …)` and the old-names `sizing_choices` list; the app commands `set_sizing` gave
+  way to `set_rule_sets(ids, inputs)`, `set_vessel(vessel, draught)` and `stretches_geojson`.
+  `Session::preview_sizing` takes a selection. `Session::sizing_choices()` now lists `rule_sets` (each with its
+  `inputs`), `always` and `vessels`. **JSON key renames:** the sizing results' `ruleset_id` is now `rule_sets`
+  (the selection as words, such as `pianc-wg141@0.3.0 (se_quality B)`); in `fits`, `settings.rulesets` is now
+  `settings.rule_sets`, `results.rulesets` is now `results.rule_sets`, and each entry's `ruleset_id` is now
+  `rule_set`, with a new `selection` (its Rule Set and set input). `owd fits --ruleset` still takes the old names.
+  The typical section's notes say "RULE SETS …" for "RULESET …". No number in the examples moved.
 - **The fairway fit never returns a line worse than the one it was given (#132).** The fit keeps its best pass:
   the fewest points outside the water, then the widest tightest bend on the chord. The line it starts from is
   now a candidate too. So where the input already lies in navigable water, its tightest bend is never fitted

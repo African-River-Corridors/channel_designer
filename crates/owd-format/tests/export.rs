@@ -38,7 +38,9 @@ fn design(line: &[Pt], vessel: &str) -> Session {
         ),
     )])
     .unwrap();
-    s.set_sizing("PIANC-B", vessel, Some(2.5)).unwrap();
+    s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+        .unwrap();
+    s.set_vessel(vessel, Some(2.5)).unwrap();
     s.run_stage(Stage::Sizing).unwrap();
     s.align(AlignMethod::RollingCircle, &Value::Null, None)
         .unwrap();

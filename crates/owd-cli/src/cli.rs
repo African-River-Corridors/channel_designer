@@ -141,10 +141,6 @@ enum Command {
         /// Load a Rule Set file at run time, then select it with --rule-set (repeatable).
         #[arg(long = "rule-set-file", value_name = "FILE")]
         rule_set_file: Vec<String>,
-        /// An old ruleset name (PIANC-A, PIANC-B, PIANC-C, CN, CN-conservative), mapped to its Rule
-        /// Set and input.
-        #[arg(long, conflicts_with_all = ["rule_set", "set_input"])]
-        ruleset: Option<String>,
         /// The vessel class, for example CEMT_IV (default: the one the design has).
         #[arg(long)]
         vessel: Option<String>,
@@ -636,7 +632,6 @@ pub fn main() -> ExitCode {
             rule_set,
             set_input,
             rule_set_file,
-            ruleset,
             vessel,
             draught,
             out,
@@ -646,7 +641,6 @@ pub fn main() -> ExitCode {
                 rule_sets: rule_set,
                 set_inputs: set_input,
                 files: rule_set_file,
-                ruleset,
                 vessel,
                 draught,
             },

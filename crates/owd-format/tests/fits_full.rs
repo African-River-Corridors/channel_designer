@@ -69,7 +69,9 @@ fn land(xs: &[f64], _ys: &[f64]) -> Vec<f64> {
 /// A class's design depth under PIANC-B, from the sizing stage itself.
 fn design_depth(class: &str) -> f64 {
     let mut s = river();
-    s.set_sizing("PIANC-B", class, None).unwrap();
+    s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+        .unwrap();
+    s.set_vessel(class, None).unwrap();
     s.run_stage(Stage::Sizing).unwrap();
     s.document()["stages"]["sizing"]["results"]["design_depth_m"]
         .as_f64()
@@ -77,7 +79,7 @@ fn design_depth(class: &str) -> f64 {
 }
 
 fn rows(s: &Session) -> Vec<Value> {
-    s.document()["fits"]["results"]["rulesets"][0]["classes"]
+    s.document()["fits"]["results"]["rule_sets"][0]["classes"]
         .as_array()
         .unwrap()
         .clone()
@@ -154,7 +156,7 @@ fn a_shallow_bar_gives_each_class_the_depth_stretch_a_hand_calculation_gives() {
     }
     assert!(seen.1 > 0, "some class meets the bar: {seen:?}");
     // The largest class that fits as it is: the largest with no stretch.
-    let largest = results["rulesets"][0]["largest_fitting"]
+    let largest = results["rule_sets"][0]["largest_fitting"]
         .as_str()
         .map(str::to_string);
     let expected = rows(&s)

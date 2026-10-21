@@ -173,21 +173,41 @@ impl AppState {
             .map_err(|_| format!("the draught must be a number of metres, not `{t}`"))
     }
 
-    /// Choose a ruleset, a vessel class and a draught, and size the channel at once. The
-    /// stages after sizing that had results show as stale; nothing else runs. A choice the
-    /// session refuses leaves the design as it was.
-    pub fn set_sizing(
+    /// Choose the Rule Sets (by id) and the set inputs (`(name, value)`), marked `typed`. With a
+    /// vessel class chosen, the channel is sized at once; the stages after sizing that had results
+    /// show as stale, and nothing else runs. A choice the session refuses leaves the design as it
+    /// was.
+    pub fn set_rule_sets(&mut self, ids: &[&str], inputs: &[(&str, &str)]) -> Result<(), String> {
+        self.edit_sizing(|s| s.set_rule_sets(ids, inputs))
+    }
+
+    /// Choose a vessel class and a draught, and size the channel at once. As
+    /// [`AppState::set_rule_sets`] otherwise.
+    pub fn set_vessel(
         &mut self,
-        ruleset_id: &str,
         vessel_standard_id: &str,
         draught_m: Option<f64>,
     ) -> Result<(), String> {
+        self.edit_sizing(|s| s.set_vessel(vessel_standard_id, draught_m))
+    }
+
+    /// Make a sizing choice, then size the channel when it has a vessel class. All or nothing.
+    fn edit_sizing(
+        &mut self,
+        choose: impl FnOnce(&mut Session) -> Result<(), DesignError>,
+    ) -> Result<(), String> {
         self.refuse_while_running()?;
         let before = self.session.clone();
-        let outcome = self
-            .session
-            .set_sizing(ruleset_id, vessel_standard_id, draught_m)
-            .and_then(|()| self.session.run_stage(Stage::Sizing));
+        let outcome = choose(&mut self.session).and_then(|()| {
+            let has_vessel =
+                !self.session.document()["stages"]["sizing"]["settings"]["vessel_standard_id"]
+                    .is_null();
+            if has_vessel {
+                self.session.run_stage(Stage::Sizing)
+            } else {
+                Ok(())
+            }
+        });
         match outcome {
             Ok(()) => {
                 self.dirty = true;
@@ -198,6 +218,16 @@ impl AppState {
                 Err(message(e))
             }
         }
+    }
+
+    /// The constraint stretches of the volumes stage as GeoJSON lines in WGS84, for the map: each
+    /// the part of its option's design line between the stretch's ends. From the session.
+    pub fn stretches_geojson(&self) -> Result<Value, String> {
+        let text = self
+            .session
+            .export_stretches_geojson(true, self.dem_bytes.as_deref().map(|b| b.as_slice()))
+            .map_err(message)?;
+        serde_json::from_str(&text).map_err(|e| e.to_string())
     }
 
     /// Rerun every stale stage, in order. Returns the names of the stages that ran.
@@ -665,7 +695,9 @@ mod tests {
             s.title(),
             "river.owd \u{2014} Synthetic river \u{2014} Open Waterway Designer"
         );
-        s.set_sizing("PIANC-B", "CEMT_Va", Some(2.5)).unwrap();
+        s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+            .unwrap();
+        s.set_vessel("CEMT_Va", Some(2.5)).unwrap();
         assert!(s.title().starts_with("\u{25cf} river.owd"));
         s.saved(Path::new("/x/other.owd"));
         assert_eq!(
@@ -678,7 +710,9 @@ mod tests {
     fn changing_the_vessel_sizes_at_once_and_marks_the_design_unsaved() {
         let mut s = AppState::open(Path::new("a.owd"), &worked_example(), None).unwrap();
         let before = s.snapshot()["document"]["stages"]["sizing"]["results"].clone();
-        s.set_sizing("PIANC-B", "CEMT_Va", Some(2.5)).unwrap();
+        s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+            .unwrap();
+        s.set_vessel("CEMT_Va", Some(2.5)).unwrap();
         let after = s.snapshot()["document"]["stages"]["sizing"]["results"].clone();
         assert_ne!(before["min_bend_radius_m"], after["min_bend_radius_m"]);
         assert_eq!(after["vessel_standard_id"], "CEMT_Va");
@@ -687,12 +721,66 @@ mod tests {
     }
 
     #[test]
+    fn choosing_a_rule_set_or_an_input_sizes_at_once_and_marks_the_typed_choice() {
+        let mut s = AppState::open(Path::new("a.owd"), &worked_example(), None).unwrap();
+        let before = s.snapshot()["document"]["stages"]["sizing"]["results"].clone();
+        s.set_rule_sets(&["pianc-wg141", "gb50139"], &[("range_end", "strict")])
+            .unwrap();
+        let doc = s.snapshot()["document"].clone();
+        let after = &doc["stages"]["sizing"]["results"];
+        assert_ne!(before["rule_sets"], after["rule_sets"]);
+        assert!(
+            after["rule_sets"]
+                .as_str()
+                .unwrap()
+                .contains("gb50139@0.3.0"),
+            "{}",
+            after["rule_sets"]
+        );
+        let settings = &doc["stages"]["sizing"]["settings"];
+        let sources: Vec<(String, String)> = settings["rule_sets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| {
+                (
+                    x["id"].as_str().unwrap().into(),
+                    x["source"].as_str().unwrap().into(),
+                )
+            })
+            .collect();
+        assert!(
+            sources.contains(&("gb50139".into(), "typed".into())),
+            "{sources:?}"
+        );
+        assert_eq!(stage_status(&s, "sizing"), "fresh");
+        assert!(s.is_dirty());
+    }
+
+    #[test]
+    fn a_new_design_keeps_a_rule_set_choice_without_a_vessel_and_sizes_nothing() {
+        let mut s = AppState::new_design("t", "2026-10-21");
+        s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "A")])
+            .unwrap();
+        let doc = s.snapshot()["document"].clone();
+        assert_eq!(
+            doc["stages"]["sizing"]["settings"]["set_inputs"][0]["value"],
+            "A"
+        );
+        assert!(doc["stages"]["sizing"]["results"].is_null());
+        assert_eq!(stage_status(&s, "sizing"), "not_run");
+    }
+
+    #[test]
     fn a_refused_choice_changes_nothing_and_leaves_the_design_saved() {
         let mut s = AppState::open(Path::new("a.owd"), &worked_example(), None).unwrap();
         let before = s.snapshot();
-        let e = s.set_sizing("PIANC-B", "NOPE", None).unwrap_err();
+        let e = s.set_vessel("NOPE", None).unwrap_err();
         assert!(e.contains("unknown vessel standard"), "{e}");
-        assert!(s.set_sizing("PIANC-B", "CEMT_IV", Some(-1.0)).is_err());
+        assert!(s.set_vessel("CEMT_IV", Some(-1.0)).is_err());
+        let e = s.set_rule_sets(&["gb50139"], &[]).unwrap_err();
+        assert!(e.contains("range_end"), "{e}");
+        assert!(s.set_rule_sets(&["nope"], &[]).is_err());
         assert_eq!(s.snapshot(), before);
         assert!(!s.is_dirty());
     }
@@ -700,7 +788,9 @@ mod tests {
     #[test]
     fn a_saved_file_reopens_unchanged_and_runs_to_the_same_results() {
         let mut s = AppState::open(Path::new("a.owd"), &worked_example(), None).unwrap();
-        s.set_sizing("PIANC-B", "CEMT_Va", Some(2.4)).unwrap();
+        s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+            .unwrap();
+        s.set_vessel("CEMT_Va", Some(2.4)).unwrap();
         let text = s.save_text();
         // `owd validate`: the session's own validation, which the command runs.
         assert!(Session::open(&text).unwrap().validate().is_empty());
@@ -843,6 +933,28 @@ mod tests {
         assert_eq!(stage_status(&s, "volumes"), "fresh");
         assert!(s.is_dirty());
         assert!(s.snapshot()["running"].is_null());
+        // The constraint stretches for the map: the session's export in WGS84, one line each.
+        let fc = s.stretches_geojson().unwrap();
+        let doc = s.snapshot()["document"].clone();
+        let count: usize = doc["stages"]["volumes"]["results"]["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|o| {
+                o["screening"]["constraint_stretches"]
+                    .as_array()
+                    .map_or(0, Vec::len)
+            })
+            .sum();
+        let features = fc["features"].as_array().unwrap();
+        assert_eq!(features.len(), count);
+        for f in features {
+            assert_eq!(f["geometry"]["type"], "LineString");
+            for p in f["geometry"]["coordinates"].as_array().unwrap() {
+                assert!(p[0].as_f64().unwrap().abs() <= 180.0, "{p}");
+                assert!(p[1].as_f64().unwrap().abs() <= 90.0, "{p}");
+            }
+        }
     }
 
     #[test]
@@ -850,7 +962,9 @@ mod tests {
         let (mut s, _dir) = ready();
         run(&mut s, "alignment", Some("rolling_circle")).unwrap();
         run(&mut s, "volumes", None).unwrap();
-        s.set_sizing("PIANC-B", "CEMT_Va", Some(2.5)).unwrap();
+        s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+            .unwrap();
+        s.set_vessel("CEMT_Va", Some(2.5)).unwrap();
         assert_eq!(stage_status(&s, "sizing"), "fresh");
         assert_eq!(stage_status(&s, "alignment"), "stale");
         assert_eq!(stage_status(&s, "volumes"), "stale");
@@ -915,7 +1029,12 @@ mod tests {
                 .contains("is running")
         );
         assert!(
-            s.set_sizing("PIANC-B", "CEMT_Va", None)
+            s.set_vessel("CEMT_Va", None)
+                .unwrap_err()
+                .contains("is running")
+        );
+        assert!(
+            s.set_rule_sets(&["gb50139"], &[("range_end", "strict")])
                 .unwrap_err()
                 .contains("is running")
         );

@@ -7,7 +7,8 @@
   let {
     snap,
     choices,
-    onSizing,
+    onRuleSets,
+    onVessel,
     busy,
     samples,
     dropTarget,
@@ -19,7 +20,8 @@
   }: {
     snap: Snapshot | null;
     choices: Choices | null;
-    onSizing: (ruleset: string, vessel: string, draught: string) => void;
+    onRuleSets: (ids: string[], inputs: Record<string, string>) => void;
+    onVessel: (vessel: string, draught: string) => void;
     busy: StageName | null;
     samples: number;
     dropTarget: InputRole | null;
@@ -34,7 +36,7 @@
 <div class="left">
   <StageList {snap} {busy} {samples} {onRun} {onCancel} />
   <DataSummary {snap} busy={busy !== null} {dropTarget} {onLoad} {onFetch} {onWater} />
-  <SizingForm {snap} {choices} onChange={onSizing} />
+  <SizingForm {snap} {choices} {onRuleSets} {onVessel} />
 </div>
 
 <style>

@@ -243,7 +243,9 @@ export async function createWebPlatform(): Promise<Platform> {
       const clean = name.trim();
       return saveNamed(/\.owd$/.test(clean) ? clean : `${clean}.owd`);
     },
-    set_sizing: (a) => change("set_sizing", a.rulesetId, a.vesselStandardId, a.draught),
+    set_rule_sets: (a) => change("set_rule_sets", JSON.stringify(a.ids), JSON.stringify(a.inputs)),
+    set_vessel: (a) => change("set_vessel", a.vesselStandardId, a.draught),
+    stretches_geojson: () => json("stretches_geojson"),
     run_stale: () => change("run_stale"),
     map_geometry: () => json("map_geometry"),
     option_table: () => json("option_table"),

@@ -108,7 +108,9 @@ fn design_with(water: bool) -> Session {
         ),
     ])
     .unwrap();
-    s.set_sizing("PIANC-B", "CEMT_IV", Some(2.5)).unwrap();
+    s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+        .unwrap();
+    s.set_vessel("CEMT_IV", Some(2.5)).unwrap();
     s.run_stage(Stage::Sizing).unwrap();
     s.align(AlignMethod::RollingCircle, &Value::Null, None)
         .unwrap();
@@ -307,7 +309,9 @@ fn the_stage_says_what_it_needs() {
         .to_string();
     assert!(e.contains("dem.tif") && e.contains("missing"), "{e}");
     let mut bare = Session::new("x", "2026-10-16");
-    bare.set_sizing("PIANC-B", "CEMT_IV", None).unwrap();
+    bare.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+        .unwrap();
+    bare.set_vessel("CEMT_IV", None).unwrap();
     bare.run_stage(Stage::Sizing).unwrap();
     assert!(matches!(
         bare.run_optimise(&example_settings(), Some(&terrain)),

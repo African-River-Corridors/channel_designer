@@ -10,7 +10,9 @@ declare module "*/wasm-pkg/owd_web.js" {
     save_text(name: string): string;
     saved(name: string): string;
     is_dirty(): boolean;
-    set_sizing(ruleset_id: string, vessel_standard_id: string, draught: string): string;
+    set_rule_sets(ids: string, inputs: string): string;
+    set_vessel(vessel_standard_id: string, draught: string): string;
+    stretches_geojson(): string;
     run_stale(): string;
     load_input(role: string, name: string, bytes: Uint8Array, layer?: string): string;
     load_dem(name: string, bytes: Uint8Array): string;

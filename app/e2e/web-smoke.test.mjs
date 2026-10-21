@@ -21,8 +21,8 @@ const CLI = process.env.OWD_CLI;
 assert.ok(CLI, "OWD_CLI must be set (run e2e/run-web.sh)");
 const SHOTS = process.env.OWD_WEB_SHOTS;
 
-/** The document `owd run` leaves for a fixture, after the same edit (if any) the app made. */
-function nativeDoc(file, edit) {
+/** The document `owd run` leaves for a fixture, after the same `owd size` edit (if any) the app made. */
+function nativeDoc(file, sizeArgs) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "owd-web-smoke-"));
   const doc = path.join(dir, file);
   fs.copyFileSync(path.join(FIXTURES, file), doc);
@@ -34,7 +34,7 @@ function nativeDoc(file, edit) {
       if (e.status !== 1) throw e; // exit 1: a check failed; the document is still written
     }
   };
-  if (edit) owd(["size", doc, "--ruleset", "PIANC-B", "--vessel", "CEMT_IV", "--draught", edit]);
+  if (sizeArgs) owd(["size", doc, ...sizeArgs]);
   owd(["run", doc]);
   return JSON.parse(fs.readFileSync(doc, "utf8"));
 }
@@ -138,11 +138,55 @@ describe("OWD web smoke tests", () => {
     await until(b, "volumes fresh again", async () => (await stageStatus(b)) === "sizing:fresh alignment:fresh optimise:not_run volumes:fresh");
     const after = await dredge();
     assert.notEqual(after, before, "the result moved");
-    sameAsNative(await pageDoc(b), nativeDoc("river-example.owd", "2.6"), "example at draught 2.6");
+    sameAsNative(await pageDoc(b), nativeDoc("river-example.owd", ["--rule-set", "pianc-wg141", "--set-input", "se_quality=B", "--vessel", "CEMT_IV", "--draught", "2.6"]), "example at draught 2.6");
     if (SHOTS) await b.saveScreenshot(path.join(SHOTS, "web-example-changed.png"));
     // The design is kept: a reload brings it back (with its unsaved changes, as saved text).
     await b.url(`${origin}/owd/app`);
     await until(b, "the restored design", async () => (await exists(b, "file-label")) && (await text(b, "file-label")).includes("river-example.owd"));
+  });
+
+  it("picks the quality in the Rule Set picker, runs, shows the verdict, design basis and stretches, and a picked stretch on the map", async () => {
+    // The map needs WebGL: headless Chrome gets it from SwiftShader, in software.
+    const b = await start({ args: ["--headless=new", "--no-sandbox", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--window-size=1500,950"] });
+    await b.url(`${origin}/owd/app`);
+    await loaded(b);
+    await (await tid(b, "open-example")).click();
+    await until(b, "the example", async () => (await text(b, "file-label")).includes("river-example.owd"));
+    assert.equal(await (await tid(b, "rule-set-0")).getValue(), "pianc-wg141");
+    assert.equal(await (await tid(b, "set-input-se_quality")).getValue(), "B");
+    assert.match(await text(b, "source-input-se_quality"), /typed/);
+    // Pick quality A: sizing reruns at once and the later stages go stale.
+    await b.execute(() => {
+      const s = document.querySelector("[data-testid=set-input-se_quality]");
+      s.value = "A";
+      s.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await until(b, "sizing at quality A", async () => (await text(b, "shape-rule-sets")).includes("se_quality A"));
+    await until(b, "later stages to go stale", async () => (await stageStatus(b)).includes("volumes:stale"));
+    assert.ok((await b.$$("[data-testid=basis-row]")).length >= 3, "the design basis table");
+    assert.match(await text(b, "rules-notice"), /unverified/);
+    await (await b.$("button=Run stale")).click();
+    await until(b, "volumes fresh again", async () => (await stageStatus(b)) === "sizing:fresh alignment:fresh optimise:not_run volumes:fresh", 120000);
+    // The same as `owd size --set-input se_quality=A` then `owd run`.
+    sameAsNative(await pageDoc(b), nativeDoc("river-example.owd", ["--set-input", "se_quality=A"]), "example at quality A");
+    // The verdict, in words, and the stretches of the option, as the document holds them.
+    const doc = await pageDoc(b);
+    const sc = doc.stages.volumes.results.options[0].screening;
+    await until(b, "the verdict", async () => (await b.$$("[data-testid=verdict]")).length === 1);
+    assert.equal(await (await tid(b, "verdict")).getAttribute("data-verdict"), sc.verdict);
+    assert.match(await text(b, "verdict"), new RegExp(sc.verdict.replace(/-/g, " ")));
+    await (await tid(b, "tab-stretches")).click();
+    assert.ok(sc.constraint_stretches.length > 0, "the example falls short of the Rules somewhere");
+    await until(b, "the stretch table", async () => (await b.$$("[data-testid=stretch-row]")).length === sc.constraint_stretches.length);
+    assert.match(await text(b, "screening-notice"), /Screening/);
+    const last = sc.constraint_stretches.length - 1;
+    await b.execute((i) => document.querySelector(`[data-testid=stretch-row][data-index="${i}"]`).click(), last);
+    const option = doc.stages.volumes.results.options[0].id;
+    await until(b, "the map to show the picked stretch", async () => (await (await tid(b, "plan-map")).getAttribute("data-stretch")) === `${option}:${last}`);
+    if (SHOTS) {
+      fs.mkdirSync(SHOTS, { recursive: true });
+      await b.saveScreenshot(path.join(SHOTS, "web-rule-sets.png"));
+    }
   });
 
   it("edits a bank vertex: the mark turns edited, the stages go stale, a crossing is refused, and undo brings it back", async () => {

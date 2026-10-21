@@ -332,7 +332,9 @@ mod tests {
             ),
         ])
         .unwrap();
-        s.set_sizing("PIANC-B", "CEMT_IV", Some(2.5)).unwrap();
+        s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+            .unwrap();
+        s.set_vessel("CEMT_IV", Some(2.5)).unwrap();
         s.run_stage(crate::design::Stage::Sizing).unwrap();
         // The option: the river's own centreline, every 10 m as the alignment writes a line.
         let line: Vec<Pt> = (0..=5000).map(|i| [x0 + i as f64 * 10.0, y0]).collect();

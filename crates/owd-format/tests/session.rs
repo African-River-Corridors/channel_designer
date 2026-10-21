@@ -50,7 +50,9 @@ fn imported() -> Session {
         (Role::RiverPolygon, &p),
     ])
     .unwrap();
-    s.set_sizing("PIANC-B", "CEMT_IV", Some(2.5)).unwrap();
+    s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+        .unwrap();
+    s.set_vessel("CEMT_IV", Some(2.5)).unwrap();
     s.run_stage(Stage::Sizing).unwrap();
     s
 }
@@ -96,7 +98,13 @@ fn sizing_results_equal_channel_shape_called_directly() {
     assert_eq!(r["loa_m"], json!(direct.loa_m));
     assert_eq!(r["draught_m"], json!(2.5));
     assert_eq!(
-        Session::preview_sizing("PIANC-B", "CEMT_IV", Some(2.5)).unwrap(),
+        Session::preview_sizing(
+            &["pianc-wg141"],
+            &[("se_quality", "B")],
+            "CEMT_IV",
+            Some(2.5)
+        )
+        .unwrap(),
         *r
     );
 }
@@ -106,32 +114,43 @@ fn changing_the_vessel_marks_sizing_stale_and_nothing_reruns() {
     let mut s = imported();
     let before = s.document()["stages"]["sizing"]["results"].clone();
     assert_eq!(s.stage_status(Stage::Sizing), StageStatus::Fresh);
-    s.set_sizing("PIANC-B", "CEMT_Va", Some(2.5)).unwrap();
+    s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+        .unwrap();
+    s.set_vessel("CEMT_Va", Some(2.5)).unwrap();
     assert_eq!(s.stage_status(Stage::Sizing), StageStatus::Stale);
     assert_eq!(
         s.document()["stages"]["sizing"]["results"],
         before,
         "nothing reran"
     );
-    // A ruleset change is an edit too.
+    // A Rule Set or set input change is an edit too.
     let mut s = imported();
-    let other = "PIANC-A";
-    s.set_sizing(other, "CEMT_IV", Some(2.5)).unwrap();
+    s.set_rule_sets(&[], &[("se_quality", "A")]).unwrap();
+    assert_eq!(s.stage_status(Stage::Sizing), StageStatus::Stale);
+    let mut s = imported();
+    s.set_rule_sets(&["gb50139"], &[("range_end", "strict")])
+        .unwrap();
     assert_eq!(s.stage_status(Stage::Sizing), StageStatus::Stale);
 }
 
 #[test]
-fn an_unknown_ruleset_or_vessel_is_refused_and_changes_nothing() {
+fn an_unknown_rule_set_input_or_vessel_is_refused_and_changes_nothing() {
     let mut s = imported();
     let before = s.clone();
-    for (rs, v, d) in [
-        ("NOPE", "CEMT_IV", None),
-        ("PIANC-B", "NOPE", None),
-        ("PIANC-B", "CEMT_IV", Some(-1.0)),
+    for (sets, inputs) in [
+        (&["nope"][..], &[][..]),
+        (&["pianc-wg141"][..], &[("se_quality", "D")][..]),
+        (&["gb50139"][..], &[][..]),
     ] {
         assert!(
-            matches!(s.set_sizing(rs, v, d), Err(DesignError::Input(_))),
-            "{rs} {v} {d:?}"
+            matches!(s.set_rule_sets(sets, inputs), Err(DesignError::Input(_))),
+            "{sets:?} {inputs:?}"
+        );
+    }
+    for (v, d) in [("NOPE", None), ("CEMT_IV", Some(-1.0))] {
+        assert!(
+            matches!(s.set_vessel(v, d), Err(DesignError::Input(_))),
+            "{v} {d:?}"
         );
     }
     assert_eq!(s, before);
@@ -259,19 +278,27 @@ fn open_refuses_text_that_is_not_json_and_names_each_schema_break() {
 fn run_reruns_every_stale_stage_in_order_and_nothing_else() {
     let mut s = imported();
     assert_eq!(s.run_stale().unwrap(), vec![], "all fresh: nothing runs");
-    s.set_sizing("PIANC-B", "CEMT_Va", Some(2.5)).unwrap();
+    s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+        .unwrap();
+    s.set_vessel("CEMT_Va", Some(2.5)).unwrap();
     assert_eq!(s.stage_status(Stage::Sizing), StageStatus::Stale);
     assert_eq!(s.run_stale().unwrap(), vec![Stage::Sizing]);
     assert_eq!(s.stage_status(Stage::Sizing), StageStatus::Fresh);
     // Running gives what a direct sizing of the same choices gives.
     assert_eq!(
         s.document()["stages"]["sizing"]["results"],
-        Session::preview_sizing("PIANC-B", "CEMT_Va", Some(2.5)).unwrap()
+        Session::preview_sizing(
+            &["pianc-wg141"],
+            &[("se_quality", "B")],
+            "CEMT_Va",
+            Some(2.5)
+        )
+        .unwrap()
     );
 }
 
 #[test]
-fn the_sizing_choices_list_rulesets_and_vessel_classes_with_labels() {
+fn the_sizing_choices_list_rule_sets_with_their_inputs_and_vessel_classes_with_labels() {
     let c = Session::sizing_choices();
     let ids = |k: &str| -> Vec<String> {
         c[k].as_array()
@@ -280,12 +307,35 @@ fn the_sizing_choices_list_rulesets_and_vessel_classes_with_labels() {
             .map(|v| v["id"].as_str().unwrap().to_string())
             .collect()
     };
-    assert!(ids("rulesets").contains(&"PIANC-B".to_string()));
+    assert_eq!(ids("rule_sets"), ["pianc-wg141", "gb50139"]);
+    assert_eq!(ids("always"), ["owd"]);
     assert!(ids("vessels").contains(&"CEMT_IV".to_string()));
-    // Every choice can be sized (the lists never offer something the session refuses).
-    for r in ids("rulesets") {
-        for v in ids("vessels") {
-            assert!(Session::preview_sizing(&r, &v, None).is_ok(), "{r} x {v}");
+    let inputs = |i: usize| c["rule_sets"][i]["inputs"].as_array().unwrap().clone();
+    assert_eq!(inputs(0).len(), 1);
+    assert_eq!(inputs(0)[0]["name"], "se_quality");
+    assert_eq!(inputs(0)[0]["default"], "C");
+    assert_eq!(inputs(0)[0]["values"].as_array().unwrap().len(), 3);
+    assert_eq!(inputs(1)[0]["name"], "range_end");
+    assert!(
+        inputs(1)[0]["default"].is_null(),
+        "GB 50139 has no default end"
+    );
+    // Every set, at every value of its input, with every vessel, can be sized: the lists never
+    // offer something the session refuses.
+    for set in c["rule_sets"].as_array().unwrap() {
+        let id = set["id"].as_str().unwrap();
+        let input = &set["inputs"][0];
+        for value in input["values"].as_array().unwrap() {
+            let pair = [(
+                input["name"].as_str().unwrap(),
+                value["value"].as_str().unwrap(),
+            )];
+            for v in ids("vessels") {
+                assert!(
+                    Session::preview_sizing(&[id], &pair, &v, None).is_ok(),
+                    "{id} {pair:?} x {v}"
+                );
+            }
         }
     }
     assert!(c["vessels"][0]["label"].as_str().unwrap().contains("LOA"));

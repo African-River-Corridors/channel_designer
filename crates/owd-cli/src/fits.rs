@@ -12,15 +12,15 @@ fn f1(v: &Value) -> String {
     v.as_f64().map_or("-".to_string(), |x| format!("{x:.1}"))
 }
 
-/// The answer as a table, one block per ruleset, each stretch under its class.
+/// The answer as a table, one block per Rule Set choice, each stretch under its class.
 fn table(results: &Value) -> String {
     let mut out = format!(
         "What fits as it is ({}). River length {:.0} m.\n",
         results["label"].as_str().unwrap_or(""),
         results["length_m"].as_f64().unwrap_or(f64::NAN)
     );
-    for rs in results["rulesets"].as_array().into_iter().flatten() {
-        out.push_str(&format!("\n{}\n", rs["ruleset_id"].as_str().unwrap_or("?")));
+    for rs in results["rule_sets"].as_array().into_iter().flatten() {
+        out.push_str(&format!("\n{}\n", rs["rule_set"].as_str().unwrap_or("?")));
         out.push_str(&format!(
             "{:<24} {:>6} {:>6} {:>7} {:>5} {:>10} {:>11} {:>8}\n",
             "class", "LOA m", "beam m", "Rmin m", "fits", "narrow by", "radius by", "stretches"
@@ -80,7 +80,7 @@ fn table(results: &Value) -> String {
 /// Run the answer (or, with `show`, print the stored one) and write the document back.
 pub fn fits(
     doc: &str,
-    rulesets: &[String],
+    choices: &[String],
     show: bool,
     output: &Option<String>,
     json_mode: bool,
@@ -123,7 +123,7 @@ pub fn fits(
     };
     session
         .run_fits_with(
-            (!rulesets.is_empty()).then_some(rulesets),
+            (!choices.is_empty()).then_some(choices),
             sampler
                 .as_ref()
                 .map(|s| s as &(dyn Fn(&[f64], &[f64]) -> Vec<f64> + Sync)),

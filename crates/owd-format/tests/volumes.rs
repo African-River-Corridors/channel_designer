@@ -68,7 +68,9 @@ fn aligned() -> Session {
         ),
     ])
     .unwrap();
-    s.set_sizing("PIANC-B", "CEMT_IV", Some(2.5)).unwrap();
+    s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+        .unwrap();
+    s.set_vessel("CEMT_IV", Some(2.5)).unwrap();
     s.run_stage(Stage::Sizing).unwrap();
     s.align(AlignMethod::RollingCircle, &Value::Null, None)
         .unwrap();
@@ -220,7 +222,9 @@ fn volumes_needs_a_water_level_and_a_fresh_alignment() {
         .to_string();
     assert!(e.contains("needs a water level"), "{e}");
     let mut s = with_dem();
-    s.set_sizing("PIANC-B", "CEMT_Va", Some(2.5)).unwrap();
+    s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+        .unwrap();
+    s.set_vessel("CEMT_Va", Some(2.5)).unwrap();
     assert_eq!(
         s.run_volumes(&settings(), Some(&terrain)).unwrap_err(),
         DesignError::StaleUpstream {

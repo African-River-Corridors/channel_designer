@@ -332,7 +332,6 @@ pub struct SizeFlags {
     pub rule_sets: Vec<String>,
     pub set_inputs: Vec<String>,
     pub files: Vec<String>,
-    pub ruleset: Option<String>,
     pub vessel: Option<String>,
     pub draught: Option<f64>,
 }
@@ -364,23 +363,16 @@ pub fn size(doc: &str, flags: SizeFlags, output: &Option<String>, json_mode: boo
             .then(|| settings["draught_m"].as_f64())
             .flatten()
     });
-    match &flags.ruleset {
-        Some(old) => session
-            .set_sizing(old, &vessel, draught)
-            .map_err(from_design)?,
-        None => {
-            let mut inputs = Vec::new();
-            for kv in &flags.set_inputs {
-                let (k, v) = kv.split_once('=').ok_or_else(|| {
-                    input_error(format!("--set-input `{kv}`: write it as NAME=VALUE"))
-                })?;
-                inputs.push((k.trim(), v.trim()));
-            }
-            let ids: Vec<&str> = flags.rule_sets.iter().map(String::as_str).collect();
-            session.set_rule_sets(&ids, &inputs).map_err(from_design)?;
-            session.set_vessel(&vessel, draught).map_err(from_design)?;
-        }
+    let mut inputs = Vec::new();
+    for kv in &flags.set_inputs {
+        let (k, v) = kv
+            .split_once('=')
+            .ok_or_else(|| input_error(format!("--set-input `{kv}`: write it as NAME=VALUE")))?;
+        inputs.push((k.trim(), v.trim()));
     }
+    let ids: Vec<&str> = flags.rule_sets.iter().map(String::as_str).collect();
+    session.set_rule_sets(&ids, &inputs).map_err(from_design)?;
+    session.set_vessel(&vessel, draught).map_err(from_design)?;
     session.run_stage(Stage::Sizing).map_err(from_design)?;
     let dest = destination(doc, output);
     write(&dest, &session.to_text())?;
@@ -388,7 +380,7 @@ pub fn size(doc: &str, flags: SizeFlags, output: &Option<String>, json_mode: boo
     let f = |k: &str| shape[k].as_f64().unwrap_or(f64::NAN);
     let mut human = format!(
         "{} x {}: bottom width {:.1} m, R_min {:.0} m, design depth {:.2} m",
-        shape["ruleset_id"].as_str().unwrap_or(""),
+        shape["rule_sets"].as_str().unwrap_or(""),
         vessel,
         f("bottom_width_straight_m"),
         f("min_bend_radius_m"),

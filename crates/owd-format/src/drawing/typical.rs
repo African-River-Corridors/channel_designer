@@ -32,7 +32,8 @@ pub struct TypicalParams {
 /// The results a typical section draws.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Facts {
-    pub ruleset: String,
+    /// The Rule Set selection, as the sizing results name it.
+    pub rule_sets: String,
     pub vessel: String,
     pub source: String,
     pub bottom_width_m: f64,
@@ -63,7 +64,7 @@ pub fn facts(session: &Session) -> Result<Facts, DrawError> {
     };
     let text = |v: &Value| v.as_str().unwrap_or("").to_string();
     Ok(Facts {
-        ruleset: text(&r["ruleset_id"]),
+        rule_sets: text(&r["rule_sets"]),
         vessel: text(&r["vessel_standard_id"]),
         source: text(&r["source"]),
         bottom_width_m: get(&r["bottom_width_straight_m"], "bottom width (sizing stage)")?,
@@ -100,14 +101,14 @@ fn slope_text(f: &Facts) -> String {
 
 /// The notes under the drawing: each value with its source.
 fn notes(f: &Facts, style: &super::Style) -> Vec<String> {
-    let rs = clean(&f.ruleset);
+    let rs = clean(&f.rule_sets);
     let source = clean(&f.source);
     let mut n = vec![
         "LEVELS ARE RELATIVE TO THE CHANNEL INVERT. DIMENSIONS IN METRES.".to_string(),
-        format!("BOTTOM WIDTH: RULESET {rs}. {source}"),
-        format!("DESIGN DEPTH: RULESET {rs} (DRAUGHT PLUS UNDER-KEEL CLEARANCE)."),
-        format!("UNDER-KEEL CLEARANCE: RULESET {rs} (DESIGN DEPTH LESS DRAUGHT)."),
-        "SIDE SLOPE: THE VOLUMES STAGE WET BATTER (A SETTING, NOT A RULE OF THE RULESET)."
+        format!("BOTTOM WIDTH: RULE SETS {rs}. {source}"),
+        format!("DESIGN DEPTH: RULE SETS {rs} (DRAUGHT PLUS UNDER-KEEL CLEARANCE)."),
+        format!("UNDER-KEEL CLEARANCE: RULE SETS {rs} (DESIGN DEPTH LESS DRAUGHT)."),
+        "SIDE SLOPE: THE VOLUMES STAGE WET BATTER (A SETTING, NOT A RULE OF THE RULE SETS)."
             .to_string(),
         "DESIGN WATER LEVEL: THE WATER PROFILE OF THE DESIGN (ONE LEVEL PER CHAINAGE).".to_string(),
         format!(

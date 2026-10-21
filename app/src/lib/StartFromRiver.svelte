@@ -7,7 +7,7 @@
   import type * as GeoJSON from "geojson";
   import * as api from "./api";
   import { docPart } from "./api";
-  import type { FitsResult, LonLat, Provenance, ProvenanceInput, ReachStepName, Snapshot } from "./api";
+  import type { FitsResult, FitsSelection, LonLat, Provenance, ProvenanceInput, ReachStepName, Snapshot } from "./api";
   import MarkBadge from "./MarkBadge.svelte";
   import { platform } from "./platform";
   import { token } from "./theme";
@@ -25,7 +25,7 @@
     onSnap: (next: Snapshot) => void;
     onError: (message: string | null) => void;
     /** "Use this vessel": the parent sets the design's sizing and leads into today's flow. */
-    onUseVessel: (rulesetId: string, vesselStandardId: string) => void;
+    onUseVessel: (choice: string, selection: FitsSelection | null, vesselStandardId: string) => void;
     /** Set while a map click should pick a point of the reach. */
     picker?: ((lon: number, lat: number) => void) | undefined;
   } = $props();
@@ -172,7 +172,7 @@
         const p = parse(t);
         if (p) features.push({ type: "Feature", properties: { kind: "point" }, geometry: { type: "Point", coordinates: p } });
       }
-      const rs = fits?.rulesets[0]?.ruleset_id;
+      const rs = fits?.rule_sets[0]?.rule_set;
       for (const s of (rs && shownClass ? view?.fits_stretches[rs]?.[shownClass] : undefined) ?? []) {
         if (s.from && s.to) features.push({ type: "Feature", properties: { kind: "stretch" }, geometry: { type: "LineString", coordinates: [s.from, s.to] } });
       }
@@ -277,8 +277,8 @@
       <button class="primary" data-testid="fits-run" disabled={working} onclick={() => act(api.runFits)}>Answer what fits</button>
       {#if fits}
         <p class="help" data-testid="fits-label">{fits.label}{snap?.fits_status === "stale" ? " — stale: the river changed since; answer again." : ""}</p>
-        {#each fits.rulesets as rs}
-          <h4>{rs.ruleset_id}: largest that fits as it is, <span data-testid="fits-largest-{rs.ruleset_id}">{rs.largest_fitting ?? "none"}</span></h4>
+        {#each fits.rule_sets as rs}
+          <h4>{rs.rule_set}: largest that fits as it is, <span data-testid="fits-largest-{rs.rule_set}">{rs.largest_fitting ?? "none"}</span></h4>
           <table class="fits" data-testid="fits-table">
             <thead><tr><th>Class</th><th>As it is</th><th>Width short</th><th>Radius short</th><th>Stretches</th><th></th></tr></thead>
             <tbody>
@@ -289,7 +289,7 @@
                   <td>{m1(c.worst_width_deficit_m)}</td>
                   <td>{m1(c.worst_radius_deficit_m)}</td>
                   <td>{c.stretch_count}</td>
-                  <td><button data-testid="use-vessel-{c.vessel_standard_id}" onclick={() => onUseVessel(rs.ruleset_id, c.vessel_standard_id)}>Use this vessel</button></td>
+                  <td><button data-testid="use-vessel-{c.vessel_standard_id}" onclick={() => onUseVessel(rs.rule_set, rs.selection, c.vessel_standard_id)}>Use this vessel</button></td>
                 </tr>
               {/each}
             </tbody>

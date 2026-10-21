@@ -156,14 +156,29 @@ impl Session {
         self.state.is_dirty()
     }
 
-    pub fn set_sizing(
-        &mut self,
-        ruleset_id: &str,
-        vessel_standard_id: &str,
-        draught: &str,
-    ) -> Js<String> {
+    /// Choose the Rule Sets and set inputs. `ids` is a JSON list of set ids, `inputs` a JSON object
+    /// of input name to value.
+    pub fn set_rule_sets(&mut self, ids: &str, inputs: &str) -> Js<String> {
+        let ids: Vec<String> =
+            ok(serde_json::from_str(ids).map_err(|e| format!("not a list of Rule Sets: {e}")))?;
+        let inputs: std::collections::BTreeMap<String, String> =
+            ok(serde_json::from_str(inputs).map_err(|e| format!("not set inputs: {e}")))?;
+        let ids: Vec<&str> = ids.iter().map(String::as_str).collect();
+        let inputs: Vec<(&str, &str)> = inputs
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        self.edit(|s| s.set_rule_sets(&ids, &inputs))
+    }
+
+    pub fn set_vessel(&mut self, vessel_standard_id: &str, draught: &str) -> Js<String> {
         let draught = ok(AppState::parse_draught(draught))?;
-        self.edit(|s| s.set_sizing(ruleset_id, vessel_standard_id, draught))
+        self.edit(|s| s.set_vessel(vessel_standard_id, draught))
+    }
+
+    /// The constraint stretches as GeoJSON lines in WGS84, for the map.
+    pub fn stretches_geojson(&self) -> Js<String> {
+        Ok(ok(self.state.stretches_geojson())?.to_string())
     }
 
     pub fn run_stale(&mut self) -> Js<String> {

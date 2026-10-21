@@ -87,8 +87,8 @@ fn fits_answers_every_class_and_stores_the_answer_in_the_document() {
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let v: Value = serde_json::from_str(&out(&o)).unwrap();
     assert_eq!(v["fits"]["label"], "width and radius only, no depth");
-    let rs = &v["fits"]["rulesets"][0];
-    assert_eq!(rs["ruleset_id"], "PIANC-B");
+    let rs = &v["fits"]["rule_sets"][0];
+    assert_eq!(rs["rule_set"], "PIANC-B");
     let classes = rs["classes"].as_array().unwrap();
     assert_eq!(classes.len(), 12);
     for c in classes {
@@ -158,11 +158,11 @@ fn a_document_with_no_answer_and_a_bad_ruleset_are_refused() {
         "--json",
     ]);
     let v: Value = serde_json::from_str(&out(&o)).unwrap();
-    assert_eq!(v["fits"]["rulesets"].as_array().unwrap().len(), 2);
-    // The rulesets are kept for the next run.
+    assert_eq!(v["fits"]["rule_sets"].as_array().unwrap().len(), 2);
+    // The choices are kept for the next run.
     let d: Value = serde_json::from_str(&std::fs::read_to_string(&doc).unwrap()).unwrap();
     assert_eq!(
-        d["fits"]["settings"]["rulesets"],
+        d["fits"]["settings"]["rule_sets"],
         json!(["PIANC-A", "PIANC-B"])
     );
 }
@@ -233,7 +233,7 @@ fn with_a_bed_model_and_a_dem_the_answer_is_full_with_the_verdict_and_the_depth_
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let v: Value = serde_json::from_str(&out(&o)).unwrap();
     assert_eq!(v["fits"]["mode"], "full");
-    let classes = v["fits"]["rulesets"][0]["classes"].as_array().unwrap();
+    let classes = v["fits"]["rule_sets"][0]["classes"].as_array().unwrap();
     assert!(
         classes
             .iter()
