@@ -59,12 +59,12 @@ impl Session {
         // Stable: failures first, each group in the document's order.
         rows.sort_by_key(|r| r["failed_checks"].as_array().is_none_or(|a| a.is_empty()));
         checks.sort_by_key(|c| c["passed"].as_bool().unwrap_or(false));
-        json!({
+        self.with_depth_basis(json!({
             "screening": SCREENING_LABEL,
             "volumes_status": self.volumes_status_name(dem),
             "rows": rows,
             "checks": checks,
-        })
+        }))
     }
 }
 

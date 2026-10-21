@@ -330,6 +330,13 @@ impl Session {
                 inputs.remove("water_level");
             }
             dep["crs"] = self.doc["project"]["crs"].clone();
+            // Only the volumes read the bed model (spec 0012): a new depth leaves the stages
+            // before them fresh.
+            if stage != Stage::Volumes
+                && let Some(inputs) = dep["inputs"].as_object_mut()
+            {
+                inputs.remove("bed_model");
+            }
         }
         if matches!(stage, Stage::Optimise | Stage::Volumes) {
             dep["options"] = self.doc["options"].clone();

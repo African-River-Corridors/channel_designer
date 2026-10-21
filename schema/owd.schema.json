@@ -94,6 +94,34 @@
             }
           ]
         },
+        "bed_model": {
+          "description": "Spec 0012: the bed of the river where there is no survey, from a depth profile. Inside the water, bed = water level - depth x shape. The depth is read along the river centreline from `points` of [river chainage in metres, depth in metres], linear between points and flat beyond the first and last; the shape is a parabola across the water, 1 at the centreline and 0 at the banks. Outside the water the DEM is read as before. The depth is assumed, not measured: every output that used it says so. A survey later replaces it. Optional.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["points", "shape", "season"],
+              "additionalProperties": false,
+              "properties": {
+                "points": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": { "type": "number" }
+                  }
+                },
+                "shape": { "const": "parabola" },
+                "season": {
+                  "description": "The season the depths hold for, for example `dry`. Free text.",
+                  "type": ["string", "null"]
+                }
+              }
+            }
+          ]
+        },
         "water_level": {
           "description": "The water level as a profile along the river centreline (ADR 0006): points of [river chainage in metres, level in metres], read linearly between points and held flat beyond the first and last. Two points at one chainage make a step. A design line's station takes its level by projecting onto the river centreline. Optional: a document made before the profile has none.",
           "oneOf": [

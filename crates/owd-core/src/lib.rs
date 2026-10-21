@@ -5,6 +5,7 @@ pub mod alignment;
 /// Python-style number formatting, for the text of messages and printed results.
 pub use ovcd_core::pyfmt;
 
+pub mod bed;
 pub mod cut_model;
 pub mod geom;
 pub(crate) mod numpy;

@@ -35,6 +35,12 @@ pub fn water_note(option: &Value) -> Option<&'static str> {
         .then_some(super::alignment::WIDTH_ONLY)
 }
 
+/// The notes of an option: the water note and the depth note, joined; `None` when there is neither.
+fn notes_of(option: &Value, depth: Option<&str>) -> Option<String> {
+    let parts: Vec<&str> = [water_note(option), depth].into_iter().flatten().collect();
+    (!parts.is_empty()).then(|| parts.join("; "))
+}
+
 fn csv_field(s: &str) -> String {
     if s.contains([',', '"', '\n']) {
         format!("\"{}\"", s.replace('"', "\"\""))
@@ -103,7 +109,7 @@ impl Session {
                     .map_or(String::new(), |b| b.to_string()),
                 csv_field(&failed.join(";")),
                 status.to_string(),
-                csv_field(water_note(&o).unwrap_or("")),
+                csv_field(&notes_of(&o, self.depth_note()).unwrap_or_default()),
             ];
             out.push_str(&cols.join(","));
             out.push('\n');
@@ -160,7 +166,7 @@ impl Session {
                     "method": o["method"],
                     "checks": o["checks"],
                     "failed_checks": failed,
-                    "notes": water_note(&o),
+                    "notes": notes_of(&o, self.depth_note()),
                     "volumes": self.volumes_row(id),
                     "volumes_status": status,
                 },
@@ -176,6 +182,9 @@ impl Session {
         let notices = self.notices();
         if !notices.is_empty() {
             fc["notices"] = json!(notices);
+        }
+        if let Some(note) = self.depth_note() {
+            fc["depth_basis"] = json!(note);
         }
         // RFC 7946 is WGS84 only. For the project CRS the legacy `crs` member says which, as the
         // importer reads it back.

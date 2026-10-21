@@ -174,6 +174,9 @@ impl Session {
                 "radius_ok": o["checks"]["radius_ok"],
                 "water_source": plan.water_source,
             }));
+            if let Some(note) = self.depth_note() {
+                rows.last_mut().expect("a row was just pushed")["depth_basis"] = json!(note);
+            }
         }
         let settings = plan.settings;
         let st = &mut self.doc["stages"]["volumes"];
@@ -197,6 +200,8 @@ pub(super) struct SectionPlan {
     depth: f64,
     river: Vec<Polygon>,
     fixed_hb: Option<f64>,
+    /// The bed model, when the document has one (spec 0012), with the water level it hangs from.
+    bed: Option<(owd_core::bed::BedModel, Vec<[f64; 2]>)>,
 }
 
 impl Session {
@@ -268,6 +273,15 @@ impl Session {
                 )
             })?),
         };
+        let bed = match self.bed_on_river()? {
+            Some(b) => {
+                let level = self.bed_water_profile().ok_or_else(|| {
+                    DesignError::Input("the bed model needs a water level".into())
+                })?;
+                Some((b, level))
+            }
+            None => None,
+        };
         Ok(SectionPlan {
             settings,
             profile,
@@ -278,6 +292,7 @@ impl Session {
             depth,
             river,
             fixed_hb,
+            bed,
         })
     }
 
@@ -292,6 +307,15 @@ impl Session {
         let settings = &plan.settings;
         let id = o["id"].as_str().unwrap_or("?");
         let line: Vec<Pt> = all_positions(&o["line"]);
+        // Where the document has a bed model, it is the bed inside the water; the DEM is the rest.
+        let bedded;
+        let terrain: Terrain = match &plan.bed {
+            Some((bed, level)) => {
+                bedded = super::bed::with_bed(bed, level, terrain);
+                &bedded
+            }
+            None => terrain,
+        };
         let wl = self.water_level_along(&plan.profile, &line, &plan.centre);
         let level = Level::AtChainage(&wl);
         let shape = &plan.shape;
