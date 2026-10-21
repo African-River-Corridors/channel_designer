@@ -14,6 +14,8 @@
 #      unusable, to prove the Rust loop needs no Python. The slowest tests run nightly instead
 #      (docs/agents/slow-tests.md); `GATES_NEXTEST_PROFILE=nightly` runs every test.
 #   4. pytest against the shipped package
+#   5. the leftover-names check (tools/old_names.py, spec 0006): no old name of the tool outside the
+#      allowlist
 #
 # `owd-py` (the Python extension) is excluded from step 3 as well: PyO3's build script runs Python to find
 # the interpreter, which step 3 forbids. It has no Rust tests; clippy (step 2) and the Wheels workflow build it.
@@ -37,7 +39,7 @@ need() {
 need dirname
 cd "$(dirname "$0")/.."
 PY="${CD_PYTHON:-python3}"
-EXPECTED_STEPS=4
+EXPECTED_STEPS=5
 steps_run=0
 
 need git
@@ -93,6 +95,7 @@ step "cargo fmt --check" cargo fmt --all --check
 step "clippy -D warnings" cargo clippy --workspace --exclude owd-app --all-targets --all-features -- -D warnings
 step "cargo test (no Python)" cargo_test_without_python
 step "pytest" "$PY" -m pytest -q
+step "old names" "$PY" tools/old_names.py
 
 [ "$steps_run" -eq "$EXPECTED_STEPS" ] || fail "only $steps_run of $EXPECTED_STEPS steps ran"
 echo "gates: all $EXPECTED_STEPS steps passed in $SECONDS s"
