@@ -1,4 +1,5 @@
-//! Spec 0007 T1: PIANC WG 141 sizing goes through the shared rules engine (`arc-rules`).
+//! Spec 0007 T1 and T2: PIANC WG 141 and GB 50139 sizing go through the shared rules engine
+//! (`arc-rules`).
 //!
 //! Label: property. The parity test compares the engine path with the old `Ruleset` code (kept for
 //! this check only) bit for bit; no fixed number is pinned here.
@@ -8,13 +9,13 @@ use owd_core::rules::engine::{self, BUILT_IN, ChannelDomain};
 use owd_core::rules::rulesets::{RulesetRegistry, channel_shape, channel_shape_legacy};
 use owd_core::rules::vessel_catalogue;
 
-const PIANC: [&str; 3] = ["PIANC-A", "PIANC-B", "PIANC-C"];
+const ENGINE: [&str; 5] = ["PIANC-A", "PIANC-B", "PIANC-C", "CN", "CN-conservative"];
 
-/// Every PIANC ruleset × every built-in vessel class × a spread of draughts (the nominal one and
+/// Every PIANC and GB ruleset (CN-reduced waits for reaches, T4) × every built-in vessel class × a spread of draughts (the nominal one and
 /// four overrides from shallow to deep): the engine path gives the old shape bit for bit, and the
 /// same bend widening at every radius the water checks read, a straight included.
 #[test]
-fn pianc_through_the_engine_gives_the_old_channel_shape_bit_for_bit() {
+fn the_engine_gives_the_old_channel_shape_bit_for_bit() {
     let reg = RulesetRegistry::new();
     let radii = [
         -1.0,
@@ -29,7 +30,7 @@ fn pianc_through_the_engine_gives_the_old_channel_shape_bit_for_bit() {
         f64::INFINITY,
     ];
     let mut n = 0;
-    for ruleset in PIANC {
+    for ruleset in ENGINE {
         for (vessel, _) in vessel_catalogue() {
             for draught in [None, Some(0.8), Some(1.9), Some(2.5), Some(4.75)] {
                 let new = channel_shape(&reg, ruleset, &vessel, draught).unwrap();
@@ -69,7 +70,7 @@ fn pianc_through_the_engine_gives_the_old_channel_shape_bit_for_bit() {
             }
         }
     }
-    assert!(n >= 3 * 5 * 10, "only {n} cases");
+    assert!(n >= 5 * 5 * 10, "only {n} cases");
 }
 
 /// The check above can fail: a set whose quality B width is one bit off is caught.
@@ -89,8 +90,10 @@ fn the_parity_check_catches_a_one_bit_change() {
         loa_m: old.loa_m,
         beam_m: old.beam_m,
         draught_m: old.draught_m,
+        formation: old.formation.clone(),
+        class_name: "IV".into(),
     };
-    let sized = engine::size(&selection, vessel).unwrap();
+    let sized = engine::size(&selection, &vessel).unwrap();
     assert_ne!(
         sized.bottom_width_straight_m.to_bits(),
         old.bottom_width_straight_m.to_bits()
@@ -103,6 +106,7 @@ fn the_parity_check_catches_a_one_bit_change() {
 fn pianc_wg141_loads_through_the_user_loader_with_its_content_hash() {
     let (path, text) = BUILT_IN[0];
     assert_eq!(path, "rules/pianc-wg141/0.3.0.json");
+    assert_eq!(BUILT_IN[1].0, "rules/gb50139/0.3.0.json");
     let loaded = load(text, &ChannelDomain).unwrap();
     let set = &loaded.set;
     assert_eq!(set.key(), "pianc-wg141@0.3.0");
@@ -152,8 +156,10 @@ fn the_quality_input_picks_the_governing_rule() {
             loa_m: 110.0,
             beam_m: 11.4,
             draught_m: 2.5,
+            formation: "motor_vessel".into(),
+            class_name: "IV".into(),
         };
-        let trace = s.trace(vessel, 300.0);
+        let trace = s.trace(&vessel, 300.0);
         let governing: Vec<&str> = trace
             .rows
             .iter()
@@ -179,14 +185,93 @@ fn the_one_rule_widening_equals_the_engines_governing_limit() {
             loa_m: 185.0,
             beam_m: 11.4,
             draught_m: 3.5,
+            formation: "pushed_convoy".into(),
+            class_name: "Vb".into(),
         };
-        let narrow = s.narrowed_to(engine::BEND_WIDENING, vessel);
+        let narrow = s.narrowed_to(engine::BEND_WIDENING, &vessel);
         assert_eq!(narrow.sets[0].rules.len(), 1);
         for r in [1e-6, 3.0, 92.5, 370.0, 555.5, 1e7] {
             let traced =
-                engine::governing_limit(&s.trace(vessel, r), engine::BEND_WIDENING).unwrap();
-            let fast = engine::widening(&narrow, vessel, r).unwrap();
+                engine::governing_limit(&s.trace(&vessel, r), engine::BEND_WIDENING).unwrap();
+            let fast = engine::widening(&narrow, &vessel, r).unwrap();
             assert_eq!(fast.to_bits(), traced.to_bits(), "{q} at R {r}");
         }
+    }
+}
+
+/// Every GB Rule has origin `national-practice` and says it was read in WG 141 Appendix A.3, is
+/// unverified, and the Rules the range end changes link the finding.
+#[test]
+fn every_gb_rule_is_national_practice_read_in_wg141_appendix_a3() {
+    let set = engine::built_in().lookup("gb50139").unwrap();
+    assert_eq!(set.key(), "gb50139@0.3.0");
+    assert_eq!(set.rules.len(), 9);
+    for r in &set.rules {
+        assert_eq!(
+            r.origin,
+            arc_rules::model::Origin::NationalPractice,
+            "{}",
+            r.id
+        );
+        assert!(
+            r.source.edition.contains("read in WG 141 Appendix A.3"),
+            "{}",
+            r.id
+        );
+        assert!(r.verified.is_none(), "{}", r.id);
+        let ranged = r
+            .applies_when
+            .conditions
+            .iter()
+            .any(|(k, _)| k == engine::RANGE_END);
+        if ranged || r.id.ends_with("/swept-path") {
+            assert_eq!(r.finding.as_deref(), Some("#250"), "{}", r.id);
+        }
+    }
+}
+
+/// The range end changes only the class IV-and-up depth and the swept path note (finding #250):
+/// CN and CN-conservative give the same width, radius and widening, and for classes I to III the
+/// same depth.
+#[test]
+fn the_range_end_changes_only_the_class_iv_and_up_depth() {
+    let reg = RulesetRegistry::new();
+    for (vessel, v) in vessel_catalogue() {
+        let a = channel_shape(&reg, "CN", &vessel, None).unwrap();
+        let b = channel_shape(&reg, "CN-conservative", &vessel, None).unwrap();
+        assert_eq!(
+            a.bottom_width_straight_m, b.bottom_width_straight_m,
+            "{vessel}"
+        );
+        assert_eq!(a.min_bend_radius_m, b.min_bend_radius_m, "{vessel}");
+        assert_eq!(
+            a.bend_widening_at_rmin_m, b.bend_widening_at_rmin_m,
+            "{vessel}"
+        );
+        let low = ["I", "II", "III"].contains(&v.class_name.as_str());
+        assert_eq!(a.design_depth_m == b.design_depth_m, low, "{vessel}");
+    }
+}
+
+/// The swept path note shows its value in the trace, with no test, at both range ends.
+#[test]
+fn the_swept_path_is_a_note_with_a_value() {
+    for end in ["permissive", "strict"] {
+        let s = engine::Selection::built_in(&["gb50139"], &[(engine::RANGE_END, end)]).unwrap();
+        let vessel = engine::Vessel {
+            loa_m: 110.0,
+            beam_m: 11.4,
+            draught_m: 2.5,
+            formation: "motor_vessel".into(),
+            class_name: "IV".into(),
+        };
+        let trace = s.trace(&vessel, 400.0);
+        let row = trace
+            .rows
+            .iter()
+            .find(|r| r.rule.as_deref() == Some("gb50139/A.3.2/swept-path"))
+            .unwrap();
+        assert_eq!(row.outcome, arc_rules::eval::Outcome::Note);
+        assert!(matches!(row.value, Some(arc_rules::eval::MeasureValue::Number(x)) if x > 11.4));
     }
 }

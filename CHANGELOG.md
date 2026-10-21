@@ -12,6 +12,12 @@ versions follow [Semantic Versioning](https://semver.org/).
   The set loads through the same loader a user's file takes. `channel_shape` with PIANC-A, PIANC-B or PIANC-C now
   sizes through the engine and gives the same numbers bit for bit. New: `owd_core::rules::engine`, and
   `docs/rules/codification.md` (how a Rule is written, cited and verified).
+- **GB 50139 sizing on the rules engine (spec 0007, T2).** New Rule Set `gb50139` version 0.3.0: GB 50139 as WG 141
+  Appendix A.3 summarises it, origin `national-practice`, every Rule `unverified`, with the `range_end` input
+  (`permissive`, `strict`). New formula shapes `gb-straight-width`, `gb-widening` and `plus-clearance`; the A.3.2 swept
+  path is a `note` Rule. `channel_shape` with CN or CN-conservative now sizes through the engine and gives the same
+  numbers and warnings bit for bit. The range end changes only the class IV-and-up depth and the swept-path note
+  (finding #250).
 
 - **Bank-line editor, desktop and web (spec 0012, T11).** "Edit banks" on the plan map: move, add and delete
   vertices, or redraw one stretch (it replaces the bank between the two nearest vertices). A bank always stays

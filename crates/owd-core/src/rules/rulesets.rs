@@ -475,7 +475,7 @@ impl ChannelShape {
 
     pub fn bend_widening_m(&self, radius_m: f64) -> f64 {
         match &self.engine {
-            Some((selection, vessel)) => engine::widening(selection, *vessel, radius_m)
+            Some((selection, vessel)) => engine::widening(selection, vessel, radius_m)
                 .expect("the selection sized the bend widening at R_min, so it sizes it here"),
             None => bend_widening(&self.ruleset, self.loa_m, self.beam_m, radius_m),
         }
@@ -579,19 +579,22 @@ pub fn channel_shape(
     let Some(selection) = engine_selection(&shape.ruleset)? else {
         return Ok(shape);
     };
+    let class = get_standard(vessel_standard_id).map_err(RuleError::Key)?;
     let vessel = Vessel {
         loa_m: shape.loa_m,
         beam_m: shape.beam_m,
         draught_m: shape.draught_m,
+        formation: shape.formation.clone(),
+        class_name: class.class_name,
     };
-    let sized = engine::size(&selection, vessel)?;
+    let sized = engine::size(&selection, &vessel)?;
     shape.bottom_width_straight_m = sized.bottom_width_straight_m;
     shape.min_bend_radius_m = sized.min_bend_radius_m;
     shape.design_depth_m = sized.design_depth_m;
     shape.bend_widening_at_rmin_m = sized.bend_widening_at_rmin_m;
     shape.bottom_width_at_rmin_m = sized.bottom_width_straight_m + sized.bend_widening_at_rmin_m;
     shape.engine = Some((
-        Arc::new(selection.narrowed_to(engine::BEND_WIDENING, vessel)),
+        Arc::new(selection.narrowed_to(engine::BEND_WIDENING, &vessel)),
         vessel,
     ));
     Ok(shape)
@@ -601,16 +604,18 @@ pub fn channel_shape(
 /// that does not go through the engine yet. Only an unchanged built-in ruleset maps: one replaced
 /// through [`RulesetRegistry::register`] keeps the old path.
 fn engine_selection(rs: &Ruleset) -> Result<Option<Selection>, RuleError> {
-    let quality = match rs.ruleset_id.as_str() {
-        "PIANC-A" => "A",
-        "PIANC-B" => "B",
-        "PIANC-C" => "C",
+    let (set, input, value) = match rs.ruleset_id.as_str() {
+        "PIANC-A" => ("pianc-wg141", engine::SE_QUALITY, "A"),
+        "PIANC-B" => ("pianc-wg141", engine::SE_QUALITY, "B"),
+        "PIANC-C" => ("pianc-wg141", engine::SE_QUALITY, "C"),
+        "CN" => ("gb50139", engine::RANGE_END, "permissive"),
+        "CN-conservative" => ("gb50139", engine::RANGE_END, "strict"),
         _ => return Ok(None),
     };
     if !builtin_rulesets().contains(rs) {
         return Ok(None);
     }
-    Selection::built_in(&["pianc-wg141"], &[(engine::SE_QUALITY, quality)]).map(Some)
+    Selection::built_in(&[set], &[(input, value)]).map(Some)
 }
 
 /// The channel shape by the old `Ruleset` code: the parity reference for the engine path
