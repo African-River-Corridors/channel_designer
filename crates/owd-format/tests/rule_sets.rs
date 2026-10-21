@@ -116,7 +116,7 @@ fn every_old_ruleset_maps_to_its_selection_with_the_same_numbers_and_warnings() 
 
 #[test]
 fn a_version_2_file_is_refused_with_a_message_to_rebuild() {
-    let mut doc: Value = serde_json::from_str(&Session::new("t", "d").to_text()).unwrap();
+    let mut doc: Value = serde_json::from_str(&Session::new("t", "2026-10-21").to_text()).unwrap();
     for v in [1, 2] {
         doc["format_version"] = json!(v);
         let e = Session::open(&doc.to_string()).unwrap_err();
@@ -134,7 +134,7 @@ fn changed_pianc() -> String {
 
 #[test]
 fn a_run_time_file_with_a_built_in_id_and_version_but_another_hash_is_refused() {
-    let mut s = Session::new("t", "d");
+    let mut s = Session::new("t", "2026-10-21");
     let e = s.load_rule_set(&changed_pianc()).unwrap_err();
     assert!(e.to_string().contains("pianc-wg141@0.3.0"), "{e}");
     // The same file as the built-in one is the same set: nothing changes.
@@ -144,7 +144,7 @@ fn a_run_time_file_with_a_built_in_id_and_version_but_another_hash_is_refused() 
 #[test]
 fn a_set_loaded_at_run_time_can_be_selected_and_a_change_to_it_marks_every_later_stage_stale() {
     let mine = changed_pianc().replace("\"version\": \"0.3.0\"", "\"version\": \"0.3.1\"");
-    let mut s = Session::new("t", "d");
+    let mut s = Session::new("t", "2026-10-21");
     assert_eq!(s.load_rule_set(&mine).unwrap(), "pianc-wg141@0.3.1");
     s.set_rule_sets(&["pianc-wg141@0.3.1"], &[("se_quality", "B")])
         .unwrap();
@@ -174,7 +174,7 @@ fn a_set_loaded_at_run_time_can_be_selected_and_a_change_to_it_marks_every_later
 
 #[test]
 fn changing_the_selection_marks_sizing_and_every_later_stage_stale() {
-    let mut s = Session::new("t", "d");
+    let mut s = Session::new("t", "2026-10-21");
     s.set_sizing("PIANC-B", "CEMT_IV", Some(2.5)).unwrap();
     s.run_stage(Stage::Sizing).unwrap();
     assert_eq!(s.stage_status(Stage::Sizing), StageStatus::Fresh);
