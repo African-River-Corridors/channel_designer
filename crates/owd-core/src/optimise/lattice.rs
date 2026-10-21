@@ -38,6 +38,10 @@ use crate::geom::{Geometry, Polygon, Pt, linear};
 use crate::volumes::sections::{TerrainSampler, arange};
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 
 /// A refusal: a Python `ValueError`, with its text.
 pub type Refusal = String;
@@ -967,7 +971,7 @@ pub fn solve_lattice(
     section: &SectionSpec,
     cfg: &LatticeConfig,
 ) -> LatticeResult {
-    let t0 = std::time::Instant::now();
+    let t0 = Instant::now();
     let prims = lattice_primitives(cfg);
     // One scorer per distinct half-width (rounded to 0.1 mm), as Python caches them.
     let hbs: Vec<f64> = prims

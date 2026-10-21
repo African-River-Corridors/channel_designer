@@ -1,9 +1,10 @@
 [workspace]
 resolver = "3"
-members = ["crates/owd-core", "crates/owd-format", "crates/owd-cli", "crates/owd-py", "app/src-tauri", "xtask"]
+members = ["crates/owd-core", "crates/owd-format", "crates/owd-cli", "crates/owd-py", "crates/owd-shell", "crates/owd-web", "app/src-tauri", "xtask"]
 # owd-py (PyO3 bindings, ticket 35) is left out so `cargo build` and `cargo test` need no Python.
+# owd-web (the wasm session, spec 0011) is left out so a plain build needs no wasm toolchain.
 # app/src-tauri (the desktop app, spec 0003) is left out so they need no Node and no Tauri system libraries.
-default-members = ["crates/owd-core", "crates/owd-format", "crates/owd-cli", "xtask"]
+default-members = ["crates/owd-core", "crates/owd-format", "crates/owd-cli", "crates/owd-shell", "xtask"]
 
 [workspace.package]
 version = "0.2.0"
@@ -15,6 +16,7 @@ repository = "https://github.com/African-River-Corridors/open-waterway-designer"
 [workspace.dependencies]
 owd-core = { path = "crates/owd-core" }
 owd-format = { path = "crates/owd-format" }
+owd-shell = { path = "crates/owd-shell" }
 # float_roundtrip, arbitrary_precision: read every number exactly as written, big ints too.
 # preserve_order: a JSON object keeps its key order, as a Python dict does.
 serde_json = { version = "1", features = ["float_roundtrip", "arbitrary_precision", "preserve_order"] }

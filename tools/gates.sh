@@ -20,6 +20,9 @@
 # `owd-py` (the Python extension) is excluded from step 3 as well: PyO3's build script runs Python to find
 # the interpreter, which step 3 forbids. It has no Rust tests; clippy (step 2) and the Wheels workflow build it.
 #
+# The web session (`owd-web`, spec 0011) is excluded from steps 2 and 3: it is built for wasm32, which this
+# fast gate does not do. The `web-parity` and `web-app` CI jobs build, lint and test it.
+#
 # The desktop app (`owd-app`, spec 0003) is excluded from steps 2 and 3: it needs Node and the Tauri
 # system libraries, and its own CI jobs (`app-linux`, `app-e2e`) build and test it.
 #
@@ -79,10 +82,10 @@ cargo_test_without_python() {
   done
   # Explicit `|| return 1`: `step` calls this function inside `||`, where bash ignores `set -e`,
   # so without it a failing cargo test would fall through and the step would report ok.
-  PATH="$shims:$PATH" CD_PYTHON="$shims/python3" cargo nextest run --workspace --exclude owd-app --exclude owd-py \
+  PATH="$shims:$PATH" CD_PYTHON="$shims/python3" cargo nextest run --workspace --exclude owd-app --exclude owd-py --exclude owd-web \
     --all-features --profile "${GATES_NEXTEST_PROFILE:-pr}" || return 1
   # nextest does not run doctests.
-  PATH="$shims:$PATH" CD_PYTHON="$shims/python3" cargo test --doc --workspace --exclude owd-app --exclude owd-py \
+  PATH="$shims:$PATH" CD_PYTHON="$shims/python3" cargo test --doc --workspace --exclude owd-app --exclude owd-py --exclude owd-web \
     --all-features || return 1
   if [ -e "$marker" ]; then
     echo "gates: cargo test called Python:" >&2
@@ -92,7 +95,7 @@ cargo_test_without_python() {
 }
 
 step "cargo fmt --check" cargo fmt --all --check
-step "clippy -D warnings" cargo clippy --workspace --exclude owd-app --all-targets --all-features -- -D warnings
+step "clippy -D warnings" cargo clippy --workspace --exclude owd-app --exclude owd-web --all-targets --all-features -- -D warnings
 step "cargo test (no Python)" cargo_test_without_python
 step "pytest" "$PY" -m pytest -q
 step "old names" "$PY" tools/old_names.py

@@ -19,3 +19,8 @@ src/owd/_core*.pyd
 website/_site/
 website/_docs/
 website/.venv/
+
+# the web app (spec 0011)
+app/wasm-pkg/
+app/dist-web/
+app/dist-web-test/
