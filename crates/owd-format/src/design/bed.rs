@@ -3,6 +3,7 @@
 //! the volumes read. The depth is assumed, not measured, and every output that used it says so.
 
 use super::alignment::Terrain;
+use super::provenance::{Mark, record};
 use super::session::{DesignError, Session};
 use super::water::level_at;
 use owd_core::bed::BedModel;
@@ -19,6 +20,7 @@ impl Session {
         &mut self,
         points: &[[f64; 2]],
         season: Option<&str>,
+        date: &str,
     ) -> Result<(), DesignError> {
         if points.is_empty() {
             return Err(DesignError::Input(
@@ -46,6 +48,17 @@ impl Session {
             "shape": "parabola",
             "season": season,
         });
+        // The user's own number, and a notice that travels into every export.
+        self.set_provenance(
+            "bed",
+            record(
+                "user-depth-profile",
+                date,
+                DEPTH_ASSUMED_LABEL,
+                Mark::User,
+                false,
+            ),
+        )?;
         Ok(())
     }
 
@@ -53,6 +66,12 @@ impl Session {
     pub fn clear_bed_model(&mut self) {
         if let Some(inputs) = self.doc["inputs"].as_object_mut() {
             inputs.remove("bed_model");
+        }
+        if let Some(p) = self.doc["provenance"].as_object_mut() {
+            p.remove("bed");
+            if p.is_empty() {
+                self.doc.as_object_mut().map(|d| d.remove("provenance"));
+            }
         }
     }
 

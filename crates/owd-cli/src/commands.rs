@@ -192,7 +192,7 @@ pub(crate) fn destination(doc: &str, output: &Option<String>) -> String {
 }
 
 /// Today's date in UTC, `YYYY-MM-DD`, from the system clock.
-fn today() -> String {
+pub(crate) fn today() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());

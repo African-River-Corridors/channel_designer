@@ -215,7 +215,12 @@ fn the_label_is_in_the_csv_the_geojson_and_the_sections() {
     ok(&["bed", &doc, "--depth", "3"]);
     volumes(&doc);
     let csv = out(&ok(&["export", &doc, "--csv"]));
-    assert!(csv.lines().nth(2).unwrap().contains(LABEL), "{csv}");
+    assert!(
+        csv.lines()
+            .any(|l| l.starts_with("# ") && l.contains(LABEL)),
+        "{csv}"
+    );
+    assert!(csv.lines().last().unwrap().contains(LABEL), "{csv}");
     let g: Value = serde_json::from_str(&out(&ok(&["export", &doc, "--geojson"]))).unwrap();
     assert_eq!(g["depth_basis"], LABEL);
     assert!(
@@ -259,6 +264,7 @@ fn a_bed_model_makes_only_the_volumes_stale_and_a_survey_replaces_it() {
         .as_object_mut()
         .unwrap()
         .remove("bed_model");
+    before.as_object_mut().unwrap().remove("provenance");
     assert_eq!(before, after);
     assert!(ok(&["validate", &doc]).status.success());
 }

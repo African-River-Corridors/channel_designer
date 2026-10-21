@@ -72,7 +72,7 @@ pub fn bed(
             }
         };
         session
-            .set_bed_model(&points, season)
+            .set_bed_model(&points, season, &crate::commands::today())
             .map_err(from_design)?;
         format!(
             "bed model set: {} depth(s), parabola across the water ({})",
