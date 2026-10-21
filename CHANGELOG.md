@@ -5,6 +5,13 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **Proofed checks for the channel Rules (spec 0007, T7).** New `crates/owd-core/tests/rules_proofs.rs`: property tests
+  on random vessels and radii (the width at a bend never rises as the radius rises; every width is above zero; the
+  `capped-widening` widening never exceeds L; quality A ≥ B ≥ C on every quantity; adding a set never makes a design
+  basis value smaller), boundary cases for every evaluated Rule of `pianc-wg141` and `gb50139` built from the Rule's
+  own data, and the WG 141 Middle Rhine worked example (5.3.3, p104) as a golden case with its known divergence: the
+  example's totals add up against 3.0 B, not the 3.2 B it quotes. No result moves.
+
 - **PIANC WG 141 sizing on the shared rules engine (spec 0007, T1).** OWD now pins `arc-rules` (the rules engine
   shared with open-vessel-concept-drawings) at its tag `v0.2.4`. The WG 141 coefficients are a Rule Set file,
   `pianc-wg141` version 0.3.0: twelve Rules (bottom width, minimum radius, design depth and bend widening for
