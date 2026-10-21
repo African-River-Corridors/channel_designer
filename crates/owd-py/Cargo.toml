@@ -1,0 +1,23 @@
+[package]
+name = "owd-py"
+description = "PyO3 bindings for the Python package: the parity seam as `channel_designer._core` (ticket 35). Not a default member."
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+owd-format.workspace = true
+serde_json.workspace = true
+# abi3: one wheel per platform for every Python from 3.12 (the package's `requires-python`).
+pyo3 = { version = "0.30", features = ["abi3-py312"] }
+
+[features]
+# maturin turns this on for wheels. A plain `cargo build -p owd-py` links libpython and is for tests.
+extension-module = ["pyo3/extension-module"]

@@ -17,7 +17,7 @@ ticket whose blockers are all closed, and no other. For each ticket:
    diff, a command and its output pasted in the body, or a CI job. A reviewer must not have to ask the
    builder for it.
 3. **Local gates.** `bash tools/gates.sh` runs the fast gate: `cargo fmt --check`, clippy with warnings
-   as errors, `cargo test --workspace --exclude cd-app` with Python made unusable, and the Python tests.
+   as errors, `cargo test --workspace --exclude owd-app` with Python made unusable, and the Python tests.
    Then run `python3 tools/release_guard.py --history`, and the embargo check of the PR body (see
    `issue-tracker.md`).
 4. **CI, without waiting on it.** The `test` and `release-guard` jobs must be green on the head commit

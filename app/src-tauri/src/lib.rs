@@ -1,6 +1,6 @@
 //! The Channel Designer desktop app shell.
 //!
-//! Thin by design (spec 0003): each command forwards to the design session in `cd-format`. The
+//! Thin by design (spec 0003): each command forwards to the design session in `owd-format`. The
 //! shell owns the native open and save dialogs, the unsaved-changes guard, the window title and
 //! the clock, and nothing else. It holds no calculation, validation or default logic.
 
@@ -8,7 +8,7 @@ mod run;
 mod state;
 
 use base64::Engine;
-use cd_format::design::{Role, Session, date_from_unix};
+use owd_format::design::{Role, Session, date_from_unix};
 use state::AppState;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -320,7 +320,7 @@ async fn hillshade(state: State<'_, Shared>) -> Reply {
     let Some(dem) = dem else {
         return Ok(serde_json::Value::Null);
     };
-    let shade = cd_format::design::hillshade::hillshade(&dem).map_err(|e| e.to_string())?;
+    let shade = owd_format::design::hillshade::hillshade(&dem).map_err(|e| e.to_string())?;
     Ok(serde_json::json!({
         "url": format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(&shade.png)),
         "corners": shade.corners,
@@ -367,8 +367,9 @@ fn read_vector(spec: &str) -> Result<String, String> {
         }
     };
     let bytes = std::fs::read(path).map_err(|e| format!("cannot read {path}: {e}"))?;
-    if cd_format::design::geopackage::is_geopackage(&bytes) {
-        cd_format::design::geopackage::to_geojson(&bytes, layer).map_err(|e| format!("{path}: {e}"))
+    if owd_format::design::geopackage::is_geopackage(&bytes) {
+        owd_format::design::geopackage::to_geojson(&bytes, layer)
+            .map_err(|e| format!("{path}: {e}"))
     } else if layer.is_some() {
         Err(format!(
             "{path}: only a GeoPackage has layers, but this is not one"
@@ -508,7 +509,7 @@ async fn fetch_dem(window: Window, state: State<'_, Shared>) -> Reply {
     let doc = path.to_string_lossy().into_owned();
     let mirror = test_answer("dem-mirror.txt").flatten();
     tauri::async_runtime::spawn_blocking(move || {
-        cd_cli::commands::fetch_dem(&doc, 1000.0, mirror.as_deref(), true).map_err(|f| f.message)
+        owd_cli::commands::fetch_dem(&doc, 1000.0, mirror.as_deref(), true).map_err(|f| f.message)
     })
     .await
     .map_err(|e| e.to_string())??;

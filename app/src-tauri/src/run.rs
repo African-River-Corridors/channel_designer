@@ -7,9 +7,9 @@
 //!
 //! No Tauri types here, so it is tested like any other Rust.
 
-use cd_format::design::terrain::dem_sampler;
-use cd_format::design::{AlignMethod, Session, Stage, Terrain};
-use cd_format::geotiff::Dem;
+use owd_format::design::terrain::dem_sampler;
+use owd_format::design::{AlignMethod, Session, Stage, Terrain};
+use owd_format::geotiff::Dem;
 use serde_json::Value;
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::sync::Arc;

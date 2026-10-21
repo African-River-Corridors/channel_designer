@@ -107,8 +107,8 @@ jobs:
           npm run build
       - name: App crate (clippy, tests)
         run: |
-          cargo clippy -p cd-app --all-targets -- -D warnings
-          cargo test -p cd-app
+          cargo clippy -p owd-app --all-targets -- -D warnings
+          cargo test -p owd-app
 
   # End-to-end smoke test (spec 0003): the built debug app, driven by Tauri's WebDriver on Linux.
   # Its own job, so the fast gate keeps its time budget.

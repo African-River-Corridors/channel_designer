@@ -1,6 +1,6 @@
 //! Developer tasks. Run with `cargo xtask <task>`.
 //!
-//! - `mutants [--base <ref>] [--out <file>]`: run cargo-mutants on the `cd-core` code this branch
+//! - `mutants [--base <ref>] [--out <file>]`: run cargo-mutants on the `owd-core` code this branch
 //!   changed and write a short killed / survived / timeout report.
 //! - `gates`: run the fail-closed fast gate, `tools/gates.sh`.
 
@@ -84,10 +84,11 @@ fn mutants(args: &[String]) -> Result {
         .unwrap_or_else(|| root.join("target/mutants-report.md"));
     let work = root.join("target/mutants");
     std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
-    let diff = git(&["diff", &sha, "--", "crates/cd-core/src"])?;
-    let mut report = format!("# Mutation test: `cd-core` changes against `{base}` ({sha:.12})\n\n");
+    let diff = git(&["diff", &sha, "--", "crates/owd-core/src"])?;
+    let mut report =
+        format!("# Mutation test: `owd-core` changes against `{base}` ({sha:.12})\n\n");
     if diff.trim().is_empty() {
-        report.push_str("No `cd-core` source changed, so there is nothing to mutate.\n");
+        report.push_str("No `owd-core` source changed, so there is nothing to mutate.\n");
     } else {
         let diff_file = work.join("core.diff");
         std::fs::write(&diff_file, &diff).map_err(|e| e.to_string())?;
@@ -96,7 +97,7 @@ fn mutants(args: &[String]) -> Result {
             .args([
                 "mutants",
                 "--package",
-                "cd-core",
+                "owd-core",
                 "--test-workspace=true",
                 "--no-shuffle",
             ])
