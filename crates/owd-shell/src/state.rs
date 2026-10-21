@@ -6,6 +6,7 @@
 
 use crate::run::{Outcome, RunControl, RunJob};
 use owd_core::volumes::sections::SectionVolumes;
+use owd_format::design::bank_edit::BankEdit;
 use owd_format::design::{AlignMethod, DemCheck, DesignError, Role, Session, Stage, StageStatus};
 use owd_format::geotiff::{Dem, read_bytes};
 use serde_json::{Value, json};
@@ -29,7 +30,12 @@ pub struct AppState {
     running: Option<(Stage, Arc<RunControl>)>,
     /// The station walk last drawn, with the key it was made under (option and volumes inputs).
     walk: Option<(String, Arc<SectionVolumes>)>,
+    /// The design as it stood before each bank edit, newest last, for undo (spec 0012).
+    bank_undo: Vec<Session>,
 }
+
+/// How many bank edits can be undone.
+const UNDO_LIMIT: usize = 50;
 
 /// A station walk to fetch or make off the main thread.
 pub struct WalkJob {
@@ -109,6 +115,7 @@ impl AppState {
             dem_file: None,
             running: None,
             walk: None,
+            bank_undo: Vec::new(),
         }
     }
 
@@ -130,6 +137,7 @@ impl AppState {
             dem_file,
             running: None,
             walk: None,
+            bank_undo: Vec::new(),
         })
     }
 
@@ -241,12 +249,19 @@ impl AppState {
     }
 
     /// Import vector inputs (GeoJSON text, already read by the shell). A refusal changes nothing.
-    pub fn load_inputs(&mut self, items: &[(Role, String)]) -> Result<(), String> {
+    /// Each is marked `user` in the provenance, dated `date` (`YYYY-MM-DD`, read by the shell).
+    pub fn load_inputs(&mut self, items: &[(Role, String)], date: &str) -> Result<(), String> {
         self.refuse_while_running()?;
         let list: Vec<(Role, &str)> = items.iter().map(|(r, t)| (*r, t.as_str())).collect();
         let before = self.session.clone();
-        match self.session.import(&list) {
+        let roles: Vec<Role> = items.iter().map(|(r, _)| *r).collect();
+        match self
+            .session
+            .import(&list)
+            .and_then(|_| self.session.mark_user(&roles, date))
+        {
             Ok(_) => {
+                self.bank_undo.clear();
                 self.dirty = true;
                 Ok(())
             }
@@ -255,6 +270,35 @@ impl AppState {
                 Err(message(e))
             }
         }
+    }
+
+    /// Edit one bank (spec 0012): `side` is `left_bank` or `right_bank`. The input is marked
+    /// `edited`, the river polygon and centreline are rebuilt, and every later stage is stale. A
+    /// refusal (a crossing, a bad index) changes nothing.
+    pub fn edit_bank(&mut self, side: Role, edit: BankEdit, date: &str) -> Result<(), String> {
+        self.refuse_while_running()?;
+        let before = self.session.clone();
+        self.session.edit_bank(side, edit, date).map_err(|e| {
+            self.session = before.clone();
+            message(e)
+        })?;
+        self.bank_undo.push(before);
+        if self.bank_undo.len() > UNDO_LIMIT {
+            self.bank_undo.remove(0);
+        }
+        self.dirty = true;
+        Ok(())
+    }
+
+    /// Undo the last bank edit. Refused when there is none.
+    pub fn undo_bank_edit(&mut self) -> Result<(), String> {
+        self.refuse_while_running()?;
+        self.session = self
+            .bank_undo
+            .pop()
+            .ok_or("there is no bank edit to undo")?;
+        self.dirty = true;
+        Ok(())
     }
 
     /// Reference a DEM file and keep it for the stages. A DEM the stages could not sample is
@@ -505,6 +549,7 @@ impl AppState {
             "dirty": self.dirty,
             "title": self.title(),
             "warnings": self.warnings,
+            "can_undo_bank_edit": !self.bank_undo.is_empty(),
             "running": self.running.as_ref().map(|(s, _)| s.name()),
         })
     }
@@ -827,17 +872,147 @@ mod tests {
     fn loading_wgs84_banks_moves_them_to_a_utm_zone_and_a_refusal_changes_nothing() {
         let mut s = AppState::new_design("Study", "2026-10-16");
         let line = |pts: &str| format!(r#"{{"type":"LineString","coordinates":{pts}}}"#);
-        s.load_inputs(&[
-            (Role::LeftBank, line("[[-3.0,5.40],[-2.99,5.41]]")),
-            (Role::RightBank, line("[[-3.0,5.401],[-2.99,5.411]]")),
-        ])
+        s.load_inputs(
+            &[
+                (Role::LeftBank, line("[[-3.0,5.40],[-2.99,5.41]]")),
+                (Role::RightBank, line("[[-3.0,5.401],[-2.99,5.411]]")),
+            ],
+            "2026-10-21",
+        )
         .unwrap();
         let doc = &s.snapshot()["document"];
         assert_eq!(doc["project"]["crs"]["name"], "WGS 84 / UTM zone 30N");
         assert_eq!(doc["project"]["source_crs"]["left_bank"], "EPSG:4326");
         let before = s.snapshot();
-        assert!(s.load_inputs(&[(Role::Centreline, "{".into())]).is_err());
+        assert!(
+            s.load_inputs(&[(Role::Centreline, "{".into())], "2026-10-21")
+                .is_err()
+        );
         assert_eq!(s.snapshot(), before);
+    }
+
+    /// Two straight WGS84 banks about 220 m apart, 11 vertices each.
+    fn two_banks() -> AppState {
+        let mut s = AppState::new_design("Study", "2026-10-16");
+        let bank = |lat: f64| {
+            let pts: Vec<String> = (0..=10)
+                .map(|i| format!("[{},{lat}]", -3.0 + i as f64 * 0.001))
+                .collect();
+            format!(
+                r#"{{"type":"LineString","coordinates":[{}]}}"#,
+                pts.join(",")
+            )
+        };
+        s.load_inputs(
+            &[
+                (Role::LeftBank, bank(5.402)),
+                (Role::RightBank, bank(5.400)),
+            ],
+            "2026-10-21",
+        )
+        .unwrap();
+        s
+    }
+
+    fn mark(s: &AppState, input: &str) -> String {
+        s.snapshot()["document"]["provenance"][input]["mark"]
+            .as_str()
+            .unwrap_or("")
+            .to_string()
+    }
+
+    #[test]
+    fn loaded_banks_are_marked_user_and_an_edit_marks_them_and_what_is_rebuilt_edited() {
+        let mut s = two_banks();
+        assert_eq!(
+            (
+                mark(&s, "left_bank").as_str(),
+                mark(&s, "river_polygon").as_str()
+            ),
+            ("user", "")
+        );
+        s.edit_bank(
+            Role::LeftBank,
+            BankEdit::Move {
+                index: 5,
+                to: [-2.995, 5.4015],
+            },
+            "2026-10-21",
+        )
+        .unwrap();
+        for input in ["left_bank", "river_polygon", "centreline"] {
+            assert_eq!(mark(&s, input), "edited", "{input}");
+        }
+        assert_eq!(mark(&s, "right_bank"), "user");
+        let doc = &s.snapshot()["document"]["inputs"];
+        assert_eq!(doc["river_polygon"]["type"], "Polygon");
+        assert_eq!(doc["centreline"]["type"], "LineString");
+        assert_eq!(s.snapshot()["can_undo_bank_edit"], true);
+        assert!(s.is_dirty());
+    }
+
+    #[test]
+    fn a_refused_edit_changes_nothing_and_undo_brings_back_each_edit() {
+        let mut s = two_banks();
+        let start = s.snapshot();
+        let e = s
+            .edit_bank(
+                Role::LeftBank,
+                BankEdit::Move {
+                    index: 5,
+                    to: [-2.995, 5.399],
+                },
+                "2026-10-21",
+            )
+            .unwrap_err();
+        assert!(e.contains("other bank"), "{e}");
+        assert_eq!(s.snapshot(), start);
+        s.edit_bank(Role::LeftBank, BankEdit::Delete { index: 3 }, "2026-10-21")
+            .unwrap();
+        s.edit_bank(
+            Role::LeftBank,
+            BankEdit::Add {
+                after: 0,
+                at: [-2.9995, 5.4021],
+            },
+            "2026-10-21",
+        )
+        .unwrap();
+        s.undo_bank_edit().unwrap();
+        s.undo_bank_edit().unwrap();
+        assert_eq!(s.snapshot()["document"], start["document"]);
+        assert_eq!(s.snapshot()["can_undo_bank_edit"], false);
+        assert!(s.undo_bank_edit().unwrap_err().contains("no bank edit"));
+    }
+
+    #[test]
+    fn a_bank_edit_makes_the_stages_after_the_inputs_stale() {
+        let (mut s, _dir) = ready();
+        assert_eq!(run(&mut s, "alignment", Some("rolling_circle")), Ok("done"));
+        assert_eq!(stage_status(&s, "alignment"), "fresh");
+        let bank = s.snapshot()["document"]["inputs"]["left_bank"]["coordinates"].clone();
+        assert!(bank.as_array().unwrap().len() > 2);
+        // Move the middle vertex a little in the project CRS's own metres, through its WGS84 place.
+        let g = s.map_geometry().unwrap();
+        let left = g["banks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|b| b["side"] == "left")
+            .unwrap();
+        let pts = left["line"]["coordinates"].as_array().unwrap();
+        let mid = pts.len() / 2;
+        let p = [
+            pts[mid][0].as_f64().unwrap() + 1e-5,
+            pts[mid][1].as_f64().unwrap() + 1e-5,
+        ];
+        s.edit_bank(
+            Role::LeftBank,
+            BankEdit::Move { index: mid, to: p },
+            "2026-10-21",
+        )
+        .unwrap();
+        assert_eq!(stage_status(&s, "alignment"), "stale");
     }
 
     #[test]

@@ -1,6 +1,7 @@
 //! The channel design document and the design session (spec 0002, ADR 0004).
 
 pub mod alignment;
+pub mod bank_edit;
 pub mod crs;
 pub mod dem_source;
 pub mod export;

@@ -5,6 +5,13 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **Bank-line editor, desktop and web (spec 0012, T11).** "Edit banks" on the plan map: move, add and delete
+  vertices, or redraw one stretch (it replaces the bank between the two nearest vertices). A bank always stays
+  one line: an edit that would cross the other bank, or the bank itself, is refused with a message and changes
+  nothing. Each edit can be undone. Bank lines you load are marked `user`; an edited line, and the river
+  polygon and centreline the session rebuilds from the two banks, are marked `edited`. Every later stage goes
+  stale and nothing reruns by itself. New in `owd-format`: `Session::edit_bank`; `AppState::load_inputs` now takes
+  the date for the provenance record.
 - **Start from a river: the `owd-reach` crate (spec 0012, T1).** New pure-Rust crate for inputs made from open
   data. It holds the `Fetch` interface (one place for network access: native HTTP on the CLI, the browser's
   `fetch` on the web) and a source registry with each source's licence, notice and whether a browser can read

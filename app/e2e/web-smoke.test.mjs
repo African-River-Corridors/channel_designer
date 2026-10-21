@@ -130,6 +130,58 @@ describe("OWD web smoke tests", () => {
     await until(b, "the restored design", async () => (await exists(b, "file-label")) && (await text(b, "file-label")).includes("river-example.owd"));
   });
 
+  it("edits a bank vertex: the mark turns edited, the stages go stale, a crossing is refused, and undo brings it back", async () => {
+    // The map needs WebGL: headless Chrome gets it from SwiftShader, in software.
+    const b = await start({ args: ["--headless=new", "--no-sandbox", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--window-size=1500,950"] });
+    await b.url(`${origin}/owd/app`);
+    await loaded(b);
+    await (await tid(b, "open-example")).click();
+    await until(b, "the example", async () => (await text(b, "file-label")).includes("river-example.owd"));
+    // The example has no bank lines: load two of our own (marked `user`), and rerun what that made stale.
+    const bankFile = (side) => path.join(FIXTURES, `river-bank-${side}.geojson`);
+    await pick(b, async () => (await tid(b, "load-left_bank")).click(), bankFile("left"));
+    await until(b, "the left bank", async () => (await (await tid(b, "data-left_bank")).getText()).length > 0 && !(await (await tid(b, "data-left_bank")).getText()).includes("not loaded"));
+    await pick(b, async () => (await tid(b, "load-right_bank")).click(), bankFile("right"));
+    await until(b, "the editor to be ready", async () => (await tid(b, "bank-edit-toggle")).isEnabled());
+    await (await b.$("button=Run stale")).click();
+    const fresh = "sizing:fresh alignment:fresh optimise:not_run volumes:fresh";
+    await until(b, "stages fresh", async () => (await stageStatus(b)) === fresh, 120000);
+    await (await tid(b, "bank-edit-toggle")).click();
+    assert.equal(await (await tid(b, "mark-left_bank")).getAttribute("data-mark"), "user", "a loaded line is marked user");
+    await (await tid(b, "bank-tool-delete")).click();
+    await until(b, "vertex handles", async () => (await b.$$("[data-testid=bank-vertex]")).length > 2);
+    const handles = await b.$$("[data-testid=bank-vertex]");
+    const open = [];
+    for (const h of handles) if (await h.isClickable()) open.push(h);
+    assert.ok(open.length > 2, "some vertex handles are clear of the panel");
+    await open[Math.floor(open.length / 2)].click();
+    await until(b, "the left bank to be marked edited", async () => (await (await tid(b, "mark-left_bank")).getAttribute("data-mark")) === "edited");
+    assert.equal(await (await tid(b, "mark-river_polygon")).getAttribute("data-mark"), "edited");
+    assert.equal(await (await tid(b, "mark-centreline")).getAttribute("data-mark"), "edited");
+    assert.ok((await stageStatus(b)).includes("alignment:stale"), await stageStatus(b));
+    // A move that crosses the other bank is refused with a message, and nothing changes.
+    const before = await pageDoc(b);
+    const refusal = await b.execute(async () => {
+      const g = await window.__owdPlatform.call("map_geometry");
+      const right = g.banks.find((x) => x.side === "right").line.coordinates;
+      try {
+        await window.__owdPlatform.call("edit_bank", { side: "left_bank", edit: { kind: "move", index: 1, to: right[Math.floor(right.length / 2)] } });
+        return "accepted";
+      } catch (e) {
+        return String(e);
+      }
+    });
+    assert.match(refusal, /cross/);
+    assert.deepEqual((await pageDoc(b)).inputs, before.inputs, "a refused edit changes nothing");
+    await (await tid(b, "bank-undo")).click();
+    await until(b, "the stages to be fresh again", async () => (await stageStatus(b)) === fresh);
+    assert.equal(await (await tid(b, "mark-left_bank")).getAttribute("data-mark"), "user", "undo brings the old record back");
+    if (SHOTS) {
+      fs.mkdirSync(SHOTS, { recursive: true });
+      await b.saveScreenshot(path.join(SHOTS, "web-bank-editor.png"));
+    }
+  });
+
   it("opens a design and its DEM through the file picker, and a full run equals owd run", async () => {
     const FILE = "river-rolling-circle.owd";
     const b = await start();

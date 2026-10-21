@@ -8,6 +8,8 @@
   import { currentTheme, optionVar, setTheme, type ThemeChoice } from "./lib/theme";
   import { BASEMAP_TILES } from "./lib/basemap";
   import MapPanel from "./lib/MapPanel.svelte";
+  import BankEditor from "./lib/BankEditor.svelte";
+  import type * as maplibregl from "maplibre-gl";
   import LeftPanel from "./lib/LeftPanel.svelte";
   import { platform } from "./lib/platform";
   import markLight from "./assets/owd-mark.svg";
@@ -29,6 +31,8 @@
   let hillshade = $state<Hillshade | null>(null);
   let tiles = $state<string | null>(null);
   let shadeFor: string | null = null;
+  let map = $state<maplibregl.Map | undefined>();
+  let editingBanks = $state(false);
 
   // The map redraws from the session's geometry whenever the design changes. A design with
   // nothing to draw yet (no CRS, no inputs) just shows the empty map.
@@ -365,7 +369,8 @@
     <div class="handle v" role="separator" aria-orientation="vertical" onpointerdown={drag("x")}></div>
     <section class="main">
       <div class="mapbox">
-        {#if tiles}<MapPanel {geometry} {selectedId} {hillshade} {tiles} stationPosition={crossSection?.position ?? null} onPick={pickPoint} bind:offline />{/if}
+        {#if tiles}<MapPanel {geometry} {selectedId} {hillshade} {tiles} stationPosition={crossSection?.position ?? null} onPick={editingBanks ? undefined : pickPoint} onReady={(m) => (map = m)} bind:offline />{/if}
+        <BankEditor {map} {geometry} {snap} onSnap={(next) => (snap = next)} bind:active={editingBanks} />
       </div>
       <div class="sections" data-testid="sections">
         <div class="longbox">

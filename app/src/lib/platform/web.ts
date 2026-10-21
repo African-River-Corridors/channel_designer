@@ -229,6 +229,8 @@ export async function createWebPlatform(): Promise<Platform> {
     station_near: (a) => host.rpc("station_near", a.option, a.lon, a.lat),
     load_input: (a) => loadInput(a.role as string, a.path),
     set_water: (a) => change("set_water", a.level, a.fall),
+    edit_bank: (a) => change("edit_bank", a.side, JSON.stringify(a.edit)),
+    undo_bank_edit: () => change("undo_bank_edit"),
     run_stage: (a) => runStage(a.stage as string, (a.method as string | null) ?? null),
     cancel_run: async () => {
       if (!running) return false;
