@@ -1,4 +1,4 @@
-# Spec 0007: Land the OWD brand (tokens, assets, style guide)
+# Spec 0008: Land the OWD brand (tokens, assets, style guide)
 
 Status: **approved by the maintainer, 2026-10-21** (the brand). Apply after the rename (spec 0006) has
 merged. The brand decision sits in the maintainer's own records; this spec holds what the builder needs.
