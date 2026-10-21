@@ -173,6 +173,10 @@
         "volumes": { "$ref": "#/$defs/stage" }
       }
     },
+    "fits": {
+      "description": "The answer to \"what fits\" over every vessel class (spec 0012). It is not a stage: it never reruns by itself, and it shows as stale when the banks or the centreline change.",
+      "$ref": "#/$defs/stage"
+    },
     "options": {
       "description": "Design line options, added by the alignment and optimise stages.",
       "type": "array",

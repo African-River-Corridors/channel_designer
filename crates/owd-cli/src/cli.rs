@@ -358,6 +358,23 @@ enum Command {
         #[command(flatten)]
         out: Out,
     },
+    /// Say what vessel class fits the river as it is: for every class, under each ruleset, whether
+    /// it fits by width and radius, and the stretches that stop it. Width and radius only, no depth.
+    /// The answer is kept in the document and shows as stale when the banks change; it never
+    /// reruns by itself.
+    Fits {
+        /// The channel design. `-` is stdin.
+        doc: String,
+        /// A ruleset to answer under, for example PIANC-B. Repeat for more (default: the ones the
+        /// document holds, else PIANC-B).
+        #[arg(long, value_name = "RULESET")]
+        ruleset: Vec<String>,
+        /// Print the answer the document holds, and say if it is stale, without running.
+        #[arg(long)]
+        show: bool,
+        #[command(flatten)]
+        out: Out,
+    },
     /// Rerun every stale stage, in order.
     Run {
         /// The channel design. `-` is stdin.
@@ -440,6 +457,12 @@ pub fn main() -> ExitCode {
             &out.output,
             out.json,
         ),
+        Command::Fits {
+            doc,
+            ruleset,
+            show,
+            out,
+        } => crate::fits::fits(&doc, &ruleset, show, &out.output, out.json),
         Command::Size {
             doc,
             ruleset,

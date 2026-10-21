@@ -6,6 +6,7 @@ pub mod bed;
 pub mod crs;
 pub mod dem_source;
 pub mod export;
+pub mod fits;
 pub mod geojson;
 pub mod geopackage;
 pub mod hash;
