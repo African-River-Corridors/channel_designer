@@ -5,6 +5,7 @@
 //! Worker. The logic never knows which. It builds for native and for `wasm32-unknown-unknown`.
 
 pub mod banks;
+pub mod dem;
 pub mod error;
 pub mod fetch;
 pub mod geo;

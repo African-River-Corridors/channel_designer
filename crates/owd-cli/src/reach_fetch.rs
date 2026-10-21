@@ -16,7 +16,17 @@ const USER_AGENT: &str = concat!(
 /// Native HTTP.
 pub struct HttpFetch;
 
-fn failed(url: &str, e: impl std::fmt::Display) -> FetchError {
+fn failed(url: &str, e: ureq::Error) -> FetchError {
+    if matches!(e, ureq::Error::StatusCode(404 | 403)) {
+        return FetchError::NotFound(url.to_string());
+    }
+    FetchError::Failed {
+        url: url.to_string(),
+        reason: e.to_string(),
+    }
+}
+
+fn read_failed(url: &str, e: impl std::fmt::Display) -> FetchError {
     FetchError::Failed {
         url: url.to_string(),
         reason: e.to_string(),
@@ -39,7 +49,7 @@ impl Fetch for HttpFetch {
             .with_config()
             .limit(MAX_BYTES)
             .read_to_vec()
-            .map_err(|e| failed(url, e))
+            .map_err(|e| read_failed(url, e))
     }
 
     fn get_range(&self, url: &str, start: u64, len: u64) -> Result<Vec<u8>, FetchError> {
@@ -52,7 +62,7 @@ impl Fetch for HttpFetch {
             .with_config()
             .limit(MAX_BYTES)
             .read_to_vec()
-            .map_err(|e| failed(url, e))
+            .map_err(|e| read_failed(url, e))
     }
 }
 

@@ -8,9 +8,17 @@
 use owd_format::design::dem_source::{TileId, TileRecord};
 use std::path::Path;
 
+/// Why a tile could not be had.
+#[derive(Debug)]
+pub enum GetError {
+    /// The source does not hold this tile (HTTP 404 or 403, or no such file in a folder mirror).
+    Withheld,
+    Failed(String),
+}
+
 /// Something that returns the bytes of a tile.
 pub trait Fetcher {
-    fn get(&self, tile: TileId, mirror: &str) -> Result<Vec<u8>, String>;
+    fn get(&self, tile: TileId, mirror: &str) -> Result<Vec<u8>, GetError>;
 }
 
 /// The real fetcher: HTTPS for a URL mirror, a file read for a folder mirror.
@@ -20,22 +28,29 @@ pub struct Mirror;
 const MAX_TILE_BYTES: u64 = 400_000_000;
 
 impl Fetcher for Mirror {
-    fn get(&self, tile: TileId, mirror: &str) -> Result<Vec<u8>, String> {
+    fn get(&self, tile: TileId, mirror: &str) -> Result<Vec<u8>, GetError> {
         let url = tile.url(mirror);
         if mirror.starts_with("http://") || mirror.starts_with("https://") {
-            let mut resp = ureq::get(&url)
-                .call()
-                .map_err(|e| format!("cannot fetch {url}: {e}"))?;
+            let mut resp = ureq::get(&url).call().map_err(|e| match e {
+                ureq::Error::StatusCode(404 | 403) => GetError::Withheld,
+                e => GetError::Failed(format!("cannot fetch {url}: {e}")),
+            })?;
             resp.body_mut()
                 .with_config()
                 .limit(MAX_TILE_BYTES)
                 .read_to_vec()
-                .map_err(|e| format!("cannot read {url}: {e}"))
+                .map_err(|e| GetError::Failed(format!("cannot read {url}: {e}")))
         } else {
             let path = Path::new(mirror)
                 .join(tile.name())
                 .join(format!("{}.tif", tile.name()));
-            std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))
+            std::fs::read(&path).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    GetError::Withheld
+                } else {
+                    GetError::Failed(format!("cannot read {}: {e}", path.display()))
+                }
+            })
         }
     }
 }

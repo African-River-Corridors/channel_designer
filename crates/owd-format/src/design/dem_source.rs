@@ -189,29 +189,26 @@ impl Session {
     /// The extent of the inputs in longitude and latitude, widened by `margin_m` metres:
     /// `(west, south, east, north)`. The river polygon, else the centreline, else the banks.
     pub fn extent_wgs84(&self, margin_m: f64) -> Result<(f64, f64, f64, f64), DesignError> {
-        let utm: Utm = self.doc["project"]["crs"]["epsg"]
+        let utm: Option<Utm> = self.doc["project"]["crs"]["epsg"]
             .as_u64()
             .and_then(|c| Crs::from_epsg(c as u32).ok())
             .and_then(|c| match c {
                 Crs::Utm(u) => Some(u),
                 Crs::Wgs84 => None,
-            })
-            .ok_or_else(|| {
-                DesignError::Input("import the river first: there is no extent to fetch for".into())
-            })?;
+            });
         let inp = &self.doc["inputs"];
         let mut pts: Vec<Pt> = Vec::new();
-        for key in ["river_polygon", "centreline", "left_bank", "right_bank"] {
-            pts = all_positions(&inp[key]);
-            if !pts.is_empty() {
-                break;
+        if utm.is_some() {
+            for key in ["river_polygon", "centreline", "left_bank", "right_bank"] {
+                pts = all_positions(&inp[key]);
+                if !pts.is_empty() {
+                    break;
+                }
             }
         }
-        if pts.is_empty() {
-            return Err(DesignError::Input(
-                "import the river first: there is no extent to fetch for".into(),
-            ));
-        }
+        let Some(utm) = utm.filter(|_| !pts.is_empty()) else {
+            return self.reach_extent_wgs84(margin_m);
+        };
         let (mut w, mut s, mut e, mut n) = (
             f64::INFINITY,
             f64::INFINITY,
@@ -234,6 +231,54 @@ impl Session {
                 s = s.min(lat);
                 n = n.max(lat);
             }
+        }
+        Ok((w, s, e, n))
+    }
+
+    /// The extent of the reach the study was started from (spec 0012), for a document that has no
+    /// banks yet: the box round its start, via points, end and trace, widened by `margin_m`. The
+    /// route itself is not stored as geometry, so a river that wanders far from the straight box needs a
+    /// larger margin (or the banks, which give the true extent).
+    fn reach_extent_wgs84(&self, margin_m: f64) -> Result<(f64, f64, f64, f64), DesignError> {
+        let no_extent =
+            || DesignError::Input("import the river first: there is no extent to fetch for".into());
+        let reach = self.reach().ok_or_else(no_extent)?;
+        let mut pts: Vec<[f64; 2]> = Vec::new();
+        let mut take = |v: &Value| {
+            if let (Some(x), Some(y)) = (v[0].as_f64(), v[1].as_f64()) {
+                pts.push([x, y]);
+            }
+        };
+        take(&reach["start"]);
+        take(&reach["end"]);
+        for v in reach["via"].as_array().into_iter().flatten() {
+            take(v);
+        }
+        for v in reach["trace"].as_array().into_iter().flatten() {
+            take(v);
+        }
+        for part in reach["route"].as_array().into_iter().flatten() {
+            for v in part["line"].as_array().into_iter().flatten() {
+                take(v);
+            }
+        }
+        if pts.is_empty() {
+            return Err(no_extent());
+        }
+        let mid_lat = pts.iter().map(|p| p[1]).sum::<f64>() / pts.len() as f64;
+        let dlat = margin_m / 111_320.0;
+        let dlon = margin_m / (111_320.0 * libm::cos(mid_lat.to_radians()).max(0.05));
+        let (mut w, mut s, mut e, mut n) = (
+            f64::INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NEG_INFINITY,
+        );
+        for p in pts {
+            w = w.min(p[0] - dlon);
+            e = e.max(p[0] + dlon);
+            s = s.min(p[1] - dlat);
+            n = n.max(p[1] + dlat);
         }
         Ok((w, s, e, n))
     }
