@@ -30,7 +30,7 @@ To move a test, edit the filter in `.config/nextest.toml` and the table below. T
 | owd-format::volumes: `a_new_dem_reference_marks_volumes_stale` | 24 s | Long run on the full river or DEM in a debug build. |
 | owd-format::volumes: `a_saved_document_reloads_with_the_same_volumes` | 24 s | Long run on the full river or DEM in a debug build. |
 | owd-format::volumes: `a_changed_dem_file_warns_on_open_and_marks_volumes_stale` | 23 s | Long run on the full river or DEM in a debug build. |
-| owd-cli::cdesign: `align_adds_a_rolling_circle_option_and_replaces_it_when_run_again` | 23 s | Long run on the full river or DEM in a debug build. |
+| owd-cli::owd: `align_adds_a_rolling_circle_option_and_replaces_it_when_run_again` | 23 s | Long run on the full river or DEM in a debug build. |
 | owd-format::wgs84_river: `a_wgs84_river_is_reprojected_and_gives_the_volumes_of_the_utm_river` | 23 s | Long run on the full river or DEM in a debug build. |
 | owd-format::sections: `the_long_section_sums_to_the_volumes_the_table_shows` | 23 s | Long run on the full river or DEM in a debug build. |
 | owd-format::sections: `a_cross_section_is_the_walk_s_station_and_its_cut_agrees_with_the_long_section` | 22 s | Long run on the full river or DEM in a debug build. |

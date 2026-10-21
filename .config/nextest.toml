@@ -33,7 +33,7 @@ not (
     (binary_id(owd-format::volumes) & test(=a_new_dem_reference_marks_volumes_stale)) |
     (binary_id(owd-format::volumes) & test(=a_saved_document_reloads_with_the_same_volumes)) |
     (binary_id(owd-format::volumes) & test(=a_changed_dem_file_warns_on_open_and_marks_volumes_stale)) |
-    (binary_id(owd-cli::cdesign) & test(=align_adds_a_rolling_circle_option_and_replaces_it_when_run_again)) |
+    (binary_id(owd-cli::owd) & test(=align_adds_a_rolling_circle_option_and_replaces_it_when_run_again)) |
     (binary_id(owd-format::wgs84_river) & test(=a_wgs84_river_is_reprojected_and_gives_the_volumes_of_the_utm_river)) |
     (binary_id(owd-format::sections) & test(=the_long_section_sums_to_the_volumes_the_table_shows)) |
     (binary_id(owd-format::sections) & test(=a_cross_section_is_the_walk_s_station_and_its_cut_agrees_with_the_long_section)) |
