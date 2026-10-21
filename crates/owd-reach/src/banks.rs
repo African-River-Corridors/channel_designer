@@ -70,6 +70,11 @@ pub enum StretchKind {
     Narrow,
     /// No water at the threshold near the route.
     NoWater,
+    /// The imagery gave no clear edge (cloud, shadow, turbid water): the mask bank was kept.
+    NoEdge,
+    /// The imagery shows water (or land) running on past the largest shift: the bank moved by that
+    /// shift, and the edge lies farther.
+    AtShiftLimit,
 }
 
 /// A flagged stretch, by chainage along the generated centreline.
@@ -447,7 +452,12 @@ impl MaskBanks {
             "source": "jrc-gsw",
             "stretches": self.stretches.iter().map(|s| json!({
                 "from_m": s.from_m, "to_m": s.to_m,
-                "kind": match s.kind { StretchKind::Narrow => "narrow", StretchKind::NoWater => "no-water" },
+                "kind": match s.kind {
+                    StretchKind::Narrow => "narrow",
+                    StretchKind::NoWater => "no-water",
+                    StretchKind::NoEdge => "no-edge",
+                    StretchKind::AtShiftLimit => "at-shift-limit",
+                },
                 "min_width_m": s.min_width_m,
             })).collect::<Vec<_>>(),
         })

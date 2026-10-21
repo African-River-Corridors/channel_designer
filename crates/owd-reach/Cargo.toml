@@ -12,6 +12,8 @@ owd-format.workspace = true
 serde_json.workspace = true
 # LZW for the tiled GeoTIFF reader (the tiff crate uses it too).
 weezl = "0.1"
+# DEFLATE for the Sentinel-2 COGs.
+miniz_oxide = "0.8"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
