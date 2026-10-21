@@ -1,4 +1,4 @@
-# channel_designer
+# Open Waterway Designer (OWD)
 
 Navigation channel design for inland waterways, as code. Give it a river and a vessel class;
 it sizes the channel to a named standard, finds an alignment that the vessel can sail, and
@@ -11,12 +11,12 @@ measures the cut and dredge volumes.
 
 | Layer | Module | What you get |
 |---|---|---|
-| **Rules** | `channel_designer.rules` | Channel width, bend widening, minimum bend radius and depth from a named ruleset and a vessel class: PIANC WG 141 qualities A/B/C and the Chinese standard GB 50139 (as summarised in WG 141 Appendix A.3). Every coefficient cites its clause, table and page. Rulesets and width methods are pluggable: another package can add its own (`register_ruleset`, `register_width_method`, or the `channel_designer.width_methods` entry-point group). |
-| **Alignment** | `channel_designer.alignment` | Centreline from two bank lines, river width, meander analysis, a tight/gentle/straight bend catalogue (exact reachability, not a closed form), rolling-circle straightening to R_min, channel limits with bend widening, and a least-cost route search that shifts the line sideways where that cuts less ground while holding R_min. |
-| **Volumes** | `channel_designer.volumes` | Cut Model A and B cross-sections (wet batter, clearance-prism gate, benched face above the waterline), a station-by-station section integrator, a raster DEM integrator, weir-cascade pool levels, and the plan excavation footprint. Quantities only — m², m³ and face heights. |
-| **Terrain** | `channel_designer.terrain` | Long profile of any line over a terrain sampler: chainage, levels, ascent and descent. Pure; it reads no files and fetches nothing. |
-| **Optimise** *(optional)* | `channel_designer.optimise` | Weir sites and pool levels by an exact search over (site, level), and the least-cost channel through each pool by an A* search over arcs that never bend tighter than R_min. Costs are weights you supply. Core dependencies only. |
-| **Drawings** *(optional)* | `channel_designer.drawings` | Cross-section gallery sheets as SVG (and DXF) with ISO 7200 title blocks, built on [`technical_drawings_for_agents`](https://github.com/African-River-Corridors/technical_drawings_for_agents). |
+| **Rules** | `owd.rules` | Channel width, bend widening, minimum bend radius and depth from a named ruleset and a vessel class: PIANC WG 141 qualities A/B/C and the Chinese standard GB 50139 (as summarised in WG 141 Appendix A.3). Every coefficient cites its clause, table and page. Rulesets and width methods are pluggable: another package can add its own (`register_ruleset`, `register_width_method`, or the `owd.width_methods` entry-point group). |
+| **Alignment** | `owd.alignment` | Centreline from two bank lines, river width, meander analysis, a tight/gentle/straight bend catalogue (exact reachability, not a closed form), rolling-circle straightening to R_min, channel limits with bend widening, and a least-cost route search that shifts the line sideways where that cuts less ground while holding R_min. |
+| **Volumes** | `owd.volumes` | Cut Model A and B cross-sections (wet batter, clearance-prism gate, benched face above the waterline), a station-by-station section integrator, a raster DEM integrator, weir-cascade pool levels, and the plan excavation footprint. Quantities only — m², m³ and face heights. |
+| **Terrain** | `owd.terrain` | Long profile of any line over a terrain sampler: chainage, levels, ascent and descent. Pure; it reads no files and fetches nothing. |
+| **Optimise** *(optional)* | `owd.optimise` | Weir sites and pool levels by an exact search over (site, level), and the least-cost channel through each pool by an A* search over arcs that never bend tighter than R_min. Costs are weights you supply. Core dependencies only. |
+| **Drawings** *(optional)* | `owd.drawings` | Cross-section gallery sheets as SVG (and DXF) with ISO 7200 title blocks, built on [`technical_drawings_for_agents`](https://github.com/African-River-Corridors/technical_drawings_for_agents). |
 
 Vessel classes and dimensions come from
 [`vessel_designer`](https://github.com/African-River-Corridors/open-vessel-concept-drawings).
@@ -28,10 +28,12 @@ Pricing is out of scope. The package measures quantities; what they cost is your
 Python 3.12 or later.
 
 ```
-pip install channel_designer
+pip install open-waterway-designer
 ```
 
-From 0.2.0 the calculations run in a Rust core (`channel_designer._core`) that ships inside the
+The PyPI release is still to come ([#2](https://github.com/African-River-Corridors/open-waterway-designer/issues/2)); until it ships, install from git as shown below.
+
+From 0.2.0 the calculations run in a Rust core (`owd._core`) that ships inside the
 package. Each release has one **abi3 wheel** per platform (Windows, macOS, Linux), so
 `pip install` needs **no compiler and no Rust**. The same wheel runs on every Python from 3.12.
 CI proves it: the `Wheels` workflow installs the wheel on a Windows machine with no compiler on
@@ -41,7 +43,7 @@ Installing from source (a checkout or the git URL) builds the core with
 [maturin](https://www.maturin.rs/), so it **does** need a Rust toolchain ([rustup.rs](https://rustup.rs)):
 
 ```
-pip install "channel_designer @ git+https://github.com/African-River-Corridors/channel_designer"
+pip install "open-waterway-designer @ git+https://github.com/African-River-Corridors/open-waterway-designer"
 ```
 
 Your scripts do not change. The 0.2.0 functions and classes have the names, arguments and results of
@@ -52,11 +54,26 @@ Optional extras:
 | Extra | Adds | For |
 |---|---|---|
 | `[dem]` | rasterio, scipy, affine | nothing the package needs any more: the core reads GeoTIFFs itself. Kept so existing install commands work. |
-| `[drawings]` | technical_drawings_for_agents | cross-section sheets (`channel_designer.drawings`) |
+| `[drawings]` | technical_drawings_for_agents | cross-section sheets (`owd.drawings`) |
 | `[dev]` | pytest | running the tests |
 
-For example `pip install "channel_designer[drawings]"`.
+For example `pip install "open-waterway-designer[drawings]"`.
 Calling a drawing function without `[drawings]` raises an `ImportError` that says what to install.
+
+## Renamed from channel_designer
+
+The tool was called `channel_designer`. It is now Open Waterway Designer (OWD). For one release
+the old names still work, and then they go:
+
+| Was | Is now | Old name works until |
+|---|---|---|
+| `import channel_designer` | `import owd` (the old import gives a `DeprecationWarning`) | the release after this rename |
+| `cdesign` command | `owd` (`cdesign` is an alias that prints a note) | the release after this rename |
+| `.cdesign` file | `.owd` (a `.cdesign` file opens; saves write `.owd`) | the release after this rename |
+| `channel_designer` on pip | `open-waterway-designer` | not published before the rename |
+| app "Channel Designer" | "Open Waterway Designer" (new bundle identifier) | not applicable |
+
+Results do not change with the rename. The CHANGELOG says what to do to move over.
 
 ## Worked example
 
@@ -116,7 +133,7 @@ with RasterTerrain("my_dem.tif") as terrain:
 
 ## Optional: optimise weirs, pool levels and the channel through each pool
 
-`channel_designer.optimise` adds two searches. Both take typed config objects and a terrain
+`owd.optimise` adds two searches. Both take typed config objects and a terrain
 sampler, and both minimise weights you supply, never prices:
 
 - **Cascade** (`search_cascade`) — where the weirs go and how high each pool sits. An exact

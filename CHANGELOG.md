@@ -1,10 +1,22 @@
 # Changelog
 
-All notable changes to `channel_designer`. The format follows [Keep a Changelog](https://keepachangelog.com/);
+All notable changes to Open Waterway Designer (OWD), called `channel_designer` before 2026-10-21. The format follows [Keep a Changelog](https://keepachangelog.com/);
 versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **Renamed to Open Waterway Designer (OWD), spec 0006.** Names only; no result moves. The repo is
+  `open-waterway-designer` (GitHub redirects the old URL), the Python import is `owd`, the PyPI name is
+  `open-waterway-designer`, the crates are `owd-core`, `owd-format`, `owd-cli`, `owd-py` and `owd-app`, the command
+  is `owd`, the file extension is `.owd`, and the schema is `schema/owd.schema.json`. **To move over:**
+  change `import channel_designer` to `import owd`; run `owd` instead of `cdesign`; save as `.owd`; declare a
+  width-method plugin under the entry-point group `owd.width_methods`. **For one release the old names still
+  work:** `import channel_designer` gives a `DeprecationWarning` and the same objects; `cdesign` is an alias of
+  `owd` that prints a note on stderr; `.cdesign` files open in the command line and the app, with the same
+  contents (`format_version` stays 2); the old entry-point group `channel_designer.width_methods` is still read.
+  They go in the release after this one. The desktop app is now "Open Waterway Designer" with a new bundle
+  identifier, `org.africanrivercorridors.openwaterwaydesigner`: macOS, Windows and Linux treat it as a new app, so
+  its saved window state and recent files do not carry over. The version is not changed by this entry.
 - Trademark policy: new `TRADEMARKS.md` says how the Open Waterway Designer (OWD) and ARC names and logos may be used. The Apache licence covers the code; this policy covers the marks. No result moves.
 ### Design impact
 
