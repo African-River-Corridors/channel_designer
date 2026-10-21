@@ -1,0 +1,29 @@
+name: Nightly
+
+# Every Rust test, including the slow ones that the pull-request gate leaves out
+# (.config/nextest.toml, docs/agents/slow-tests.md). Nothing is skipped here.
+on:
+  schedule:
+    - cron: "43 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  slow-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest@0.9.100
+      - name: Every Rust test (profile nightly)
+        run: cargo nextest run --workspace --exclude owd-app --exclude owd-py --all-features --profile nightly

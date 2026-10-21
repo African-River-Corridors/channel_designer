@@ -56,9 +56,9 @@ def test_gates_fail_when_cargo_test_fails(tmp_path):
     it. Regression: `step` runs the function inside `||`, where bash ignores `set -e`."""
     path = _path_with_only(tmp_path, ["dirname", "git", "mktemp", "chmod", "cat", "env"])
     bin_dir = Path(path)
-    # cargo passes every call except `cargo test`.
+    # cargo passes every call except `cargo nextest run`.
     (bin_dir / "cargo").write_text(
-        '#!/bin/sh\nif [ "$1" = test ]; then echo "test result: FAILED" >&2; exit 101; fi\nexit 0\n'
+        '#!/bin/sh\nif [ "$1" = nextest ] && [ "$2" = run ]; then echo "test result: FAILED" >&2; exit 101; fi\nexit 0\n'
     )
     (bin_dir / "rustc").write_text("#!/bin/sh\nexit 0\n")
     for stub in ("cargo", "rustc"):
