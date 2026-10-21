@@ -28,7 +28,13 @@ try {
   await new Promise((r) => (ws.onopen = r));
   let id = 0;
   const pending = new Map();
-  ws.onmessage = (m) => { const d = JSON.parse(m.data); pending.get(d.id)?.(d.result); };
+  ws.onmessage = (m) => {
+    const d = JSON.parse(m.data);
+    if (typeof d.id !== "number" || !pending.has(d.id)) return;
+    const done = pending.get(d.id);
+    pending.delete(d.id);
+    done(d.result);
+  };
   const send = (method, params = {}) => new Promise((r) => { pending.set(++id, r); ws.send(JSON.stringify({ id, method, params })); });
   await send("Emulation.setDeviceMetricsOverride", { width: 1440, height, deviceScaleFactor: 1, mobile: false });
   if (process.env.OS_DARK) await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
