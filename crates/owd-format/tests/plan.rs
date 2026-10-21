@@ -265,14 +265,14 @@ fn both() -> Vec<LabelRule> {
 
 #[test]
 fn a_clean_line_gives_no_label() {
-    assert!(labels(&option(None, 300.0, json!([])), &both()).is_empty());
+    assert!(labels(&option(None, 300.0, json!([])), &[], &both()).is_empty());
     // a bend wider than the limit is not an exception either
-    assert!(labels(&option(Some(900.0), 300.0, json!([])), &both()).is_empty());
+    assert!(labels(&option(Some(900.0), 300.0, json!([])), &[], &both()).is_empty());
 }
 
 #[test]
 fn one_tight_bend_gives_one_bend_label() {
-    let found = labels(&option(Some(150.0), 300.0, json!([])), &both());
+    let found = labels(&option(Some(150.0), 300.0, json!([])), &[], &both());
     assert_eq!(found.len(), 1, "{found:?}");
     assert_eq!(found[0].rule, "bend-tighter-than");
     assert!(found[0].text.starts_with("BEND R "), "{}", found[0].text);
@@ -281,6 +281,7 @@ fn one_tight_bend_gives_one_bend_label() {
     assert!(
         labels(
             &option(Some(150.0), 300.0, json!([])),
+            &[],
             &[LabelRule::BendTighterThan { k: 0.4 }]
         )
         .is_empty()
@@ -291,7 +292,7 @@ fn one_tight_bend_gives_one_bend_label() {
 fn one_infeasible_stretch_gives_one_label() {
     let stretch =
         json!([{"start_chainage_m": 120.0, "end_chainage_m": 340.5, "reason": "too_narrow"}]);
-    let found = labels(&option(None, 300.0, stretch), &both());
+    let found = labels(&option(None, 300.0, stretch), &[], &both());
     assert_eq!(found.len(), 1, "{found:?}");
     assert_eq!(found[0].rule, "infeasible-stretch");
     assert_eq!(found[0].text, "TOO NARROW CH 0+120.0 TO 0+340.5");
@@ -319,13 +320,13 @@ fn turning_a_label_rule_off_removes_its_labels() {
         300.0,
         json!([{"start_chainage_m": 10.0, "end_chainage_m": 20.0, "reason": "too_narrow"}]),
     );
-    assert_eq!(labels(&opt, &both()).len(), 2);
+    assert_eq!(labels(&opt, &[], &both()).len(), 2);
     assert!(
-        labels(&opt, &[LabelRule::InfeasibleStretch])
+        labels(&opt, &[], &[LabelRule::InfeasibleStretch])
             .iter()
             .all(|l| l.rule == "infeasible-stretch")
     );
-    assert!(labels(&opt, &[]).is_empty());
+    assert!(labels(&opt, &[], &[]).is_empty());
 }
 
 #[test]

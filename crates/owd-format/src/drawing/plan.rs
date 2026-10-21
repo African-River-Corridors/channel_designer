@@ -52,13 +52,21 @@ pub enum LabelRule {
     BendTighterThan { k: f64 },
     /// Label each stretch where the channel does not fit in the water.
     InfeasibleStretch,
+    /// Band and label each constraint stretch of the screening (width, depth or radius short),
+    /// showing the fields named, in order: `kind`, `deficit`, `works`, `chainage`.
+    ConstraintStretch { fields: Vec<String> },
 }
+
+/// The kinds of constraint stretch the `constraint-stretch` rule labels. The `infeasible` ones are
+/// the `infeasible-stretch` rule's.
+pub const CONSTRAINT_KINDS: [&str; 3] = ["width", "depth", "radius"];
 
 impl LabelRule {
     pub fn name(&self) -> &'static str {
         match self {
             LabelRule::BendTighterThan { .. } => "bend-tighter-than",
             LabelRule::InfeasibleStretch => "infeasible-stretch",
+            LabelRule::ConstraintStretch { .. } => "constraint-stretch",
         }
     }
 }
@@ -67,6 +75,8 @@ impl LabelRule {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlanLabel {
     pub rule: &'static str,
+    /// For a constraint stretch, its place in the option's `constraint_stretches`.
+    pub stretch: Option<usize>,
     pub start_m: f64,
     pub end_m: f64,
     pub text: String,
@@ -88,17 +98,19 @@ const NORTH_ZONE_MM: f64 = 32.0;
 const BAR_ZONE_MM: f64 = 24.0;
 /// The least paper gap between two texts, or a text and the furniture, in millimetres.
 const TEXT_GAP_MM: f64 = 0.5;
-/// How many lines a text may move up, and down, to find room.
-const PLACE_TRIES: usize = 6;
+/// How many lines a text may move up and down (and twice that many line heights left and right) to
+/// find room.
+const PLACE_TRIES: usize = 8;
 /// Strip ends fall on this step of chainage, in metres.
 const STRIP_STEP_M: f64 = 10.0;
 /// The layer of the relief (a layer of the document, not of the standard's table).
 const RELIEF_LAYER: &str = "RELIEF";
 
 /// The labels of an option under the rules, in chainage order: the bends of the bend catalogue
-/// (the setting-out table's) whose least radius is below `k x checks.r_min_m`, and the stored
-/// stretches of `checks.fits_in_water`.
-pub fn labels(option: &Value, rules: &[LabelRule]) -> Vec<PlanLabel> {
+/// (the setting-out table's) whose least radius is below `k x checks.r_min_m`, the stored
+/// stretches of `checks.fits_in_water`, and the constraint stretches of the screening (`stretches`,
+/// as the volumes stage stored them).
+pub fn labels(option: &Value, stretches: &[Value], rules: &[LabelRule]) -> Vec<PlanLabel> {
     let mut out = Vec::new();
     let line = all_positions(&option["line"]);
     for rule in rules {
@@ -135,9 +147,30 @@ pub fn labels(option: &Value, rules: &[LabelRule]) -> Vec<PlanLabel> {
                     };
                     out.push(PlanLabel {
                         rule: "infeasible-stretch",
+                        stretch: None,
                         start_m: a,
                         end_m: b,
                         text: format!("{why} CH {} TO {}", chainage_text(a), chainage_text(b)),
+                    });
+                }
+            }
+            LabelRule::ConstraintStretch { fields } => {
+                for (i, x) in stretches.iter().enumerate() {
+                    let kind = x["kind"].as_str().unwrap_or("");
+                    let (Some(a), Some(b)) =
+                        (x["start_chainage_m"].as_f64(), x["end_chainage_m"].as_f64())
+                    else {
+                        continue;
+                    };
+                    if !CONSTRAINT_KINDS.contains(&kind) {
+                        continue;
+                    }
+                    out.push(PlanLabel {
+                        rule: "constraint-stretch",
+                        stretch: Some(i),
+                        start_m: a,
+                        end_m: b,
+                        text: stretch_text(x, fields),
                     });
                 }
             }
@@ -145,6 +178,38 @@ pub fn labels(option: &Value, rules: &[LabelRule]) -> Vec<PlanLabel> {
     }
     out.sort_by(|a, b| a.start_m.total_cmp(&b.start_m));
     out
+}
+
+/// The one short label of a constraint stretch: its fields, in order, joined by a middle dot. A
+/// deficit is written to 0.1 m, as every kind's deficit is a length.
+pub fn stretch_text(x: &Value, fields: &[String]) -> String {
+    let mut parts = Vec::new();
+    for f in fields {
+        match f.as_str() {
+            "kind" => parts.push(format!("{} SHORT", clean(x["kind"].as_str().unwrap_or("")))),
+            "deficit" => {
+                if let Some(d) = x["deficit"].as_f64() {
+                    parts.push(format!("{d:.1} M"));
+                }
+            }
+            "works" => {
+                if let Some(w) = x["works"].as_str() {
+                    parts.push(clean(&w.replace('-', " ")));
+                }
+            }
+            "chainage" => {
+                let a = x["start_chainage_m"].as_f64().unwrap_or(0.0);
+                let b = x["end_chainage_m"].as_f64().unwrap_or(0.0);
+                parts.push(if (b - a).abs() < 0.05 {
+                    format!("CH {}", chainage_text(a))
+                } else {
+                    format!("CH {} TO {}", chainage_text(a), chainage_text(b))
+                });
+            }
+            _ => {}
+        }
+    }
+    parts.join(" · ")
 }
 
 fn bend_label(b: &BendRow, k: f64, r_min: f64) -> PlanLabel {
@@ -155,6 +220,7 @@ fn bend_label(b: &BendRow, k: f64, r_min: f64) -> PlanLabel {
     };
     PlanLabel {
         rule: "bend-tighter-than",
+        stretch: None,
         start_m: b.start_m,
         end_m: b.end_m,
         text: format!(
@@ -422,16 +488,17 @@ impl Placer {
         };
         let line = th + TEXT_GAP_MM / k;
         let first = fit(at[0], at[1]);
-        let chosen = (0..=2 * PLACE_TRIES)
-            .map(|i| {
-                let step = if i % 2 == 1 {
-                    (i / 2 + 1) as f64
-                } else {
-                    -((i / 2) as f64)
-                };
-                fit(at[0], at[1] + step * line)
-            })
-            .chain((1..=PLACE_TRIES).map(|i| fit(at[0] + i as f64 * line * 4.0, at[1])))
+        // candidates nearest first: a line at a time up and down, and a few text widths along
+        let mut offsets: Vec<(f64, f64)> = Vec::new();
+        for i in -(PLACE_TRIES as i32)..=PLACE_TRIES as i32 {
+            for j in -(PLACE_TRIES as i32)..=PLACE_TRIES as i32 {
+                offsets.push((f64::from(j) * line * 2.0, f64::from(i) * line));
+            }
+        }
+        offsets.sort_by(|a, b| libm::hypot(a.0, a.1).total_cmp(&libm::hypot(b.0, b.1)));
+        let chosen = offsets
+            .into_iter()
+            .map(|(dx, dy)| fit(at[0] + dx, at[1] + dy))
             .find(|b| self.free(b))
             .or(required.then_some(first))?;
         self.placed.push(chosen);
@@ -738,7 +805,12 @@ pub(super) fn build(
         .map(|key| all_positions(&doc["inputs"][*key]))
         .filter(|b| b.len() > 1)
         .collect();
-    let sections: Vec<(usize, &CrossSection, f64)> = gallery::pick(walk, option, &gp)
+    let stretches = super::stretches(session, option_id);
+    let worst: Vec<f64> = stretches
+        .iter()
+        .filter_map(|x| x["worst_chainage_m"].as_f64())
+        .collect();
+    let sections: Vec<(usize, &CrossSection, f64)> = gallery::pick(walk, option, &worst, &gp)
         .iter()
         .enumerate()
         .map(|(i, &(si, _))| {
@@ -752,7 +824,7 @@ pub(super) fn build(
         walk,
         banks,
         sections,
-        labels: labels(option, &p.rules),
+        labels: labels(option, &stretches, &p.rules),
         p: &p,
     };
 
@@ -924,18 +996,29 @@ pub(super) fn build(
             if !(mid >= s0 && (mid < s1 || (last && mid <= s1))) {
                 continue;
             }
-            if l.rule == "infeasible-stretch" {
-                for (r, run) in clip(&line.part(l.start_m, l.end_m), &w)
-                    .into_iter()
-                    .enumerate()
-                {
-                    ents.push(polyline("ZONE", Some(format!("label-{j}-band-{r}")), &run));
+            let id = l
+                .stretch
+                .map_or_else(|| format!("label-{j}"), |i| format!("stretch-{i}"));
+            if l.rule != "bend-tighter-than" {
+                // the band: the line over the stretch; a stretch of no length is a mark across it
+                let band = if l.end_m - l.start_m > 1e-6 {
+                    line.part(l.start_m, l.end_m)
+                } else {
+                    let (c, nrm) = (line.at(l.start_m), line.normal(l.start_m));
+                    let h = half / 2.0;
+                    vec![
+                        [c[0] - nrm[0] * h, c[1] - nrm[1] * h],
+                        [c[0] + nrm[0] * h, c[1] + nrm[1] * h],
+                    ]
+                };
+                for (r, run) in clip(&band, &w).into_iter().enumerate() {
+                    ents.push(polyline("ZONE", Some(format!("{id}-band-{r}")), &run));
                 }
             }
             let (c, nrm) = (line.at(mid), line.normal(mid));
             let off = half + LABEL_OFFSET_MM / k_strip;
             ents.extend(placer.place(
-                &format!("label-{j}"),
+                &id,
                 [c[0] + nrm[0] * off, c[1] + nrm[1] * off],
                 &l.text,
                 H_LABEL,

@@ -94,9 +94,10 @@
             ],
             "properties": {
               "rule": {
-                "description": "bend-middle: the tightest point of each tight bend.",
+                "description": "bend-middle: the tightest point of each tight bend. constraint-worst: the worst station of each constraint stretch of the screening (spec 0007).",
                 "enum": [
-                  "bend-middle"
+                  "bend-middle",
+                  "constraint-worst"
                 ]
               }
             }
@@ -457,6 +458,32 @@
                 "properties": {
                   "rule": {
                     "const": "infeasible-stretch"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "rule",
+                  "fields"
+                ],
+                "properties": {
+                  "rule": {
+                    "const": "constraint-stretch"
+                  },
+                  "fields": {
+                    "description": "What the label of each constraint stretch shows, in this order: kind (what falls short), deficit (by how much), works (what would fix it), chainage (its range).",
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "enum": [
+                        "kind",
+                        "deficit",
+                        "works",
+                        "chainage"
+                      ]
+                    }
                   }
                 }
               }

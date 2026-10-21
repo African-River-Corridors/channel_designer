@@ -240,6 +240,25 @@ pub fn sheets(
     Ok(out)
 }
 
+/// The constraint stretches of an option (spec 0007), as the volumes stage stored them in its
+/// screening. Empty when there are none.
+pub(super) fn stretches(session: &Session, option_id: &str) -> Vec<Value> {
+    session.document()["stages"]["volumes"]["results"]["options"]
+        .as_array()
+        .and_then(|a| a.iter().find(|r| r["id"] == option_id))
+        .and_then(|r| r["screening"]["constraint_stretches"].as_array())
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// The worst stations of an option's constraint stretches, by chainage.
+pub(super) fn worst_chainages(session: &Session, option_id: &str) -> Vec<f64> {
+    stretches(session, option_id)
+        .iter()
+        .filter_map(|x| x["worst_chainage_m"].as_f64())
+        .collect()
+}
+
 /// The id of the option asked for: by id or by name, or the first option.
 fn resolve_option(session: &Session, asked: Option<&str>) -> Result<String, DrawError> {
     let list = session.document()["options"]
