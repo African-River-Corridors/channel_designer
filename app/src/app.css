@@ -1,14 +1,37 @@
+@import "./tokens.css";
+
+/* Bridge for the old variable names: components still on them keep working. Each restyle ticket
+   (spec 0009) moves one group of components onto the tokens; the last one deletes this block. */
 :root {
-  --navy: #14325a;
-  --gold: #b8932f;
-  --cream: #f6f1e4;
-  --ink: #1b2430;
-  --dim: #5a6472;
-  --line: #d9d2bd;
-  --bar: var(--cream);
-  --serif: Georgia, "Times New Roman", serif;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --navy: var(--ink);
+  --gold: var(--ink);
+  --dim: var(--ink-3);
+  --line: var(--rule);
+  --bar: var(--paper);
+  --serif: var(--font-serif);
+  --sans: var(--font-ui);
 }
-html, body { margin: 0; background: #fff; color: var(--ink); font: 14px var(--sans); }
-button { font: inherit; padding: 3px 10px; }
-h2, h3 { color: var(--navy); font-family: var(--serif); margin: 0 0 6px; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--paper); color: var(--ink); font: var(--fs-13) / var(--lh-ui) var(--font-ui); }
+button, select, input { font: inherit; }
+button {
+  font-size: var(--fs-12);
+  font-weight: 500;
+  padding: 4px 10px;
+  color: var(--ink);
+  background: var(--surface);
+  border: var(--lw-thin) solid var(--rule-strong);
+  border-radius: var(--radius);
+}
+button:disabled { color: var(--ink-3); border-color: var(--rule); background: transparent; }
+button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: var(--lw-thick) solid var(--ink); outline-offset: 2px; }
+select, input[type="text"], input:not([type]), input[inputmode] {
+  padding: 5px 8px;
+  color: var(--ink);
+  background: var(--paper);
+  border: var(--lw-thin) solid var(--rule-strong);
+  border-radius: var(--radius);
+}
+input::placeholder { color: var(--ink-3); }
+h2, h3 { color: var(--ink-2); font: 600 var(--fs-11) var(--font-ui); letter-spacing: var(--track-caps); text-transform: uppercase; margin: 0 0 var(--sp-2); padding-bottom: var(--sp-1); border-bottom: var(--lw-thin) solid var(--ink); }
