@@ -37,6 +37,8 @@ pub const LOA: &str = "vessel.loa";
 pub const BEAM: &str = "vessel.beam";
 /// The design draught (m).
 pub const DRAUGHT: &str = "vessel.draught";
+/// The GB 50139 swept path with its bank increment, WG 141 A.3.2 (m): shown beside the width used.
+pub const GB_SWEPT_PATH: &str = "channel.gb-swept-path";
 
 /// The Measures, in listing order: id, what it is, and whether a Rule sizes it.
 pub const MEASURES: &[(&str, &str)] = &[
@@ -51,10 +53,33 @@ pub const MEASURES: &[(&str, &str)] = &[
     (LOA, "vessel length overall, long end of its class"),
     (BEAM, "vessel beam"),
     (DRAUGHT, "design draught"),
+    (
+        GB_SWEPT_PATH,
+        "GB 50139 swept path (B + L sin beta) x (1 + bank increment), WG 141 A.3.2",
+    ),
 ];
 
 /// The Safety and Ease quality of PIANC WG 141 (A, B or C), one value for the design.
 pub const SE_QUALITY: &str = "se_quality";
+/// The end of each range GB 50139 states: `permissive` or `strict`.
+pub const RANGE_END: &str = "range_end";
+/// The vessel's formation: `motor_vessel` or `pushed_convoy`. From the vessel.
+pub const FORMATION: &str = "formation";
+/// The vessel's class (`I` to `VII`, as the vessel classes name it). From the vessel.
+pub const VESSEL_CLASS: &str = "vessel_class";
+
+/// The inputs a Rule may apply on, with their values. All are one value for the design.
+pub const INPUTS: &[(&str, &[&str])] = &[
+    (SE_QUALITY, &["A", "B", "C"]),
+    (RANGE_END, &["permissive", "strict"]),
+    (FORMATION, &["motor_vessel", "pushed_convoy"]),
+    (
+        VESSEL_CLASS,
+        &[
+            "I", "II", "III", "IV", "Va", "Vb", "VIa", "VIb", "VIc", "VII",
+        ],
+    ),
+];
 
 /// `k × x`.
 fn multiple(
@@ -91,6 +116,57 @@ fn capped_widening(
     Ok(py_min(k * l * l / r, l))
 }
 
+/// `x + clearance` (GB 50139 depth: draught plus a fixed clearance).
+fn plus_clearance(
+    shape: &str,
+    c: &[(String, f64)],
+    op: &mut dyn FnMut(&str) -> Result<f64, String>,
+) -> Result<f64, String> {
+    Ok(op("x")? + coefficient(shape, c, "clearance")?)
+}
+
+/// `L² / (2R + B)` (WG 141 A.3.3, the GB 50139 bend widening); none on a straight.
+fn gb_widening(
+    _: &str,
+    _: &[(String, f64)],
+    op: &mut dyn FnMut(&str) -> Result<f64, String>,
+) -> Result<f64, String> {
+    let (l, r, b) = (op("length")?, op("radius")?, op("beam")?);
+    if r <= 0.0 || r.is_infinite() {
+        return Ok(0.0);
+    }
+    Ok(l * l / (2.0 * r + b))
+}
+
+/// The GB 50139 straight width: the width of the nearest WG 141 Table A.2 entry when the vessel
+/// matches it (the relative LOA and beam differences add up to at most `match`; the first of two
+/// equal entries wins), else `ratio × B` (WG 141 Table 5.1, China River).
+fn gb_straight_width(
+    shape: &str,
+    c: &[(String, f64)],
+    op: &mut dyn FnMut(&str) -> Result<f64, String>,
+) -> Result<f64, String> {
+    let (loa, beam) = (op("loa")?, op("beam")?);
+    let k = |name: &str| coefficient(shape, c, name);
+    let mut best: Option<(f64, f64)> = None; // (width, distance)
+    for n in 1..=3 {
+        let (l, b, w) = (
+            k(&format!("a{n}_loa"))?,
+            k(&format!("a{n}_beam"))?,
+            k(&format!("a{n}_width"))?,
+        );
+        let d = (l - loa).abs() / py_max(l, 1.0) + (b - beam).abs() / py_max(b, 1.0);
+        match best {
+            Some((_, bd)) if !matches!(d.partial_cmp(&bd), Some(core::cmp::Ordering::Less)) => {}
+            _ => best = Some((w, d)),
+        }
+    }
+    match best {
+        Some((w, d)) if d <= k("match")? => Ok(w),
+        _ => Ok(k("ratio")? * beam),
+    }
+}
+
 /// The formula shapes OWD registers. Each keeps the order of operations of the code it replaced,
 /// so no bit of a result moves.
 pub const SHAPES: &[FormulaShape] = &[
@@ -115,6 +191,30 @@ pub const SHAPES: &[FormulaShape] = &[
         free_unit_operands: &[],
         value: capped_widening,
     },
+    FormulaShape {
+        id: "plus-clearance",
+        operands: &["x"],
+        coefficients: &["clearance"],
+        free_unit_operands: &[],
+        value: plus_clearance,
+    },
+    FormulaShape {
+        id: "gb-widening",
+        operands: &["beam", "length", "radius"],
+        coefficients: &[],
+        free_unit_operands: &[],
+        value: gb_widening,
+    },
+    FormulaShape {
+        id: "gb-straight-width",
+        operands: &["beam", "loa"],
+        coefficients: &[
+            "a1_beam", "a1_loa", "a1_width", "a2_beam", "a2_loa", "a2_width", "a3_beam", "a3_loa",
+            "a3_width", "match", "ratio",
+        ],
+        free_unit_operands: &[],
+        value: gb_straight_width,
+    },
 ];
 
 /// OWD's vocabulary, for the loader.
@@ -133,10 +233,13 @@ impl Domain for ChannelDomain {
     }
 
     fn input(&self, name: &str) -> Option<InputDef> {
-        (name == SE_QUALITY).then(|| InputDef {
-            values: vec!["A".into(), "B".into(), "C".into()],
-            scope: InputScope::Design,
-        })
+        INPUTS
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, values)| InputDef {
+                values: values.iter().map(|v| (*v).into()).collect(),
+                scope: InputScope::Design,
+            })
     }
 
     fn shapes(&self) -> &[FormulaShape] {
@@ -153,10 +256,16 @@ impl Domain for ChannelDomain {
 }
 
 /// The Rule Set files built into every binary: (path, text).
-pub const BUILT_IN: &[(&str, &str)] = &[(
-    "rules/pianc-wg141/0.3.0.json",
-    include_str!("../../rules/pianc-wg141/0.3.0.json"),
-)];
+pub const BUILT_IN: &[(&str, &str)] = &[
+    (
+        "rules/pianc-wg141/0.3.0.json",
+        include_str!("../../rules/pianc-wg141/0.3.0.json"),
+    ),
+    (
+        "rules/gb50139/0.3.0.json",
+        include_str!("../../rules/gb50139/0.3.0.json"),
+    ),
+];
 
 /// The built-in sets, loaded once through the same loader a user's file takes.
 pub fn built_in() -> &'static Library {
@@ -172,17 +281,56 @@ pub fn built_in() -> &'static Library {
 }
 
 /// The vessel a channel is sized for.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Vessel {
     pub loa_m: f64,
     pub beam_m: f64,
     pub draught_m: f64,
+    /// `motor_vessel` or `pushed_convoy`.
+    pub formation: String,
+    /// The class, such as `IV` or `VIa`.
+    pub class_name: String,
+}
+
+/// The drift angle of the GB 50139 swept path (WG 141 A.3.2): 3 degrees for classes I to V, 2 degrees
+/// for VI and VII, told apart by a beam of 22.8 m.
+const GB_DRIFT_DEG_LARGE_BEAM: f64 = 2.0;
+const GB_DRIFT_DEG_SMALL_BEAM: f64 = 3.0;
+const GB_LARGE_BEAM_M: f64 = 22.8;
+
+/// The GB 50139 bank increment, a fraction of the swept path (WG 141 A.3.2): 0.25 to 0.30 for a
+/// convoy, 0.34 to 0.40 for a motor vessel; `range_end` picks the end.
+fn gb_bank_increment(motor: bool, strict: bool) -> f64 {
+    match (motor, strict) {
+        (false, false) => 0.25,
+        (false, true) => 0.30,
+        (true, false) => 0.34,
+        (true, true) => 0.40,
+    }
+}
+
+/// The GB 50139 swept path with its bank increment, `(B + L sin beta) × (1 + bank)`.
+fn gb_swept_path(vessel: &Vessel, range_end: Option<&str>) -> Result<f64, String> {
+    let strict = match range_end {
+        Some("strict") => true,
+        Some("permissive") => false,
+        _ => return Err(format!("the swept path needs the `{RANGE_END}` input")),
+    };
+    let deg = if vessel.beam_m >= GB_LARGE_BEAM_M {
+        GB_DRIFT_DEG_LARGE_BEAM
+    } else {
+        GB_DRIFT_DEG_SMALL_BEAM
+    };
+    let beta = deg * (core::f64::consts::PI / 180.0);
+    let swept = vessel.beam_m + vessel.loa_m * libm::sin(beta);
+    let bank = gb_bank_increment(vessel.formation == "motor_vessel", strict);
+    Ok(swept * (1.0 + bank))
 }
 
 /// One channel as the engine reads it: the vessel, the set inputs, and the value of each sized
 /// Measure (0 while sizing: the evaluator needs a number to report a limit).
 struct Channel<'a> {
-    vessel: Vessel,
+    vessel: &'a Vessel,
     inputs: &'a [(String, String)],
     radius_m: f64,
 }
@@ -206,6 +354,7 @@ impl MeasureSource for Channel<'_> {
             BEAM => self.vessel.beam_m,
             DRAUGHT => self.vessel.draught_m,
             BEND_RADIUS => self.radius_m,
+            GB_SWEPT_PATH => gb_swept_path(self.vessel, self.input(RANGE_END).as_deref())?,
             BOTTOM_WIDTH | MIN_BEND_RADIUS | DESIGN_DEPTH | BEND_WIDENING => 0.0,
             other => return Err(format!("unknown Measure `{other}`")),
         };
@@ -213,10 +362,15 @@ impl MeasureSource for Channel<'_> {
     }
 
     fn input(&self, name: &str) -> Option<String> {
-        self.inputs
-            .iter()
-            .find(|(k, _)| k == name)
-            .map(|(_, v)| v.clone())
+        match name {
+            FORMATION => Some(self.vessel.formation.clone()),
+            VESSEL_CLASS => Some(self.vessel.class_name.clone()),
+            _ => self
+                .inputs
+                .iter()
+                .find(|(k, _)| k == name)
+                .map(|(_, v)| v.clone()),
+        }
     }
 }
 
@@ -251,7 +405,7 @@ impl Selection {
     /// The same selection with only the Rules on `measure` that apply to these inputs. The trace of
     /// the narrowed selection gives the same rows on that Measure, at a fraction of the cost: the
     /// water checks read the bend widening at every station.
-    pub fn narrowed_to(&self, measure: &str, vessel: Vessel) -> Self {
+    pub fn narrowed_to(&self, measure: &str, vessel: &Vessel) -> Self {
         let source = Channel {
             vessel,
             inputs: &self.inputs,
@@ -274,7 +428,7 @@ impl Selection {
     }
 
     /// The Rule Trace of a channel for this vessel, with the bend widening read at `radius_m`.
-    pub fn trace(&self, vessel: Vessel, radius_m: f64) -> Trace {
+    pub fn trace(&self, vessel: &Vessel, radius_m: f64) -> Trace {
         let sets: Vec<&RuleSet> = self.sets.iter().map(|s| s.as_ref()).collect();
         let source = Channel {
             vessel,
@@ -319,7 +473,7 @@ pub struct Sized {
 
 /// Size a channel: the governing limit of each sized Measure. The bend widening is read at the
 /// governing minimum radius.
-pub fn size(selection: &Selection, vessel: Vessel) -> Result<Sized, RuleError> {
+pub fn size(selection: &Selection, vessel: &Vessel) -> Result<Sized, RuleError> {
     let first = selection.trace(vessel, 0.0);
     let r_min = governing_limit(&first, MIN_BEND_RADIUS)?;
     let at_rmin = selection.trace(vessel, r_min);
@@ -333,7 +487,7 @@ pub fn size(selection: &Selection, vessel: Vessel) -> Result<Sized, RuleError> {
 
 /// The governing bend widening at `radius_m`. None on a straight (a radius that is not finite and
 /// positive); NaN in, NaN out, as the code this replaced.
-pub fn widening(selection: &Selection, vessel: Vessel, radius_m: f64) -> Result<f64, RuleError> {
+pub fn widening(selection: &Selection, vessel: &Vessel, radius_m: f64) -> Result<f64, RuleError> {
     if radius_m.is_nan() {
         return Ok(f64::NAN);
     }
@@ -351,7 +505,7 @@ pub fn widening(selection: &Selection, vessel: Vessel, radius_m: f64) -> Result<
 /// formula is the governing limit. `None` otherwise; the caller then asks the engine.
 fn only_formula(
     selection: &Selection,
-    vessel: Vessel,
+    vessel: &Vessel,
     radius_m: f64,
     measure: &str,
 ) -> Option<Result<f64, String>> {
