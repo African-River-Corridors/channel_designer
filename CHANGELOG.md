@@ -5,6 +5,7 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- Trademark policy: new `TRADEMARKS.md` says how the Open Waterway Designer (OWD) and ARC names and logos may be used. The Apache licence covers the code; this policy covers the marks. No result moves.
 ### Design impact
 
 Every pull request is checked for design impact (`tools/design_impact.py`, CI job `design-impact`): fixed
