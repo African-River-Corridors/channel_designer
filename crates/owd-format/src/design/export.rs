@@ -380,7 +380,8 @@ fn part_of(line: &[[f64; 2]], a: f64, b: f64) -> Vec<[f64; 2]> {
     }
     let mut s = 0.0;
     for w in line.windows(2) {
-        s += ((w[1][0] - w[0][0]).powi(2) + (w[1][1] - w[0][1]).powi(2)).sqrt();
+        let (dx, dy) = (w[1][0] - w[0][0], w[1][1] - w[0][1]);
+        s += (dx * dx + dy * dy).sqrt();
         if s > a && s < b {
             out.push(w[1]);
         }

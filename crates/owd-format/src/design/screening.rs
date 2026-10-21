@@ -240,7 +240,10 @@ impl Session {
                 let ranges = reach_ranges(&self.doc);
                 let length: f64 = line
                     .windows(2)
-                    .map(|w| ((w[1][0] - w[0][0]).powi(2) + (w[1][1] - w[0][1]).powi(2)).sqrt())
+                    .map(|w| {
+                        let (dx, dy) = (w[1][0] - w[0][0], w[1][1] - w[0][1]);
+                        (dx * dx + dy * dy).sqrt()
+                    })
                     .sum();
                 let n = (length / station_m).ceil().max(1.0) as usize;
                 let stations: Vec<Station> = (0..=n)
