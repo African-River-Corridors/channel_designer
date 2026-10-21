@@ -203,7 +203,13 @@ fn trace_and_the_stretch_exports_run_on_the_example() {
     assert!(!a["rows"].as_array().unwrap().is_empty());
     let table = String::from_utf8(run(&["trace", doc]).stdout).unwrap();
     assert!(table.starts_with("# Screening"), "{table}");
-    let o = json(&run(&["trace", doc, "--option", "rolling-circle", "--json"]));
+    let o = json(&run(&[
+        "trace",
+        doc,
+        "--option",
+        "rolling-circle",
+        "--json",
+    ]));
     assert!(o["rows"].as_array().unwrap().len() > a["rows"].as_array().unwrap().len());
     let csv = run(&["export", doc, "--csv", "--stretches"]);
     assert!(csv.status.success());
