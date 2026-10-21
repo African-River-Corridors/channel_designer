@@ -3,6 +3,8 @@ name: Nightly
 # Every Rust test, including the slow ones that the pull-request gate leaves out
 # (.config/nextest.toml, docs/agents/slow-tests.md). Nothing is skipped here.
 on:
+  push:
+    branches: [ticket/151-faster-ci] # TEMPORARY: proves the workflow before it reaches main
   schedule:
     - cron: "43 2 * * *"
   workflow_dispatch:
