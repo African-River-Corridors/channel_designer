@@ -8,7 +8,7 @@ out=${2:-/tmp/owd-shots}
 chrome=${CHROME:-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"}
 mkdir -p "$out"
 for theme in light dark; do
-  "$chrome" --headless=new --hide-scrollbars --window-size=1440,900 --virtual-time-budget=8000 \
+  "$chrome" --headless=new --hide-scrollbars --window-size=1440,900 --virtual-time-budget=20000 \
     --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist \
     --screenshot="$out/$name-$theme.png" "http://localhost:1420/mock.html?theme=$theme" >/dev/null 2>&1
 done

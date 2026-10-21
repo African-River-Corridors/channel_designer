@@ -9,6 +9,8 @@
   import { BASEMAP_TILES } from "./lib/basemap";
   import MapPanel from "./lib/MapPanel.svelte";
   import LeftPanel from "./lib/LeftPanel.svelte";
+  import markLight from "./assets/owd-mark.svg";
+  import markDark from "./assets/owd-mark-reversed-clear.svg";
 
   // Display state only: the channel design, its stage status and its results all come from Rust.
   let snap = $state<Snapshot | null>(null);
@@ -316,13 +318,14 @@
 
 <div class="shell">
   <header>
+    <span class="brand"><img class="mark-light" src={markLight} alt="OWD" /><img class="mark-dark" src={markDark} alt="OWD" /></span>
     <button onclick={() => openDoc(api.newFile)}>New</button>
     <button onclick={() => openDoc(api.openFile)}>Open</button>
     <button onclick={() => fileAction(api.save)}>Save</button>
     <button onclick={() => fileAction(api.saveAs)}>Save as</button>
     <button disabled={!(table?.rows.length)} onclick={() => exportAs("geojson")} title="Design line options as GeoJSON (WGS84), with their checks">Export GeoJSON</button>
     <button disabled={!(table?.rows.length)} onclick={() => exportAs("csv")} title="The quantity table as CSV">Export CSV</button>
-    <button disabled={!anyStale || busy !== null} onclick={runStale} title="Rerun every stale stage, in order">Run stale</button>
+    <button class="primary" disabled={!anyStale || busy !== null} onclick={runStale} title="Rerun every stale stage, in order">Run stale</button>
     <span class="grow"></span>
     {#if snap}
       <span class="meta" data-testid="file-label">{snap.file_name}{snap.dirty ? " (unsaved)" : ""}</span>
@@ -392,27 +395,40 @@
 
 <style>
   .shell { display: flex; flex-direction: column; height: 100vh; }
-  header { display: flex; gap: 6px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); background: var(--bar); }
+  header { display: flex; gap: var(--sp-2); align-items: center; padding: var(--sp-2) var(--sp-3); border-bottom: var(--lw-thin) solid var(--ink); background: var(--paper); }
+  .brand { display: flex; align-items: center; margin-right: var(--sp-3); }
+  .brand img { height: 26px; }
+  .mark-dark { display: none; }
   .grow { flex: 1; }
-  .meta { color: var(--dim); font-size: 12px; margin-left: 12px; }
-  .banner { padding: 6px 10px; font-size: 13px; }
-  .banner.error { background: #fbe4e1; color: #7a1d12; }
-  .banner.warn { background: #fdf1d3; color: #6b4a00; }
+  .meta { color: var(--ink-3); font-size: var(--fs-12); margin-left: var(--sp-3); font-variant-numeric: tabular-nums; }
+  .banner { display: flex; gap: var(--sp-2); align-items: center; padding: 6px var(--sp-3); font-size: var(--fs-13); border-bottom: var(--lw-thin) solid var(--rule); }
+  .banner.error { background: var(--fail-soft); color: var(--fail); }
+  .banner.error::before { content: "✕"; font-weight: 700; }
+  .banner.warn { background: var(--warn-soft); color: var(--warn); }
+  .banner.warn::before { content: "!"; font-weight: 700; }
   .body { flex: 1; display: grid; min-height: 0; }
   .body > section { overflow: auto; min-width: 0; min-height: 0; }
-  .left { grid-column: 1; grid-row: 1 / 4; }
-  .handle.v { grid-column: 2; grid-row: 1 / 4; cursor: col-resize; background: var(--line); }
+  .left { grid-column: 1; grid-row: 1 / 4; background: var(--surface); }
+  .handle.v { grid-column: 2; grid-row: 1 / 4; cursor: col-resize; background: var(--ink); }
   .main { grid-column: 3; grid-row: 1; overflow: hidden; display: grid; grid-template-rows: minmax(120px, 1fr) minmax(150px, 40%); }
   .mapbox { min-height: 0; position: relative; }
-  .sections { display: grid; grid-template-columns: 1fr minmax(260px, 42%); min-height: 0; border-top: 1px solid var(--line); }
+  .sections { display: grid; grid-template-columns: 1fr minmax(260px, 42%); min-height: 0; border-top: var(--lw-thin) solid var(--ink); background: var(--surface); }
   .longbox, .crossbox { min-width: 0; min-height: 0; overflow: hidden; }
-  .crossbox { border-left: 1px solid var(--line); display: flex; flex-direction: column; }
+  .crossbox { border-left: var(--lw-thin) solid var(--ink); display: flex; flex-direction: column; }
   .csbody { flex: 1; min-height: 0; }
-  .slider { display: flex; gap: 8px; align-items: center; padding: 4px 8px; font-size: 12px; color: var(--dim); }
-  .slider input { flex: 1; }
-  .slot { color: var(--dim); font-style: italic; margin: 8px 10px; font-size: 13px; }
-  .handle.h { grid-column: 3; grid-row: 2; cursor: row-resize; background: var(--line); }
-  .bottom { grid-column: 3; grid-row: 3; }
-  .handle:hover { background: var(--gold); }
-  footer { padding: 4px 10px; background: var(--navy); color: var(--cream); font-size: 12px; letter-spacing: 0.04em; }
+  .slider { display: flex; gap: var(--sp-2); align-items: center; padding: var(--sp-1) var(--sp-2); font-size: var(--fs-12); color: var(--ink-3); }
+  .slider input { flex: 1; accent-color: var(--ink); }
+  .slot { color: var(--ink-3); font-style: italic; margin: var(--sp-2) 10px; font-size: var(--fs-13); }
+  .handle.h { grid-column: 3; grid-row: 2; cursor: row-resize; background: var(--ink); }
+  .bottom { grid-column: 3; grid-row: 3; background: var(--surface); }
+  .handle:hover { background: var(--ink-2); }
+  footer { padding: var(--sp-1) var(--sp-3); background: var(--accent); color: var(--accent-ink); font: 600 var(--fs-12) var(--font-ui); letter-spacing: 0.04em; }
+
+  /* The reversed mark shows on the dark theme: chosen by the OS, or by data-theme. */
+  :global(:root[data-theme="dark"]) .mark-light { display: none; }
+  :global(:root[data-theme="dark"]) .mark-dark { display: block; }
+  @media (prefers-color-scheme: dark) {
+    :global(:root:not([data-theme="light"])) .mark-light { display: none; }
+    :global(:root:not([data-theme="light"])) .mark-dark { display: block; }
+  }
 </style>

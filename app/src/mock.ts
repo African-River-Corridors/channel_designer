@@ -80,7 +80,7 @@ const shape = {
   width_basis: "PIANC WG 141, quality B", source: "PIANC WG 141", warnings: ["Draught is the vessel default (2.6 m). Type a value to use your own."],
 };
 const snapshot: Snapshot = {
-  engine_version: "0.6.0", file_name: "reach-a.owd", path: null, dirty: false, title: "Reach A, screening", warnings: [], running: null,
+  engine_version: "0.6.0", file_name: "reach-a.owd", path: null, dirty: false, title: "Reach A, screening", warnings: ["Draught is the vessel default (2.6 m). Type a value to use your own."], running: null,
   stages: [
     { name: "sizing", status: "fresh" }, { name: "alignment", status: "fresh" },
     { name: "optimise", status: "not_run" }, { name: "volumes", status: "stale" },
@@ -119,7 +119,7 @@ const answer: Record<string, () => unknown> = {
     rulesets: [{ id: "pianc-b", label: "PIANC WG 141, quality B", family: "pianc" }, { id: "pianc-a", label: "PIANC WG 141, quality A", family: "pianc" }],
     vessels: [{ id: "cemt-iv", label: "CEMT IV, motor barge", family: "cemt", formation: "motor barge", loa_m: [80, 85], beam_m: 9.5, draught_nominal_m: 2.6 }],
   }),
-  map_geometry: () => new Promise((ok) => setTimeout(() => ok(geometry), 400)), option_table: () => table, long_section: () => longSection, cross_section: () => crossSection,
+  map_geometry: () => geometry, option_table: () => table, long_section: () => longSection, cross_section: () => crossSection,
   station_near: () => 9000, hillshade: relief,
   // The tile address fails at once, so the map shows the hillshade and its offline note.
   basemap_tiles: () => "http://127.0.0.1:9/{z}/{x}/{y}.jpg",

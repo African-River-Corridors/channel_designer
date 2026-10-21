@@ -36,7 +36,7 @@
     {#each snap?.stages ?? [] as s}
       <li data-testid="stage-{s.name}">
         <span class="name">{LABEL[s.name]}</span>
-        <span class="chip {s.status}" data-testid="status-{s.name}">{busy === s.name ? "running" : CHIP[s.status]}</span>
+        <span class="chip {s.status}" class:running={busy === s.name} data-testid="status-{s.name}">{busy === s.name ? "running" : CHIP[s.status]}</span>
         {#if RUNNABLE.includes(s.name)}
           {#if s.name === "alignment"}
             <select aria-label="Alignment method" bind:value={method} disabled={busy !== null}>
@@ -66,12 +66,16 @@
 
 <style>
   .stages { list-style: none; margin: 0; padding: 0; }
-  li { display: flex; gap: 6px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
+  li { display: flex; gap: var(--sp-2); align-items: center; padding: 5px 0; border-bottom: var(--lw-thin) solid var(--rule); }
   .name { flex: 1; }
-  select { font: inherit; font-size: 12px; max-width: 110px; }
-  button { font-size: 12px; padding: 1px 8px; }
-  .chip { font-size: 11px; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--line); color: var(--dim); }
-  .chip.fresh { background: #e3f1e3; border-color: #9cc79c; color: #1d5c1d; }
-  .chip.stale { background: #fdf1d3; border-color: var(--gold); color: #6b4a00; }
-  .progress { margin: 6px 0 0; font-size: 12px; color: var(--dim); }
+  select { font-size: var(--fs-12); padding: 3px 6px; max-width: 120px; }
+  /* A word and a shape on every chip; the shape comes from CSS so the word stays the only text. */
+  .chip { font-size: var(--fs-11); font-weight: 600; padding: 1px 7px; border-radius: var(--radius); color: var(--ink-3); background: var(--surface-2); }
+  .chip.fresh { color: var(--pass); background: var(--pass-soft); }
+  .chip.fresh::before { content: "✓ "; }
+  .chip.stale { color: var(--warn); background: var(--warn-soft); }
+  .chip.stale::before { content: "! "; }
+  .chip.running { color: var(--ink); background: var(--accent-soft); }
+  .chip.running::before { content: "… "; }
+  .progress { margin: var(--sp-2) 0 0; font-size: var(--fs-12); color: var(--ink-3); }
 </style>
