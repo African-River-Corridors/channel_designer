@@ -4,3 +4,4 @@
 pub mod cli;
 pub mod commands;
 pub mod fetch;
+pub mod reach_fetch;

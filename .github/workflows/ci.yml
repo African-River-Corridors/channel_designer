@@ -183,6 +183,10 @@ jobs:
         run: cargo install wasm-bindgen-cli --version "${{ steps.wb.outputs.version }}" --locked
       - name: Lint the web session for wasm
         run: cargo clippy --target wasm32-unknown-unknown -p owd-web -- -D warnings
+      - name: Build and lint owd-reach for wasm (spec 0012)
+        run: |
+          cargo clippy --target wasm32-unknown-unknown -p owd-reach -- -D warnings
+          cargo build --target wasm32-unknown-unknown -p owd-reach
       - name: Build the web package
         run: bash tools/build_web.sh
       # Release: the pool search is far too slow in a debug build.

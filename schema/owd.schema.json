@@ -149,9 +149,39 @@
       "description": "Design line options, added by the alignment and optimise stages.",
       "type": "array",
       "items": { "type": "object" }
+    },
+    "provenance": {
+      "description": "Spec 0012: where each generated input came from, by input name. Optional: a document with none gives the same results. Each record names its source (an `owd-reach` registry id), its date, the licence notice that travels into every export, and a mark: `default` (made by OWD), `edited` (a default the user changed) or `user` (the user's own).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "left_bank": { "$ref": "#/$defs/provenance_record" },
+        "right_bank": { "$ref": "#/$defs/provenance_record" },
+        "centreline": { "$ref": "#/$defs/provenance_record" },
+        "river_polygon": { "$ref": "#/$defs/provenance_record" },
+        "dem": { "$ref": "#/$defs/provenance_record" },
+        "water_level": { "$ref": "#/$defs/provenance_record" },
+        "route": { "$ref": "#/$defs/provenance_record" },
+        "bed": { "$ref": "#/$defs/provenance_record" }
+      }
     }
   },
   "$defs": {
+    "provenance_record": {
+      "type": "object",
+      "required": ["source", "date", "notice", "mark"],
+      "additionalProperties": false,
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "date": { "type": "string", "minLength": 4 },
+        "notice": { "type": "string", "minLength": 1 },
+        "mark": { "enum": ["default", "edited", "user"] },
+        "provisional": {
+          "description": "True while the default behind this input is not yet calibrated (spec 0012).",
+          "type": "boolean"
+        }
+      }
+    },
     "position": {
       "type": "array",
       "minItems": 2,

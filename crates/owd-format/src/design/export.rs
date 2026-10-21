@@ -74,6 +74,9 @@ impl Session {
     /// missing one makes the volumes stale.
     pub fn export_csv(&self, dem: Option<&[u8]>) -> String {
         let mut out = format!("# {SCREENING_LABEL}\n");
+        for n in self.notices() {
+            out.push_str(&format!("# {}\n", n.replace('\n', " ")));
+        }
         out.push_str(
             "option_id,option,method,dredge_m3,dry_cut_m3,total_m3,tallest_face_m,\
              min_radius_m,r_min_m,radius_check_chord_m,radius_ok,failed_checks,volumes_status,notes\n",
@@ -170,6 +173,10 @@ impl Session {
             "title": self.doc["project"]["title"],
             "features": features,
         });
+        let notices = self.notices();
+        if !notices.is_empty() {
+            fc["notices"] = json!(notices);
+        }
         // RFC 7946 is WGS84 only. For the project CRS the legacy `crs` member says which, as the
         // importer reads it back.
         if !wgs84 {
