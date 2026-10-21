@@ -1,0 +1,45 @@
+name: Website
+
+# Builds the website and docs (website/build.py) and checks the links. Spec 0010. The public URL is
+# https://www.africanrivercorridors.com/owd: the ARC site proxies /owd to a GitHub Pages site
+# (website/README.md). A pull request that touches the site or docs runs the build, so a change is
+# proved before it merges.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+      - "docs/**"
+      - "*.md"
+      - ".github/workflows/website.yml"
+  pull_request:
+    paths:
+      - "website/**"
+      - "docs/**"
+      - "*.md"
+      - ".github/workflows/website.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Build the site
+        run: python website/build.py
+      - name: Check every internal link in the built site
+        run: python website/check_links.py
+      - name: The site's token file is the app's token file
+        run: cmp website/tokens.css app/src/tokens.css
