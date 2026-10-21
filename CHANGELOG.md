@@ -5,6 +5,14 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **PIANC WG 141 sizing on the shared rules engine (spec 0007, T1).** OWD now pins `arc-rules` (the rules engine
+  shared with open-vessel-concept-drawings) at its tag `v0.2.4`. The WG 141 coefficients are a Rule Set file,
+  `pianc-wg141` version 0.3.0: twelve Rules (bottom width, minimum radius, design depth and bend widening for
+  qualities A, B and C), each citing its WG 141 clause or table and page, origin `guideline`, all `unverified`.
+  The set loads through the same loader a user's file takes. `channel_shape` with PIANC-A, PIANC-B or PIANC-C now
+  sizes through the engine and gives the same numbers bit for bit. New: `owd_core::rules::engine`, and
+  `docs/rules/codification.md` (how a Rule is written, cited and verified).
+
 - **Bank-line editor, desktop and web (spec 0012, T11).** "Edit banks" on the plan map: move, add and delete
   vertices, or redraw one stretch (it replaces the bank between the two nearest vertices). A bank always stays
   one line: an edit that would cross the other bank, or the bank itself, is refused with a message and changes
