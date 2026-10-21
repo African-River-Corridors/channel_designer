@@ -1,0 +1,176 @@
+{
+ "version": 0.6,
+ "generator": "make_reach_fixtures.py (synthetic)",
+ "osm3s": {
+  "copyright": "synthetic test data"
+ },
+ "elements": [
+  {
+   "type": "way",
+   "id": 101,
+   "nodes": [
+    1,
+    2,
+    3
+   ],
+   "geometry": [
+    {
+     "lat": 5.0,
+     "lon": -6.0
+    },
+    {
+     "lat": 5.0,
+     "lon": -5.99
+    },
+    {
+     "lat": 5.0,
+     "lon": -5.98
+    }
+   ],
+   "tags": {
+    "name": "Alpha",
+    "waterway": "river"
+   }
+  },
+  {
+   "type": "way",
+   "id": 102,
+   "nodes": [
+    3,
+    6,
+    7,
+    5
+   ],
+   "geometry": [
+    {
+     "lat": 5.0,
+     "lon": -5.98
+    },
+    {
+     "lat": 5.012,
+     "lon": -5.975
+    },
+    {
+     "lat": 5.012,
+     "lon": -5.965
+    },
+    {
+     "lat": 5.0,
+     "lon": -5.96
+    }
+   ],
+   "tags": {
+    "name": "Alpha",
+    "waterway": "river"
+   }
+  },
+  {
+   "type": "way",
+   "id": 103,
+   "nodes": [
+    3,
+    10,
+    11,
+    5
+   ],
+   "geometry": [
+    {
+     "lat": 5.0,
+     "lon": -5.98
+    },
+    {
+     "lat": 4.99,
+     "lon": -5.975
+    },
+    {
+     "lat": 4.99,
+     "lon": -5.965
+    },
+    {
+     "lat": 5.0,
+     "lon": -5.96
+    }
+   ],
+   "tags": {
+    "name": "Alpha",
+    "waterway": "river"
+   }
+  },
+  {
+   "type": "way",
+   "id": 104,
+   "nodes": [
+    5,
+    12,
+    13
+   ],
+   "geometry": [
+    {
+     "lat": 5.0,
+     "lon": -5.96
+    },
+    {
+     "lat": 5.0,
+     "lon": -5.95
+    },
+    {
+     "lat": 5.0,
+     "lon": -5.94
+    }
+   ],
+   "tags": {
+    "name": "Alpha",
+    "waterway": "river"
+   }
+  },
+  {
+   "type": "way",
+   "id": 201,
+   "nodes": [
+    20,
+    12,
+    21
+   ],
+   "geometry": [
+    {
+     "lat": 4.98,
+     "lon": -5.95
+    },
+    {
+     "lat": 5.0,
+     "lon": -5.95
+    },
+    {
+     "lat": 5.02,
+     "lon": -5.95
+    }
+   ],
+   "tags": {
+    "name": "Beta",
+    "waterway": "stream"
+   }
+  },
+  {
+   "type": "way",
+   "id": 301,
+   "nodes": [
+    30,
+    31
+   ],
+   "geometry": [
+    {
+     "lat": 5.0,
+     "lon": -5.9
+    },
+    {
+     "lat": 5.0,
+     "lon": -5.88
+    }
+   ],
+   "tags": {
+    "name": "Gamma",
+    "waterway": "river"
+   }
+  }
+ ]
+}

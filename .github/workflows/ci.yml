@@ -200,7 +200,9 @@ jobs:
         id: cli
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/bin/wasm-bindgen
+          path: |
+            ~/.cargo/bin/wasm-bindgen
+            ~/.cargo/bin/wasm-bindgen-test-runner
           key: wasm-bindgen-cli-${{ steps.wb.outputs.version }}-${{ runner.os }}
       - name: Install wasm-bindgen CLI
         if: steps.cli.outputs.cache-hit != 'true'
@@ -211,6 +213,10 @@ jobs:
         run: |
           cargo clippy --target wasm32-unknown-unknown -p owd-reach -- -D warnings
           cargo build --target wasm32-unknown-unknown -p owd-reach
+      - name: "owd-reach routing tests in wasm (spec 0012, same fixtures as native)"
+        run: cargo test --target wasm32-unknown-unknown -p owd-reach --test route
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
       - name: Build the web package
         run: bash tools/build_web.sh
       # Release: the pool search is far too slow in a debug build.

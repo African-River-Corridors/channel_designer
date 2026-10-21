@@ -38,6 +38,7 @@ pub trait Fetch {
 pub struct ReplayFetch {
     full: HashMap<String, Vec<u8>>,
     ranges: HashMap<(String, u64, u64), Vec<u8>>,
+    containing: Vec<(String, Vec<u8>)>,
     log: RefCell<Vec<String>>,
 }
 
@@ -49,6 +50,13 @@ impl ReplayFetch {
     /// Record the response to `get(url)`. A recorded whole file also answers any range of it.
     pub fn with_response(mut self, url: &str, body: impl Into<Vec<u8>>) -> Self {
         self.full.insert(url.to_string(), body.into());
+        self
+    }
+
+    /// Record a response for any `get(url)` whose URL contains `part` (for a query whose exact URL
+    /// depends on a computed bounding box). An exact recording wins.
+    pub fn with_response_containing(mut self, part: &str, body: impl Into<Vec<u8>>) -> Self {
+        self.containing.push((part.to_string(), body.into()));
         self
     }
 
@@ -71,6 +79,12 @@ impl Fetch for ReplayFetch {
         self.full
             .get(url)
             .cloned()
+            .or_else(|| {
+                self.containing
+                    .iter()
+                    .find(|(part, _)| url.contains(part.as_str()))
+                    .map(|(_, b)| b.clone())
+            })
             .ok_or_else(|| FetchError::NotRecorded(format!("GET {url}")))
     }
 

@@ -210,6 +210,58 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Start a study from a river reach (spec 0012): search a river by name and give a start and an
+    /// end (and via points), or give a rough trace. The route is found on the OSM waterway graph and
+    /// kept as way ids. Writes a new document. Uses the network (Overpass).
+    Reach {
+        /// The `.owd` file to create. `-` is stdout.
+        file: String,
+        /// The river's name, searched in OSM. The route may leave this river.
+        #[arg(long)]
+        river: Option<String>,
+        /// The start of the reach, as `lon,lat`.
+        #[arg(
+            long,
+            value_name = "LON,LAT",
+            requires = "end",
+            conflicts_with = "trace",
+            allow_hyphen_values = true
+        )]
+        start: Option<String>,
+        /// The end of the reach, as `lon,lat`.
+        #[arg(
+            long,
+            value_name = "LON,LAT",
+            requires = "start",
+            allow_hyphen_values = true
+        )]
+        end: Option<String>,
+        /// A point the route must pass, as `lon,lat`: put one on the branch you want at a split.
+        /// Repeat it for more.
+        #[arg(
+            long,
+            value_name = "LON,LAT",
+            requires = "start",
+            allow_hyphen_values = true
+        )]
+        via: Vec<String>,
+        /// A rough trace of the river, as a GeoJSON line (WGS84). It snaps to the waterways it
+        /// follows; a stretch with none near it stays as drawn.
+        #[arg(long, value_name = "FILE")]
+        trace: Option<String>,
+        /// The study's title (default: the river's name).
+        #[arg(long)]
+        title: Option<String>,
+        /// Another Overpass server (default: overpass-api.de).
+        #[arg(long, value_name = "URL")]
+        overpass: Option<String>,
+        /// Created date, YYYY-MM-DD (default: today, UTC).
+        #[arg(long, value_name = "DATE")]
+        date: Option<String>,
+        /// Print a machine-readable result as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Export the design line options as GeoJSON, or the quantity table as CSV. Every export says
     /// "Screening — not for construction", and an option that fails a check says so.
     Export {
@@ -425,6 +477,29 @@ pub fn main() -> ExitCode {
             mirror,
             json,
         } => commands::fetch_dem(&doc, margin, mirror.as_deref(), json),
+        Command::Reach {
+            file,
+            river,
+            start,
+            end,
+            via,
+            trace,
+            title,
+            overpass,
+            date,
+            json,
+        } => commands::reach(commands::ReachFlags {
+            file,
+            river,
+            start,
+            end,
+            via,
+            trace,
+            title,
+            overpass,
+            date,
+            json,
+        }),
         Command::Export {
             doc,
             geojson,

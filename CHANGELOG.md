@@ -12,6 +12,12 @@ versions follow [Semantic Versioning](https://semver.org/).
   polygon and centreline the session rebuilds from the two banks, are marked `edited`. Every later stage goes
   stale and nothing reruns by itself. New in `owd-format`: `Session::edit_bank`; `AppState::load_inputs` now takes
   the date for the provenance record.
+- **`owd reach` (spec 0012, T2).** `owd reach FILE --river NAME --start LON,LAT --end LON,LAT [--via LON,LAT]`
+  or `owd reach FILE --trace LINE.geojson` starts a new study from a river reach. OWD reads the OSM waterways
+  around the points through Overpass and finds the shortest route along them. The route crosses from one river
+  to another, and a via point picks the branch at a split. A trace snaps to the waterways it follows; a stretch
+  with no waterway near it stays as drawn and is flagged. The document keeps only the OSM way ids and your own
+  points (no OSM geometry), and carries the OpenStreetMap notice. New optional `reach` field in the document.
 - **Start from a river: the `owd-reach` crate (spec 0012, T1).** New pure-Rust crate for inputs made from open
   data. It holds the `Fetch` interface (one place for network access: native HTTP on the CLI, the browser's
   `fetch` on the web) and a source registry with each source's licence, notice and whether a browser can read

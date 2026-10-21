@@ -1,0 +1,79 @@
+{
+ "version": 0.6,
+ "generator": "make_reach_fixtures.py (synthetic)",
+ "osm3s": {
+  "copyright": "synthetic test data"
+ },
+ "elements": [
+  {
+   "type": "way",
+   "id": 101,
+   "bounds": {
+    "minlat": 5.0,
+    "minlon": -6.0,
+    "maxlat": 5.0,
+    "maxlon": -5.98
+   },
+   "tags": {
+    "name": "Alpha",
+    "waterway": "river"
+   }
+  },
+  {
+   "type": "way",
+   "id": 102,
+   "bounds": {
+    "minlat": 5.0,
+    "minlon": -5.98,
+    "maxlat": 5.012,
+    "maxlon": -5.96
+   },
+   "tags": {
+    "name": "Alpha",
+    "waterway": "river"
+   }
+  },
+  {
+   "type": "way",
+   "id": 103,
+   "bounds": {
+    "minlat": 4.99,
+    "minlon": -5.98,
+    "maxlat": 5.0,
+    "maxlon": -5.96
+   },
+   "tags": {
+    "name": "Alpha",
+    "waterway": "river"
+   }
+  },
+  {
+   "type": "way",
+   "id": 104,
+   "bounds": {
+    "minlat": 5.0,
+    "minlon": -5.96,
+    "maxlat": 5.0,
+    "maxlon": -5.94
+   },
+   "tags": {
+    "name": "Alpha",
+    "waterway": "river"
+   }
+  },
+  {
+   "type": "way",
+   "id": 105,
+   "bounds": {
+    "minlat": 5.0,
+    "minlon": -5.9,
+    "maxlat": 5.0,
+    "maxlon": -5.88
+   },
+   "tags": {
+    "name": "Alpha",
+    "waterway": "canal"
+   }
+  }
+ ]
+}
