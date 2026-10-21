@@ -35,3 +35,5 @@ select, input[type="text"], input:not([type]), input[inputmode] {
 }
 input::placeholder { color: var(--ink-3); }
 h2, h3 { color: var(--ink-2); font: 600 var(--fs-11) var(--font-ui); letter-spacing: var(--track-caps); text-transform: uppercase; margin: 0 0 var(--sp-2); padding-bottom: var(--sp-1); border-bottom: var(--lw-thin) solid var(--ink); }
+button.primary { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+button.primary:disabled { color: var(--ink-3); background: transparent; border-color: var(--rule); }
