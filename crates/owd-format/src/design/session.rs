@@ -1,7 +1,7 @@
 //! The design session: the one interface between the engine and its users (the CLI and the app).
 //! It takes and returns text and values. The callers do all file, network and clock access.
 //!
-//! The document is a JSON value (`schema/cdesign.schema.json`). A stage's status is never stored:
+//! The document is a JSON value (`schema/owd.schema.json`). A stage's status is never stored:
 //! it is worked out on load from the stage's recorded dependency hash.
 
 use super::alignment::Terrain;
@@ -198,7 +198,7 @@ impl Session {
         }
     }
 
-    /// Parse and validate `.cdesign` text.
+    /// Parse and validate `.owd` text (a `.cdesign` file has the same contents).
     pub fn open(text: &str) -> Result<Session, DesignError> {
         let doc: Value = serde_json::from_str(text)
             .map_err(|e| DesignError::Input(format!("the file is not valid JSON: {e}")))?;

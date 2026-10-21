@@ -32,7 +32,7 @@ struct Out {
 enum Command {
     /// Start a channel design: one file for one study.
     New {
-        /// The `.cdesign` file to create. `-` is stdout.
+        /// The `.owd` file to create. `-` is stdout.
         file: String,
         /// The study's title.
         #[arg(long)]
@@ -242,7 +242,7 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Print the JSON Schema of the `.cdesign` format.
+    /// Print the JSON Schema of the `.owd` format.
     Schema,
 }
 

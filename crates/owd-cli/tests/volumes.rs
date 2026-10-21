@@ -105,7 +105,7 @@ fn river_inputs(dir: &Path) -> (String, String) {
 /// A document with the river, a DEM next to it, sizing and the rolling circle. Returns the paths.
 fn build(dir: &Path) -> (String, PathBuf) {
     let (c, p) = river_inputs(dir);
-    let doc = dir.join("river.cdesign").to_str().unwrap().to_string();
+    let doc = dir.join("river.owd").to_str().unwrap().to_string();
     let dem = dir.join("river-dem.tif");
     write_dem(&dem, 0.0);
     let steps: [&[&str]; 4] = [
@@ -304,7 +304,7 @@ fn a_missing_dem_names_its_path_and_volumes_refuses_to_run() {
 fn volumes_without_a_dem_says_to_import_one() {
     let dir = work_dir("nodem");
     let (c, p) = river_inputs(&dir);
-    let doc = dir.join("r.cdesign").to_str().unwrap().to_string();
+    let doc = dir.join("r.owd").to_str().unwrap().to_string();
     run(&["new", &doc, "--title", "R", "--date", "2026-10-16"]);
     run(&["import", &doc, "--centreline", &c, "--polygon", &p]);
     run(&["size", &doc, "--ruleset", "PIANC-B", "--vessel", "CEMT_IV"]);
@@ -346,7 +346,7 @@ fn optimise_adds_the_lattice_option_and_volumes_measure_it() {
         ),
     )
     .unwrap();
-    let doc = dir.join("pools.cdesign").to_str().unwrap().to_string();
+    let doc = dir.join("pools.owd").to_str().unwrap().to_string();
     let dem = dir.join("river-dem.tif");
     write_dem(&dem, 0.0);
     for s in [
@@ -429,7 +429,7 @@ fn full_chain(dir: &Path) -> String {
         ),
     )
     .unwrap();
-    let doc = dir.join("chain.cdesign").to_str().unwrap().to_string();
+    let doc = dir.join("chain.owd").to_str().unwrap().to_string();
     let dem = dir.join("river-dem.tif");
     write_dem(&dem, 0.0);
     let dem = dem.to_str().unwrap();
@@ -479,7 +479,7 @@ fn the_chain_gives_the_same_document_as_run_on_the_same_inputs_and_settings() {
         }
     }
     v["options"] = json!([]);
-    let again = dir.join("again.cdesign");
+    let again = dir.join("again.owd");
     std::fs::write(
         &again,
         format!("{}\n", serde_json::to_string_pretty(&v).unwrap()),

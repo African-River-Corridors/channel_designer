@@ -1,4 +1,4 @@
-//! The published JSON Schema (`schema/cdesign.schema.json`) and a small validator for the part of
+//! The published JSON Schema (`schema/owd.schema.json`) and a small validator for the part of
 //! JSON Schema 2020-12 that it uses: `type`, `const`, `enum`, `required`, `properties`,
 //! `additionalProperties`, `items`, `minItems`, `maxItems`, `minLength`, `maxLength`, `minimum`,
 //! `maximum`, `oneOf` and local `$ref`.
@@ -6,11 +6,11 @@
 use serde_json::Value;
 
 /// The schema, exactly as published in the repository.
-pub const SCHEMA_TEXT: &str = include_str!("../../../../schema/cdesign.schema.json");
+pub const SCHEMA_TEXT: &str = include_str!("../../../../schema/owd.schema.json");
 
 /// The parsed schema.
 pub fn schema() -> Value {
-    serde_json::from_str(SCHEMA_TEXT).expect("schema/cdesign.schema.json is valid JSON")
+    serde_json::from_str(SCHEMA_TEXT).expect("schema/owd.schema.json is valid JSON")
 }
 
 /// Every way `instance` breaks `schema`, as `path: message` lines. Empty when it conforms.

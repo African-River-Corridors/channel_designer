@@ -219,6 +219,9 @@ pub fn new(file: &str, title: &str, date: Option<&str>, json_mode: bool) -> Resu
     }
     let s = Session::new(title, &date);
     write(file, &s.to_text())?;
+    if file.ends_with(".cdesign") {
+        eprintln!("owd: warning: .cdesign is the old extension; new files use .owd");
+    }
     say(
         file == "-",
         json_mode,

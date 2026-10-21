@@ -11,7 +11,7 @@ import crypto from "node:crypto";
 import { remote } from "webdriverio";
 
 const here = import.meta.dirname;
-const EXAMPLE = path.resolve(here, "../../examples/synthetic-river.cdesign");
+const EXAMPLE = path.resolve(here, "../../examples/synthetic-river.owd");
 const APP = path.resolve(here, process.env.CD_APP_BINARY ?? "../../target/debug/owd-app");
 const DIALOGS = process.env.CD_TEST_DIALOG_DIR;
 assert.ok(DIALOGS, "CD_TEST_DIALOG_DIR must be set (run e2e/run.sh)");
@@ -167,7 +167,7 @@ describe("Channel Designer app smoke test", () => {
   });
 
   it("opens the worked example, changes the vessel, sees the channel shape change, saves and reopens", async () => {
-    await open(EXAMPLE, "synthetic-river.cdesign");
+    await open(EXAMPLE, "synthetic-river.owd");
     await formShowsExample();
     assert.equal(await text("project-crs"), "WGS 84 / UTM zone 30N");
     assert.equal(await text("status-sizing"), "fresh");
@@ -197,7 +197,7 @@ describe("Channel Designer app smoke test", () => {
 
     // Reopen it: the same channel shape.
     const radiusAfter = await text("min-radius");
-    await open(EXAMPLE, "synthetic-river.cdesign");
+    await open(EXAMPLE, "synthetic-river.owd");
     assert.equal(await text("min-radius"), radiusBefore);
     await open(saved, "changed.cdesign");
     assert.equal(await text("min-radius"), radiusAfter);
@@ -205,7 +205,7 @@ describe("Channel Designer app smoke test", () => {
   });
 
   it("asks before it throws away unsaved changes, and keeps them when the answer is no", async () => {
-    await open(EXAMPLE, "synthetic-river.cdesign");
+    await open(EXAMPLE, "synthetic-river.owd");
     await formShowsExample();
     const { values, current } = await vesselChoices();
     const other = values.find((v) => v !== current && v.startsWith("CEMT"));
@@ -215,7 +215,7 @@ describe("Channel Designer app smoke test", () => {
     answer("discard.txt", "no");
     await click("New");
     await browser.pause(500);
-    assert.match(await fileLabel(), /synthetic-river\.cdesign \(unsaved\)/);
+    assert.match(await fileLabel(), /synthetic-river\.owd \(unsaved\)/);
     // Agree: a new, empty design.
     answer("discard.txt", "yes");
     await click("New");
@@ -394,7 +394,7 @@ describe("Channel Designer app smoke test", () => {
     answer("save.txt", saved);
     await click("Save as");
     await until("the file to be saved", async () => !(await fileLabel()).includes("(unsaved)"));
-    await open(EXAMPLE, "synthetic-river.cdesign");
+    await open(EXAMPLE, "synthetic-river.owd");
     await open(saved, "full-saved.cdesign");
     await until("the table to return", async () => (await tableRows()).length === before.length, 30000);
     assert.deepEqual(await tableRows(), before);
