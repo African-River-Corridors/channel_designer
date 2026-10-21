@@ -30,6 +30,11 @@ versions follow [Semantic Versioning](https://semver.org/).
   `owd draw --style FILE` lays the members of a file over the default; `--section-spacing`, `--sheet-size` and
   `--scale` override single values (`owd.draw(style=..., overrides=...)` in Python). An invalid style is refused
   with the field named. The SHA-256 of the style after the overrides is printed on every sheet.
+- **Typical section (spec 0004, ticket 3).** `owd draw` now also draws the typical section (kind `TS`): the channel
+  in section with its bottom width, design depth and side slope, the design water level, the design vessel for scale,
+  and a detail that dimensions the under-keel clearance at a scale where it can be read. Each value has a note that
+  names its source: the ruleset for the bottom width, depth and clearance, the volumes stage for the side slope, the
+  water profile for the level. Levels are relative to the channel invert. `--sheets xs,ts` picks the kinds.
 - **Web app (spec 0011).** The desktop app's front end now also runs in a browser, over a WebAssembly build
   of the same Rust core, at `africanrivercorridors.com/owd/app`. Nothing you load is uploaded. It opens a
   bundled example, or `.owd` files, GeoJSON or GeoPackage banks and a GeoTIFF DEM from your computer; Save and

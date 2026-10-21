@@ -474,7 +474,7 @@ fn viewport(panel: &Panel, k: f64, scale: u32, fx: f64, fy: f64, p: &GalleryPara
 }
 
 /// Is this layer drawn? Only the optional layers of the style can be off.
-fn layer_on(p: &GalleryParams, layer: &str) -> bool {
+pub(super) fn layer_on(p: &GalleryParams, layer: &str) -> bool {
     match layer {
         "GRID" => p.grid,
         "HATCH" => p.hatch,
