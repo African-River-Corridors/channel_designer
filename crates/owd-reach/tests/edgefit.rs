@@ -33,7 +33,7 @@ const LAND: [f32; 4] = [0.050, 0.040, 0.350, 0.200];
 
 /// A deterministic wobble in [-1, 1] for a pixel.
 fn wobble(i: usize, k: usize) -> f32 {
-    let mut x = (i * 2654435761 + k * 40503) as u32;
+    let mut x = (i as u64 * 2654435761 + k as u64 * 40503) as u32;
     x ^= x >> 13;
     x = x.wrapping_mul(0x5bd1e995);
     x ^= x >> 15;
