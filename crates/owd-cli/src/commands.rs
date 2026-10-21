@@ -148,7 +148,9 @@ fn pathdiff(base: &Path, target: &Path) -> String {
 
 /// Open a document, find its DEM file and warn on stderr when the DEM is missing or has changed.
 /// Returns the session and the DEM file's bytes, if the file exists.
-fn open_with_dem(doc: &str) -> core::result::Result<(Session, Option<Vec<u8>>), Failure> {
+pub(crate) fn open_with_dem(
+    doc: &str,
+) -> core::result::Result<(Session, Option<Vec<u8>>), Failure> {
     let session = open(doc)?;
     let bytes = session
         .dem_path()
@@ -160,7 +162,10 @@ fn open_with_dem(doc: &str) -> core::result::Result<(Session, Option<Vec<u8>>), 
 }
 
 /// The DEM as a terrain sampler, for the stages that need one.
-fn read_dem(bytes: &[u8], what: &str) -> core::result::Result<owd_format::geotiff::Dem, Failure> {
+pub(crate) fn read_dem(
+    bytes: &[u8],
+    what: &str,
+) -> core::result::Result<owd_format::geotiff::Dem, Failure> {
     owd_format::geotiff::read_bytes(bytes).map_err(|e| input_error(format!("{what}: {e}")))
 }
 

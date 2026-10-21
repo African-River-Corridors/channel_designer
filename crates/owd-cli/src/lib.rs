@@ -6,4 +6,5 @@ pub mod cli;
 pub mod commands;
 pub mod fetch;
 pub mod fits;
+pub mod level;
 pub mod reach_fetch;

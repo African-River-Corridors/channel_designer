@@ -2655,6 +2655,7 @@ name = "owd-reach"
 version = "0.2.0"
 dependencies = [
  "miniz_oxide 0.8.9",
+ "owd-core",
  "owd-format",
  "serde_json",
  "wasm-bindgen-test",

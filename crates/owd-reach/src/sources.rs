@@ -88,11 +88,11 @@ const REGISTRY: &[Source] = &[
     },
     Source {
         id: "sword",
-        name: "SWORD v17b river reaches and nodes",
-        url_pattern: "https://www.swordexplorer.com/ (download per basin)",
+        name: "SWORD v17c river reaches (Zenodo shapefile release)",
+        url_pattern: "https://zenodo.org/api/records/22259077",
         licence: "CC BY 4.0",
-        notice: "SWORD v17b, Altenau et al. 2021, CC BY 4.0",
-        browser_readable: false,
+        notice: "SWORD v17c, Altenau et al. 2021, CC BY 4.0",
+        browser_readable: true,
     },
     Source {
         id: "swot-hydrocron",
@@ -160,14 +160,14 @@ mod tests {
                 .iter()
                 .all(|s| !s.id.to_lowercase().contains("hydro") || s.id == "swot-hydrocron")
         );
-        // Readable from a page: Overpass, Earth Search, Hydrocron. Not: DEM, JRC, SWORD.
+        // Readable from a page: Overpass, Earth Search, Hydrocron, SWORD on Zenodo. Not: DEM, JRC.
         for (id, cors) in [
             ("osm-overpass", true),
             ("sentinel2-l2a", true),
             ("swot-hydrocron", true),
+            ("sword", true),
             ("cop-dem-glo30", false),
             ("jrc-gsw", false),
-            ("sword", false),
         ] {
             assert_eq!(source(id).unwrap().browser_readable, cors, "{id}");
         }

@@ -212,6 +212,22 @@ impl Session {
         self.base_line()
     }
 
+    /// The river centreline the water level profile is read on (its chainage is the profile's), and
+    /// the study's UTM zone it is drawn in. For a generated water level (spec 0012).
+    pub fn water_reference(&self) -> Result<(Vec<Pt>, super::crs::Utm), DesignError> {
+        let utm = self.doc["project"]["crs"]["epsg"]
+            .as_u64()
+            .and_then(|c| super::crs::Crs::from_epsg(c as u32).ok())
+            .and_then(|c| match c {
+                super::crs::Crs::Utm(u) => Some(u),
+                super::crs::Crs::Wgs84 => None,
+            })
+            .ok_or_else(|| {
+                DesignError::Input("the document has no UTM zone: import the river first".into())
+            })?;
+        Ok((self.base_line()?, utm))
+    }
+
     pub(super) fn needs_water_profile(&self, stage: Stage) -> DesignError {
         DesignError::Input(format!(
             "the {} stage needs a water level: set one with `owd import --water-level LEVEL` \
