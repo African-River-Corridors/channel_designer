@@ -11,6 +11,7 @@ pub mod check;
 mod furniture;
 mod gallery;
 pub mod style;
+mod typical;
 
 use crate::design::terrain::dem_sampler;
 use crate::design::{DemCheck, DesignError, Session, Terrain};
@@ -21,21 +22,25 @@ use std::collections::BTreeMap;
 pub use check::Finding;
 pub use gallery::GalleryParams;
 pub use style::{Style, StyleError};
+pub use typical::{Facts, TypicalParams, facts as typical_facts};
 
 /// The kinds of sheet. Each has a code in the drawing number: `OWD-<design>-<code>-<nnn>`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SheetKind {
     /// The cross-section gallery.
     CrossSections,
+    /// The typical section.
+    TypicalSection,
 }
 
 impl SheetKind {
-    pub const ALL: &'static [SheetKind] = &[SheetKind::CrossSections];
+    pub const ALL: &'static [SheetKind] = &[SheetKind::CrossSections, SheetKind::TypicalSection];
 
     /// The kind code in the drawing number.
     pub fn code(self) -> &'static str {
         match self {
             SheetKind::CrossSections => "XS",
+            SheetKind::TypicalSection => "TS",
         }
     }
 
@@ -43,6 +48,7 @@ impl SheetKind {
     pub fn word(self) -> &'static str {
         match self {
             SheetKind::CrossSections => "xs",
+            SheetKind::TypicalSection => "ts",
         }
     }
 
@@ -165,6 +171,14 @@ pub fn sheets(
             SheetKind::CrossSections => {
                 let built = gallery::build(session, &option_id, &walk, options)?;
                 let findings = check::gallery(&built, &walk);
+                if !findings.is_empty() {
+                    return Err(DrawError::Checks(findings));
+                }
+                out.extend(built);
+            }
+            SheetKind::TypicalSection => {
+                let built = typical::build(session, &option_id, options)?;
+                let findings = check::typical(&built, &typical::facts(session)?);
                 if !findings.is_empty() {
                     return Err(DrawError::Checks(findings));
                 }

@@ -194,3 +194,127 @@ pub fn gallery(sheets: &[Sheet], walk: &SectionVolumes) -> Vec<Finding> {
     }
     found
 }
+
+/// The checks of the typical section: each dimension is the length of the geometry it points at, and
+/// that length is the design's result; the slope and the water level are in the geometry; each value
+/// has a note that names its source.
+pub fn typical(sheets: &[Sheet], f: &super::typical::Facts) -> Vec<Finding> {
+    let mut found = Vec::new();
+    for sheet in sheets {
+        let mut note = |check: &'static str, message: String| {
+            found.push(Finding {
+                sheet: sheet.number.clone(),
+                check,
+                message,
+            });
+        };
+        let vp = sheet.document["viewports"]
+            .as_array()
+            .and_then(|a| a.iter().find(|v| v["id"] == "ts"))
+            .cloned()
+            .unwrap_or(Value::Null);
+        let close = |a: f64, b: f64| (a - b).abs() <= 1e-9 * b.abs().max(1.0);
+        // Dimensions: the standard computes the text from the two points, so the points are checked.
+        let detail = sheet.document["viewports"]
+            .as_array()
+            .and_then(|a| a.iter().find(|v| v["id"] == "ts-detail"))
+            .cloned()
+            .unwrap_or(Value::Null);
+        let mut dim =
+            |vp: &Value, id: &str, axis: usize, what: &str, want: f64| match entity(vp, id) {
+                Some(e) => {
+                    let (a, b) = (
+                        e["from"]["point_m"][axis].as_f64(),
+                        e["to"]["point_m"][axis].as_f64(),
+                    );
+                    match (a, b) {
+                        (Some(a), Some(b)) if close((b - a).abs(), want) => {}
+                        (Some(a), Some(b)) => note(
+                            "typical-dimension",
+                            format!("{what} is drawn as {}, result {want}", (b - a).abs()),
+                        ),
+                        _ => note("typical-dimension", format!("{what} has no points")),
+                    }
+                }
+                None => note("typical-dimension", format!("{what} is not drawn")),
+            };
+        dim(&vp, "ts-width", 0, "bottom width", f.bottom_width_m);
+        dim(&vp, "ts-depth", 1, "design depth", f.design_depth_m);
+        dim(&detail, "ts-ukc", 1, "under-keel clearance", f.ukc_m());
+        // The channel: its bottom is the width, its slopes the slope, its top the water level.
+        match entity(&vp, "ts-channel").map(points) {
+            Some(p) if p.len() == 4 => {
+                if !close(p[2].0 - p[1].0, f.bottom_width_m) {
+                    note(
+                        "typical-dimension",
+                        "the channel bottom is not the bottom width".into(),
+                    );
+                }
+                let rise = p[0].1 - p[1].1;
+                let (left, right) = (p[1].0 - p[0].0, p[3].0 - p[2].0);
+                if !close(rise, f.design_depth_m)
+                    || !close(left / rise, f.side_slope_h_per_v)
+                    || !close(right / rise, f.side_slope_h_per_v)
+                {
+                    note(
+                        "typical-slope",
+                        format!(
+                            "the side slopes are not {}:1 over the design depth",
+                            f.side_slope_h_per_v
+                        ),
+                    );
+                }
+            }
+            _ => note(
+                "typical-dimension",
+                "the channel outline is not drawn".into(),
+            ),
+        }
+        match entity(&vp, "ts-wl-line") {
+            Some(e)
+                if e["from_m"][1]
+                    .as_f64()
+                    .is_some_and(|y| close(y, f.design_depth_m)) => {}
+            _ => note(
+                "typical-level",
+                "the water level line is not at the design depth above the invert".into(),
+            ),
+        }
+        let drawn_slope = text_of(&vp, "ts-slope").and_then(|t| {
+            t.split_whitespace()
+                .find_map(|w| w.strip_suffix(":1").and_then(|n| n.parse::<f64>().ok()))
+        });
+        if !drawn_slope.is_some_and(|n| (n - f.side_slope_h_per_v).abs() <= half_step(1)) {
+            note(
+                "typical-slope",
+                "the slope label is missing or differs from the result".into(),
+            );
+        }
+        // Notes: each value names its source.
+        let notes: Vec<&str> = sheet.document["notes"]
+            .as_array()
+            .map(|a| a.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        let has = |start: &str, source: &str| {
+            notes
+                .iter()
+                .any(|n| n.starts_with(start) && n.contains(source))
+        };
+        let rs = f.ruleset.to_ascii_uppercase();
+        for start in ["BOTTOM WIDTH:", "DESIGN DEPTH:", "UNDER-KEEL CLEARANCE:"] {
+            if !has(start, &format!("RULESET {rs}")) {
+                note(
+                    "typical-source",
+                    format!("no note `{start}` names ruleset {rs}"),
+                );
+            }
+        }
+        if !has("SIDE SLOPE:", "VOLUMES") || !has("DESIGN WATER LEVEL:", "WATER PROFILE") {
+            note(
+                "typical-source",
+                "the side slope and the water level need a note that names their source".into(),
+            );
+        }
+    }
+    found
+}

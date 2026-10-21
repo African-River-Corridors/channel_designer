@@ -6,7 +6,7 @@
 //! the sheet and the check named.
 use owd_format::design::terrain::dem_sampler;
 use owd_format::design::{AlignMethod, Session, Stage, Terrain};
-use owd_format::drawing::{self, DrawError, DrawOptions, Sheet, check};
+use owd_format::drawing::{self, DrawError, DrawOptions, Sheet, SheetKind, check};
 use owd_format::geotiff;
 use serde_json::Value;
 use std::path::PathBuf;
@@ -24,7 +24,11 @@ fn example() -> (String, Vec<u8>) {
 
 fn gallery() -> Vec<Sheet> {
     let (text, dem) = example();
-    drawing::sheets_from_text(&text, Some(&dem), &DrawOptions::default()).unwrap()
+    let o = DrawOptions {
+        sheets: vec![SheetKind::CrossSections],
+        ..DrawOptions::default()
+    };
+    drawing::sheets_from_text(&text, Some(&dem), &o).unwrap()
 }
 
 /// The station walk of the example, called directly on the same DEM.
@@ -300,6 +304,7 @@ fn drawn_with(style: Style) -> Vec<Sheet> {
     let (text, dem) = example();
     let o = DrawOptions {
         style,
+        sheets: vec![SheetKind::CrossSections],
         ..DrawOptions::default()
     };
     drawing::sheets_from_text(&text, Some(&dem), &o).unwrap()
@@ -507,4 +512,167 @@ fn the_gallery_builder_holds_no_threshold_that_the_style_does_not_set() {
         "{consts:?}"
     );
     assert!(!src.contains("impl Default for GalleryParams"));
+}
+
+// ---- the typical section (spec 0004, ticket 3) --------------------------------------------------
+
+fn typical_sheets() -> Vec<Sheet> {
+    let (text, dem) = example();
+    let o = DrawOptions {
+        sheets: vec![SheetKind::TypicalSection],
+        ..DrawOptions::default()
+    };
+    drawing::sheets_from_text(&text, Some(&dem), &o).unwrap()
+}
+
+fn typical_facts() -> owd_format::drawing::Facts {
+    let (text, _) = example();
+    owd_format::drawing::typical_facts(&Session::open(&text).unwrap()).unwrap()
+}
+
+fn entity_of<'a>(sheet: &'a Sheet, viewport: &str, id: &str) -> &'a Value {
+    sheet.document["viewports"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["id"] == viewport)
+        .unwrap()["entities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["id"] == id)
+        .unwrap_or_else(|| panic!("no entity {id}"))
+}
+
+#[test]
+fn the_typical_section_is_accepted_and_its_numbers_follow_the_scheme() {
+    let sheets = typical_sheets();
+    assert_eq!(sheets.len(), 1, "one in all, until the reaches land");
+    let s = &sheets[0];
+    assert!(s.number.contains("-TS-001"), "{}", s.number);
+    let out = drawing::render(s).expect("otd accepts it");
+    assert!(out.warnings.is_empty(), "{:?}", out.warnings);
+    let norm: Value = serde_json::from_str(&out.normalised).unwrap();
+    assert_eq!(s.document["status"], "concept");
+    assert!(norm["sheet"]["size"].is_string());
+}
+
+#[test]
+fn every_dimension_value_equals_the_design_s_result_and_the_standard_prints_it() {
+    let f = typical_facts();
+    let s = &typical_sheets()[0];
+    let len = |vp: &str, id: &str, axis: usize| {
+        let e = entity_of(s, vp, id);
+        (e["to"]["point_m"][axis].as_f64().unwrap() - e["from"]["point_m"][axis].as_f64().unwrap())
+            .abs()
+    };
+    let close = |a: f64, b: f64| (a - b).abs() < 1e-9;
+    assert!(close(len("ts", "ts-width", 0), f.bottom_width_m));
+    assert!(close(len("ts", "ts-depth", 1), f.design_depth_m));
+    assert!(close(
+        len("ts-detail", "ts-ukc", 1),
+        f.design_depth_m - f.draught_m
+    ));
+    // The standard computes the text of a dimension from its geometry: read it back.
+    let out = drawing::render(s).unwrap();
+    let norm: Value = serde_json::from_str(&out.normalised).unwrap();
+    let texts: Vec<String> = norm["entities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["type"] == "text")
+        .filter_map(|e| e["text"].as_str().map(str::to_string))
+        .collect();
+    for want in [
+        format!("{:.2}", f.bottom_width_m),
+        format!("{:.2}", f.design_depth_m),
+        format!("{:.2}", f.design_depth_m - f.draught_m),
+    ] {
+        assert!(
+            texts.contains(&want),
+            "no dimension text {want} in {texts:?}"
+        );
+    }
+    assert!(owd_format::drawing::check::typical(&typical_sheets(), &f).is_empty());
+}
+
+#[test]
+fn each_value_has_a_note_that_names_its_source() {
+    let s = &typical_sheets()[0];
+    let notes: Vec<&str> = s.document["notes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n.as_str().unwrap())
+        .collect();
+    for (start, source) in [
+        ("BOTTOM WIDTH:", "RULESET PIANC-B"),
+        ("DESIGN DEPTH:", "RULESET PIANC-B"),
+        ("UNDER-KEEL CLEARANCE:", "RULESET PIANC-B"),
+        ("SIDE SLOPE:", "VOLUMES"),
+        ("DESIGN WATER LEVEL:", "WATER PROFILE"),
+    ] {
+        assert!(
+            notes
+                .iter()
+                .any(|n| n.starts_with(start) && n.contains(source)),
+            "no note `{start}` naming `{source}` in {notes:?}"
+        );
+    }
+}
+
+#[test]
+fn a_wrong_dimension_slope_or_missing_note_is_refused_naming_the_check() {
+    let f = typical_facts();
+    let good = typical_sheets();
+    // The bottom width dimension points one metre too far.
+    let mut s = good.clone();
+    let vp = s[0].document["viewports"][0]["entities"]
+        .as_array_mut()
+        .unwrap();
+    let e = vp.iter_mut().find(|e| e["id"] == "ts-width").unwrap();
+    let x = e["to"]["point_m"][0].as_f64().unwrap();
+    e["to"]["point_m"][0] = serde_json::json!(x + 1.0);
+    let found = owd_format::drawing::check::typical(&s, &f);
+    assert!(
+        found
+            .iter()
+            .any(|x| x.check == "typical-dimension" && x.sheet == s[0].number),
+        "{found:?}"
+    );
+    // The slope label says another slope.
+    let mut s = good.clone();
+    let vp = s[0].document["viewports"][0]["entities"]
+        .as_array_mut()
+        .unwrap();
+    let e = vp.iter_mut().find(|e| e["id"] == "ts-slope").unwrap();
+    e["text"] = Value::String("SIDE SLOPE 2.0:1 (H:V)".into());
+    let found = owd_format::drawing::check::typical(&s, &f);
+    assert!(
+        found.iter().any(|x| x.check == "typical-slope"),
+        "{found:?}"
+    );
+    // A note that names no source.
+    let mut s = good;
+    let notes = s[0].document["notes"].as_array_mut().unwrap();
+    notes.retain(|n| !n.as_str().unwrap().starts_with("UNDER-KEEL"));
+    let found = owd_format::drawing::check::typical(&s, &f);
+    assert!(
+        found.iter().any(|x| x.check == "typical-source"),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_typical_section_that_cannot_be_dimensioned_at_any_scale_says_so() {
+    let (text, dem) = example();
+    let o = DrawOptions {
+        sheets: vec![SheetKind::TypicalSection],
+        style: Style::from_overlay(&json!({"typical": {"scales": [20]}})).unwrap(),
+        ..DrawOptions::default()
+    };
+    let e = drawing::sheets_from_text(&text, Some(&dem), &o)
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("typical section does not fit"), "{e}");
 }

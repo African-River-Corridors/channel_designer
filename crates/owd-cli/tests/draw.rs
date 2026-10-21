@@ -86,7 +86,12 @@ fn a_drawing_document_runs_through_the_drawing_crate() {
     let d = run(&["draw", example().to_str().unwrap(), "--document"]);
     let docs: Value = serde_json::from_str(&out(&d)).unwrap();
     let dir = work_dir("run");
-    let (number, doc) = docs.as_object().unwrap().iter().next().unwrap();
+    let (number, doc) = docs
+        .as_object()
+        .unwrap()
+        .iter()
+        .find(|(k, _)| k.contains("-XS-"))
+        .unwrap();
     let path = dir.join(format!("{number}.json"));
     std::fs::write(&path, serde_json::to_string(doc).unwrap()).unwrap();
     let r = run(&["draw", "run", path.to_str().unwrap()]);
@@ -139,7 +144,13 @@ fn the_style_file_and_the_flags_set_the_sheets_and_a_bad_style_is_refused() {
         let o = run(&a);
         assert_eq!(code(&o), 0, "{}", err(&o));
         let docs: Value = serde_json::from_str(&out(&o)).unwrap();
-        let first = docs.as_object().unwrap().values().next().unwrap();
+        let first = docs
+            .as_object()
+            .unwrap()
+            .iter()
+            .find(|(k, _)| k.contains("-XS-"))
+            .unwrap()
+            .1;
         first["notes"]
             .as_array()
             .unwrap()
@@ -164,4 +175,29 @@ fn the_style_file_and_the_flags_set_the_sheets_and_a_bad_style_is_refused() {
     let o = run(&["draw", ex, "--document", "--sheet-size", "A9"]);
     assert_eq!(code(&o), 2);
     assert!(err(&o).contains("/sheets/xs/size"), "{}", err(&o));
+}
+
+#[test]
+fn sheets_picks_the_kinds_and_the_default_draws_both() {
+    let ex = example();
+    let ex = ex.to_str().unwrap();
+    let kinds = |args: &[&str]| -> Vec<String> {
+        let mut a = vec!["draw", ex, "--document"];
+        a.extend_from_slice(args);
+        let o = run(&a);
+        assert_eq!(code(&o), 0, "{}", err(&o));
+        let docs: Value = serde_json::from_str(&out(&o)).unwrap();
+        docs.as_object()
+            .unwrap()
+            .keys()
+            .map(|k| k.rsplit('-').nth(1).unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(kinds(&["--sheets", "ts"]), ["TS"]);
+    assert!(kinds(&["--sheets", "xs"]).iter().all(|k| k == "XS"));
+    let both = kinds(&[]);
+    assert!(
+        both.contains(&"XS".to_string()) && both.contains(&"TS".to_string()),
+        "{both:?}"
+    );
 }

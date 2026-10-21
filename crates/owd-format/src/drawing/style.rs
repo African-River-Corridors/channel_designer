@@ -7,6 +7,7 @@
 //! made it. No threshold of the gallery lives only in code.
 
 use super::gallery::GalleryParams;
+use super::typical::TypicalParams;
 use crate::design::hash::hash_value;
 use crate::design::schema::validate;
 use serde_json::Value;
@@ -136,6 +137,44 @@ impl Style {
     /// The style as JSON.
     pub fn value(&self) -> &Value {
         &self.value
+    }
+
+    /// What the typical section reads.
+    pub fn typical(&self) -> TypicalParams {
+        let v = &self.value;
+        let t = &v["typical"];
+        let m = &t["margins_mm"];
+        let num = |x: &Value| x.as_f64().unwrap_or(0.0);
+        TypicalParams {
+            sheet_size: v["sheets"]["ts"]["size"]
+                .as_str()
+                .unwrap_or("A3")
+                .to_string(),
+            landscape: v["sheets"]["ts"]["orientation"] != "portrait",
+            scales: t["scales"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_u64)
+                        .map(|n| n as u32)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            detail_scales: t["detail_scales"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_u64)
+                        .map(|n| n as u32)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            min_dimension_mm: num(&t["min_dimension_mm"]),
+            margin_left_mm: num(&m["left"]),
+            margin_right_mm: num(&m["right"]),
+            margin_below_mm: num(&m["below"]),
+            margin_above_mm: num(&m["above"]),
+        }
     }
 
     /// What the cross-section gallery reads.
