@@ -5,6 +5,14 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **Layout review in `owd draw` (spec 0004, T7).** Each sheet now goes through `otd`'s layout review before it
+  is written. An error fails `owd draw` (and `owd.draw`) and names the sheet and the finding, for example
+  "sheet OWD-…-XS-001: layout review: error `text-overlap` in viewport xs-1: texts "A" and "B" overlap by
+  1.50 mm". The errors are `text-overlap`, `text-print-size` and `outside-frame`. A warning (`text-on-hatch`) is
+  printed and the sheet is written. The `otd` pin moves to v0.3.0. The plan sheets now place their texts clear
+  of each other and of the north arrow and scale bar; a grid or tick label with no room is left out. Every
+  sheet of the fixture designs passes with no error.
+
 - **Plan sheets with shaded relief (spec 0004, T5).** `owd draw` now makes plan sheets, kind `PL`. First an
   overview of the whole line at a fitted scale (the map ratios allowed), with the strip sheets outlined as a
   key. Then strips along chainage at the style's scale (default 1:5000 on A1), with match lines that name the

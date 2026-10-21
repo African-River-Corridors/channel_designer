@@ -1334,7 +1334,7 @@ fn from_draw(e: owd_format::drawing::DrawError) -> Failure {
     use owd_format::drawing::DrawError;
     let code = match e {
         DrawError::Input(_) | DrawError::Missing(_) => 2,
-        DrawError::Checks(_) | DrawError::Format { .. } => 1,
+        DrawError::Checks(_) | DrawError::Format { .. } | DrawError::Layout { .. } => 1,
     };
     Failure {
         message: e.to_string(),

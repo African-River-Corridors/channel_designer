@@ -23,7 +23,7 @@ owd-reach = { path = "crates/owd-reach" }
 # The shared rules engine (spec 0007, ADR 0008), from the sister project open-vessel-concept-drawings.
 # Pinned by git tag, never a path, a branch or a commit.
 arc-rules = { git = "https://github.com/African-River-Corridors/open-vessel-concept-drawings", tag = "v0.2.4" }
-otd = { git = "https://github.com/African-River-Corridors/open-technical-drawer", tag = "v0.2.0" }
+otd = { git = "https://github.com/African-River-Corridors/open-technical-drawer", tag = "v0.3.0" }
 # float_roundtrip, arbitrary_precision: read every number exactly as written, big ints too.
 # preserve_order: a JSON object keeps its key order, as a Python dict does.
 serde_json = { version = "1", features = ["float_roundtrip", "arbitrary_precision", "preserve_order"] }

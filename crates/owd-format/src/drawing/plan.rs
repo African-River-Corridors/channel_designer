@@ -81,6 +81,15 @@ const TICK_LEN_MM: f64 = 2.0;
 const LABEL_OFFSET_MM: f64 = 6.0;
 /// Text keeps this far inside the frame, in millimetres.
 const INSET_MM: f64 = 3.0;
+/// The corners the standard's furniture takes in a frame, in millimetres: the north arrow and its
+/// plate reach 30 mm in from the top left (clause 8.6.7), the scale bar and its plate 22 mm up from
+/// the bottom left and 16 mm past the bar.
+const NORTH_ZONE_MM: f64 = 32.0;
+const BAR_ZONE_MM: f64 = 24.0;
+/// The least paper gap between two texts, or a text and the furniture, in millimetres.
+const TEXT_GAP_MM: f64 = 0.5;
+/// How many lines a text may move up, and down, to find room.
+const PLACE_TRIES: usize = 6;
 /// Strip ends fall on this step of chainage, in metres.
 const STRIP_STEP_M: f64 = 10.0;
 /// The layer of the relief (a layer of the document, not of the standard's table).
@@ -356,17 +365,81 @@ fn line_e(layer: &str, id: Option<String>, a: Pt, b: Pt) -> Value {
     v
 }
 
-/// A text, left and baseline aligned, moved inside the window so that its box keeps `INSET_MM` from
-/// the frame. `None` when the window is too small for it.
-fn text_in(id: &str, at: Pt, s: &str, h: f64, k: f64, w: &Win) -> Option<Value> {
-    let tw = text_width(s, h)? / k;
-    let (th, inset) = (h / k, INSET_MM / k);
-    let x = at[0].clamp(w[0] + inset, (w[2] - inset - tw).max(w[0] + inset));
-    let y = at[1].clamp(w[1] + inset, (w[3] - inset - th).max(w[1] + inset));
-    (x + tw <= w[2] - inset + 1e-9 && y + th <= w[3] - inset + 1e-9).then(|| {
-        json!({"type": "text", "layer": "TEXT", "id": id, "anchor_m": pv([x, y]), "text": s,
-            "height_mm": h, "align_h": "left", "align_v": "baseline"})
-    })
+/// Places the texts of one viewport: each inside the window, clear of the standard's furniture (the
+/// north arrow top left, clause 7.10, and the scale bar bottom left, clause 7.9, at most a quarter of
+/// the frame wide, each with its plate), and clear of every text placed before it. Place the texts that
+/// must appear first: a text that finds no room is moved up or down by a line at a time, and left out
+/// only when it is not required.
+struct Placer {
+    k: f64,
+    w: Win,
+    placed: Vec<Win>,
+}
+
+impl Placer {
+    fn new(k: f64, w: Win) -> Placer {
+        Placer {
+            k,
+            w,
+            placed: Vec::new(),
+        }
+    }
+
+    fn free(&self, b: &Win) -> bool {
+        let (w, k) = (&self.w, self.k);
+        let gap = TEXT_GAP_MM / k;
+        let hit = |o: &Win| {
+            b[0] < o[2] + gap && b[2] + gap > o[0] && b[1] < o[3] + gap && b[3] + gap > o[1]
+        };
+        let north = [
+            w[0],
+            w[3] - NORTH_ZONE_MM / k,
+            w[0] + NORTH_ZONE_MM / k,
+            w[3],
+        ];
+        let bar = [
+            w[0],
+            w[1],
+            w[0] + (w[2] - w[0]) / 4.0 + BAR_ZONE_MM / k,
+            w[1] + BAR_ZONE_MM / k,
+        ];
+        !hit(&north) && !hit(&bar) && !self.placed.iter().any(hit)
+    }
+
+    /// A text, left and baseline aligned, near `at`. `None` when there is no room and it is not
+    /// required, or when the window is too small for it.
+    fn place(&mut self, id: &str, at: Pt, s: &str, h: f64, required: bool) -> Option<Value> {
+        let (w, k) = (self.w, self.k);
+        let tw = text_width(s, h)? / k;
+        let (th, inset) = (h / k, INSET_MM / k);
+        if w[0] + inset + tw > w[2] - inset || w[1] + inset + th > w[3] - inset {
+            return None;
+        }
+        let fit = |x: f64, y: f64| {
+            let x = x.clamp(w[0] + inset, w[2] - inset - tw);
+            let y = y.clamp(w[1] + inset, w[3] - inset - th);
+            [x, y, x + tw, y + th]
+        };
+        let line = th + TEXT_GAP_MM / k;
+        let first = fit(at[0], at[1]);
+        let chosen = (0..=2 * PLACE_TRIES)
+            .map(|i| {
+                let step = if i % 2 == 1 {
+                    (i / 2 + 1) as f64
+                } else {
+                    -((i / 2) as f64)
+                };
+                fit(at[0], at[1] + step * line)
+            })
+            .chain((1..=PLACE_TRIES).map(|i| fit(at[0] + i as f64 * line * 4.0, at[1])))
+            .find(|b| self.free(b))
+            .or(required.then_some(first))?;
+        self.placed.push(chosen);
+        Some(
+            json!({"type": "text", "layer": "TEXT", "id": id, "anchor_m": pv([chosen[0], chosen[1]]),
+            "text": s, "height_mm": h, "align_h": "left", "align_v": "baseline"}),
+        )
+    }
 }
 
 // ---- the sheets --------------------------------------------------------------------------------
@@ -486,40 +559,54 @@ fn relief(
         .map_err(|e| DrawError::Input(format!("the relief: {e}")))
 }
 
-/// The UTM grid of a window: lines on a nice step, with their eastings and northings at the edges.
+/// The step of the UTM grid of a window: lines at least 60 mm apart on paper.
+fn grid_step(k: f64) -> f64 {
+    nice_step(60.0 / k)
+}
+
+/// The UTM grid of a window: lines on a nice step.
 fn utm_grid(w: &Win, k: f64, out: &mut Vec<Value>) {
-    let step = nice_step(60.0 / k);
-    let mut i = 0;
+    let step = grid_step(k);
     let mut e = (w[0] / step).ceil() * step;
     while e <= w[2] {
         out.push(line_e("GRID", None, [e, w[1]], [e, w[3]]));
-        if let Some(t) = text_in(
+        e += step;
+    }
+    let mut n = (w[1] / step).ceil() * step;
+    while n <= w[3] {
+        out.push(line_e("GRID", None, [w[0], n], [w[2], n]));
+        n += step;
+    }
+}
+
+/// The eastings along the top and the northings down the right, where they find room.
+fn grid_labels(w: &Win, k: f64, placer: &mut Placer, out: &mut Vec<Value>) {
+    let step = grid_step(k);
+    let mut i = 0;
+    let mut e = (w[0] / step).ceil() * step;
+    while e <= w[2] {
+        let at = [e + 1.0 / k, w[3] - (INSET_MM + H_TEXT) / k];
+        out.extend(placer.place(
             &format!("grid-e-{i}"),
-            [e + 1.0 / k, w[3] - (INSET_MM + H_TEXT) / k],
+            at,
             &format!("E {e:.0}"),
             H_TEXT,
-            k,
-            w,
-        ) {
-            out.push(t);
-        }
+            false,
+        ));
         e += step;
         i += 1;
     }
     let mut n = (w[1] / step).ceil() * step;
     let mut j = 0;
     while n <= w[3] {
-        out.push(line_e("GRID", None, [w[0], n], [w[2], n]));
-        if let Some(t) = text_in(
+        let at = [w[2] - 30.0 / k, n + 1.0 / k];
+        out.extend(placer.place(
             &format!("grid-n-{j}"),
-            [w[2] - 30.0 / k, n + 1.0 / k],
+            at,
             &format!("N {n:.0}"),
             H_TEXT,
-            k,
-            w,
-        ) {
-            out.push(t);
-        }
+            false,
+        ));
         n += step;
         j += 1;
     }
@@ -527,7 +614,7 @@ fn utm_grid(w: &Win, k: f64, out: &mut Vec<Value>) {
 
 impl Content<'_> {
     /// The entities common to every viewport, clipped to its window.
-    fn draw(&self, w: &Win, k: f64, ticks: bool, out: &mut Vec<Value>) {
+    fn draw(&self, w: &Win, k: f64, ticks: bool, placer: &mut Placer, out: &mut Vec<Value>) {
         if self.p.grid {
             utm_grid(w, k, out);
         }
@@ -577,17 +664,14 @@ impl Content<'_> {
                             c[0] + nrm[0] * (half + 1.0 / k),
                             c[1] + nrm[1] * (half + 1.0 / k),
                         ];
-                        if inside(at, w)
-                            && let Some(t) = text_in(
+                        if inside(at, w) {
+                            out.extend(placer.place(
                                 &format!("tick-label-{i}"),
                                 at,
                                 &chainage_text(s),
                                 H_TEXT,
-                                k,
-                                w,
-                            )
-                        {
-                            out.push(t);
+                                false,
+                            ));
                         }
                     }
                 }
@@ -597,23 +681,20 @@ impl Content<'_> {
     }
 
     /// The section lines of the gallery that lie wholly in the window.
-    fn sections(&self, w: &Win, k: f64, out: &mut Vec<Value>) {
+    fn sections(&self, w: &Win, k: f64, placer: &mut Placer, out: &mut Vec<Value>) {
         for &(n, s, half) in &self.sections {
             let (a, b) = (at_offset(s, -half), at_offset(s, half));
             if !(inside(a, w) && inside(b, w)) {
                 continue;
             }
             out.push(line_e("ANNO", Some(format!("xs-{n}")), a, b));
-            if let Some(t) = text_in(
+            out.extend(placer.place(
                 &format!("xs-{n}-label"),
                 [b[0] + 1.0 / k, b[1] + 1.0 / k],
                 &format!("S{n}"),
                 H_TEXT,
-                k,
-                w,
-            ) {
-                out.push(t);
-            }
+                true,
+            ));
         }
     }
 }
@@ -750,7 +831,7 @@ pub(super) fn build(
         let path = format!("{}-relief.jpg", numbers[0].to_ascii_lowercase());
         let backdrop = relief(&path, terrain, &w, &frame, &p)?;
         let mut ents = vec![backdrop.entity(RELIEF_LAYER, 1.0, Some("relief"))];
-        content.draw(&w, k_over, false, &mut ents);
+        let mut placer = Placer::new(k_over, w);
         for (i, &(s0, s1)) in ranges.iter().enumerate() {
             let b = window_on(
                 &line_box(&line, s0 - p.overlap_m, s1 + p.overlap_m, half),
@@ -766,16 +847,17 @@ pub(super) fn build(
             outline["closed"] = json!(true);
             ents.push(outline);
             let name = numbers[i + 1].clone();
-            if let Some(t) = text_in(
+            ents.extend(placer.place(
                 &format!("key-{}-label", i + 2),
                 [rc[3][0] + 1.0 / k_over, rc[3][1] - (1.0 + H_TEXT) / k_over],
                 &name,
                 H_TEXT,
-                k_over,
-                &w,
-            ) {
-                ents.push(t);
-            }
+                true,
+            ));
+        }
+        content.draw(&w, k_over, false, &mut placer, &mut ents);
+        if p.grid {
+            grid_labels(&w, k_over, &mut placer, &mut ents);
         }
         out.push(sheet(
             &p,
@@ -804,8 +886,7 @@ pub(super) fn build(
         let path = format!("{}-relief.jpg", numbers[n - 1].to_ascii_lowercase());
         let backdrop = relief(&path, terrain, &w, &frame, &p)?;
         let mut ents = vec![backdrop.entity(RELIEF_LAYER, 1.0, Some("relief"))];
-        content.draw(&w, k_strip, true, &mut ents);
-        content.sections(&w, k_strip, &mut ents);
+        let mut placer = Placer::new(k_strip, w);
         // match lines: at the start, to the strip before; at the end, to the strip after
         for (which, s, other) in [
             ("start", s0, (n > 2).then(|| n - 1)),
@@ -828,16 +909,13 @@ pub(super) fn build(
                 chainage_text(s),
                 numbers[other - 1]
             );
-            if let Some(t) = text_in(
+            ents.extend(placer.place(
                 &format!("match-{which}-label"),
                 [b[0] + 1.0 / k_strip, b[1]],
                 &text,
                 H_TEXT,
-                k_strip,
-                &w,
-            ) {
-                ents.push(t);
-            }
+                true,
+            ));
         }
         // the labels whose middle falls in this strip's own range (each label once in the set)
         for (j, l) in content.labels.iter().enumerate() {
@@ -856,16 +934,18 @@ pub(super) fn build(
             }
             let (c, nrm) = (line.at(mid), line.normal(mid));
             let off = half + LABEL_OFFSET_MM / k_strip;
-            if let Some(t) = text_in(
+            ents.extend(placer.place(
                 &format!("label-{j}"),
                 [c[0] + nrm[0] * off, c[1] + nrm[1] * off],
                 &l.text,
                 H_LABEL,
-                k_strip,
-                &w,
-            ) {
-                ents.push(t);
-            }
+                true,
+            ));
+        }
+        content.sections(&w, k_strip, &mut placer, &mut ents);
+        content.draw(&w, k_strip, true, &mut placer, &mut ents);
+        if p.grid {
+            grid_labels(&w, k_strip, &mut placer, &mut ents);
         }
         let title_s = format!("Plan CH {} to {}", chainage_text(s0), chainage_text(s1));
         out.push(sheet(
