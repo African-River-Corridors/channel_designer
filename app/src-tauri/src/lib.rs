@@ -1,4 +1,4 @@
-//! The Channel Designer desktop app shell.
+//! The Open Waterway Designer desktop app shell.
 //!
 //! Thin by design (spec 0003): each command forwards to the design session in `owd-format`. The
 //! shell owns the native open and save dialogs, the unsaved-changes guard, the window title and
@@ -81,6 +81,12 @@ fn confirm_discard(app: &AppHandle, state: &Shared) -> Result<bool, String> {
 }
 
 /// Ask for a file to open. `None` when the user cancels.
+/// What the open dialog offers: `.owd`, and `.cdesign`, the extension before the rename (spec 0006).
+/// A `.cdesign` file has the same contents.
+const OPEN_EXTENSIONS: [&str; 2] = ["owd", "cdesign"];
+/// What a save writes.
+const SAVE_EXTENSION: &str = "owd";
+
 fn pick_open(app: &AppHandle) -> Result<Option<PathBuf>, String> {
     if let Some(answer) = test_answer("open.txt") {
         return Ok(answer.map(PathBuf::from));
@@ -88,7 +94,7 @@ fn pick_open(app: &AppHandle) -> Result<Option<PathBuf>, String> {
     match app
         .dialog()
         .file()
-        .add_filter("Channel design", &["owd"])
+        .add_filter("Open Waterway Designer file", &OPEN_EXTENSIONS)
         .blocking_pick_file()
     {
         Some(picked) => Ok(Some(picked.into_path().map_err(|e| e.to_string())?)),
@@ -103,8 +109,8 @@ fn pick_save(app: &AppHandle) -> Result<Option<PathBuf>, String> {
         None => match app
             .dialog()
             .file()
-            .add_filter("Channel design", &["owd"])
-            .set_file_name("channel-design.cdesign")
+            .add_filter("Open Waterway Designer file", &[SAVE_EXTENSION])
+            .set_file_name(format!("waterway-design.{SAVE_EXTENSION}"))
             .blocking_save_file()
         {
             Some(p) => Some(p.into_path().map_err(|e| e.to_string())?),
@@ -113,7 +119,7 @@ fn pick_save(app: &AppHandle) -> Result<Option<PathBuf>, String> {
     };
     Ok(picked.map(|mut p| {
         if p.extension().is_none() {
-            p.set_extension("owd");
+            p.set_extension(SAVE_EXTENSION);
         }
         p
     }))
@@ -284,7 +290,7 @@ async fn export_file(
             .dialog()
             .file()
             .add_filter(label, &[ext])
-            .set_file_name(format!("channel-design.{ext}"))
+            .set_file_name(format!("waterway-design.{ext}"))
             .blocking_save_file()
             .map(|p| p.into_path().map_err(|e| e.to_string()))
             .transpose()?,
@@ -584,5 +590,35 @@ pub fn run() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running the Channel Designer app");
+        .expect("error while running the Open Waterway Designer app");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{OPEN_EXTENSIONS, SAVE_EXTENSION};
+
+    /// Spec 0006: the app is Open Waterway Designer, with its own bundle identifier. The old
+    /// identifier would give the app a second data folder, so no file may keep it.
+    #[test]
+    fn the_bundle_config_holds_the_new_name_and_identifier() {
+        let text = include_str!("../tauri.conf.json");
+        let conf: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(conf["productName"], "Open Waterway Designer");
+        assert_eq!(
+            conf["identifier"],
+            "org.africanrivercorridors.openwaterwaydesigner"
+        );
+        assert_eq!(conf["app"]["windows"][0]["title"], "Open Waterway Designer");
+        assert!(
+            !text.contains("channeldesigner"),
+            "the old identifier is gone"
+        );
+        assert!(!text.contains("Channel Designer"), "the old name is gone");
+    }
+
+    #[test]
+    fn the_dialogs_open_owd_and_cdesign_and_save_owd() {
+        assert_eq!(OPEN_EXTENSIONS, ["owd", "cdesign"]);
+        assert_eq!(SAVE_EXTENSION, "owd");
+    }
 }

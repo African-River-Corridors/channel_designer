@@ -1,6 +1,6 @@
 [package]
 name = "owd-app"
-description = "The Channel Designer desktop app: a thin Tauri shell over the design session in owd-format."
+description = "The Open Waterway Designer desktop app: a thin Tauri shell over the design session in owd-format."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

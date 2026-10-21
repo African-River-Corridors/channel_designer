@@ -62,7 +62,7 @@ jobs:
       - name: Keep the bundles
         uses: actions/upload-artifact@v4
         with:
-          name: channel-designer-${{ matrix.name }}-unsigned
+          name: open-waterway-designer-${{ matrix.name }}-unsigned
           path: |
             target/release/bundle/**
             !target/release/bundle/**/*.tar.gz

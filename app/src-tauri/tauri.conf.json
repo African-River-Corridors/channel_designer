@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Channel Designer",
+  "productName": "Open Waterway Designer",
   "version": "0.1.0",
-  "identifier": "org.africanrivercorridors.channeldesigner",
+  "identifier": "org.africanrivercorridors.openwaterwaydesigner",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Channel Designer",
+        "title": "Open Waterway Designer",
         "width": 1280,
         "height": 800,
         "minWidth": 720,
@@ -29,7 +29,7 @@
     "publisher": "African River Corridors",
     "category": "Utility",
     "shortDescription": "Screen a river reach for a vessel: cut and dredge volumes, design line options and checks.",
-    "longDescription": "Channel Designer screens inland navigation channels. It is for screening, not for construction.",
+    "longDescription": "Open Waterway Designer screens inland navigation channels. It is for screening, not for construction.",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.icns", "icons/icon.ico"]
   }
 }
