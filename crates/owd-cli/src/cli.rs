@@ -255,6 +255,19 @@ enum Command {
         /// The date in the title block, YYYY-MM-DD (default: the date the design was created).
         #[arg(long, value_name = "DATE")]
         date: Option<String>,
+        /// A sheet style file (JSON): the members it holds are laid over the built-in default. Its hash
+        /// is printed on every sheet.
+        #[arg(long, value_name = "FILE")]
+        style: Option<String>,
+        /// Override the style: a section every this many metres of chainage.
+        #[arg(long, value_name = "METRES")]
+        section_spacing: Option<f64>,
+        /// Override the style: the sheet size of the cross sections (A0 to A4).
+        #[arg(long, value_name = "SIZE")]
+        sheet_size: Option<String>,
+        /// Override the style: draw the cross sections at this one scale (the denominator, for example 1000).
+        #[arg(long, value_name = "N")]
+        scale: Option<u32>,
         /// Print a machine-readable result as JSON.
         #[arg(long)]
         json: bool,
@@ -431,6 +444,10 @@ pub fn main() -> ExitCode {
             sheets,
             revision,
             date,
+            style,
+            section_spacing,
+            sheet_size,
+            scale,
             json,
             ..
         } => commands::draw(
@@ -442,6 +459,10 @@ pub fn main() -> ExitCode {
                 sheets,
                 revision,
                 date,
+                style,
+                section_spacing,
+                sheet_size,
+                scale,
             },
             json,
         ),

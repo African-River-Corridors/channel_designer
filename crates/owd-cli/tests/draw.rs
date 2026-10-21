@@ -128,3 +128,40 @@ fn draw_needs_out_or_document_and_refuses_what_it_cannot_draw() {
     let o = run(&["draw", doc.to_str().unwrap(), "--document"]);
     assert_eq!(code(&o), 2);
 }
+
+#[test]
+fn the_style_file_and_the_flags_set_the_sheets_and_a_bad_style_is_refused() {
+    let ex = example();
+    let ex = ex.to_str().unwrap();
+    let notes = |args: &[&str]| -> String {
+        let mut a = vec!["draw", ex, "--document"];
+        a.extend_from_slice(args);
+        let o = run(&a);
+        assert_eq!(code(&o), 0, "{}", err(&o));
+        let docs: Value = serde_json::from_str(&out(&o)).unwrap();
+        let first = docs.as_object().unwrap().values().next().unwrap();
+        first["notes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|n| n.as_str().unwrap().to_string())
+            .find(|n| n.starts_with("SHEET STYLE"))
+            .unwrap()
+    };
+    let base = notes(&[]);
+    let finer = notes(&["--section-spacing", "250"]);
+    assert_ne!(base, finer, "a flag changes the hash on the sheet");
+    // The same single value in a file gives the same hash.
+    let dir = work_dir("style");
+    let file = dir.join("fine.style.json");
+    std::fs::write(&file, r#"{"sections": {"spacing_m": 250}}"#).unwrap();
+    assert_eq!(notes(&["--style", file.to_str().unwrap()]), finer);
+    let bad = dir.join("bad.style.json");
+    std::fs::write(&bad, r#"{"gallery": {"min_columns": 0}}"#).unwrap();
+    let o = run(&["draw", ex, "--document", "--style", bad.to_str().unwrap()]);
+    assert_eq!(code(&o), 2);
+    assert!(err(&o).contains("/gallery/min_columns"), "{}", err(&o));
+    let o = run(&["draw", ex, "--document", "--sheet-size", "A9"]);
+    assert_eq!(code(&o), 2);
+    assert!(err(&o).contains("/sheets/xs/size"), "{}", err(&o));
+}

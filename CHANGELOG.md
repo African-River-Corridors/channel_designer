@@ -24,6 +24,12 @@ versions follow [Semantic Versioning](https://semver.org/).
   `otd`'s normalised content with the standard's Python reader for OWD's own drawing documents.
   **Removed:** `owd.drawings` and the `[drawings]` extra (they drew through an API that the Drawing Format Standard
   dropped in 1.0). Use `owd.draw` or `owd draw`.
+- **Sheet style (spec 0004, ticket 2).** What a sheet shows is now data: a JSON sheet style with a JSON Schema
+  (`schema/owd-style.schema.json`) and a default built into every binary (`owd-default.style.json`): sheet size,
+  scales to try, optional layers, the section spacing and the extra-section rules, and the layout of a panel.
+  `owd draw --style FILE` lays the members of a file over the default; `--section-spacing`, `--sheet-size` and
+  `--scale` override single values (`owd.draw(style=..., overrides=...)` in Python). An invalid style is refused
+  with the field named. The SHA-256 of the style after the overrides is printed on every sheet.
 - **Web app (spec 0011).** The desktop app's front end now also runs in a browser, over a WebAssembly build
   of the same Rust core, at `africanrivercorridors.com/owd/app`. Nothing you load is uploaded. It opens a
   bundled example, or `.owd` files, GeoJSON or GeoPackage banks and a GeoTIFF DEM from your computer; Save and

@@ -970,6 +970,10 @@ pub struct DrawFlags {
     pub sheets: Option<String>,
     pub revision: Option<String>,
     pub date: Option<String>,
+    pub style: Option<String>,
+    pub section_spacing: Option<f64>,
+    pub sheet_size: Option<String>,
+    pub scale: Option<u32>,
 }
 
 fn from_draw(e: owd_format::drawing::DrawError) -> Failure {
@@ -998,6 +1002,25 @@ pub fn draw(doc: &str, flags: DrawFlags, json_mode: bool) -> Result {
     if let Some(r) = flags.revision {
         options.revision = r;
     }
+    let mut style = match &flags.style {
+        Some(path) => drawing::Style::from_text(&read(path)?)
+            .map_err(|e| input_error(format!("{path}: {e}")))?,
+        None => drawing::Style::builtin(),
+    };
+    let mut overrides: Vec<(String, Value)> = Vec::new();
+    if let Some(m) = flags.section_spacing {
+        overrides.push(("sections.spacing_m".into(), json!(m)));
+    }
+    if let Some(z) = flags.sheet_size {
+        overrides.push(("sheets.xs.size".into(), json!(z)));
+    }
+    if let Some(n) = flags.scale {
+        overrides.push(("gallery.scales".into(), json!([n])));
+    }
+    style = style
+        .with_overrides(&overrides)
+        .map_err(|e| input_error(e.to_string()))?;
+    options.style = style;
     let sheets = drawing::sheets_from_text(&session.to_text(), bytes.as_deref(), &options)
         .map_err(from_draw)?;
     if flags.documents_only {

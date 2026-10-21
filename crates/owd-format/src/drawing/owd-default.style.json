@@ -1,0 +1,24 @@
+{
+  "style_version": 1,
+  "name": "owd-default",
+  "sheets": {
+    "xs": { "size": "A3", "orientation": "landscape" }
+  },
+  "layers": { "GRID": true, "HATCH": true, "WATER": true },
+  "sections": {
+    "spacing_m": 500,
+    "extra": [{ "rule": "bend-middle" }]
+  },
+  "gallery": {
+    "scales": [200, 250, 500, 1000, 2000, 5000, 10000],
+    "min_columns": 2,
+    "gap_mm": 2,
+    "margin_m": 15,
+    "min_half_m": 60,
+    "below_invert_m": 4,
+    "above_ground_m": 3,
+    "label_pitch_mm": 12,
+    "hatch_min_cut_m": 0.001,
+    "bands_mm": { "left": 10, "right": 3, "top": 17, "bottom": 8 }
+  }
+}
