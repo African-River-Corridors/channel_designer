@@ -1,0 +1,12 @@
+[package]
+name = "owd-reach"
+description = "Inputs for a study made from open data (spec 0012): sources, routing, banks, water level. Pure Rust; builds native and wasm32; network access only through the Fetch trait."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+owd-format.workspace = true
+serde_json.workspace = true

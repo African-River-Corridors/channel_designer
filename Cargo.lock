@@ -2539,6 +2539,7 @@ dependencies = [
  "clap",
  "owd-core",
  "owd-format",
+ "owd-reach",
  "serde_json",
  "sha2 0.11.1",
  "tiff",
@@ -2576,6 +2577,14 @@ version = "0.2.0"
 dependencies = [
  "owd-format",
  "pyo3",
+ "serde_json",
+]
+
+[[package]]
+name = "owd-reach"
+version = "0.2.0"
+dependencies = [
+ "owd-format",
  "serde_json",
 ]
 

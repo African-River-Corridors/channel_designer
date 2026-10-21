@@ -5,6 +5,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **Start from a river: the `owd-reach` crate (spec 0012, T1).** New pure-Rust crate for inputs made from open
+  data. It holds the `Fetch` interface (one place for network access: native HTTP on the CLI, the browser's
+  `fetch` on the web) and a source registry with each source's licence, notice and whether a browser can read
+  it. A document can now record a `provenance` for each input (source, date, notice, mark `default`, `edited`
+  or `user`); GeoJSON and CSV exports carry the notices. A document without provenance gives the same results
+  and the same exports as before.
 - **Web app (spec 0011).** The desktop app's front end now also runs in a browser, over a WebAssembly build
   of the same Rust core, at `africanrivercorridors.com/owd/app`. Nothing you load is uploaded. It opens a
   bundled example, or `.owd` files, GeoJSON or GeoPackage banks and a GeoTIFF DEM from your computer; Save and

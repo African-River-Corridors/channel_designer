@@ -151,3 +151,37 @@ fn volumes_show_in_the_exports_with_their_status() {
     assert_eq!(fc["features"][0]["properties"]["volumes_status"], "fresh");
     assert!(fc["features"][0]["properties"]["volumes"]["dredge_m3"].is_number());
 }
+
+#[test]
+fn exports_carry_the_notice_of_every_input_used_and_are_unchanged_without_provenance() {
+    use owd_format::design::provenance::{Mark, record};
+    let mut s = design(&straight(), "CEMT_IV");
+    let plain_csv = s.export_csv(None);
+    let plain_geo = s.export_geojson(false, None).unwrap();
+    assert!(!plain_csv.contains("OpenStreetMap") && !plain_geo.contains("notices"));
+
+    let notice = "Source: EC JRC/Google; Pekel et al. 2016";
+    s.set_provenance(
+        "left_bank",
+        record("jrc-gsw", "2021-12-31", notice, Mark::Default, true),
+    )
+    .unwrap();
+    s.set_provenance(
+        "dem",
+        record(
+            "cop-dem-glo30",
+            "2026-10-21",
+            "Copernicus DEM notice",
+            Mark::Default,
+            false,
+        ),
+    )
+    .unwrap();
+    let csv = s.export_csv(None);
+    assert!(csv.contains(&format!("# {notice}\n")), "{csv}");
+    assert!(csv.contains("# Copernicus DEM notice\n"), "{csv}");
+    let geo: Value = serde_json::from_str(&s.export_geojson(false, None).unwrap()).unwrap();
+    assert_eq!(geo["notices"], json!([notice, "Copernicus DEM notice"]));
+    // The results do not depend on provenance: the same rows follow the notices.
+    assert!(csv.ends_with(plain_csv.split_once('\n').unwrap().1));
+}
