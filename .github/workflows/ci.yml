@@ -206,7 +206,7 @@ jobs:
           key: wasm-bindgen-cli-${{ steps.wb.outputs.version }}-${{ runner.os }}
       - name: Install wasm-bindgen CLI
         if: steps.cli.outputs.cache-hit != 'true'
-        run: cargo install wasm-bindgen-cli --version "${{ steps.wb.outputs.version }}" --locked
+        run: cargo install wasm-bindgen-cli --version "${{ steps.wb.outputs.version }}" --locked --force
       - name: Lint the web session for wasm
         run: cargo clippy --target wasm32-unknown-unknown -p owd-web -- -D warnings
       - name: Build and lint owd-reach for wasm (spec 0012)
@@ -255,7 +255,7 @@ jobs:
           key: wasm-bindgen-cli-${{ steps.wb.outputs.version }}-${{ runner.os }}
       - name: Install wasm-bindgen CLI
         if: steps.cli.outputs.cache-hit != 'true'
-        run: cargo install wasm-bindgen-cli --version "${{ steps.wb.outputs.version }}" --locked
+        run: cargo install wasm-bindgen-cli --version "${{ steps.wb.outputs.version }}" --locked --force
       - name: Build the web package
         run: bash tools/build_web.sh
       - name: Build owd

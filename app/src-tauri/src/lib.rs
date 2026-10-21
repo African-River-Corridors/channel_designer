@@ -511,7 +511,8 @@ async fn fetch_dem(window: Window, state: State<'_, Shared>) -> Reply {
     let doc = path.to_string_lossy().into_owned();
     let mirror = test_answer("dem-mirror.txt").flatten();
     tauri::async_runtime::spawn_blocking(move || {
-        owd_cli::commands::fetch_dem(&doc, 1000.0, mirror.as_deref(), true).map_err(|f| f.message)
+        owd_cli::commands::fetch_dem(&doc, 1000.0, mirror.as_deref(), None, true)
+            .map_err(|f| f.message)
     })
     .await
     .map_err(|e| e.to_string())??;
