@@ -1,15 +1,16 @@
 <script lang="ts">
   import type { OptionTable } from "./api";
+  import OptionSwatch from "./OptionSwatch.svelte";
 
   let {
     table,
-    colourOf,
+    indexOf,
     selectedId,
     onSelect,
   }: {
     table: OptionTable | null;
-    /** The colour an option has on the map, by its place in the design's list. */
-    colourOf: (id: string) => string;
+    /** An option's place in the design's list: its colour and hatch, as on the map. */
+    indexOf: (id: string) => number;
     selectedId: string | null;
     onSelect: (id: string) => void;
   } = $props();
@@ -47,7 +48,7 @@
               tabindex="0"
               onkeydown={(e) => (e.key === "Enter" || e.key === " ") && onSelect(r.id)}
             >
-              <td><span class="swatch" style:background={colourOf(r.id)}></span></td>
+              <td><OptionSwatch index={indexOf(r.id)} /></td>
               <td class="name">{r.name}</td>
               <td data-col="dredge">{m3(r.dredge_m3)}</td>
               <td data-col="dry-cut">{m3(r.dry_cut_m3)}</td>
@@ -85,24 +86,24 @@
 
 <style>
   .bottom { display: grid; grid-template-columns: 1fr minmax(220px, 34%); height: 100%; min-height: 0; }
-  .table, .checks { overflow: auto; padding: 6px 10px; min-width: 0; }
-  .checks { border-left: 1px solid var(--line); }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: right; font-weight: normal; color: var(--dim); font-size: 12px; padding: 3px 8px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: #fff; }
+  .table, .checks { overflow: auto; padding: var(--sp-3); min-width: 0; }
+  .checks { border-left: var(--lw-thin) solid var(--ink); }
+  table { width: 100%; border-collapse: collapse; font-size: var(--fs-13); }
+  th { text-align: right; font: 600 var(--fs-11) var(--font-ui); letter-spacing: 0.04em; color: var(--ink-2); padding: var(--sp-1) var(--sp-2); border-bottom: var(--lw-thin) solid var(--ink); position: sticky; top: 0; background: var(--surface-2); }
   th:nth-child(2), td.name { text-align: left; }
-  td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  td { text-align: right; padding: 6px var(--sp-2); border-bottom: var(--lw-thin) solid var(--rule); font-variant-numeric: tabular-nums; }
   tbody tr { cursor: pointer; }
-  tbody tr:hover { background: #f4f1e8; }
-  tr.selected { background: #fdf1d3; outline: 2px solid var(--gold); outline-offset: -2px; }
-  tr.failed td { color: #8f1d14; background: #fbe4e1; }
-  tr.failed.selected td { background: #f8d4cf; }
-  .swatch { display: inline-block; width: 16px; height: 4px; vertical-align: middle; }
-  .mark.fail { color: #b3261e; font-weight: bold; }
-  .mark.ok { color: #1d5c1d; }
-  .note { margin: 6px 0 0; font-size: 12px; color: #6b4a00; }
-  .slot { color: var(--dim); font-style: italic; margin: 8px 0; }
-  .checks h3 { font-size: 14px; }
-  ul { list-style: none; margin: 0; padding: 0; font-size: 12px; }
-  li { padding: 4px 0; border-bottom: 1px solid var(--line); }
-  li.failed { color: #8f1d14; }
+  tbody tr:hover td { background: var(--surface-2); }
+  tr.selected td { background: var(--accent-soft); }
+  tr.selected td:first-child { box-shadow: inset 3px 0 0 var(--ink); }
+  /* Status: a word and a shape on a soft ground, never colour alone. */
+  .mark { font: 600 var(--fs-11) var(--font-ui); padding: 1px 7px; border-radius: var(--radius); }
+  .mark.fail { color: var(--fail); background: var(--fail-soft); }
+  .mark.ok { color: var(--pass); background: var(--pass-soft); }
+  .note { margin: var(--sp-2) 0 0; font-size: var(--fs-12); color: var(--warn); }
+  .slot { color: var(--ink-3); font-style: italic; margin: var(--sp-2) 0; }
+  ul { list-style: none; margin: 0; padding: 0; font-size: var(--fs-12); }
+  li { padding: 5px 0; border-bottom: var(--lw-thin) solid var(--rule); }
+  li.failed { color: var(--fail); }
+  li .mark { margin-right: var(--sp-1); }
 </style>

@@ -237,10 +237,8 @@
   }
 
   /** An option's colour (a CSS reference to its token): its place in the design's list, which is the order the map draws. */
-  const colourOf = (id: string) => {
-    const i = geometry?.options.findIndex((o) => o.id === id) ?? -1;
-    return optionVar(i < 0 ? 0 : i);
-  };
+  const indexOf = (id: string) => Math.max(geometry?.options.findIndex((o) => o.id === id) ?? 0, 0);
+  const colourOf = (id: string) => optionVar(indexOf(id));
 
   // The hillshade is drawn once by the Rust side, and only when the imagery is offline. A new DEM
   // reference clears it.
@@ -386,7 +384,7 @@
     </section>
     <div class="handle h" role="separator" aria-orientation="horizontal" onpointerdown={drag("y")}></div>
     <section class="bottom">
-      <BottomPanel {table} {colourOf} {selectedId} onSelect={(id) => (selectedId = id)} />
+      <BottomPanel {table} {indexOf} {selectedId} onSelect={(id) => (selectedId = id)} />
     </section>
   </div>
 
