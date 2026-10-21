@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { InputRole, Snapshot } from "./api";
+  import { platform } from "./platform";
 
   let {
     snap,
@@ -72,7 +73,7 @@
     </tbody>
   </table>
   <p class="row">
-    <button disabled={busy} data-testid="fetch-dem" onclick={onFetch} title="Download a Copernicus GLO-30 DEM for the reach, beside the saved design">Fetch DEM</button>
+    {#if platform().kind === "tauri"}<button disabled={busy} data-testid="fetch-dem" onclick={onFetch} title="Download a Copernicus GLO-30 DEM for the reach, beside the saved design">Fetch DEM</button>{/if}
   </p>
   <p class="hint">Drop a file on its row to load it. GeoJSON and GeoPackage in WGS84 or UTM; DEM as GeoTIFF.</p>
 
