@@ -1201,3 +1201,139 @@ pub fn status(doc: &str, json_mode: bool) -> Result {
 pub fn schema() -> Result {
     write("-", Session::schema_text())
 }
+
+// --- reach (spec 0012) -------------------------------------------------------------------
+
+/// The arguments of `owd reach`.
+pub struct ReachFlags {
+    pub file: String,
+    pub river: Option<String>,
+    pub start: Option<String>,
+    pub end: Option<String>,
+    pub via: Vec<String>,
+    pub trace: Option<String>,
+    pub title: Option<String>,
+    pub overpass: Option<String>,
+    pub date: Option<String>,
+    pub json: bool,
+}
+
+fn lon_lat(s: &str) -> core::result::Result<[f64; 2], Failure> {
+    let bad = || input_error(format!("`{s}` is not `lon,lat` (for example -6.08,4.95)"));
+    let (a, b) = s.split_once(',').ok_or_else(bad)?;
+    let lon: f64 = a.trim().parse().map_err(|_| bad())?;
+    let lat: f64 = b.trim().parse().map_err(|_| bad())?;
+    if lon.abs() <= 180.0 && lat.abs() <= 90.0 {
+        Ok([lon, lat])
+    } else {
+        Err(bad())
+    }
+}
+
+/// The first line of a GeoJSON file (a LineString, or a Feature or collection holding one), as
+/// longitude and latitude.
+fn trace_line(text: &str, path: &str) -> core::result::Result<Vec<[f64; 2]>, Failure> {
+    fn find(v: &Value) -> Option<&Value> {
+        match v["type"].as_str()? {
+            "LineString" => Some(&v["coordinates"]),
+            "MultiLineString" => v["coordinates"].get(0),
+            "Feature" => find(&v["geometry"]),
+            "FeatureCollection" => v["features"].as_array()?.iter().find_map(find),
+            _ => None,
+        }
+    }
+    let v: Value = serde_json::from_str(text)
+        .map_err(|e| input_error(format!("{path}: not valid JSON: {e}")))?;
+    let coords = find(&v)
+        .and_then(Value::as_array)
+        .ok_or_else(|| input_error(format!("{path}: no LineString found")))?;
+    coords
+        .iter()
+        .map(|p| Some([p[0].as_f64()?, p[1].as_f64()?]))
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| {
+            input_error(format!(
+                "{path}: the line has a point that is not [lon, lat]"
+            ))
+        })
+}
+
+pub fn reach(flags: ReachFlags) -> Result {
+    reach_with(flags, &crate::reach_fetch::HttpFetch)
+}
+
+/// `reach` with the fetcher given, so a test can serve recorded answers.
+pub fn reach_with(flags: ReachFlags, fetch: &dyn owd_reach::Fetch) -> Result {
+    use owd_reach::overpass::{DEFAULT_ENDPOINT, Overpass};
+    use owd_reach::reach::{plan_points, plan_trace, record_reach};
+    let date = flags.date.clone().unwrap_or_else(today);
+    if flags.start.is_none() && flags.trace.is_none() {
+        return Err(input_error(
+            "give --start and --end (and --river), or --trace FILE",
+        ));
+    }
+    let ov = Overpass::with_endpoint(fetch, flags.overpass.as_deref().unwrap_or(DEFAULT_ENDPOINT));
+    let river = flags.river.as_deref();
+    let planned = if let Some(path) = &flags.trace {
+        let line = trace_line(&read(path)?, path)?;
+        plan_trace(&ov, river, &line)
+    } else {
+        let start = lon_lat(flags.start.as_deref().unwrap_or_default())?;
+        let end = lon_lat(flags.end.as_deref().unwrap_or_default())?;
+        let via = flags
+            .via
+            .iter()
+            .map(|v| lon_lat(v))
+            .collect::<core::result::Result<Vec<_>, _>>()?;
+        plan_points(&ov, river, start, end, &via)
+    }
+    .map_err(|e| input_error(e.to_string()))?;
+    let title = flags
+        .title
+        .clone()
+        .or_else(|| flags.river.clone())
+        .unwrap_or_else(|| "Reach study".to_string());
+    if title.trim().is_empty() {
+        return Err(input_error("the title must not be empty"));
+    }
+    let mut session = Session::new(&title, &date);
+    record_reach(&mut session, &planned, &date).map_err(|e| input_error(e.to_string()))?;
+    write(&flags.file, &session.to_text())?;
+    let route = &planned.route;
+    let ways = route.way_ids().len();
+    let drawn = route.as_drawn_count();
+    let found = planned.candidates.first().map(|c| {
+        format!(
+            "{} {} way(s) named \"{}\"",
+            planned
+                .candidates
+                .iter()
+                .map(|c| c.way_ids.len())
+                .sum::<usize>(),
+            c.kind,
+            c.name
+        )
+    });
+    let mut human = format!(
+        "wrote {}: route of {:.1} km over {ways} way(s)",
+        flags.file,
+        route.length_m / 1000.0
+    );
+    if drawn > 0 {
+        human.push_str(&format!(
+            "; {drawn} stretch(es) kept as drawn, with no waterway near (check them)"
+        ));
+    }
+    human.push_str("\n© OpenStreetMap contributors (ODbL)");
+    say(
+        flags.file == "-",
+        flags.json,
+        &human,
+        json!({
+            "ok": true, "file": flags.file, "length_m": route.length_m,
+            "ways": route.way_ids(), "as_drawn_stretches": drawn,
+            "river_search": found,
+        }),
+    );
+    Ok(())
+}

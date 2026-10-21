@@ -150,6 +150,38 @@
       "type": "array",
       "items": { "type": "object" }
     },
+    "reach": {
+      "description": "Spec 0012: the reach the study was started from. Start, end and via points and the trace are the user's own longitude-latitude clicks. The route is OSM way ids only, never OSM geometry (ODbL); a stretch with no waterway near it is kept as the user drew it, kind `as-drawn`. Optional.",
+      "type": "object",
+      "required": ["start", "end", "route"],
+      "additionalProperties": false,
+      "properties": {
+        "river": { "type": ["string", "null"] },
+        "start": { "$ref": "#/$defs/position" },
+        "end": { "$ref": "#/$defs/position" },
+        "via": { "type": "array", "items": { "$ref": "#/$defs/position" } },
+        "trace": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/position" } }
+          ]
+        },
+        "length_m": { "type": "number", "minimum": 0 },
+        "route": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": { "enum": ["waterway", "as-drawn"] },
+              "way_ids": { "type": "array", "items": { "type": "integer" } },
+              "line": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/position" } }
+            }
+          }
+        }
+      }
+    },
     "provenance": {
       "description": "Spec 0012: where each generated input came from, by input name. Optional: a document with none gives the same results. Each record names its source (an `owd-reach` registry id), its date, the licence notice that travels into every export, and a mark: `default` (made by OWD), `edited` (a default the user changed) or `user` (the user's own).",
       "type": "object",

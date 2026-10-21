@@ -6,6 +6,13 @@ use owd_reach::{Fetch, FetchError};
 /// Refuse a response larger than this (a Sentinel-2 or JRC window is far smaller).
 const MAX_BYTES: u64 = 400_000_000;
 
+/// Overpass and other public hosts ask clients to say who they are.
+const USER_AGENT: &str = concat!(
+    "open-waterway-designer/",
+    env!("CARGO_PKG_VERSION"),
+    " (+https://github.com/African-River-Corridors/open-waterway-designer)"
+);
+
 /// Native HTTP.
 pub struct HttpFetch;
 
@@ -23,7 +30,11 @@ fn range_header(start: u64, len: u64) -> String {
 
 impl Fetch for HttpFetch {
     fn get(&self, url: &str) -> Result<Vec<u8>, FetchError> {
-        let mut resp = ureq::get(url).call().map_err(|e| failed(url, e))?;
+        let mut resp = ureq::get(url)
+            .header("User-Agent", USER_AGENT)
+            .header("Accept", "*/*")
+            .call()
+            .map_err(|e| failed(url, e))?;
         resp.body_mut()
             .with_config()
             .limit(MAX_BYTES)
@@ -33,6 +44,7 @@ impl Fetch for HttpFetch {
 
     fn get_range(&self, url: &str, start: u64, len: u64) -> Result<Vec<u8>, FetchError> {
         let mut resp = ureq::get(url)
+            .header("User-Agent", USER_AGENT)
             .header("Range", range_header(start, len))
             .call()
             .map_err(|e| failed(url, e))?;

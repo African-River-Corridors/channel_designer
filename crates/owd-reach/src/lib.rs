@@ -4,9 +4,15 @@
 //! and desktop give it a native HTTP client; the web gives it the browser's `fetch` in the session
 //! Worker. The logic never knows which. It builds for native and for `wasm32-unknown-unknown`.
 
+pub mod error;
 pub mod fetch;
+pub mod geo;
+pub mod overpass;
 pub mod provenance;
+pub mod reach;
+pub mod route;
 pub mod sources;
 
+pub use error::ReachError;
 pub use fetch::{Fetch, FetchError, ReplayFetch};
 pub use sources::{Source, registry, source};
