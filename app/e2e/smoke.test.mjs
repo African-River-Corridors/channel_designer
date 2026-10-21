@@ -12,7 +12,7 @@ import { remote } from "webdriverio";
 
 const here = import.meta.dirname;
 const EXAMPLE = path.resolve(here, "../../examples/synthetic-river.cdesign");
-const APP = path.resolve(here, process.env.CD_APP_BINARY ?? "../../target/debug/cd-app");
+const APP = path.resolve(here, process.env.CD_APP_BINARY ?? "../../target/debug/owd-app");
 const DIALOGS = process.env.CD_TEST_DIALOG_DIR;
 assert.ok(DIALOGS, "CD_TEST_DIALOG_DIR must be set (run e2e/run.sh)");
 const WORK = fs.mkdtempSync(path.join(os.tmpdir(), "cd-e2e-work-"));

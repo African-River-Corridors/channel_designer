@@ -352,66 +352,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cd-app"
-version = "0.2.0"
-dependencies = [
- "base64 0.22.1",
- "cd-cli",
- "cd-core",
- "cd-format",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
-]
-
-[[package]]
-name = "cd-cli"
-version = "0.2.0"
-dependencies = [
- "cd-core",
- "cd-format",
- "clap",
- "serde_json",
- "sha2 0.11.1",
- "tiff",
- "ureq",
-]
-
-[[package]]
-name = "cd-core"
-version = "0.2.0"
-dependencies = [
- "clarabel",
- "dubins_paths",
- "libm",
- "ovcd-core",
-]
-
-[[package]]
-name = "cd-format"
-version = "0.2.0"
-dependencies = [
- "cd-core",
- "libm",
- "png 0.18.1",
- "proj4rs",
- "rusqlite",
- "serde_json",
- "sha2 0.11.1",
- "tiff",
-]
-
-[[package]]
-name = "cd-py"
-version = "0.2.0"
-dependencies = [
- "cd-format",
- "pyo3",
- "serde_json",
-]
-
-[[package]]
 name = "cesu8"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2575,6 +2515,66 @@ version = "0.2.2"
 source = "git+https://github.com/African-River-Corridors/open-vessel-concept-drawings?tag=v0.2.2#5dbeee00579fc2c0377e3ed370894d84e2481e5a"
 dependencies = [
  "libm",
+]
+
+[[package]]
+name = "owd-app"
+version = "0.2.0"
+dependencies = [
+ "base64 0.22.1",
+ "owd-cli",
+ "owd-core",
+ "owd-format",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+]
+
+[[package]]
+name = "owd-cli"
+version = "0.2.0"
+dependencies = [
+ "clap",
+ "owd-core",
+ "owd-format",
+ "serde_json",
+ "sha2 0.11.1",
+ "tiff",
+ "ureq",
+]
+
+[[package]]
+name = "owd-core"
+version = "0.2.0"
+dependencies = [
+ "clarabel",
+ "dubins_paths",
+ "libm",
+ "ovcd-core",
+]
+
+[[package]]
+name = "owd-format"
+version = "0.2.0"
+dependencies = [
+ "libm",
+ "owd-core",
+ "png 0.18.1",
+ "proj4rs",
+ "rusqlite",
+ "serde_json",
+ "sha2 0.11.1",
+ "tiff",
+]
+
+[[package]]
+name = "owd-py"
+version = "0.2.0"
+dependencies = [
+ "owd-format",
+ "pyo3",
+ "serde_json",
 ]
 
 [[package]]

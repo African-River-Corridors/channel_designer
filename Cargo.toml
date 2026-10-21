@@ -1,9 +1,9 @@
 [workspace]
 resolver = "3"
-members = ["crates/cd-core", "crates/cd-format", "crates/cd-cli", "crates/cd-py", "app/src-tauri", "xtask"]
-# cd-py (PyO3 bindings, ticket 35) is left out so `cargo build` and `cargo test` need no Python.
+members = ["crates/owd-core", "crates/owd-format", "crates/owd-cli", "crates/owd-py", "app/src-tauri", "xtask"]
+# owd-py (PyO3 bindings, ticket 35) is left out so `cargo build` and `cargo test` need no Python.
 # app/src-tauri (the desktop app, spec 0003) is left out so they need no Node and no Tauri system libraries.
-default-members = ["crates/cd-core", "crates/cd-format", "crates/cd-cli", "xtask"]
+default-members = ["crates/owd-core", "crates/owd-format", "crates/owd-cli", "xtask"]
 
 [workspace.package]
 version = "0.2.0"
@@ -13,8 +13,8 @@ license = "Apache-2.0"
 repository = "https://github.com/African-River-Corridors/channel_designer"
 
 [workspace.dependencies]
-cd-core = { path = "crates/cd-core" }
-cd-format = { path = "crates/cd-format" }
+owd-core = { path = "crates/owd-core" }
+owd-format = { path = "crates/owd-format" }
 # float_roundtrip, arbitrary_precision: read every number exactly as written, big ints too.
 # preserve_order: a JSON object keeps its key order, as a Python dict does.
 serde_json = { version = "1", features = ["float_roundtrip", "arbitrary_precision", "preserve_order"] }

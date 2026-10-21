@@ -8,7 +8,7 @@ command -v tauri-driver >/dev/null || { echo "e2e: tauri-driver is not on PATH (
 export CD_TEST_DIALOG_DIR="$(mktemp -d)"
 # Every basemap tile request fails (nothing listens on port 9), so the map is offline and the hillshade shows.
 export CD_TEST_TILE_URL="http://127.0.0.1:9/{z}/{x}/{y}.jpg"
-export CD_APP_BINARY="${CD_APP_BINARY:-../../target/debug/cd-app}"
+export CD_APP_BINARY="${CD_APP_BINARY:-../../target/debug/owd-app}"
 [ -x "$(cd e2e && realpath "$CD_APP_BINARY")" ] || { echo "e2e: no built app at $CD_APP_BINARY" >&2; exit 1; }
 # Software rendering under a virtual display (a missing GPU can stall WebKitGTK for a long time).
 export LANG=en_US.UTF-8 LANGUAGE=en_US LC_ALL=en_US.UTF-8

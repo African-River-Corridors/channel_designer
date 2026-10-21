@@ -1,7 +1,7 @@
 channel_designer
 Copyright 2026 African River Corridors Limited
 
-Test data: crates/cd-format/tests/fixtures/dem/glo30_n05_w003_clip.tif is a small clip of the
+Test data: crates/owd-format/tests/fixtures/dem/glo30_n05_w003_clip.tif is a small clip of the
 Copernicus DEM GLO-30. Produced using Copernicus WorldDEM-30 (c) DLR e.V. 2010-2014 and (c) Airbus
 Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights
 reserved.

@@ -8,15 +8,15 @@
 #
 # Steps:
 #   1. cargo fmt --check
-#   2. clippy, warnings as errors (includes the banned-maths rule: crates/cd-core/clippy.toml and
-#      crates/cd-format/clippy.toml, which hold the same list)
+#   2. clippy, warnings as errors (includes the banned-maths rule: crates/owd-core/clippy.toml and
+#      crates/owd-format/clippy.toml, which hold the same list)
 #   3. cargo test, with Python made unusable, to prove the Rust loop needs no Python
 #   4. pytest against the shipped package
 #
-# `cd-py` (the Python extension) is excluded from step 3 as well: PyO3's build script runs Python to find
+# `owd-py` (the Python extension) is excluded from step 3 as well: PyO3's build script runs Python to find
 # the interpreter, which step 3 forbids. It has no Rust tests; clippy (step 2) and the Wheels workflow build it.
 #
-# The desktop app (`cd-app`, spec 0003) is excluded from steps 2 and 3: it needs Node and the Tauri
+# The desktop app (`owd-app`, spec 0003) is excluded from steps 2 and 3: it needs Node and the Tauri
 # system libraries, and its own CI jobs (`app-linux`, `app-e2e`) build and test it.
 #
 # CD_PYTHON picks the Python for step 4 (default python3).
@@ -74,7 +74,7 @@ cargo_test_without_python() {
   done
   # Explicit `|| return 1`: `step` calls this function inside `||`, where bash ignores `set -e`,
   # so without it a failing cargo test would fall through and the step would report ok.
-  PATH="$shims:$PATH" CD_PYTHON="$shims/python3" cargo test --workspace --exclude cd-app --exclude cd-py --all-features || return 1
+  PATH="$shims:$PATH" CD_PYTHON="$shims/python3" cargo test --workspace --exclude owd-app --exclude owd-py --all-features || return 1
   if [ -e "$marker" ]; then
     echo "gates: cargo test called Python:" >&2
     cat "$marker" >&2
@@ -83,7 +83,7 @@ cargo_test_without_python() {
 }
 
 step "cargo fmt --check" cargo fmt --all --check
-step "clippy -D warnings" cargo clippy --workspace --exclude cd-app --all-targets --all-features -- -D warnings
+step "clippy -D warnings" cargo clippy --workspace --exclude owd-app --all-targets --all-features -- -D warnings
 step "cargo test (no Python)" cargo_test_without_python
 step "pytest" "$PY" -m pytest -q
 

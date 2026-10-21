@@ -4,8 +4,8 @@
 
 Needs rasterio. Warps `f32_geographic.tif` (EPSG:4326, 1 arc second) to WGS84 / UTM 30N at 10 m with
 bilinear resampling, then reads the warped copy bilinearly (pixel centres, as the Rust sampler does)
-at 150 deterministic UTM points. Writes `crates/cd-format/tests/fixtures/dem/warp_expected.json`.
-`crates/cd-format/tests/geographic_dem.rs` holds the Rust sampler, which converts each point to
+at 150 deterministic UTM points. Writes `crates/owd-format/tests/fixtures/dem/warp_expected.json`.
+`crates/owd-format/tests/geographic_dem.rs` holds the Rust sampler, which converts each point to
 longitude and latitude and samples the geographic file where it is, to this file.
 
 `tolerance_m` is the warp's own interpolation error: a bilinear surface differs from the
@@ -20,7 +20,7 @@ import rasterio
 from rasterio.transform import Affine
 from rasterio.warp import Resampling, calculate_default_transform, reproject
 
-DIR = Path(__file__).resolve().parent.parent / "crates/cd-format/tests/fixtures/dem"
+DIR = Path(__file__).resolve().parent.parent / "crates/owd-format/tests/fixtures/dem"
 src = rasterio.open(DIR / "f32_geographic.tif")
 z = src.read(1).astype("float64")
 

@@ -5,9 +5,9 @@
 //! validation or default logic: every answer comes from [`Session`].
 
 use crate::run::{Outcome, RunControl, RunJob};
-use cd_core::volumes::sections::SectionVolumes;
-use cd_format::design::{AlignMethod, DemCheck, DesignError, Role, Session, Stage, StageStatus};
-use cd_format::geotiff::{Dem, read_bytes};
+use owd_core::volumes::sections::SectionVolumes;
+use owd_format::design::{AlignMethod, DemCheck, DesignError, Role, Session, Stage, StageStatus};
+use owd_format::geotiff::{Dem, read_bytes};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -59,7 +59,7 @@ impl WalkJob {
                     .dem
                     .ok_or("the sections need the DEM the volumes were run on: it is missing or has changed")?;
                 let sampler =
-                    cd_format::design::terrain::dem_sampler(&dem, self.epsg).map_err(message)?;
+                    owd_format::design::terrain::dem_sampler(&dem, self.epsg).map_err(message)?;
                 Arc::new(
                     self.session
                         .option_section_walk(&self.option, &sampler)
@@ -264,7 +264,7 @@ impl AppState {
         let dem = read_bytes(&bytes).map_err(|e| format!("{}: {e}", file.display()))?;
         let epsg = self.project_epsg();
         if epsg.is_some() {
-            cd_format::design::terrain::dem_sampler(&dem, epsg)
+            owd_format::design::terrain::dem_sampler(&dem, epsg)
                 .map(|_| ())
                 .map_err(message)?;
         }
@@ -497,7 +497,7 @@ impl AppState {
             })
             .collect();
         json!({
-            "engine_version": cd_format::design::session::ENGINE_VERSION,
+            "engine_version": owd_format::design::session::ENGINE_VERSION,
             "document": self.session.document(),
             "stages": status,
             "file_name": self.file_name(),
@@ -645,7 +645,7 @@ mod tests {
     fn a_missing_or_changed_dem_is_a_warning_on_open_and_saving_clears_it() {
         let mut doc: Value = serde_json::from_str(&worked_example()).unwrap();
         doc["inputs"]["dem"] = json!({
-            "path": "dem.tif", "sha256": cd_format::design::hash::sha256_hex(b"abc"),
+            "path": "dem.tif", "sha256": owd_format::design::hash::sha256_hex(b"abc"),
             "crs": "EPSG:4326", "nodata": -32768
         });
         let text = serde_json::to_string_pretty(&doc).unwrap();
@@ -674,12 +674,12 @@ mod tests {
     fn the_dem_next_to_the_document_is_kept_for_the_hillshade_when_it_reads() {
         let tif = std::fs::read(
             Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../crates/cd-format/tests/fixtures/dem/f32_geographic.tif"),
+                .join("../../crates/owd-format/tests/fixtures/dem/f32_geographic.tif"),
         )
         .unwrap();
         let with = AppState::open(Path::new("a"), &worked_example(), Some(&tif)).unwrap();
         let dem = with.dem().expect("a DEM that reads is kept");
-        let shade = cd_format::design::hillshade::hillshade(&dem).unwrap();
+        let shade = owd_format::design::hillshade::hillshade(&dem).unwrap();
         assert!(shade.png.starts_with(b"\x89PNG"));
         // No file, or a file that is not a GeoTIFF: no DEM, and no error.
         assert!(
@@ -712,7 +712,7 @@ mod tests {
             nodata: Some(-9999.0),
             epsg: Some(32630),
         };
-        cd_format::design::dem_source::write_geotiff(&dem).unwrap()
+        owd_format::design::dem_source::write_geotiff(&dem).unwrap()
     }
 
     /// The worked example with a DEM and a water level, opened from a folder that holds the DEM.
@@ -908,9 +908,9 @@ mod tests {
         std::fs::write(&doc, s.save_text()).unwrap();
         let (gj, csv) = (dir.path().join("o.geojson"), dir.path().join("o.csv"));
         let d = doc.to_string_lossy().into_owned();
-        cd_cli::commands::export(&d, true, false, true, Some(&gj.to_string_lossy()))
+        owd_cli::commands::export(&d, true, false, true, Some(&gj.to_string_lossy()))
             .unwrap_or_else(|f| panic!("{}", f.message));
-        cd_cli::commands::export(&d, false, true, false, Some(&csv.to_string_lossy()))
+        owd_cli::commands::export(&d, false, true, false, Some(&csv.to_string_lossy()))
             .unwrap_or_else(|f| panic!("{}", f.message));
         assert_eq!(
             s.export_geojson().unwrap(),
@@ -970,7 +970,7 @@ mod tests {
                     .unwrap()
                     .as_nanos();
                 let p = std::env::temp_dir().join(
-                    format!("cd-app-test-{n}-{:?}", std::thread::current().id())
+                    format!("owd-app-test-{n}-{:?}", std::thread::current().id())
                         .replace(['(', ')'], ""),
                 );
                 std::fs::create_dir_all(&p).unwrap();

@@ -35,12 +35,12 @@ requires = ["maturin>=1.7,<2"]
 build-backend = "maturin"
 
 # The package is the pure-Python layer in src/channel_designer plus the Rust extension
-# channel_designer._core (crates/cd-py), built as one abi3 wheel per platform: a user's `pip install`
+# channel_designer._core (crates/owd-py), built as one abi3 wheel per platform: a user's `pip install`
 # needs no compiler (#11).
 [tool.maturin]
 python-source = "src"
 module-name = "channel_designer._core"
-manifest-path = "crates/cd-py/Cargo.toml"
+manifest-path = "crates/owd-py/Cargo.toml"
 features = ["extension-module"]
 
 [tool.pytest.ini_options]
