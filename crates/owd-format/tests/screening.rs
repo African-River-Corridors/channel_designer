@@ -220,30 +220,3 @@ fn the_stretches_export_as_csv_and_geojson_lines_with_the_notice_basis_and_verdi
         assert!(lon.abs() < 4.0, "{lon}");
     }
 }
-
-/// A 50 km line: the screening outputs hold stretches, not stations, so the document stays of the
-/// same order of size as without them.
-#[test]
-fn a_50_km_line_saves_a_document_of_the_same_order_of_size() {
-    let (s, _) = screened(RiverParams {
-        length_m: 50_000.0,
-        ..RiverParams::default()
-    });
-    let with = s.to_text().len();
-    let mut doc: Value = serde_json::from_str(&s.to_text()).unwrap();
-    for o in doc["stages"]["volumes"]["results"]["options"]
-        .as_array_mut()
-        .unwrap()
-    {
-        o.as_object_mut().unwrap().remove("screening");
-    }
-    doc["stages"]["sizing"]["results"]
-        .as_object_mut()
-        .unwrap()
-        .remove("design_basis");
-    let without = serde_json::to_string_pretty(&doc).unwrap().len();
-    assert!(
-        (with as f64) < 1.25 * without as f64,
-        "with the screening {with} bytes, without {without}"
-    );
-}

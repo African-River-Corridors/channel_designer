@@ -293,3 +293,120 @@ impl Session {
         }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! Label: property
+    use super::*;
+    use crate::design::Role;
+    use owd_core::volumes::sections::CrossSection;
+
+    /// A 50 km line: the screening outputs hold stretches, not stations, so the document stays of
+    /// the same order of size as without them. A straight 50 km river 200 m wide with a shallow bar
+    /// in every 5 km, walked every 10 m (the volumes stage's walk, built here so the test needs no
+    /// DEM and no 50 km alignment run).
+    #[test]
+    fn a_50_km_line_saves_a_document_of_the_same_order_of_size() {
+        let utm = r#","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:EPSG::32630"}}"#;
+        let (x0, y0, len) = (500_000.0, 600_000.0, 50_000.0);
+        let centre = json!([[x0, y0], [x0 + len, y0]]);
+        let ring = json!([[
+            [x0 - 100.0, y0 - 100.0],
+            [x0 + len + 100.0, y0 - 100.0],
+            [x0 + len + 100.0, y0 + 100.0],
+            [x0 - 100.0, y0 + 100.0],
+            [x0 - 100.0, y0 - 100.0]
+        ]]);
+        let mut s = Session::new("Long river", "2026-10-21");
+        s.import(&[
+            (
+                Role::Centreline,
+                &format!(r#"{{"type":"LineString"{utm},"coordinates":{centre}}}"#),
+            ),
+            (
+                Role::RiverPolygon,
+                &format!(r#"{{"type":"Polygon"{utm},"coordinates":{ring}}}"#),
+            ),
+        ])
+        .unwrap();
+        s.set_sizing("PIANC-B", "CEMT_IV", Some(2.5)).unwrap();
+        s.run_stage(crate::design::Stage::Sizing).unwrap();
+        // The option: the river's own centreline, every 10 m as the alignment writes a line.
+        let line: Vec<Pt> = (0..=5000).map(|i| [x0 + i as f64 * 10.0, y0]).collect();
+        let option = json!({
+            "id": "o", "name": "o", "method": "rolling_circle", "settings": {},
+            "line": {"type": "LineString", "coordinates": line},
+            "checks": {"radius_ok": true, "r_min_m": 330.0, "radius_check_chord_m": 100.0},
+            "details": {},
+        });
+        s.doc["options"] = json!([option.clone()]);
+        let stations = line
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                let bar = (100..120).contains(&(i % 500));
+                CrossSection {
+                    chainage_m: i as f64 * 10.0,
+                    x: p[0],
+                    y: p[1],
+                    heading_rad: 0.0,
+                    offsets: vec![-10.0, 0.0, 10.0],
+                    terrain: vec![if bar { -1.0 } else { -6.0 }; 3],
+                    wet: vec![true; 3],
+                    hb: 15.0,
+                    wl: 0.0,
+                    grade: -3.25,
+                    depth: 3.25,
+                    model: "b".into(),
+                    cutface: vec![f64::NAN; 3],
+                    dredge_area_m2: if bar { 50.0 } else { 0.0 },
+                    excav_area_m2: 0.0,
+                    max_face_h_m: 0.0,
+                    bench_left: false,
+                    bench_right: false,
+                    tag: String::new(),
+                }
+            })
+            .collect();
+        let walk = SectionVolumes {
+            stations,
+            station_m: 10.0,
+        };
+        let river = vec![Polygon {
+            exterior: ring[0]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|p| [p[0].as_f64().unwrap(), p[1].as_f64().unwrap()])
+                .collect(),
+            holes: vec![],
+        }];
+        let centre_pts = vec![[x0, y0], [x0 + len, y0]];
+        let screening = s
+            .screening_value(&option, &walk, &river, &centre_pts)
+            .unwrap();
+        let stretches = screening["constraint_stretches"].as_array().unwrap();
+        // Ten bars, ten dredge stretches, each 20 stations of 50 m² at 10 m: 10,000 m³.
+        let kinds: Vec<String> = stretches
+            .iter()
+            .map(|x| {
+                format!(
+                    "{} {} {}",
+                    x["kind"], x["start_chainage_m"], x["end_chainage_m"]
+                )
+            })
+            .collect();
+        assert_eq!(stretches.len(), 10, "{kinds:?}");
+        assert!(stretches.iter().all(|x| x["kind"] == "depth"));
+        assert_eq!(stretches[0]["dredge_m3"], 20.0 * 50.0 * 10.0);
+        assert_eq!(screening["verdict"], "navigable-with-works");
+        let without = s.to_text().len();
+        s.doc["stages"]["volumes"]["results"] =
+            json!({"options": [{"id": "o", "screening": screening}]});
+        let with = s.to_text().len();
+        assert!(
+            (with as f64) < 1.05 * without as f64,
+            "with the screening {with} bytes, without {without}"
+        );
+    }
+}
