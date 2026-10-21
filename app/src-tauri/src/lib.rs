@@ -4,12 +4,10 @@
 //! shell owns the native open and save dialogs, the unsaved-changes guard, the window title and
 //! the clock, and nothing else. It holds no calculation, validation or default logic.
 
-mod run;
-mod state;
-
 use base64::Engine;
-use owd_format::design::{Role, Session, date_from_unix};
-use state::AppState;
+use owd_format::design::{Session, date_from_unix};
+use owd_shell::state::{self, AppState};
+use owd_shell::{input, run};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State, Window, WindowEvent};
@@ -351,17 +349,6 @@ fn basemap_tiles() -> Option<String> {
     }
 }
 
-/// The vector input a role name means.
-fn role_of(name: &str) -> Result<Role, String> {
-    match name {
-        "left_bank" => Ok(Role::LeftBank),
-        "right_bank" => Ok(Role::RightBank),
-        "centreline" => Ok(Role::Centreline),
-        "river_polygon" => Ok(Role::RiverPolygon),
-        other => Err(format!("`{other}` is not an input the app can load")),
-    }
-}
-
 /// Read a vector file as GeoJSON text. A GeoPackage is converted; `file.gpkg#layer` names a layer.
 fn read_vector(spec: &str) -> Result<String, String> {
     let (path, layer) = if Path::new(spec).exists() {
@@ -373,16 +360,7 @@ fn read_vector(spec: &str) -> Result<String, String> {
         }
     };
     let bytes = std::fs::read(path).map_err(|e| format!("cannot read {path}: {e}"))?;
-    if owd_format::design::geopackage::is_geopackage(&bytes) {
-        owd_format::design::geopackage::to_geojson(&bytes, layer)
-            .map_err(|e| format!("{path}: {e}"))
-    } else if layer.is_some() {
-        Err(format!(
-            "{path}: only a GeoPackage has layers, but this is not one"
-        ))
-    } else {
-        String::from_utf8(bytes).map_err(|_| format!("{path}: not GeoJSON text or a GeoPackage"))
-    }
+    input::vector_text(path, bytes, layer)
 }
 
 /// Ask for a data file. `None` when the user cancels. A test answers from `load.txt`.
@@ -431,7 +409,7 @@ async fn load_input(
         guard.load_dem(&file, bytes)?;
         return finish(&window, &guard);
     }
-    let role = role_of(&role)?;
+    let role = input::role_of(&role)?;
     let text = read_vector(&file.to_string_lossy())?;
     let mut guard = lock(&state)?;
     guard.load_inputs(&[(role, text)])?;

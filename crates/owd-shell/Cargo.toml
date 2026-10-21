@@ -1,0 +1,18 @@
+[package]
+name = "owd-shell"
+description = "What the app shells hold besides the design session: AppState and the stage runner. No Tauri types; shared by the desktop app and the web build."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+owd-core.workspace = true
+owd-format.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# One test checks the app's exports against `owd export` on the saved file.
+owd-cli = { path = "../owd-cli" }

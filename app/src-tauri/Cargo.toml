@@ -23,6 +23,7 @@ base64 = "0.22"
 owd-core.workspace = true
 owd-cli = { path = "../../crates/owd-cli" }
 owd-format.workspace = true
+owd-shell.workspace = true
 serde_json.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
