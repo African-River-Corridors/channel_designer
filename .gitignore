@@ -14,3 +14,8 @@ node_modules/
 app/src-tauri/gen/
 src/owd/_core*.so
 src/owd/_core*.pyd
+
+# the website build (spec 0010)
+website/_site/
+website/_docs/
+website/.venv/
