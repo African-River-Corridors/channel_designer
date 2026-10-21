@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/African-River-Corridors/channel_designer/schema/owd.schema.json",
+  "$id": "https://github.com/African-River-Corridors/open-waterway-designer/schema/owd.schema.json",
   "title": "Open Waterway Designer document (.owd), format version 2",
   "description": "One screening study of one river reach for one vessel: its inputs, the choices made and the results of each stage. Each stage records a hash of what it depended on; a stage whose hash no longer matches is stale. Numbers are SI. Geometry is GeoJSON in the project CRS.",
   "type": "object",
