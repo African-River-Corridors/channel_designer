@@ -53,3 +53,18 @@ def test_draw_refuses_what_it_cannot_draw(tmp_path):
     bare.write_text(EXAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
     with pytest.raises(ValueError, match="is missing"):
         owd.draw(bare)  # the DEM is not beside this copy
+
+
+def test_style_overrides_and_files_change_the_sheets_and_their_hash(tmp_path):
+    def hash_note(files):
+        doc = json.loads(next(v for k, v in files.items() if k.endswith(".drawing.json")))
+        return next(n for n in doc["notes"] if n.startswith("SHEET STYLE"))
+
+    base = owd.draw(EXAMPLE)
+    finer = owd.draw(EXAMPLE, overrides={"sections.spacing_m": 250})
+    assert hash_note(base) != hash_note(finer)
+    style = tmp_path / "fine.style.json"
+    style.write_text(json.dumps({"sections": {"spacing_m": 250}}), encoding="utf-8")
+    assert owd.draw(EXAMPLE, style=style) == finer
+    with pytest.raises(ValueError, match="/gallery/min_columns"):
+        owd.draw(EXAMPLE, overrides={"gallery.min_columns": 0})

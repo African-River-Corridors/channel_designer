@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/African-River-Corridors/open-waterway-designer/schema/owd-style.schema.json",
+  "title": "OWD sheet style",
+  "description": "What a drawing sheet shows (spec 0004): sheet sizes, scales, layers, which sections to draw and how a panel is laid out. The built-in default is owd-default.style.json. A user's file may hold only the members it changes; it is laid over the default, then checked against this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["style_version", "name", "sheets", "layers", "sections", "gallery"],
+  "properties": {
+    "style_version": { "const": 1 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 40 },
+    "sheets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["xs"],
+      "properties": {
+        "xs": { "$ref": "#/$defs/sheet" }
+      }
+    },
+    "layers": {
+      "description": "The optional layers of a gallery, on or off.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["GRID", "HATCH", "WATER"],
+      "properties": {
+        "GRID": { "type": "boolean" },
+        "HATCH": { "type": "boolean" },
+        "WATER": { "type": "boolean" }
+      }
+    },
+    "sections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spacing_m", "extra"],
+      "properties": {
+        "spacing_m": { "description": "A section at every multiple of this chainage, in metres.", "type": "number", "minimum": 1 },
+        "extra": {
+          "description": "Extra sections, each a named rule. Take a rule out to turn it off.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["rule"],
+            "properties": {
+              "rule": { "description": "bend-middle: the tightest point of each tight bend.", "enum": ["bend-middle"] }
+            }
+          }
+        }
+      }
+    },
+    "gallery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scales", "min_columns", "gap_mm", "margin_m", "min_half_m", "below_invert_m", "above_ground_m", "label_pitch_mm", "hatch_min_cut_m", "bands_mm"],
+      "properties": {
+        "scales": {
+          "description": "The scales to try, the largest scale first: the first at which every panel fits is used for all of them.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 1250, 2000, 2500, 5000, 10000, 20000, 50000, 100000] }
+        },
+        "min_columns": { "description": "The fewest panels side by side that a scale must allow.", "type": "integer", "minimum": 1, "maximum": 6 },
+        "gap_mm": { "type": "number", "minimum": 0, "maximum": 50 },
+        "margin_m": { "description": "Room round the wet channel, in metres.", "type": "number", "minimum": 0 },
+        "min_half_m": { "description": "The least half-width of a panel, in metres.", "type": "number", "minimum": 1 },
+        "below_invert_m": { "type": "number", "minimum": 0 },
+        "above_ground_m": { "type": "number", "minimum": 0 },
+        "label_pitch_mm": { "description": "The least paper distance between two axis labels.", "type": "number", "minimum": 4 },
+        "hatch_min_cut_m": { "description": "A cut thinner than this is not hatched.", "type": "number", "minimum": 0 },
+        "bands_mm": {
+          "description": "The bands of a panel for axis labels and headings.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["left", "right", "top", "bottom"],
+          "properties": {
+            "left": { "type": "number", "minimum": 0 },
+            "right": { "type": "number", "minimum": 0 },
+            "top": { "type": "number", "minimum": 17 },
+            "bottom": { "type": "number", "minimum": 8 }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sheet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["size", "orientation"],
+      "properties": {
+        "size": { "enum": ["A0", "A1", "A2", "A3", "A4"] },
+        "orientation": { "enum": ["landscape", "portrait"] }
+      }
+    }
+  }
+}

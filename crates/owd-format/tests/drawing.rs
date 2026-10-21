@@ -290,3 +290,221 @@ fn a_tight_bend_adds_a_section_at_its_middle() {
         .count();
     assert_eq!(tagged, bends.len(), "one mid-bend section per bend");
 }
+
+// ---- the sheet style (spec 0004, ticket 2) ----------------------------------------------------
+
+use owd_format::drawing::Style;
+use serde_json::json;
+
+fn drawn_with(style: Style) -> Vec<Sheet> {
+    let (text, dem) = example();
+    let o = DrawOptions {
+        style,
+        ..DrawOptions::default()
+    };
+    drawing::sheets_from_text(&text, Some(&dem), &o).unwrap()
+}
+
+fn style_note(sheet: &Sheet) -> String {
+    sheet.document["notes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n.as_str().unwrap().to_string())
+        .find(|n| n.starts_with("SHEET STYLE "))
+        .expect("every sheet names its style")
+}
+
+fn drawn_sections(sheets: &[Sheet]) -> usize {
+    sheets.iter().flat_map(viewports).count()
+}
+
+#[test]
+fn the_built_in_style_is_valid_and_holds_the_defaults() {
+    let s = Style::builtin();
+    assert!(
+        Style::from_overlay(s.value()).is_ok(),
+        "the default passes its own schema"
+    );
+    let g = s.gallery();
+    assert_eq!(
+        (g.section_spacing_m, g.min_columns, g.sheet_size.as_str()),
+        (500.0, 2, "A3")
+    );
+    assert!(g.bend_sections && g.grid && g.hatch && g.water);
+    // A partial file that repeats a default changes nothing, so it has the same hash.
+    let same = Style::from_overlay(&json!({"sections": {"spacing_m": 500}})).unwrap();
+    assert_eq!(same.hash(), s.hash());
+}
+
+#[test]
+fn an_invalid_style_is_refused_with_the_field_named() {
+    let e = Style::from_text(r#"{"gallery": {"min_columns": 0}}"#)
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("/gallery/min_columns"), "{e}");
+    let e = Style::from_text(r#"{"sections": {"spacing_m": "wide"}}"#)
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("/sections/spacing_m"), "{e}");
+    let e = Style::from_text(r#"{"gallery": {"scales": [300]}}"#)
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("/gallery/scales"), "{e}");
+    let e = Style::from_text(r#"{"nonsense": 1}"#)
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("nonsense"), "{e}");
+    assert!(
+        Style::from_text("not json")
+            .unwrap_err()
+            .to_string()
+            .contains("not JSON")
+    );
+    let e = Style::builtin()
+        .with_overrides(&[("sections.nope".to_string(), json!(1))])
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("`sections.nope` is not a member"), "{e}");
+    let e = Style::builtin()
+        .with_overrides(&[("sheets.xs.size".to_string(), json!("A9"))])
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("/sheets/xs/size"), "{e}");
+}
+
+#[test]
+fn one_changed_parameter_changes_the_hash_printed_on_the_sheet() {
+    let base = Style::builtin();
+    let finer = base
+        .clone()
+        .with_overrides(&[("sections.spacing_m".to_string(), json!(250))])
+        .unwrap();
+    assert_ne!(base.hash(), finer.hash());
+    let a = drawn_with(base.clone());
+    let b = drawn_with(finer.clone());
+    assert!(
+        style_note(&a[0]).ends_with(&base.hash()),
+        "{}",
+        style_note(&a[0])
+    );
+    assert!(
+        style_note(&b[0]).ends_with(&finer.hash()),
+        "{}",
+        style_note(&b[0])
+    );
+    assert_ne!(style_note(&a[0]), style_note(&b[0]));
+    // The hash is of the style after the overrides, so an override equals the same value in a file.
+    let from_file = Style::from_overlay(&json!({"sections": {"spacing_m": 250}})).unwrap();
+    assert_eq!(from_file.hash(), finer.hash());
+    // The same style gives the same bytes.
+    assert_eq!(drawn_with(finer.clone()), b);
+}
+
+#[test]
+fn the_gallery_reads_its_spacing_and_extra_sections_from_the_style() {
+    let base = drawn_sections(&drawn_with(Style::builtin()));
+    let finer = Style::builtin()
+        .with_overrides(&[("sections.spacing_m".to_string(), json!(250))])
+        .unwrap();
+    let n = drawn_sections(&drawn_with(finer));
+    assert!(
+        n > base,
+        "250 m gives more sections than 500 m: {n} and {base}"
+    );
+    // Taking the bend rule out removes the mid-bend sections.
+    let (text, dem) = example();
+    let mut s = Session::open(&text).unwrap();
+    let grid = geotiff::read_bytes(&dem).unwrap();
+    let t = dem_sampler(&grid, Some(32630)).unwrap();
+    s.set_sizing("PIANC-B", "CEMT_Va", None).unwrap();
+    s.run_stage(Stage::Sizing).unwrap();
+    s.align(AlignMethod::RollingCircle, &Value::Null, None)
+        .unwrap();
+    s.run_stage_with(Stage::Volumes, Some(&t as Terrain))
+        .unwrap();
+    let count_bends = |style: Style| {
+        let o = DrawOptions {
+            style,
+            ..DrawOptions::default()
+        };
+        drawing::sheets(&s, &t as Terrain, &o)
+            .unwrap()
+            .iter()
+            .flat_map(viewports)
+            .filter(|v| v["entities"].to_string().contains("MID-BEND"))
+            .count()
+    };
+    assert!(count_bends(Style::builtin()) > 0);
+    let off = Style::from_overlay(&json!({"sections": {"extra": []}})).unwrap();
+    assert_eq!(count_bends(off), 0);
+}
+
+#[test]
+fn a_layer_turned_off_leaves_the_sheet_without_it() {
+    let off = Style::from_overlay(&json!({"layers": {"GRID": false, "HATCH": false}})).unwrap();
+    for sheet in drawn_with(off) {
+        let doc = sheet.document.to_string();
+        assert!(!doc.contains("\"GRID\"") && !doc.contains("\"HATCH\""));
+        assert!(drawing::render(&sheet).is_ok());
+    }
+    assert!(
+        drawn_with(Style::builtin())[0]
+            .document
+            .to_string()
+            .contains("\"HATCH\"")
+    );
+}
+
+#[test]
+fn the_style_sets_the_sheet_size_and_the_scale() {
+    let a4 = Style::from_overlay(
+        &json!({"sheets": {"xs": {"size": "A2"}}, "gallery": {"scales": [2000]}}),
+    )
+    .unwrap();
+    for sheet in drawn_with(a4) {
+        assert_eq!(sheet.document["sheet"]["size"], "A2");
+        assert!(viewports(&sheet).iter().all(|v| v["scale"] == 2000));
+        assert!(drawing::render(&sheet).is_ok());
+    }
+    // A scale at which the panels do not fit is refused, with the style named.
+    let tight = Style::from_overlay(&json!({"gallery": {"scales": [200]}})).unwrap();
+    let (text, dem) = example();
+    let o = DrawOptions {
+        style: tight,
+        ..DrawOptions::default()
+    };
+    let e = drawing::sheets_from_text(&text, Some(&dem), &o)
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("sheet style"), "{e}");
+}
+
+#[test]
+fn the_gallery_builder_holds_no_threshold_that_the_style_does_not_set() {
+    // A search of the builder: the only numeric constants left are the standard's text heights, the
+    // gap between two heading items and the model-space stride of the panels (no design choice).
+    let src = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/drawing/gallery.rs"),
+    )
+    .unwrap();
+    let consts: Vec<&str> = src
+        .lines()
+        .filter(|l| l.trim_start().starts_with("const ") || l.contains(" const "))
+        .filter(|l| l.contains(": f64") || l.contains(": usize") || l.contains(": u32"))
+        .map(|l| {
+            l.split(':')
+                .next()
+                .unwrap()
+                .trim()
+                .trim_start_matches("pub(super) ")
+                .trim_start_matches("const ")
+        })
+        .collect();
+    assert_eq!(
+        consts,
+        ["H_TITLE", "H_TEXT", "ITEM_GAP_MM", "PANEL_STRIDE_M"],
+        "{consts:?}"
+    );
+    assert!(!src.contains("impl Default for GalleryParams"));
+}

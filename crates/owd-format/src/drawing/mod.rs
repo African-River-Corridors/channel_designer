@@ -10,6 +10,7 @@
 pub mod check;
 mod furniture;
 mod gallery;
+pub mod style;
 
 use crate::design::terrain::dem_sampler;
 use crate::design::{DemCheck, DesignError, Session, Terrain};
@@ -19,6 +20,7 @@ use std::collections::BTreeMap;
 
 pub use check::Finding;
 pub use gallery::GalleryParams;
+pub use style::{Style, StyleError};
 
 /// The kinds of sheet. Each has a code in the drawing number: `OWD-<design>-<code>-<nnn>`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -61,7 +63,8 @@ pub struct DrawOptions {
     /// The date in the title block, `YYYY-MM-DD`. `None` is the date the design was created, so
     /// the same design always gives the same drawing documents.
     pub date: Option<String>,
-    pub gallery: GalleryParams,
+    /// The sheet style, with overrides applied; its hash is on every sheet.
+    pub style: Style,
 }
 
 impl Default for DrawOptions {
@@ -71,7 +74,7 @@ impl Default for DrawOptions {
             sheets: SheetKind::ALL.to_vec(),
             revision: "A".into(),
             date: None,
-            gallery: GalleryParams::default(),
+            style: Style::builtin(),
         }
     }
 }
@@ -135,6 +138,12 @@ impl core::fmt::Display for DrawError {
 }
 
 impl std::error::Error for DrawError {}
+
+impl From<StyleError> for DrawError {
+    fn from(e: StyleError) -> Self {
+        DrawError::Input(e.to_string())
+    }
+}
 
 impl From<DesignError> for DrawError {
     fn from(e: DesignError) -> Self {
@@ -314,11 +323,27 @@ impl DrawOptions {
         let Some(map) = v.as_object() else {
             return Err(DrawError::Input("the options are not a JSON object".into()));
         };
+        // The style: a file's members over the default, then the single-value overrides.
+        let overrides: Vec<(String, Value)> = match map.get("overrides") {
+            None | Some(Value::Null) => Vec::new(),
+            Some(Value::Object(m)) => m.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            Some(_) => {
+                return Err(DrawError::Input(
+                    "`overrides` is not an object of dotted path to value".into(),
+                ));
+            }
+        };
+        o.style = match map.get("style") {
+            None | Some(Value::Null) => Style::builtin(),
+            Some(v) => Style::from_overlay(v)?,
+        }
+        .with_overrides(&overrides)?;
         for (k, v) in map {
             match k.as_str() {
                 "option" => o.option = v.as_str().map(str::to_string),
                 "revision" => o.revision = v.as_str().unwrap_or("A").to_string(),
                 "date" => o.date = v.as_str().map(str::to_string),
+                "style" | "overrides" => {}
                 "sheets" => {
                     let words: Vec<&str> = v
                         .as_array()

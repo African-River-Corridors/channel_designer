@@ -15,7 +15,9 @@ PathLike = Union[str, "os.PathLike[str]"]
 
 def draw(design: PathLike, *, dem: Optional[PathLike] = None, out: Optional[PathLike] = None,
          option: Optional[str] = None, sheets: Optional[Iterable[str]] = None,
-         revision: Optional[str] = None, date: Optional[str] = None) -> Dict[str, bytes]:
+         revision: Optional[str] = None, date: Optional[str] = None,
+         style: Optional[PathLike] = None,
+         overrides: Optional[Dict[str, object]] = None) -> Dict[str, bytes]:
     """Draw the sheets of a design line option and return the files, by name.
 
     The files are, for each sheet, the drawing document (``*.drawing.json``), the normalised content
@@ -27,6 +29,11 @@ def draw(design: PathLike, *, dem: Optional[PathLike] = None, out: Optional[Path
     first); ``sheets`` the kinds to draw (``"xs"`` for cross sections); ``revision`` and ``date`` are
     for the title block (the date defaults to the day the design was created, so the same design
     always gives the same bytes).
+
+    ``style`` is a sheet style file (JSON); the members it holds are laid over the built-in default.
+    ``overrides`` sets single values of the style by dotted path, for example
+    ``{"sections.spacing_m": 250}``. The hash of the style after the overrides is printed on every
+    sheet.
 
     Raises ``ValueError`` when the design is not ready, a drawn value differs from its result, or the
     standard refuses a drawing document.
@@ -42,7 +49,9 @@ def draw(design: PathLike, *, dem: Optional[PathLike] = None, out: Optional[Path
             dem_path = path.parent / recorded
     dem_bytes = dem_path.read_bytes() if dem_path is not None and dem_path.exists() else None
     options = {k: v for k, v in (("option", option), ("revision", revision), ("date", date),
-                                 ("sheets", None if sheets is None else list(sheets))) if v is not None}
+                                 ("sheets", None if sheets is None else list(sheets)),
+                                 ("style", None if style is None else json.loads(Path(style).read_text(encoding="utf-8"))),
+                                 ("overrides", overrides)) if v is not None}
     files = dict(_core.draw(text, dem_bytes, json.dumps(options)))
     if out is not None:
         folder = Path(out)

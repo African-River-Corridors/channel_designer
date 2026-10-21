@@ -19,8 +19,7 @@ use otd::rules::text_width;
 use owd_core::volumes::sections::{CrossSection, SectionVolumes};
 use serde_json::{Value, json};
 
-/// The numbers the gallery reads. The sheet style file sets them (spec 0004, ticket 2); these are
-/// the defaults it ships.
+/// The numbers the gallery reads, all from the sheet style (`Style::gallery`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct GalleryParams {
     pub sheet_size: String,
@@ -49,29 +48,12 @@ pub struct GalleryParams {
     pub band_bottom_mm: f64,
     /// The least paper distance between two axis labels, in millimetres.
     pub label_pitch_mm: f64,
-}
-
-impl Default for GalleryParams {
-    fn default() -> Self {
-        GalleryParams {
-            sheet_size: "A3".into(),
-            landscape: true,
-            section_spacing_m: 500.0,
-            bend_sections: true,
-            scales: vec![200, 250, 500, 1000, 2000, 5000, 10000],
-            min_columns: 2,
-            gap_mm: 2.0,
-            margin_m: 15.0,
-            min_half_m: 60.0,
-            below_invert_m: 4.0,
-            above_ground_m: 3.0,
-            band_left_mm: 10.0,
-            band_right_mm: 3.0,
-            band_top_mm: 17.0,
-            band_bottom_mm: 8.0,
-            label_pitch_mm: 12.0,
-        }
-    }
+    /// A cut thinner than this, in metres, is not hatched.
+    pub hatch_min_cut_m: f64,
+    /// The optional layers, on or off.
+    pub grid: bool,
+    pub hatch: bool,
+    pub water: bool,
 }
 
 const LAYERS: [&str; 7] = [
@@ -91,8 +73,6 @@ const ITEM_GAP_MM: f64 = 4.0;
 /// Panel `n` keeps its model coordinates `n` strides along x, so that no two windows overlap in the
 /// DXF's model space (clause 15.4.9). The offset of a point is its x less this shift.
 pub(super) const PANEL_STRIDE_M: f64 = 10_000.0;
-/// A cut is drawn where the ground is above the cut face by more than this, in metres.
-const CUT_EPS_M: f64 = 1e-3;
 
 /// The sections the gallery shows, in chainage order, each with whether a bend added it.
 pub(super) fn pick(
@@ -407,7 +387,9 @@ fn viewport(panel: &Panel, k: f64, scale: u32, fx: f64, fy: f64, p: &GalleryPara
         .filter(|&j| s.offsets[j] >= panel.lo && s.offsets[j] <= panel.hi)
         .collect();
     let cut_run = runs(&sel, |j| {
-        finite(s.terrain[j]) && finite(s.cutface[j]) && s.terrain[j] - s.cutface[j] > CUT_EPS_M
+        finite(s.terrain[j])
+            && finite(s.cutface[j])
+            && s.terrain[j] - s.cutface[j] > p.hatch_min_cut_m
     });
     let mut hatch_no = 0;
     for run in cut_run {
@@ -457,7 +439,9 @@ fn viewport(panel: &Panel, k: f64, scale: u32, fx: f64, fy: f64, p: &GalleryPara
         }));
     }
     let face = runs(&sel, |j| {
-        finite(s.cutface[j]) && finite(s.terrain[j]) && s.cutface[j] <= s.terrain[j] + CUT_EPS_M
+        finite(s.cutface[j])
+            && finite(s.terrain[j])
+            && s.cutface[j] <= s.terrain[j] + p.hatch_min_cut_m
     });
     for (i, run) in face.into_iter().enumerate() {
         if run.len() < 2 {
@@ -479,6 +463,7 @@ fn viewport(panel: &Panel, k: f64, scale: u32, fx: f64, fy: f64, p: &GalleryPara
         "from_m": pt(shift + panel.lo, s.wl), "to_m": pt(shift + panel.hi, s.wl),
     }));
 
+    e.retain(|x| layer_on(p, x["layer"].as_str().unwrap_or("")));
     json!({
         "id": n,
         "frame": {"x_mm": fx, "y_mm": fy, "width_mm": w_mm, "height_mm": h_mm},
@@ -488,8 +473,18 @@ fn viewport(panel: &Panel, k: f64, scale: u32, fx: f64, fy: f64, p: &GalleryPara
     })
 }
 
+/// Is this layer drawn? Only the optional layers of the style can be off.
+fn layer_on(p: &GalleryParams, layer: &str) -> bool {
+    match layer {
+        "GRID" => p.grid,
+        "HATCH" => p.hatch,
+        "WATER" => p.water,
+        _ => true,
+    }
+}
+
 /// The key viewport: the scale bar (the standard puts it in the frame) and the legend.
-fn key_viewport(area: Area, k: f64, scale: u32) -> Value {
+fn key_viewport(area: Area, k: f64, scale: u32, p: &GalleryParams) -> Value {
     let (wm, hm) = (area.w / k, area.h / k);
     let mx = |px: f64| px / k;
     let my = |py: f64| (area.h - py) / k;
@@ -503,16 +498,22 @@ fn key_viewport(area: Area, k: f64, scale: u32) -> Value {
         "left",
         "baseline",
     ));
-    let rows = [
-        "DREDGE: CUT BELOW THE WATER LEVEL IN THE RIVER",
-        "DRY CUT: BANK, BERM AND FACE",
-        "EXISTING GROUND",
-        "DESIGN CUT FACE",
-        "DESIGN WATER LEVEL (WL)",
+    let all = [
+        (0, "HATCH", "DREDGE: CUT BELOW THE WATER LEVEL IN THE RIVER"),
+        (1, "HATCH", "DRY CUT: BANK, BERM AND FACE"),
+        (2, "OBJECT", "EXISTING GROUND"),
+        (3, "OUTLINE", "DESIGN CUT FACE"),
+        (4, "WATER", "DESIGN WATER LEVEL (WL)"),
     ];
-    for (i, label) in rows.iter().enumerate() {
-        let base = 14.0 + 6.0 * i as f64;
-        let id = format!("key-row-{}", i + 1);
+    let rows: Vec<(usize, &str)> = all
+        .iter()
+        .filter(|(_, layer, _)| layer_on(p, layer))
+        .map(|(kind, _, label)| (*kind, *label))
+        .collect();
+    for (row, (i, label)) in rows.iter().enumerate() {
+        let i = *i;
+        let base = 14.0 + 6.0 * row as f64;
+        let id = format!("key-row-{}", row + 1);
         let (a, b) = (70.0, 80.0);
         match i {
             0 | 1 => e.push(json!({
@@ -596,7 +597,8 @@ pub(super) fn build(
     walk: &SectionVolumes,
     options: &DrawOptions,
 ) -> Result<Vec<Sheet>, DrawError> {
-    let p = &options.gallery;
+    let params = options.style.gallery();
+    let p = &params;
     let doc = session.document();
     let option = doc["options"]
         .as_array()
@@ -628,7 +630,7 @@ pub(super) fn build(
         })
         .collect();
 
-    let notes_len = 4;
+    let notes_len = 5;
     let layout = furniture::layout(&p.sheet_size, p.landscape, notes_len).ok_or_else(|| {
         DrawError::Input(format!(
             "the sheet size `{}` is not one of the standard's",
@@ -684,9 +686,15 @@ pub(super) fn build(
         "VIEW LOOKS TOWARDS DECREASING CHAINAGE. OFFSET + IS LEFT OF THE LINE FACING INCREASING CHAINAGE.".to_string(),
         format!("AREAS ARE THOSE OF THE VOLUMES STAGE (CUT MODEL {model}), ON THE PROFILE SHOWN."),
         "SCREENING – NOT FOR CONSTRUCTION.".to_string(),
+        format!(
+            "SHEET STYLE {} SHA-256 {}",
+            clean(options.style.name()),
+            options.style.hash()
+        ),
     ];
     debug_assert_eq!(notes.len(), notes_len);
 
+    let layer_names: Vec<&str> = LAYERS.iter().copied().filter(|l| layer_on(p, l)).collect();
     let count = sheets.len();
     let mut out = Vec::new();
     for (si, placed) in sheets.iter().enumerate() {
@@ -694,7 +702,7 @@ pub(super) fn build(
             .iter()
             .map(|&(i, x, y)| viewport(&panels[i], k, scale, x, y, p))
             .collect();
-        viewports.push(key_viewport(layout.key, k, scale));
+        viewports.push(key_viewport(layout.key, k, scale, p));
         let number = furniture::drawing_number(&code, SheetKind::CrossSections.code(), si + 1);
         let titles = Titles {
             design: clean(title),
@@ -712,7 +720,7 @@ pub(super) fn build(
             &layout,
             &titles,
             &notes,
-            &LAYERS,
+            &layer_names,
             viewports,
         );
         out.push(Sheet {
