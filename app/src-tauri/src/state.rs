@@ -112,7 +112,7 @@ impl AppState {
         }
     }
 
-    /// Open `.cdesign` text that was read from `path`. `dem_bytes` is the DEM file the document
+    /// Open `.owd` text that was read from `path`. `dem_bytes` is the DEM file the document
     /// names, if the shell found it next to the document.
     pub fn open(path: &Path, text: &str, dem_bytes: Option<&[u8]>) -> Result<AppState, String> {
         let session = Session::open(text).map_err(message)?;
@@ -444,7 +444,7 @@ impl AppState {
         self.session.to_text()
     }
 
-    /// The `.cdesign` text as it stands (the save command uses [`AppState::save_text_for`]).
+    /// The `.owd` text as it stands (the save command uses [`AppState::save_text_for`]).
     #[cfg(test)]
     pub fn save_text(&self) -> String {
         self.session.to_text()
@@ -560,23 +560,23 @@ mod tests {
 
     #[test]
     fn the_title_shows_the_file_the_study_and_the_unsaved_marker() {
-        let mut s = AppState::open(Path::new("/x/river.cdesign"), &worked_example(), None).unwrap();
+        let mut s = AppState::open(Path::new("/x/river.owd"), &worked_example(), None).unwrap();
         assert_eq!(
             s.title(),
-            "river.cdesign \u{2014} Synthetic river \u{2014} Open Waterway Designer"
+            "river.owd \u{2014} Synthetic river \u{2014} Open Waterway Designer"
         );
         s.set_sizing("PIANC-B", "CEMT_Va", Some(2.5)).unwrap();
-        assert!(s.title().starts_with("\u{25cf} river.cdesign"));
-        s.saved(Path::new("/x/other.cdesign"));
+        assert!(s.title().starts_with("\u{25cf} river.owd"));
+        s.saved(Path::new("/x/other.owd"));
         assert_eq!(
             s.title(),
-            "other.cdesign \u{2014} Synthetic river \u{2014} Open Waterway Designer"
+            "other.owd \u{2014} Synthetic river \u{2014} Open Waterway Designer"
         );
     }
 
     #[test]
     fn changing_the_vessel_sizes_at_once_and_marks_the_design_unsaved() {
-        let mut s = AppState::open(Path::new("a.cdesign"), &worked_example(), None).unwrap();
+        let mut s = AppState::open(Path::new("a.owd"), &worked_example(), None).unwrap();
         let before = s.snapshot()["document"]["stages"]["sizing"]["results"].clone();
         s.set_sizing("PIANC-B", "CEMT_Va", Some(2.5)).unwrap();
         let after = s.snapshot()["document"]["stages"]["sizing"]["results"].clone();
@@ -588,7 +588,7 @@ mod tests {
 
     #[test]
     fn a_refused_choice_changes_nothing_and_leaves_the_design_saved() {
-        let mut s = AppState::open(Path::new("a.cdesign"), &worked_example(), None).unwrap();
+        let mut s = AppState::open(Path::new("a.owd"), &worked_example(), None).unwrap();
         let before = s.snapshot();
         let e = s.set_sizing("PIANC-B", "NOPE", None).unwrap_err();
         assert!(e.contains("unknown vessel standard"), "{e}");
@@ -599,7 +599,7 @@ mod tests {
 
     #[test]
     fn a_saved_file_reopens_unchanged_and_runs_to_the_same_results() {
-        let mut s = AppState::open(Path::new("a.cdesign"), &worked_example(), None).unwrap();
+        let mut s = AppState::open(Path::new("a.owd"), &worked_example(), None).unwrap();
         s.set_sizing("PIANC-B", "CEMT_Va", Some(2.4)).unwrap();
         let text = s.save_text();
         // `owd validate`: the session's own validation, which the command runs.
@@ -608,7 +608,7 @@ mod tests {
         let mut again = Session::open(&text).unwrap();
         assert_eq!(again.run_stale().unwrap(), vec![]);
         assert_eq!(again.to_text(), text);
-        let reopened = AppState::open(Path::new("a.cdesign"), &text, None).unwrap();
+        let reopened = AppState::open(Path::new("a.owd"), &text, None).unwrap();
         assert_eq!(reopened.save_text(), text);
         assert_eq!(stage_status(&reopened, "sizing"), "fresh");
     }
@@ -620,7 +620,7 @@ mod tests {
             "\"vessel_standard_id\": \"CEMT_Va\",\n        \"draught_m\"",
             1,
         );
-        let mut s = AppState::open(Path::new("a.cdesign"), &text, None).unwrap();
+        let mut s = AppState::open(Path::new("a.owd"), &text, None).unwrap();
         assert_eq!(stage_status(&s, "sizing"), "stale");
         assert_eq!(s.run_stale().unwrap(), vec!["sizing"]);
         assert_eq!(stage_status(&s, "sizing"), "fresh");
@@ -720,8 +720,7 @@ mod tests {
         let dir = tempdir::Dir::new();
         let file = dir.path().join("dem.tif");
         std::fs::write(&file, dem_bytes()).unwrap();
-        let mut s =
-            AppState::open(&dir.path().join("river.cdesign"), &worked_example(), None).unwrap();
+        let mut s = AppState::open(&dir.path().join("river.owd"), &worked_example(), None).unwrap();
         s.load_dem(&file, dem_bytes()).unwrap();
         s.set_water(38.0, None).unwrap();
         (s, dir)
@@ -847,7 +846,7 @@ mod tests {
         assert_eq!(s.snapshot()["document"]["inputs"]["dem"]["path"], "dem.tif");
         let sub = dir.path().join("sub");
         std::fs::create_dir_all(&sub).unwrap();
-        s.saved(&sub.join("moved.cdesign"));
+        s.saved(&sub.join("moved.owd"));
         assert_eq!(
             s.snapshot()["document"]["inputs"]["dem"]["path"],
             "../dem.tif"
@@ -862,7 +861,7 @@ mod tests {
                 .unwrap_err()
                 .contains("save the design first")
         );
-        s.saved(Path::new("/nonexistent/x.cdesign"));
+        s.saved(Path::new("/nonexistent/x.owd"));
         assert!(s.refuse_unsaved_fetch().is_ok());
     }
 
@@ -900,11 +899,11 @@ mod tests {
     }
 
     #[test]
-    fn the_app_s_exports_equal_cdesign_export_on_the_saved_file() {
+    fn the_app_s_exports_equal_owd_export_on_the_saved_file() {
         let (mut s, dir) = ready();
         run(&mut s, "alignment", Some("rolling_circle")).unwrap();
         run(&mut s, "volumes", None).unwrap();
-        let doc = dir.path().join("river.cdesign");
+        let doc = dir.path().join("river.owd");
         std::fs::write(&doc, s.save_text()).unwrap();
         let (gj, csv) = (dir.path().join("o.geojson"), dir.path().join("o.csv"));
         let d = doc.to_string_lossy().into_owned();
@@ -947,7 +946,7 @@ mod tests {
         run(&mut s, "volumes", None).unwrap();
         let sub = dir.path().join("sub");
         std::fs::create_dir_all(&sub).unwrap();
-        s.saved(&sub.join("moved.cdesign"));
+        s.saved(&sub.join("moved.owd"));
         assert_eq!(
             s.snapshot()["document"]["inputs"]["dem"]["path"],
             "../dem.tif"
@@ -956,7 +955,7 @@ mod tests {
         // And the saved file reopens fresh, with the DEM found at the new relative path.
         let text = s.save_text();
         let dem = std::fs::read(dir.path().join("dem.tif")).unwrap();
-        let again = AppState::open(&sub.join("moved.cdesign"), &text, Some(&dem)).unwrap();
+        let again = AppState::open(&sub.join("moved.owd"), &text, Some(&dem)).unwrap();
         assert_eq!(stage_status(&again, "volumes"), "fresh");
     }
 

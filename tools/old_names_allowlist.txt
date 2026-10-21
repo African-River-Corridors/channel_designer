@@ -1,0 +1,46 @@
+# Files that may hold an old name of the tool (spec 0006), each with the reason. One entry per line:
+#   glob | reason          the file may name `channel_designer`, `cdesign`, `cd-*` crates or "Channel Designer"
+#   url: glob | reason     the file may link the old repo URL (these go when the URLs are updated)
+# `*` matches across folders. An entry that matches no file fails the check. Remove an entry when its
+# reason ends: the shim entries go with the shims, in the release after the rename.
+
+# --- history: what was true when it was written
+CHANGELOG.md | past entries and the migration note name the old names
+docs/adr/* | accepted decisions are history
+docs/specs/* | specs are history; spec 0006 is about the rename
+docs/design/* | design notes are history
+
+# --- the migration table and the glossary entry for former names
+README.md | the "Renamed from channel_designer" table
+GLOSSARY.md | the "Former names" entry
+
+# --- the shims, for one release
+src/channel_designer/* | the import shim, `import channel_designer` warns and gives owd
+tests/test_old_name_shim.py | tests the import shim
+src/owd/rules/methods.py | still reads the old entry-point group `channel_designer.width_methods`
+tests/rules/test_methods.py | tests the old entry-point group
+pyproject.toml | `python-packages` ships the import shim in the wheel
+.github/workflows/wheels.yml | the wheel smoke test imports the old name
+crates/owd-cli/Cargo.toml | the `cdesign` alias binary
+crates/owd-cli/src/bin/cdesign.rs | the `cdesign` alias binary
+crates/owd-cli/src/cli.rs | doc comment: the alias binary calls this
+crates/owd-cli/src/commands.rs | `owd new` warns on a `.cdesign` file name
+crates/owd-cli/tests/owd.rs | tests the alias and the old extension
+crates/owd-format/src/lib.rs | doc comment: `.cdesign` is the old extension of the same document
+crates/owd-format/src/design/session.rs | doc comment: `.cdesign` files have the same contents
+crates/owd-format/tests/water_aware.rs | opens the legacy `.cdesign` fixture
+crates/owd-format/tests/data/pre-0005.cdesign | the legacy fixture: a `.cdesign` file must still open
+app/src-tauri/src/lib.rs | the open dialog still offers `.cdesign`; a test holds the old name and identifier out of the bundle config
+app/e2e/smoke.test.mjs | one end-to-end case opens a `.cdesign` file
+
+# --- this check
+tools/old_names.py | holds the patterns it searches for
+tools/old_names_allowlist.txt | this file
+tests/test_old_names.py | tests the check
+
+# --- the old repo URL, until the URL ticket
+url: tools/old_names.py | the message and the pattern that name the old URL
+url: tests/test_old_names.py | plants the old URL to prove the check fails
+url: Cargo.toml | `repository` (updated after the repo rename)
+url: pyproject.toml | project URLs (updated after the repo rename)
+url: schema/owd.schema.json | schema `$id` (updated after the repo rename)
