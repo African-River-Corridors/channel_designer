@@ -47,6 +47,33 @@ fn pts_arg(args: &Value, name: &str) -> Result<Vec<Pt>, EvalError> {
     pts(arg(args, name)?, &format!("args.{name}"))
 }
 
+/// `args.no_cut`: a list of `{"from_m", "to_m", "bank": "left" | "right"}`; absent or null = none.
+fn no_cut_arg(args: &Value) -> Result<Vec<rt::NoCutZone>, EvalError> {
+    let Some(v) = args.get("no_cut").filter(|v| !v.is_null()) else {
+        return Ok(Vec::new());
+    };
+    v.as_array()
+        .ok_or_else(|| bad("`args.no_cut` must be a list".into()))?
+        .iter()
+        .map(|z| {
+            let bank = match z.get("bank").and_then(Value::as_str) {
+                Some("left") => rt::Bank::Left,
+                Some("right") => rt::Bank::Right,
+                _ => {
+                    return Err(bad(
+                        "a no-cut zone's `bank` must be \"left\" or \"right\"".into()
+                    ));
+                }
+            };
+            Ok(rt::NoCutZone {
+                from_m: read_float(arg(z, "from_m")?, "no_cut.from_m")?,
+                to_m: read_float(arg(z, "to_m")?, "no_cut.to_m")?,
+                bank,
+            })
+        })
+        .collect()
+}
+
 fn int_or(args: &Value, name: &str, default: i64) -> Result<i64, EvalError> {
     match args.get(name) {
         None | Some(Value::Null) => Ok(default),
@@ -74,13 +101,17 @@ fn grid_from(v: &Value) -> Result<rt::CostGrid, EvalError> {
         grades: f("grades")?,
         vol: m("vol")?,
         wet: m("wet")?,
+        protected: match v.get("protected") {
+            None | Some(Value::Null) => Vec::new(),
+            Some(_) => m("protected")?,
+        },
         station_step: f64_arg(v, "station_step")?,
         offset_step: f64_arg(v, "offset_step")?,
     })
 }
 
 fn grid_json(g: &rt::CostGrid) -> Value {
-    json!({
+    let mut out = json!({
         "offsets": floats_json(&g.offsets),
         "stations_m": floats_json(&g.stations_m),
         "centres": pts_json(&g.centres),
@@ -90,7 +121,12 @@ fn grid_json(g: &rt::CostGrid) -> Value {
         "wet": matrix_json(&g.wet),
         "station_step": float_json(g.station_step),
         "offset_step": float_json(g.offset_step),
-    })
+    });
+    // Only with no-cut zones, so a grid without them reads exactly as before.
+    if !g.protected.is_empty() {
+        out["protected"] = matrix_json(&g.protected);
+    }
+    out
 }
 
 fn grid_params(args: &Value, corridor_half: f64) -> Result<rt::GridParams, EvalError> {
@@ -142,7 +178,23 @@ fn built_grid(
             Box::new(move |_| v)
         }
     };
-    Ok(rt::build_cost_grid(&line, &*sampler, &river, &*grade, p))
+    let no_cut = no_cut_arg(args)?;
+    let bank_line = match args.get("bank_line").filter(|v| !v.is_null()) {
+        None => None,
+        Some(v) => match geom_from(v, "args.bank_line")? {
+            Geometry::LineString(l) => Some(l),
+            _ => return Err(bad("`args.bank_line` must be a LineString".into())),
+        },
+    };
+    Ok(rt::build_cost_grid_with(
+        &line,
+        &*sampler,
+        &river,
+        &*grade,
+        p,
+        &no_cut,
+        bank_line.as_deref(),
+    ))
 }
 
 pub(super) fn route(function: &str, args: &Value) -> Result<Value, EvalError> {
@@ -253,7 +305,15 @@ pub(super) fn route(function: &str, args: &Value) -> Result<Value, EvalError> {
             };
             match rt::optimise_route(&grid, &params) {
                 Err(e) => value_error_of(e),
-                Ok(r) => ok(json!({
+                Ok(r) => ok(route_json(&r, !grid.protected.is_empty())),
+            }
+        }
+        other => Err(bad(format!("route has no parity function `{other}`"))),
+    }
+}
+
+fn route_json(r: &rt::RouteResult, zoned: bool) -> Value {
+    let mut out = json!({
                     "line": geom_json(&Geometry::LineString(r.line.clone())),
                     "offsets": floats_json(&r.offsets),
                     "min_radius_m": float_json(r.min_radius_m),
@@ -266,9 +326,11 @@ pub(super) fn route(function: &str, args: &Value) -> Result<Value, EvalError> {
                     "measured_min_radius_m": float_json(r.measured_min_radius_m),
                     "radius_check_chord_m": float_json(r.radius_check_chord_m),
                     "radius_ok": r.radius_ok,
-                })),
-            }
-        }
-        other => Err(bad(format!("route has no parity function `{other}`"))),
+    });
+    // Only with no-cut zones, so a route without them reads exactly as before.
+    if zoned {
+        out["protected_cut_m3"] = float_json(r.protected_cut_m3);
+        out["no_cut_ok"] = json!(r.no_cut_ok);
     }
+    out
 }
