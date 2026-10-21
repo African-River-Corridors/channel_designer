@@ -37,7 +37,9 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - name: Build the site
+      - name: Install the pinned docs tools
+        run: python -m pip install -r website/requirements.txt
+      - name: Build the site and docs (mkdocs --strict fails on a broken docs link)
         run: python website/build.py
       - name: Check every internal link in the built site
         run: python website/check_links.py
