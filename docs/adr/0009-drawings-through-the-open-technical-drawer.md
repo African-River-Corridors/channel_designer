@@ -47,6 +47,7 @@ domain-free. Only its name and its home tie it to OVCD.
 - OWD's drawing work waits on an OTD tag. Plan sheets wait on a further OTD release with images.
 - A long section with vertical exaggeration is not possible until the standard allows it (clause 7.3.3).
   The app's own long-section view stays until then.
-- Imagery terms are the user's: OWD stores no imagery key and prints the source's attribution.
+- Fetched imagery is EOxCloudless 2016 (CC BY 4.0) only, with its attribution on the sheet. Later
+  years are non-commercial (CC BY-NC-SA 4.0), so OWD does not offer them.
 - `arc-rules` stays in the OVCD repository for now (spec 0007). If it later moves out, this ADR is the
   pattern.
