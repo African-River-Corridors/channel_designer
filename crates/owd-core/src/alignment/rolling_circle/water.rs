@@ -114,7 +114,6 @@ pub fn rolling_circle_with_water(
         });
     };
     w.shape
-        .ruleset()
         .validate()
         .map_err(|e| PyError::value(e.raw_message().to_string()))?;
     let chord = base.radius_check_chord_m;

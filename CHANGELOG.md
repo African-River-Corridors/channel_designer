@@ -37,6 +37,15 @@ versions follow [Semantic Versioning](https://semver.org/).
   path is a `note` Rule. `channel_shape` with CN or CN-conservative now sizes through the engine and gives the same
   numbers and warnings bit for bit. The range end changes only the class IV-and-up depth and the swept-path note
   (finding #250).
+- **Rule Set selection in the document; format version 3 (spec 0007, T3).** The sizing settings now store the
+  selected Rule Sets (id, version, content hash, and `default` or `typed`) and the set inputs, instead of `ruleset_id`.
+  A new design selects `pianc-wg141` with `se_quality` C, marked `default`. The `owd` set (OWD's own checks) is always
+  selected. Two sets at once: every Rule applies and the strictest governs each quantity. **A version 1 or 2 file is
+  refused** with a message to rebuild the design; there is no migration. The examples are rebuilt as version 3 with the
+  same numbers. A changed Rule Set (another hash) makes the sizing stage and every later stage stale. New CLI:
+  `owd size --rule-set ID --set-input NAME=VALUE --rule-set-file FILE`, `owd rules`, `owd rules show ID`,
+  `owd rules --measures`, and `owd run --rule-set-file`. `owd size --ruleset PIANC-B` still works and maps to its set.
+  The warnings of the sizing now come from the Rule Trace of the sized channel (the same text as before).
 
 - **A DEM for a reach (spec 0012, T5).** `owd fetch-dem DOC --bbox WEST,SOUTH,EAST,NORTH` fetches the Copernicus
   GLO-30 tiles for a box, and a study started with `owd reach` that has no banks yet fetches for its reach. The

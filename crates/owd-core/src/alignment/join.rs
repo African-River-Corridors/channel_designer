@@ -104,7 +104,6 @@ pub fn join_legs(
         return Err(PyError::value("each seed leg needs at least two points."));
     }
     shape
-        .ruleset()
         .validate()
         .map_err(|e| PyError::value(e.raw_message().to_string()))?;
     let mut seed: Vec<Pt> = Vec::new();

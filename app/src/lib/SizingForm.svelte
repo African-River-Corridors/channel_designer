@@ -14,6 +14,18 @@
   } = $props();
 
   let settings = $derived(snap?.document.stages.sizing.settings ?? null);
+
+  // The old ruleset name a stored Rule Set selection maps to (spec 0007), for the ruleset list until
+  // the Rule Set picker lands. Since document format 3 the settings hold the selection, not `ruleset_id`.
+  type Selection = { rule_sets?: { id: string }[]; set_inputs?: { name: string; value: string }[] };
+  function oldRulesetId(s: unknown): string | undefined {
+    const sel = s as Selection | null;
+    const set = sel?.rule_sets?.find((x) => x.id !== "owd")?.id;
+    const input = (name: string) => sel?.set_inputs?.find((i) => i.name === name)?.value;
+    if (set === "pianc-wg141") return `PIANC-${input("se_quality") ?? "C"}`;
+    if (set === "gb50139") return input("range_end") === "permissive" ? "CN" : "CN-conservative";
+    return undefined;
+  }
   let shape = $derived(snap?.document.stages.sizing.results ?? null);
   let ruleset = $state("");
   let vessel = $state("");
@@ -22,7 +34,7 @@
   // Take the choices from the document whenever it changes (open, new). A draught being typed
   // stays as typed while it means the same number as the document's.
   $effect(() => {
-    ruleset = settings?.ruleset_id ?? choices?.rulesets[0]?.id ?? "";
+    ruleset = oldRulesetId(settings) ?? choices?.rulesets[0]?.id ?? "";
     vessel = settings?.vessel_standard_id ?? choices?.vessels[0]?.id ?? "";
     const doc = settings?.draught_m;
     // Not tracked: typing alone must not rerun this, only a new document.

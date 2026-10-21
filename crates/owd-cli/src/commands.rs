@@ -323,19 +323,60 @@ pub fn import(
     Ok(())
 }
 
-pub fn size(
-    doc: &str,
-    ruleset: &str,
-    vessel: &str,
-    draught: Option<f64>,
-    output: &Option<String>,
-    json_mode: bool,
-) -> Result {
+/// The choices of `owd size`.
+pub struct SizeFlags {
+    pub rule_sets: Vec<String>,
+    pub set_inputs: Vec<String>,
+    pub files: Vec<String>,
+    pub ruleset: Option<String>,
+    pub vessel: Option<String>,
+    pub draught: Option<f64>,
+}
+
+/// Load each Rule Set file into the session, through the loader the built-in sets take.
+fn load_rule_set_files(session: &mut Session, files: &[String]) -> Result {
+    for f in files {
+        let text = std::fs::read_to_string(f)
+            .map_err(|e| input_error(format!("cannot read the Rule Set file `{f}`: {e}")))?;
+        session
+            .load_rule_set(&text)
+            .map_err(|e| input_error(format!("{f}: {e}")))?;
+    }
+    Ok(())
+}
+
+pub fn size(doc: &str, flags: SizeFlags, output: &Option<String>, json_mode: bool) -> Result {
     // Opened first: when the document comes from stdin it must be read before anything else.
     let mut session = open(doc)?;
-    session
-        .set_sizing(ruleset, vessel, draught)
-        .map_err(from_design)?;
+    load_rule_set_files(&mut session, &flags.files)?;
+    let settings = &session.document()["stages"]["sizing"]["settings"];
+    let vessel = match (&flags.vessel, settings["vessel_standard_id"].as_str()) {
+        (Some(v), _) => v.clone(),
+        (None, Some(v)) => v.to_string(),
+        (None, None) => return Err(input_error("choose a vessel class with --vessel")),
+    };
+    let draught = flags.draught.or_else(|| {
+        (flags.vessel.is_none())
+            .then(|| settings["draught_m"].as_f64())
+            .flatten()
+    });
+    match &flags.ruleset {
+        Some(old) => session
+            .set_sizing(old, &vessel, draught)
+            .map_err(from_design)?,
+        None => {
+            let mut inputs = Vec::new();
+            for kv in &flags.set_inputs {
+                let (k, v) = kv.split_once('=').ok_or_else(|| {
+                    input_error(format!("--set-input `{kv}`: write it as NAME=VALUE"))
+                })?;
+                inputs.push((k.trim(), v.trim()));
+            }
+            let ids: Vec<&str> = flags.rule_sets.iter().map(String::as_str).collect();
+            session.set_rule_sets(&ids, &inputs).map_err(from_design)?;
+            session.set_vessel(&vessel, draught).map_err(from_design)?;
+        }
+    }
     session.run_stage(Stage::Sizing).map_err(from_design)?;
     let dest = destination(doc, output);
     write(&dest, &session.to_text())?;
@@ -343,7 +384,7 @@ pub fn size(
     let f = |k: &str| shape[k].as_f64().unwrap_or(f64::NAN);
     let mut human = format!(
         "{} x {}: bottom width {:.1} m, R_min {:.0} m, design depth {:.2} m",
-        ruleset,
+        shape["ruleset_id"].as_str().unwrap_or(""),
         vessel,
         f("bottom_width_straight_m"),
         f("min_bend_radius_m"),
@@ -354,6 +395,8 @@ pub fn size(
             human.push_str(&format!("\nwarning: {w}"));
         }
     }
+    human
+        .push_str("\nEvery Rule is unverified until a second reader checks it against its source.");
     say(
         dest == "-",
         json_mode,
@@ -361,6 +404,93 @@ pub fn size(
         json!({"ok": true, "sizing": shape}),
     );
     Ok(())
+}
+
+/// `owd rules`: the Rule Sets, one set with its Rules (`show ID`), or the Measures (`--measures`).
+pub fn rules(
+    action: Option<&str>,
+    id: Option<&str>,
+    measures: bool,
+    files: &[String],
+    json_mode: bool,
+) -> Result {
+    use owd_core::rules::engine;
+    let mut session = Session::new("", "");
+    load_rule_set_files(&mut session, files)?;
+    let lib = session.rule_set_library();
+    if measures {
+        let human: Vec<String> = engine::MEASURES
+            .iter()
+            .map(|(m, what)| format!("{m} (m): {what}"))
+            .collect();
+        let js: Vec<Value> = engine::MEASURES
+            .iter()
+            .map(|(m, what)| json!({"id": m, "unit": "m", "object": engine::CHANNEL, "what": what}))
+            .collect();
+        say(false, json_mode, &human.join("\n"), json!({"measures": js}));
+        return Ok(());
+    }
+    match (action, id) {
+        (None, None) => {
+            let human: Vec<String> = lib
+                .sets()
+                .iter()
+                .map(|s| {
+                    format!(
+                        "{}  {}  ({} Rules, hash {})",
+                        s.key(),
+                        s.title,
+                        s.rules.len(),
+                        &s.hash[..12]
+                    )
+                })
+                .collect();
+            let js: Vec<Value> = lib
+                .sets()
+                .iter()
+                .map(|s| json!({"id": s.id, "version": s.version, "title": s.title, "hash": s.hash, "rules": s.rules.len()}))
+                .collect();
+            say(
+                false,
+                json_mode,
+                &human.join("\n"),
+                json!({"rule_sets": js}),
+            );
+            Ok(())
+        }
+        (Some("show"), Some(id)) => {
+            let set = lib
+                .lookup(id)
+                .ok_or_else(|| input_error(format!("unknown Rule Set `{id}`; see `owd rules`")))?;
+            let rules: Vec<Value> = set
+                .rules
+                .iter()
+                .map(|r| {
+                    json!({
+                        "id": r.id,
+                        "title": r.title,
+                        "origin": r.origin.key(),
+                        "status": if r.verified.is_some() { "verified" } else { "unverified" },
+                        "measure": r.measure.id,
+                        "consequence": r.consequence.key(),
+                        "sizes": r.sizes,
+                        "evaluated": r.evaluated,
+                        "finding": r.finding,
+                    })
+                })
+                .collect();
+            say(
+                false,
+                json_mode,
+                arc_rules::load::describe(set).trim_end(),
+                json!({"id": set.id, "version": set.version, "title": set.title, "hash": set.hash, "rules": rules}),
+            );
+            Ok(())
+        }
+        _ => Err(input_error(
+            "use `owd rules`, `owd rules show ID` or `owd rules --measures`",
+        )),
+    }
 }
 
 /// The water level flags: a constant, a straight fall along the river chainage, or a table.
@@ -1142,8 +1272,9 @@ fn otd_run(text: &str) -> String {
     owd_format::drawing::run_document(text).to_string()
 }
 
-pub fn run(doc: &str, output: &Option<String>, json_mode: bool) -> Result {
+pub fn run(doc: &str, files: &[String], output: &Option<String>, json_mode: bool) -> Result {
     let (mut session, bytes) = open_with_dem(doc)?;
+    load_rule_set_files(&mut session, files)?;
     // The DEM is used only when it is the file whose hash was recorded.
     let dem = match (session.dem_check(bytes.as_deref()), &bytes) {
         (DemCheck::Matches, Some(b)) => Some(read_dem(b, session.dem_path().unwrap_or("DEM"))?),

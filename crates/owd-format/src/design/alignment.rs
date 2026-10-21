@@ -17,7 +17,6 @@ use owd_core::alignment::rolling_circle::{WaterInput, rolling_circle_with_water}
 use owd_core::alignment::route::{self, GridParams, RouteParams};
 use owd_core::geom::linear;
 use owd_core::geom::{Geometry, Polygon, Pt};
-use owd_core::rules::rulesets::{ChannelShape, RulesetRegistry, channel_shape};
 use serde_json::{Value, json};
 
 /// A terrain sampler: heights for the points `(xs[i], ys[i])` in the project CRS, NaN where unknown.
@@ -348,18 +347,6 @@ impl Session {
             exterior: shell.clone(),
             holes: holes.to_vec(),
         }])
-    }
-
-    /// The channel shape the sizing stage chose.
-    fn sized_shape(&self) -> Result<ChannelShape, DesignError> {
-        let r = &self.doc["stages"]["sizing"]["results"];
-        channel_shape(
-            &RulesetRegistry::new(),
-            r["ruleset_id"].as_str().unwrap_or(""),
-            r["vessel_standard_id"].as_str().unwrap_or(""),
-            r["draught_m"].as_f64(),
-        )
-        .map_err(|e| DesignError::Input(e.raw_message().to_string()))
     }
 
     /// The seed legs and fixed pieces of the inputs (spec 0005), when there are legs.

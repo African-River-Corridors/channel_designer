@@ -236,7 +236,6 @@ pub fn width_check(
     chord_m: f64,
 ) -> Result<Vec<Stretch>, PyError> {
     shape
-        .ruleset()
         .validate()
         .map_err(|e| PyError::value(e.raw_message().to_string()))?;
     if !(chord_m.is_finite() && chord_m > 0.0) {

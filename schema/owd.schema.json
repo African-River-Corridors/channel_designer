@@ -8,8 +8,8 @@
   "additionalProperties": false,
   "properties": {
     "format_version": {
-      "description": "2 since spec 0005 (seed legs, fixed pieces, the water-aware rolling circle). A version 1 document opens and is moved to 2: its rolling circle records `use_water: false`, so its results do not change.",
-      "enum": [1, 2]
+      "description": "3 since spec 0007 (the Rule Set selection). An older file is refused, with no migration: rebuild the design.",
+      "const": 3
     },
     "engine_version": { "type": "string", "minLength": 1 },
     "project": {
@@ -388,11 +388,40 @@
             { "type": "null" },
             {
               "type": "object",
-              "required": ["ruleset_id", "vessel_standard_id", "draught_m"],
+              "required": ["rule_sets", "set_inputs", "vessel_standard_id", "draught_m"],
               "additionalProperties": false,
               "properties": {
-                "ruleset_id": { "type": "string", "minLength": 1 },
-                "vessel_standard_id": { "type": "string", "minLength": 1 },
+                "rule_sets": {
+                  "description": "The selected Rule Sets (spec 0007), in selection order. `owd` is always selected. `source` says whether the user chose the set (`typed`) or the tool did (`default`).",
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "required": ["id", "version", "hash", "source"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": { "type": "string", "minLength": 1 },
+                      "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+                      "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                      "source": { "enum": ["default", "typed"] }
+                    }
+                  }
+                },
+                "set_inputs": {
+                  "description": "The inputs the selected sets apply on, such as `se_quality`, each with its source.",
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["name", "value", "source"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "name": { "type": "string", "minLength": 1 },
+                      "value": { "type": "string", "minLength": 1 },
+                      "source": { "enum": ["default", "typed"] }
+                    }
+                  }
+                },
+                "vessel_standard_id": { "type": ["string", "null"], "minLength": 1 },
                 "draught_m": { "type": ["number", "null"], "minimum": 0 }
               }
             }

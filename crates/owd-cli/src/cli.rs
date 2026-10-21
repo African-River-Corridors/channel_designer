@@ -86,16 +86,27 @@ enum Command {
         #[command(flatten)]
         out: Out,
     },
-    /// Choose a ruleset, a vessel class and a draught, and size the channel.
+    /// Choose the Rule Sets, a vessel class and a draught, and size the channel.
     Size {
         /// The channel design. `-` is stdin.
         doc: String,
-        /// The ruleset, for example PIANC-B.
+        /// A Rule Set to size to, by id or id@version (repeat for more than one; see `owd rules`).
+        /// Every selected Rule applies and the strictest governs. `owd` is always selected.
+        #[arg(long = "rule-set", value_name = "ID")]
+        rule_set: Vec<String>,
+        /// A set input, such as se_quality=B or range_end=strict (repeatable).
+        #[arg(long = "set-input", value_name = "NAME=VALUE")]
+        set_input: Vec<String>,
+        /// Load a Rule Set file at run time, then select it with --rule-set (repeatable).
+        #[arg(long = "rule-set-file", value_name = "FILE")]
+        rule_set_file: Vec<String>,
+        /// An old ruleset name (PIANC-A, PIANC-B, PIANC-C, CN, CN-conservative), mapped to its Rule
+        /// Set and input.
+        #[arg(long, conflicts_with_all = ["rule_set", "set_input"])]
+        ruleset: Option<String>,
+        /// The vessel class, for example CEMT_IV (default: the one the design has).
         #[arg(long)]
-        ruleset: String,
-        /// The vessel class, for example CEMT_IV.
-        #[arg(long)]
-        vessel: String,
+        vessel: Option<String>,
         /// The design draught in metres (default: the vessel class's).
         #[arg(long, value_name = "METRES")]
         draught: Option<f64>,
@@ -389,10 +400,29 @@ enum Command {
         #[command(flatten)]
         out: Out,
     },
+    /// List the Rule Sets, show one with its Rules and their status, or list the Measures.
+    Rules {
+        /// `show` to print one set.
+        action: Option<String>,
+        /// The set to show, by id or id@version.
+        id: Option<String>,
+        /// List the Measures a Rule may test.
+        #[arg(long)]
+        measures: bool,
+        /// Load a Rule Set file at run time first (repeatable).
+        #[arg(long = "rule-set-file", value_name = "FILE")]
+        rule_set_file: Vec<String>,
+        /// Print a machine-readable result as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Rerun every stale stage, in order.
     Run {
         /// The channel design. `-` is stdin.
         doc: String,
+        /// Load a Rule Set file the design selects (repeatable).
+        #[arg(long = "rule-set-file", value_name = "FILE")]
+        rule_set_file: Vec<String>,
         #[command(flatten)]
         out: Out,
     },
@@ -479,11 +509,39 @@ pub fn main() -> ExitCode {
         } => crate::fits::fits(&doc, &ruleset, show, &out.output, out.json),
         Command::Size {
             doc,
+            rule_set,
+            set_input,
+            rule_set_file,
             ruleset,
             vessel,
             draught,
             out,
-        } => commands::size(&doc, &ruleset, &vessel, draught, &out.output, out.json),
+        } => commands::size(
+            &doc,
+            commands::SizeFlags {
+                rule_sets: rule_set,
+                set_inputs: set_input,
+                files: rule_set_file,
+                ruleset,
+                vessel,
+                draught,
+            },
+            &out.output,
+            out.json,
+        ),
+        Command::Rules {
+            action,
+            id,
+            measures,
+            rule_set_file,
+            json,
+        } => commands::rules(
+            action.as_deref(),
+            id.as_deref(),
+            measures,
+            &rule_set_file,
+            json,
+        ),
         Command::Align {
             doc,
             method,
@@ -641,7 +699,11 @@ pub fn main() -> ExitCode {
             },
             json,
         ),
-        Command::Run { doc, out } => commands::run(&doc, &out.output, out.json),
+        Command::Run {
+            doc,
+            rule_set_file,
+            out,
+        } => commands::run(&doc, &rule_set_file, &out.output, out.json),
         Command::Validate { doc, json } => commands::validate(&doc, json),
         Command::Status { doc, json } => commands::status(&doc, json),
         Command::Schema => commands::schema(),

@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "engine_version": "0.2.0",
   "project": {
     "title": "Synthetic river: rolling circle, pools, volumes",
@@ -3862,12 +3862,32 @@
   "stages": {
     "sizing": {
       "settings": {
-        "ruleset_id": "PIANC-B",
+        "rule_sets": [
+          {
+            "id": "pianc-wg141",
+            "version": "0.3.0",
+            "hash": "533b97685b14ef59eb12a0b9a4f70b03060466ae189dde28dc77150a1a1e4ced",
+            "source": "typed"
+          },
+          {
+            "id": "owd",
+            "version": "0.3.0",
+            "hash": "f6e4c734b9ac397951072c009b81322096a85f4d357d5963efe2bd8d18213d4b",
+            "source": "default"
+          }
+        ],
+        "set_inputs": [
+          {
+            "name": "se_quality",
+            "value": "B",
+            "source": "typed"
+          }
+        ],
         "vessel_standard_id": "CEMT_IV",
         "draught_m": 2.6
       },
       "results": {
-        "ruleset_id": "PIANC-B",
+        "ruleset_id": "pianc-wg141@0.3.0 (se_quality B)",
         "vessel_standard_id": "CEMT_IV",
         "loa_m": 85.0,
         "beam_m": 9.5,
@@ -3879,10 +3899,10 @@
         "bend_widening_at_rmin_m": 14.166666666666666,
         "bottom_width_at_rmin_m": 44.56666666666667,
         "width_basis": "rule",
-        "source": "WG 141 Table 5.7 (p109); vessel WG 141 Table 2.1 (p15)",
+        "source": "Rule Sets pianc-wg141@0.3.0, owd@0.3.0; vessel WG 141 Table 2.1 (p15)",
         "warnings": []
       },
-      "depends_on": "faf8fb663043845406856a0c11adb86cfa3518243256e5af2cc97710b6ae3e2c",
+      "depends_on": "bece3f3821898aa141fb466f4001f97f3bea27ebdb33392f25eda71a713ef702",
       "engine_version": "0.2.0"
     },
     "alignment": {
@@ -3901,7 +3921,7 @@
           "rolling_circle"
         ]
       },
-      "depends_on": "77875d6f56a91816c878e4e52cf15fa4b182404bc28f569eb4cb049fd28e2df3",
+      "depends_on": "0289f03cc059a4c6ec20e3ee63a4553f86519c154ad7d1ba7b44b8a363d8d911",
       "engine_version": "0.2.0"
     },
     "optimise": {
@@ -5223,7 +5243,7 @@
         },
         "option": "lattice"
       },
-      "depends_on": "a5d8363ef05373f27026eca919326c4b28d7bd869749f803704d711e5ff3482b",
+      "depends_on": "232dfcbd5ac63dc6363a322911d288bf43d3001d1e4cc66b518ac37386a3adce",
       "engine_version": "0.2.0"
     },
     "volumes": {
@@ -5261,7 +5281,7 @@
           }
         ]
       },
-      "depends_on": "3d98ed858d281f8146854f9284a0bd1d2c3be7f45ed76895a62982e499c58ca7",
+      "depends_on": "e24bacc484adf8cd4fbbf8872910c02eb8e3ad0cd3ea3b2ce3a2a71fd56fa5ec",
       "engine_version": "0.2.0"
     }
   },

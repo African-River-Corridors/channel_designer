@@ -4,7 +4,7 @@
 
 use owd_core::geom::Pt;
 use owd_core::synthetic::fixed_tail;
-use owd_format::design::{AlignMethod, Role, Session, Stage, StageStatus};
+use owd_format::design::{AlignMethod, Role, Session, Stage};
 use serde_json::{Value, json};
 
 const SHIFT: Pt = [500_000.0, 600_000.0];
@@ -23,45 +23,16 @@ fn pts(v: &Value) -> Vec<Pt> {
         .collect()
 }
 
+/// A document from before spec 0005 (format version 1) is refused since spec 0007, which moves no
+/// older file: the message says to rebuild the design.
 #[test]
-fn a_pre_0005_document_opens_as_version_2_and_runs_with_the_same_results() {
+fn a_pre_0005_document_is_refused_with_a_message_to_rebuild() {
     let text = include_str!("data/pre-0005.cdesign");
     let old: Value = serde_json::from_str(text).unwrap();
     assert_eq!(old["format_version"], 1);
-    let mut s = Session::open(text).unwrap();
-    let d = s.document();
-    assert_eq!(d["format_version"], 2);
-    assert_eq!(
-        d["stages"]["alignment"]["settings"]["rolling_circle"]["use_water"],
-        false
-    );
-    // What was fresh stays fresh: moving the version changes no result.
-    for st in Stage::ALL {
-        let was = !old["stages"][st.name()]["results"].is_null();
-        if was {
-            assert_eq!(s.stage_status(st), StageStatus::Fresh, "{}", st.name());
-        }
-    }
-    // It runs as before: the rolling circle ignores the water, though the document has a river
-    // polygon, and its option has no water check.
-    s.align(AlignMethod::RollingCircle, &Value::Null, None)
-        .unwrap();
-    let o = &s.document()["options"][0];
-    assert!(o["checks"]["fits_in_water"].is_null());
-    let r_min = o["checks"]["r_min_m"].as_f64().unwrap();
-    // Equal to today's rolling circle (water off) on the same document.
-    let direct_base = {
-        let mut t = Session::open(text).unwrap();
-        t.align(
-            AlignMethod::RollingCircle,
-            &json!({"use_water": false}),
-            None,
-        )
-        .unwrap();
-        pts(&t.document()["options"][0]["line"])
-    };
-    assert_eq!(pts(&o["line"]), direct_base);
-    assert!(r_min > 0.0);
+    let e = Session::open(text).unwrap_err().to_string();
+    assert!(e.contains("format version 1"), "{e}");
+    assert!(e.contains("Rebuild the design"), "{e}");
 }
 
 /// The fixed-tail fixture as a document: open water, two seed legs and a must-follow tail.

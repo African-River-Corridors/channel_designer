@@ -147,6 +147,20 @@ fn gb_straight_width(
     op: &mut dyn FnMut(&str) -> Result<f64, String>,
 ) -> Result<f64, String> {
     let (loa, beam) = (op("loa")?, op("beam")?);
+    match gb_table_match(shape, c, loa, beam)? {
+        Some(w) => Ok(w),
+        None => Ok(coefficient(shape, c, "ratio")? * beam),
+    }
+}
+
+/// The width of the Table A.2 entry a vessel matches, by the coefficients of a `gb-straight-width`
+/// limit; `None` when it matches none.
+pub fn gb_table_match(
+    shape: &str,
+    c: &[(String, f64)],
+    loa: f64,
+    beam: f64,
+) -> Result<Option<f64>, String> {
     let k = |name: &str| coefficient(shape, c, name);
     let mut best: Option<(f64, f64)> = None; // (width, distance)
     for n in 1..=3 {
@@ -162,8 +176,8 @@ fn gb_straight_width(
         }
     }
     match best {
-        Some((w, d)) if d <= k("match")? => Ok(w),
-        _ => Ok(k("ratio")? * beam),
+        Some((w, d)) if d <= k("match")? => Ok(Some(w)),
+        _ => Ok(None),
     }
 }
 
@@ -265,7 +279,14 @@ pub const BUILT_IN: &[(&str, &str)] = &[
         "rules/gb50139/0.3.0.json",
         include_str!("../../rules/gb50139/0.3.0.json"),
     ),
+    (
+        "rules/owd/0.3.0.json",
+        include_str!("../../rules/owd/0.3.0.json"),
+    ),
 ];
+
+/// The set every selection holds: OWD's own checks.
+pub const OWD_SET: &str = "owd";
 
 /// The built-in sets, loaded once through the same loader a user's file takes.
 pub fn built_in() -> &'static Library {
@@ -333,6 +354,8 @@ struct Channel<'a> {
     vessel: &'a Vessel,
     inputs: &'a [(String, String)],
     radius_m: f64,
+    /// The channel as sized, for a check of the result; `None` while sizing.
+    sized: Option<&'a Sized>,
 }
 
 impl MeasureSource for Channel<'_> {
@@ -355,7 +378,10 @@ impl MeasureSource for Channel<'_> {
             DRAUGHT => self.vessel.draught_m,
             BEND_RADIUS => self.radius_m,
             GB_SWEPT_PATH => gb_swept_path(self.vessel, self.input(RANGE_END).as_deref())?,
-            BOTTOM_WIDTH | MIN_BEND_RADIUS | DESIGN_DEPTH | BEND_WIDENING => 0.0,
+            BOTTOM_WIDTH => self.sized.map_or(0.0, |s| s.bottom_width_straight_m),
+            MIN_BEND_RADIUS => self.sized.map_or(0.0, |s| s.min_bend_radius_m),
+            DESIGN_DEPTH => self.sized.map_or(0.0, |s| s.design_depth_m),
+            BEND_WIDENING => self.sized.map_or(0.0, |s| s.bend_widening_at_rmin_m),
             other => return Err(format!("unknown Measure `{other}`")),
         };
         Ok(MeasureValue::Number(v))
@@ -402,6 +428,25 @@ impl Selection {
         })
     }
 
+    /// Sets of a library by `(id, version)`, closed under `includes` and checked as the engine
+    /// checks a selection (no two versions of one set, no rule id with two meanings), with their
+    /// inputs. A set chosen twice is selected once.
+    pub fn from_library(
+        library: &Library,
+        chosen: &[(&str, &str)],
+        inputs: Vec<(String, String)>,
+    ) -> Result<Self, RuleError> {
+        let picked = library.select(chosen).map_err(RuleError::Value)?;
+        Ok(Self {
+            sets: picked
+                .sets
+                .into_iter()
+                .map(|s| Arc::new(s.clone()))
+                .collect(),
+            inputs,
+        })
+    }
+
     /// The same selection with only the Rules on `measure` that apply to these inputs. The trace of
     /// the narrowed selection gives the same rows on that Measure, at a fraction of the cost: the
     /// water checks read the bend widening at every station.
@@ -410,6 +455,7 @@ impl Selection {
             vessel,
             inputs: &self.inputs,
             radius_m: 0.0,
+            sized: None,
         };
         let sets = self
             .sets
@@ -429,13 +475,28 @@ impl Selection {
 
     /// The Rule Trace of a channel for this vessel, with the bend widening read at `radius_m`.
     pub fn trace(&self, vessel: &Vessel, radius_m: f64) -> Trace {
+        self.evaluate(vessel, radius_m, None)
+    }
+
+    /// The Rule Trace of a sized channel, read at R_min: every Rule tested on the sized values.
+    pub fn check(&self, vessel: &Vessel, sized: &Sized) -> Trace {
+        self.evaluate(vessel, sized.min_bend_radius_m, Some(sized))
+    }
+
+    fn evaluate(&self, vessel: &Vessel, radius_m: f64, sized: Option<&Sized>) -> Trace {
         let sets: Vec<&RuleSet> = self.sets.iter().map(|s| s.as_ref()).collect();
         let source = Channel {
             vessel,
             inputs: &self.inputs,
             radius_m,
+            sized,
         };
         evaluate(&sets, SHAPES, &source)
+    }
+
+    /// A Rule of a selected set by id.
+    pub fn rule(&self, id: &str) -> Option<&arc_rules::model::Rule> {
+        self.sets.iter().find_map(|s| s.rule(id))
     }
 }
 
@@ -532,6 +593,7 @@ fn only_formula(
         vessel,
         inputs: &selection.inputs,
         radius_m,
+        sized: None,
     };
     let mut operand = |name: &str| -> Result<f64, String> {
         let id = operands

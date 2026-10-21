@@ -25,6 +25,8 @@ use super::methods::{MethodRegistry, OptValue, Options, PIANC_EXTRA_WIDTHS, Widt
 use super::{RuleError, value_err};
 use crate::pyrepr::repr_str;
 use crate::{py_max, py_min};
+use arc_rules::eval::{MeasureValue, Outcome, Trace, TraceRow};
+use arc_rules::model::Limit;
 use ovcd_core::checks::Check;
 use ovcd_core::pyfmt::{fixed, py_str};
 use ovcd_core::vessel_standards::get_standard;
@@ -461,23 +463,42 @@ pub struct ChannelShape {
     pub width_basis: String,
     pub source: String,
     pub warnings: Vec<String>,
-    ruleset: Ruleset,
+    /// The old ruleset the shape was built from; `None` for a shape sized from a selection.
+    ruleset: Option<Ruleset>,
     /// The engine selection that sized the shape, and its vessel (spec 0007). `None` for a ruleset
     /// that does not go through the engine yet.
     engine: Option<(Arc<Selection>, Vessel)>,
 }
 
 impl ChannelShape {
-    /// The ruleset the shape was built from.
-    pub fn ruleset(&self) -> &Ruleset {
-        &self.ruleset
+    /// The old ruleset the shape was built from; `None` for a shape sized from a selection.
+    pub fn ruleset(&self) -> Option<&Ruleset> {
+        self.ruleset.as_ref()
+    }
+
+    /// Refuse a shape that gives no bend-widened width (spec 0005 R2-Q3): the water-aware checks
+    /// test each station at its measured local radius. A shape sized by the engine always has one:
+    /// sizing reads the governing bend widening at R_min.
+    pub fn validate(&self) -> Result<(), RuleError> {
+        match (&self.engine, &self.ruleset) {
+            (Some(_), _) | (None, None) => Ok(()),
+            (None, Some(rs)) => rs.validate(),
+        }
+    }
+
+    /// The engine selection that sized the shape, if any.
+    pub fn selection(&self) -> Option<&Selection> {
+        self.engine.as_ref().map(|(s, _)| s.as_ref())
     }
 
     pub fn bend_widening_m(&self, radius_m: f64) -> f64 {
         match &self.engine {
             Some((selection, vessel)) => engine::widening(selection, vessel, radius_m)
                 .expect("the selection sized the bend widening at R_min, so it sizes it here"),
-            None => bend_widening(&self.ruleset, self.loa_m, self.beam_m, radius_m),
+            None => match &self.ruleset {
+                Some(rs) => bend_widening(rs, self.loa_m, self.beam_m, radius_m),
+                None => 0.0,
+            },
         }
     }
 
@@ -576,7 +597,7 @@ pub fn channel_shape(
     draught_m: Option<f64>,
 ) -> Result<ChannelShape, RuleError> {
     let mut shape = channel_shape_legacy(rulesets, ruleset_id, vessel_standard_id, draught_m)?;
-    let Some(selection) = engine_selection(&shape.ruleset)? else {
+    let Some(selection) = engine_selection(shape.ruleset.as_ref().expect("an old ruleset"))? else {
         return Ok(shape);
     };
     let class = get_standard(vessel_standard_id).map_err(RuleError::Key)?;
@@ -616,6 +637,214 @@ fn engine_selection(rs: &Ruleset) -> Result<Option<Selection>, RuleError> {
         return Ok(None);
     }
     Selection::built_in(&[set], &[(input, value)]).map(Some)
+}
+
+/// The channel a selection of Rule Sets requires for a vessel class (spec 0007): the governing limit
+/// of each sized Measure, and warnings from the Rule Trace of the sized channel.
+///
+/// `draught_m` overrides the vessel class's nominal draught.
+pub fn channel_shape_for(
+    selection: &Selection,
+    vessel_standard_id: &str,
+    draught_m: Option<f64>,
+) -> Result<ChannelShape, RuleError> {
+    let v = get_standard(vessel_standard_id).map_err(RuleError::Key)?;
+    let vessel = Vessel {
+        loa_m: v.loa_m.1, // size on the LONG end of the class
+        beam_m: v.beam_m,
+        draught_m: draught_m.unwrap_or_else(|| v.draught_nominal_m()),
+        formation: v.formation.clone(),
+        class_name: v.class_name.clone(),
+    };
+    let sized = engine::size(selection, &vessel)?;
+    let check = selection.check(&vessel, &sized);
+    let keys: Vec<String> = selection.sets.iter().map(|s| s.key()).collect();
+    Ok(ChannelShape {
+        ruleset_id: keys.join(" + "),
+        vessel_standard_id: v.standard_id.clone(),
+        loa_m: vessel.loa_m,
+        beam_m: vessel.beam_m,
+        draught_m: vessel.draught_m,
+        formation: v.formation.clone(),
+        bottom_width_straight_m: sized.bottom_width_straight_m,
+        min_bend_radius_m: sized.min_bend_radius_m,
+        design_depth_m: sized.design_depth_m,
+        bend_widening_at_rmin_m: sized.bend_widening_at_rmin_m,
+        bottom_width_at_rmin_m: sized.bottom_width_straight_m + sized.bend_widening_at_rmin_m,
+        width_basis: width_basis(selection, &vessel, &check).into(),
+        source: format!("Rule Sets {}; vessel {}", keys.join(", "), v.source),
+        warnings: engine_warnings(selection, &vessel, &sized, &check),
+        engine: Some((
+            Arc::new(selection.narrowed_to(engine::BEND_WIDENING, &vessel)),
+            vessel,
+        )),
+        ruleset: None,
+    })
+}
+
+/// The `gb-straight-width` limit of a Rule: its shape and coefficients.
+fn gb_width_limit(rule: &arc_rules::model::Rule) -> Option<(&str, &[(String, f64)])> {
+    match &rule.limit {
+        Some(Limit::Formula {
+            shape,
+            coefficients,
+            ..
+        }) if shape == "gb-straight-width" => Some((shape.as_str(), coefficients.as_slice())),
+        _ => None,
+    }
+}
+
+/// The rows of a trace that tested a Rule on the channel (not `not applicable`).
+fn applied(check: &Trace) -> impl Iterator<Item = &TraceRow> {
+    check
+        .rows
+        .iter()
+        .filter(|r| r.object.is_some() && r.outcome != Outcome::NotApplicable)
+}
+
+/// `"table"` or `"table-5.1-ratio"` when a GB 50139 width governs, by whether the vessel matches a
+/// Table A.2 entry; `"rule"` otherwise.
+fn width_basis(selection: &Selection, vessel: &Vessel, check: &Trace) -> &'static str {
+    let governing = check.rows.iter().find(|r| {
+        r.governing
+            && r.measure
+                .as_ref()
+                .is_some_and(|m| m.id == engine::BOTTOM_WIDTH)
+    });
+    let rule = governing.and_then(|r| selection.rule(r.rule.as_deref()?));
+    match rule.and_then(gb_width_limit) {
+        Some((shape, c)) => match engine::gb_table_match(shape, c, vessel.loa_m, vessel.beam_m) {
+            Ok(Some(_)) => "table",
+            _ => "table-5.1-ratio",
+        },
+        None => "rule",
+    }
+}
+
+/// GB 50139's depth clearance ranges by class (WG 141 A.3.2, p162), for the warning text only.
+const GB_DEPTH_RANGE_M: [(&str, (f64, f64)); 3] =
+    [("I", (0.4, 0.5)), ("II", (0.3, 0.4)), ("III", (0.3, 0.4))];
+
+/// The warnings of a sized channel, from its Rule Trace, in the old order: the GB width basis, the
+/// GB depth clearance, and the WG 141 depth floor.
+fn engine_warnings(
+    selection: &Selection,
+    vessel: &Vessel,
+    sized: &engine::Sized,
+    check: &Trace,
+) -> Vec<String> {
+    let mut warns = Vec::new();
+    let number = |r: &TraceRow| match r.value {
+        Some(MeasureValue::Number(x)) => Some(x),
+        _ => None,
+    };
+    let swept = applied(check)
+        .find(|r| {
+            r.measure
+                .as_ref()
+                .is_some_and(|m| m.id == engine::GB_SWEPT_PATH)
+        })
+        .and_then(number);
+    let (loa_m, beam_m, t) = (vessel.loa_m, vessel.beam_m, vessel.draught_m);
+    for row in applied(check) {
+        let Some(rule) = row.rule.as_deref().and_then(|id| selection.rule(id)) else {
+            continue;
+        };
+        let (Some((shape, c)), Some(w_formula)) = (gb_width_limit(rule), swept) else {
+            continue;
+        };
+        match engine::gb_table_match(shape, c, loa_m, beam_m) {
+            Ok(Some(w_tab)) => {
+                if (w_tab - w_formula).abs() / w_tab > 0.05 {
+                    warns.push(format!(
+                        "Table A.2 gives {} m where the A.3.2 formula gives {} m; the table \
+                         includes wind, the formula does not. Using the table.",
+                        fixed(w_tab, 0),
+                        fixed(w_formula, 1)
+                    ));
+                }
+            }
+            Ok(None) => {
+                let ratio = c
+                    .iter()
+                    .find(|(k, _)| k == "ratio")
+                    .map_or(0.0, |(_, x)| *x);
+                let w = ratio * beam_m;
+                warns.push(format!(
+                    "no Table A.2 entry near LOA {} m / beam {} m, so the width is WG 141 Table 5.1's \
+                     China-River single-lane ratio W_F/B = {} ({} m), which the table's own footnote \
+                     records as WIND-INCLUDED. The A.3.2 formula gives {} m and omits wind (A.3.3 lists \
+                     curvature, bank interaction, cross-flow and passing distance only); the implied \
+                     ratio between them is {}.",
+                    fixed(loa_m, 0),
+                    fixed(beam_m, 1),
+                    py_str(ratio),
+                    fixed(w, 1),
+                    fixed(w_formula, 1),
+                    fixed(w / w_formula, 2)
+                ));
+            }
+            Err(_) => {}
+        }
+    }
+    for row in applied(check) {
+        let Some(rule) = row.rule.as_deref().and_then(|id| selection.rule(id)) else {
+            continue;
+        };
+        let by_class = rule
+            .applies_when
+            .conditions
+            .iter()
+            .any(|(k, _)| k == engine::VESSEL_CLASS);
+        let clearance = match &rule.limit {
+            Some(Limit::Formula {
+                shape,
+                coefficients,
+                ..
+            }) if shape == "plus-clearance" && by_class => coefficients
+                .iter()
+                .find(|(k, _)| k == "clearance")
+                .map(|(_, x)| *x),
+            _ => None,
+        };
+        let Some(c) = clearance else {
+            continue;
+        };
+        let class = &vessel.class_name;
+        match GB_DEPTH_RANGE_M.iter().find(|(k, _)| k == class) {
+            None => warns.push(format!(
+                "GB 50139's depth clause (A.3.2, p162) covers classes I-III only; class {} \
+                 is outside it, so the depth falls back to the ruleset's {} m add-on, which \
+                 is a user choice, not the standard's.",
+                class,
+                py_str(c)
+            )),
+            Some((_, rng)) => warns.push(format!(
+                "depth = draught + {} m, the {} end of GB 50139's class-{} range {}-{} m \
+                 (WG 141 A.3.2, p162, as summarised \u{2014} we do not hold GB 50139 itself).",
+                py_str(c),
+                if c == rng.1 { "strict" } else { "permissive" },
+                class,
+                py_str(rng.0),
+                py_str(rng.1)
+            )),
+        }
+    }
+    let depth = sized.design_depth_m;
+    if applied(check).any(|r| {
+        r.rule.as_deref() == Some("owd/5.3.4.3/depth-ratio-floor") && r.outcome == Outcome::Warn
+    }) {
+        warns.push(format!(
+            "design depth {} m is {} m BELOW PIANC's river minimum depth ratio of 1.2 x draught \
+             ({} m at T {} m; WG 141 5.3.4.3, p108, which recommends 1.3 x T and says never \
+             below 1.2).",
+            fixed(depth, 2),
+            fixed(1.2 * t - depth, 2),
+            fixed(1.2 * t, 2),
+            fixed(t, 2)
+        ));
+    }
+    warns
 }
 
 /// The channel shape by the old `Ruleset` code: the parity reference for the engine path
@@ -708,7 +937,7 @@ pub fn channel_shape_legacy(
         width_basis: basis.into(),
         source: format!("{}; vessel {}", rs.source, v.source),
         warnings: warns,
-        ruleset: rs.clone(),
+        ruleset: Some(rs.clone()),
         engine: None,
     })
 }
