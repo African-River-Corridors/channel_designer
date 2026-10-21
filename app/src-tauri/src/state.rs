@@ -517,9 +517,9 @@ mod tests {
 
     fn worked_example() -> String {
         std::fs::read_to_string(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/synthetic-river.cdesign"),
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/synthetic-river.owd"),
         )
-        .expect("examples/synthetic-river.cdesign")
+        .expect("examples/synthetic-river.owd")
     }
 
     fn stage_status(state: &AppState, name: &str) -> String {

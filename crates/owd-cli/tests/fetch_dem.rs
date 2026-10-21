@@ -66,7 +66,7 @@ fn polygon(dir: &Path, name: &str, lon: f64, lat: f64) -> String {
 }
 
 fn design(dir: &Path, lon: f64, lat: f64) -> String {
-    let doc = dir.join("reach.cdesign").to_str().unwrap().to_string();
+    let doc = dir.join("reach.owd").to_str().unwrap().to_string();
     let poly = polygon(dir, "reach.geojson", lon, lat);
     assert_eq!(
         code(&run(&[
@@ -254,7 +254,7 @@ fn a_mirror_without_the_tile_is_a_clear_error_and_changes_nothing() {
     assert!(err(&o).contains(TILE), "{}", err(&o));
     assert_eq!(std::fs::read_to_string(&doc).unwrap(), before);
     // A document with no river has no extent.
-    let empty = dir.join("empty.cdesign").to_str().unwrap().to_string();
+    let empty = dir.join("empty.owd").to_str().unwrap().to_string();
     run(&["new", &empty, "--title", "E", "--date", "2026-10-16"]);
     let o = run(&["fetch-dem", &empty, "--mirror", &recorded_mirror()]);
     assert_eq!(code(&o), 2);

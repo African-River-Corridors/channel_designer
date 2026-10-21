@@ -1,6 +1,6 @@
 [package]
 name = "owd-format"
-description = "The parity seam (eval) now; the .cdesign document in spec 0002."
+description = "The parity seam (eval) now; the .owd document in spec 0002."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
