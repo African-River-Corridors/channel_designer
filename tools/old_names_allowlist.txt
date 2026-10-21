@@ -32,6 +32,7 @@ crates/owd-format/tests/water_aware.rs | opens the legacy `.cdesign` fixture
 crates/owd-format/tests/data/pre-0005.cdesign | the legacy fixture: a `.cdesign` file must still open
 app/src-tauri/src/lib.rs | the open dialog still offers `.cdesign`; a test holds the old name and identifier out of the bundle config
 app/e2e/smoke.test.mjs | one end-to-end case opens a `.cdesign` file
+app/src/lib/platform/web.ts | the browser open picker still offers `.cdesign`, as the desktop open dialog does
 
 # --- this check
 tools/old_names.py | holds the patterns it searches for
