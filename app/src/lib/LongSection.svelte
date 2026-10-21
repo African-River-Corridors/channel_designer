@@ -3,6 +3,7 @@
   import uPlot from "uplot";
   import "uplot/dist/uPlot.min.css";
   import type { LongSection } from "./api";
+  import { resolve } from "./theme";
 
   let {
     data,
@@ -40,7 +41,7 @@
         {},
         { label: "Bed", scale: "m", stroke: "#7a5a2a", width: 2 },
         { label: "Water level", scale: "m", stroke: "#1f6fbf", width: 2, paths: uPlot.paths.stepped!({ align: 1 }) },
-        { label: "Design invert", scale: "m", stroke: colour, width: 2 },
+        { label: "Design invert", scale: "m", stroke: resolve(colour), width: 2 },
         { label: "Cut depth", scale: "cut", stroke: "#b3261e", width: 1, dash: [4, 3] },
       ],
       hooks: {

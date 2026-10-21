@@ -5,7 +5,7 @@
   import CrossSection from "./lib/CrossSection.svelte";
   import LongSection from "./lib/LongSection.svelte";
   import BottomPanel from "./lib/BottomPanel.svelte";
-  import { OPTION_COLOURS } from "./lib/basemap";
+  import { optionVar } from "./lib/theme";
   import { BASEMAP_TILES } from "./lib/basemap";
   import MapPanel from "./lib/MapPanel.svelte";
   import LeftPanel from "./lib/LeftPanel.svelte";
@@ -236,10 +236,10 @@
     if (c != null) station = c;
   }
 
-  /** An option's map colour: its place in the design's list, which is the order the map draws. */
+  /** An option's colour (a CSS reference to its token): its place in the design's list, which is the order the map draws. */
   const colourOf = (id: string) => {
     const i = geometry?.options.findIndex((o) => o.id === id) ?? -1;
-    return OPTION_COLOURS[(i < 0 ? 0 : i) % OPTION_COLOURS.length];
+    return optionVar(i < 0 ? 0 : i);
   };
 
   // The hillshade is drawn once by the Rust side, and only when the imagery is offline. A new DEM

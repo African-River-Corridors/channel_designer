@@ -30,3 +30,9 @@ export function onThemeChange(cb: () => void): () => void {
     mo.disconnect();
   };
 }
+
+/** A colour as canvas code can use it: a `var(--name)` reference resolved now, anything else unchanged. */
+export function resolve(colour: string): string {
+  const m = /^var\(--([a-z0-9-]+)\)$/.exec(colour.trim());
+  return m ? token(m[1]) : colour;
+}
