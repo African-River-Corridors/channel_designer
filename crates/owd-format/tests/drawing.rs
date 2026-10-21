@@ -551,7 +551,12 @@ fn the_typical_section_is_accepted_and_its_numbers_follow_the_scheme() {
     let s = &sheets[0];
     assert!(s.number.contains("-TS-001"), "{}", s.number);
     let out = drawing::render(s).expect("otd accepts it");
-    assert!(out.warnings.is_empty(), "{:?}", out.warnings);
+    // no DXF warning; the layout review's warnings (a label in the water) are allowed
+    assert!(
+        out.warnings.iter().all(|w| w.starts_with("warning `")),
+        "{:?}",
+        out.warnings
+    );
     let norm: Value = serde_json::from_str(&out.normalised).unwrap();
     assert_eq!(s.document["status"], "concept");
     assert!(norm["sheet"]["size"].is_string());

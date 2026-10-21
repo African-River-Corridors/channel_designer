@@ -138,6 +138,11 @@ pub enum DrawError {
     Checks(Vec<Finding>),
     /// `otd` refused a drawing document (the standard's clause numbers).
     Format { sheet: String, clauses: Vec<String> },
+    /// `otd`'s layout review found an error on a sheet: what a reader would trip on.
+    Layout {
+        sheet: String,
+        findings: Vec<String>,
+    },
 }
 
 impl core::fmt::Display for DrawError {
@@ -150,6 +155,15 @@ impl core::fmt::Display for DrawError {
                         writeln!(f)?;
                     }
                     write!(f, "{x}")?;
+                }
+                Ok(())
+            }
+            DrawError::Layout { sheet, findings } => {
+                for (i, x) in findings.iter().enumerate() {
+                    if i > 0 {
+                        writeln!(f)?;
+                    }
+                    write!(f, "sheet {sheet}: layout review: {x}")?;
                 }
                 Ok(())
             }
@@ -288,10 +302,40 @@ pub fn render(sheet: &Sheet) -> Result<SheetOutput, DrawError> {
             });
         }
     };
+    // otd's layout review: an error fails the sheet; a warning is printed with the DXF's
+    let mut warnings = Vec::new();
+    let mut errors = Vec::new();
+    for f in otd::review::review(&norm, &otd::review::ReviewOptions::default()) {
+        let line = format!(
+            "{} `{}`{}: {}{}",
+            f.severity.word(),
+            f.rule,
+            f.viewport
+                .as_deref()
+                .map_or(String::new(), |v| format!(" in viewport {v}")),
+            f.message,
+            if f.ids.is_empty() {
+                String::new()
+            } else {
+                format!(" (entities {})", f.ids.join(", "))
+            }
+        );
+        match f.severity {
+            otd::review::Severity::Error => errors.push(line),
+            otd::review::Severity::Warning => warnings.push(line),
+        }
+    }
+    if !errors.is_empty() {
+        return Err(DrawError::Layout {
+            sheet: sheet.number.clone(),
+            findings: errors,
+        });
+    }
     let parsed = otd::json::parse(&text).map_err(|_| {
         DrawError::Input(format!("sheet {}: the document is not JSON", sheet.number))
     })?;
     let dxf = otd::render::dxf::to_dxf(&parsed, &norm, &files);
+    warnings.extend(dxf.warnings);
     let mut normalised = serde_json::to_string_pretty(&norm.to_value()).unwrap_or_default();
     normalised.push('\n');
     Ok(SheetOutput {
@@ -302,7 +346,7 @@ pub fn render(sheet: &Sheet) -> Result<SheetOutput, DrawError> {
         svg: otd::render::svg::to_svg(&norm, &otd::render::svg::SvgOptions::default()),
         pdf: otd::render::pdf::to_pdf(&norm),
         dxf: dxf.text,
-        warnings: dxf.warnings,
+        warnings,
         extra: sheet.extra.clone(),
     })
 }
