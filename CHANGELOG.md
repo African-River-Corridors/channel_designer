@@ -17,6 +17,13 @@ versions follow [Semantic Versioning](https://semver.org/).
   sizing and returns to the stages. A DEM loaded by hand is now marked `user` in the provenance. A water level the
   DEM alone gave was recorded with the date `DEM` and no notice, which the schema refuses: it is now dated the day
   it was made and carries the DEM's notice.
+- **What fits, with depth (spec 0012, T9).** With a bed model, a water level and its DEM, `owd fits` gives the full
+  answer: each vessel class is sized under the ruleset, walked along the river centreline with the bed model as the
+  bed, and screened by the spec 0007 path itself. Each class row then carries the verdict (`navigable-as-is`,
+  `navigable-with-works` or `not-navigable`) and the constraint stretches (width, radius, and now depth), each with
+  its governing Rule, what it needs and finds, the works, and the dredge and dry cut inside it. "Largest class that
+  fits as it is" counts depth too. Every row says "depth assumed, not measured". The answer goes stale when the bed
+  model, the water level or the DEM changes. Without a DEM or a bed model the answer is plan only, exactly as before.
 - **Default water level from SWORD and SWOT (spec 0012, T6).** New `owd water-level FILE` sets the river's low-water
   level along its centreline, as the water level profile every stage already reads. The SWORD v17c reaches near the
   river are read from the database's shapefile release on Zenodo (only the basin the river is in, found from the
