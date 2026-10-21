@@ -12,6 +12,15 @@ versions follow [Semantic Versioning](https://semver.org/).
   polygon and centreline the session rebuilds from the two banks, are marked `edited`. Every later stage goes
   stale and nothing reruns by itself. New in `owd-format`: `Session::edit_bank`; `AppState::load_inputs` now takes
   the date for the provenance record.
+- **Banks from the JRC water mask (spec 0012, T3).** `owd reach ... --banks` also makes the left and right bank,
+  the river polygon and the centreline from the JRC Global Surface Water occurrence layer, in the study's UTM
+  zone, marked `default` with the JRC notice. OWD reads only the few tiles of the 10 degree JRC file it needs,
+  by range request (or the tile files you give with `--jrc-tile`, which is how the web build reads them). Water
+  is occurrence of 75 % or more, and a stretch under 3 mask pixels (90 m) wide, or with no water, is recorded in
+  the document's new `low_confidence_width` for you to check. Both numbers are provisional defaults, named so in
+  the document (`--mask-threshold` changes the first). The 75 % mask misses narrow, forest-shaded reaches: the
+  Sassandra above its estuary shows as thin or absent, and `owd reach` then says so and suggests a lower
+  threshold or your own bank lines.
 - **`owd reach` (spec 0012, T2).** `owd reach FILE --river NAME --start LON,LAT --end LON,LAT [--via LON,LAT]`
   or `owd reach FILE --trace LINE.geojson` starts a new study from a river reach. OWD reads the OSM waterways
   around the points through Overpass and finds the shortest route along them. The route crosses from one river

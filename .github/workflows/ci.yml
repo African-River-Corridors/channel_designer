@@ -213,8 +213,8 @@ jobs:
         run: |
           cargo clippy --target wasm32-unknown-unknown -p owd-reach -- -D warnings
           cargo build --target wasm32-unknown-unknown -p owd-reach
-      - name: "owd-reach routing tests in wasm (spec 0012, same fixtures as native)"
-        run: cargo test --target wasm32-unknown-unknown -p owd-reach --test route
+      - name: "owd-reach routing and bank tests in wasm (spec 0012, same fixtures as native)"
+        run: cargo test --target wasm32-unknown-unknown -p owd-reach --test route --test banks
         env:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
       - name: Build the web package

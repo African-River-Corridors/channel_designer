@@ -105,6 +105,53 @@ impl Fetch for ReplayFetch {
     }
 }
 
+/// Files the user downloaded and dropped in, served by the file name at the end of the URL. This is
+/// how a source with no CORS header (JRC, the Copernicus DEM) is read on the web, and how the CLI reads
+/// a tile it was given. A URL with no file says which one to fetch.
+#[derive(Default)]
+pub struct DroppedFiles {
+    files: Vec<(String, Vec<u8>)>,
+}
+
+impl DroppedFiles {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Add a file by its name (for example `occurrence_10W_10Nv1_4_2021.tif`).
+    pub fn with_file(mut self, name: &str, bytes: Vec<u8>) -> Self {
+        self.files.push((name.to_string(), bytes));
+        self
+    }
+
+    fn find(&self, url: &str) -> Result<&[u8], FetchError> {
+        let name = url.rsplit('/').next().unwrap_or(url);
+        self.files
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, b)| b.as_slice())
+            .ok_or_else(|| FetchError::Failed {
+                url: url.to_string(),
+                reason: format!(
+                    "the file `{name}` was not given: download it from that address and add it"
+                ),
+            })
+    }
+}
+
+impl Fetch for DroppedFiles {
+    fn get(&self, url: &str) -> Result<Vec<u8>, FetchError> {
+        self.find(url).map(<[u8]>::to_vec)
+    }
+
+    fn get_range(&self, url: &str, start: u64, len: u64) -> Result<Vec<u8>, FetchError> {
+        let b = self.find(url)?;
+        let from = (start as usize).min(b.len());
+        let to = from.saturating_add(len as usize).min(b.len());
+        Ok(b[from..to].to_vec())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     //! Label: property
@@ -126,5 +173,17 @@ mod tests {
         assert!(f.get_range("https://b/y", 0, 2).is_err());
         assert_eq!(f.requests().len(), 6);
         assert_eq!(f.requests()[0], "GET https://a/x");
+    }
+
+    #[test]
+    fn dropped_files_answer_by_name_and_a_missing_one_says_what_to_download() {
+        let d = DroppedFiles::new().with_file("a.tif", b"0123456789".to_vec());
+        assert_eq!(d.get("https://host/dir/a.tif").unwrap(), b"0123456789");
+        assert_eq!(d.get_range("https://other/a.tif", 2, 3).unwrap(), b"234");
+        let e = d.get("https://host/dir/b.tif").unwrap_err().to_string();
+        assert!(
+            e.contains("b.tif") && e.contains("https://host/dir/b.tif"),
+            "{e}"
+        );
     }
 }

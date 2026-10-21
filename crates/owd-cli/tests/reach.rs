@@ -16,6 +16,10 @@ const SEARCH: &str = include_str!("../../../examples/reach/synthetic/search_alph
 /// Serve the two recorded answers on a free port until the test process ends. The query is in the
 /// request line: `out%20geom` asks for the network, `out%20tags%20bb` for the name search.
 fn serve() -> String {
+    serve_network(NETWORK.to_string())
+}
+
+fn serve_network(network: String) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}/api/interpreter", listener.local_addr().unwrap());
     std::thread::spawn(move || {
@@ -31,7 +35,7 @@ fn serve() -> String {
             let body = if !ua_ok {
                 None
             } else if first.contains("out%20geom") {
-                Some(NETWORK)
+                Some(network.as_str())
             } else if first.contains("out%20tags%20bb") {
                 Some(SEARCH)
             } else {
@@ -216,5 +220,142 @@ fn bad_arguments_and_a_busy_server_exit_2_with_a_plain_message() {
     ]);
     assert_eq!(o.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&o.stderr).contains("cannot fetch http://127.0.0.1:1/"));
+    assert!(!file.exists());
+}
+
+/// One synthetic way along the river arm of the recorded JRC window (see `jrc_occurrence_sassandra_estuary.tif`).
+fn arm_network() -> String {
+    let pts = [
+        [-6.0715, 4.966],
+        [-6.0715, 4.9703],
+        [-6.0705, 4.974],
+        [-6.0697, 4.977],
+        [-6.0695, 4.98],
+        [-6.07, 4.983],
+    ];
+    let nodes: Vec<String> = (0..pts.len()).map(|i| (900 + i).to_string()).collect();
+    let geom: Vec<String> = pts
+        .iter()
+        .map(|p| format!(r#"{{"lat":{},"lon":{}}}"#, p[1], p[0]))
+        .collect();
+    format!(
+        r#"{{"elements":[{{"type":"way","id":901,"nodes":[{}],"geometry":[{}],"tags":{{"waterway":"river"}}}}]}}"#,
+        nodes.join(","),
+        geom.join(",")
+    )
+}
+
+fn jrc_tile(dir: &Path) -> PathBuf {
+    let tile = dir.join("occurrence_10W_10Nv1_4_2021.tif");
+    std::fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/reach/jrc_occurrence_sassandra_estuary.tif"),
+        &tile,
+    )
+    .unwrap();
+    tile
+}
+
+#[test]
+fn banks_from_the_jrc_mask_go_into_the_document_with_the_notice_and_the_flags() {
+    let server = serve_network(arm_network());
+    let dir = work_dir("banks");
+    let tile = jrc_tile(&dir);
+    let file = dir.join("reach.owd");
+    let o = run(&[
+        "reach",
+        file.to_str().unwrap(),
+        "--start",
+        "-6.0715,4.966",
+        "--end",
+        "-6.07,4.983",
+        "--banks",
+        "--jrc-tile",
+        tile.to_str().unwrap(),
+        "--overpass",
+        &server,
+        "--json",
+    ]);
+    assert_eq!(
+        o.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let result: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!(result["banks"]["mask_threshold_pct"], 75.0);
+    assert_eq!(result["banks"]["low_confidence_stretches"], 3);
+    let d = doc(&file);
+    for input in ["left_bank", "right_bank", "centreline", "river_polygon"] {
+        assert_eq!(d["provenance"][input]["source"], "jrc-gsw");
+        assert_eq!(d["provenance"][input]["mark"], "default");
+        assert!(d["inputs"][input].is_object(), "{input}");
+    }
+    assert_eq!(
+        d["low_confidence_width"]["stretches"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+    assert_eq!(d["project"]["crs"]["epsg"], 32629);
+    let v = run(&["validate", file.to_str().unwrap()]);
+    assert_eq!(
+        v.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&v.stderr)
+    );
+    // Both notices are in the document's provenance.
+    assert!(
+        d["provenance"]["route"]["notice"]
+            .as_str()
+            .unwrap()
+            .contains("OpenStreetMap")
+    );
+}
+
+#[test]
+fn a_river_the_mask_cannot_see_or_a_missing_tile_exits_2_with_what_to_do() {
+    let server = serve();
+    let dir = work_dir("banks-bad");
+    let tile = jrc_tile(&dir);
+    let file = dir.join("reach.owd");
+    let f = file.to_str().unwrap();
+    // The synthetic network lies where the recorded window has no water at 75 %.
+    let o = run(&[
+        "reach",
+        f,
+        "--start",
+        "-6.0,5.0",
+        "--end",
+        "-5.98,5.0",
+        "--banks",
+        "--jrc-tile",
+        tile.to_str().unwrap(),
+        "--overpass",
+        &server,
+    ]);
+    assert_eq!(o.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&o.stderr).contains("Lower the threshold"),
+        "{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    // A route in another tile than the one given.
+    let o = run(&[
+        "reach",
+        f,
+        "--start",
+        "-6.0,5.0",
+        "--end",
+        "-5.94,5.0",
+        "--banks",
+        "--jrc-tile",
+        dir.join("nope.tif").to_str().unwrap(),
+        "--overpass",
+        &server,
+    ]);
+    assert_eq!(o.status.code(), Some(2));
     assert!(!file.exists());
 }

@@ -249,6 +249,17 @@ enum Command {
         /// follows; a stretch with none near it stays as drawn.
         #[arg(long, value_name = "FILE")]
         trace: Option<String>,
+        /// Also make bank lines, a river polygon and a centreline from the JRC water mask. Reads a few
+        /// small windows of the JRC tile over the network, or the tile files you give with --jrc-tile.
+        #[arg(long)]
+        banks: bool,
+        /// A JRC occurrence tile you downloaded (for example occurrence_10W_10Nv1_4_2021.tif), by its
+        /// own file name. Repeat for more tiles. Needs --banks.
+        #[arg(long, value_name = "FILE", requires = "banks")]
+        jrc_tile: Vec<String>,
+        /// The JRC occurrence, in percent, from which a pixel is water (default 75, provisional).
+        #[arg(long, value_name = "PERCENT", requires = "banks")]
+        mask_threshold: Option<f64>,
         /// The study's title (default: the river's name).
         #[arg(long)]
         title: Option<String>,
@@ -484,11 +495,17 @@ pub fn main() -> ExitCode {
             end,
             via,
             trace,
+            banks,
+            jrc_tile,
+            mask_threshold,
             title,
             overpass,
             date,
             json,
         } => commands::reach(commands::ReachFlags {
+            banks,
+            jrc_tile,
+            mask_threshold,
             file,
             river,
             start,

@@ -12,6 +12,8 @@ pub enum ReachError {
     NoWaterway(String),
     /// Two points the waterway graph does not join.
     NoRoute(String),
+    /// No water where the data says there should be.
+    NoWater(String),
     /// A bad argument.
     Input(String),
 }
@@ -23,6 +25,7 @@ impl fmt::Display for ReachError {
             ReachError::Parse(m)
             | ReachError::NoWaterway(m)
             | ReachError::NoRoute(m)
+            | ReachError::NoWater(m)
             | ReachError::Input(m) => {
                 write!(f, "{m}")
             }

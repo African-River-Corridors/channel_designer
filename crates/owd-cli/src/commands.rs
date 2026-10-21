@@ -1206,6 +1206,9 @@ pub fn schema() -> Result {
 
 /// The arguments of `owd reach`.
 pub struct ReachFlags {
+    pub banks: bool,
+    pub jrc_tile: Vec<String>,
+    pub mask_threshold: Option<f64>,
     pub file: String,
     pub river: Option<String>,
     pub start: Option<String>,
@@ -1259,11 +1262,30 @@ fn trace_line(text: &str, path: &str) -> core::result::Result<Vec<[f64; 2]>, Fai
 }
 
 pub fn reach(flags: ReachFlags) -> Result {
-    reach_with(flags, &crate::reach_fetch::HttpFetch)
+    let mut dropped = owd_reach::DroppedFiles::new();
+    for path in &flags.jrc_tile {
+        let bytes =
+            std::fs::read(path).map_err(|e| input_error(format!("cannot read {path}: {e}")))?;
+        let name = Path::new(path)
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        dropped = dropped.with_file(&name, bytes);
+    }
+    let http = crate::reach_fetch::HttpFetch;
+    let jrc: &dyn owd_reach::Fetch = if flags.jrc_tile.is_empty() {
+        &http
+    } else {
+        &dropped
+    };
+    reach_with(flags, &http, jrc)
 }
 
-/// `reach` with the fetcher given, so a test can serve recorded answers.
-pub fn reach_with(flags: ReachFlags, fetch: &dyn owd_reach::Fetch) -> Result {
+/// `reach` with the fetchers given (Overpass, and the JRC tiles), so a test can serve recorded answers.
+pub fn reach_with(
+    flags: ReachFlags,
+    fetch: &dyn owd_reach::Fetch,
+    jrc: &dyn owd_reach::Fetch,
+) -> Result {
     use owd_reach::overpass::{DEFAULT_ENDPOINT, Overpass};
     use owd_reach::reach::{plan_points, plan_trace, record_reach};
     let date = flags.date.clone().unwrap_or_else(today);
@@ -1298,6 +1320,26 @@ pub fn reach_with(flags: ReachFlags, fetch: &dyn owd_reach::Fetch) -> Result {
     }
     let mut session = Session::new(&title, &date);
     record_reach(&mut session, &planned, &date).map_err(|e| input_error(e.to_string()))?;
+    let banks = if flags.banks {
+        use owd_reach::banks::{BankParams, banks_from_jrc, record_banks};
+        let params = BankParams {
+            threshold_pct: flags
+                .mask_threshold
+                .unwrap_or(BankParams::default().threshold_pct),
+            ..BankParams::default()
+        };
+        if !(params.threshold_pct > 0.0 && params.threshold_pct <= 100.0) {
+            return Err(input_error(
+                "--mask-threshold must be a percentage above 0 and up to 100",
+            ));
+        }
+        let b = banks_from_jrc(jrc, &planned.route.line(), &params)
+            .map_err(|e| input_error(e.to_string()))?;
+        record_banks(&mut session, &b).map_err(|e| input_error(e.to_string()))?;
+        Some(b)
+    } else {
+        None
+    };
     write(&flags.file, &session.to_text())?;
     let route = &planned.route;
     let ways = route.way_ids().len();
@@ -1324,6 +1366,15 @@ pub fn reach_with(flags: ReachFlags, fetch: &dyn owd_reach::Fetch) -> Result {
             "; {drawn} stretch(es) kept as drawn, with no waterway near (check them)"
         ));
     }
+    if let Some(b) = &banks {
+        human.push_str(&format!(
+            "\nbanks, polygon and centreline from the JRC water mask ({}% threshold, a provisional default): {} station(s), {} low-confidence stretch(es) to check",
+            b.params.threshold_pct,
+            b.widths.len(),
+            b.stretches.len()
+        ));
+        human.push_str("\nSource: EC JRC/Google; Pekel et al. 2016, Nature 540, 418-422");
+    }
     human.push_str("\n© OpenStreetMap contributors (ODbL)");
     say(
         flags.file == "-",
@@ -1333,6 +1384,11 @@ pub fn reach_with(flags: ReachFlags, fetch: &dyn owd_reach::Fetch) -> Result {
             "ok": true, "file": flags.file, "length_m": route.length_m,
             "ways": route.way_ids(), "as_drawn_stretches": drawn,
             "river_search": found,
+            "banks": banks.as_ref().map(|b| json!({
+                "mask_threshold_pct": b.params.threshold_pct,
+                "stations": b.widths.len(),
+                "low_confidence_stretches": b.stretches.len(),
+            })),
         }),
     );
     Ok(())
