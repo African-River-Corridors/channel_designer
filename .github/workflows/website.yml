@@ -3,7 +3,8 @@ name: Website
 # Builds the website and docs (website/build.py) and checks the links. Spec 0010. The public URL is
 # https://www.africanrivercorridors.com/owd: the ARC site proxies /owd to a GitHub Pages site
 # (website/README.md). A pull request that touches the site or docs runs the build, so a change is
-# proved before it merges.
+# proved before it merges. On main the site is also deployed to GitHub Pages (the maintainer turns Pages
+# on, with source "GitHub Actions"; until then the deploy job fails and nothing else is affected).
 
 on:
   push:
@@ -45,3 +46,22 @@ jobs:
         run: python website/check_links.py
       - name: The site's token file is the app's token file
         run: cmp website/tokens.css app/src/tokens.css
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        if: github.event_name != 'pull_request'
+        with:
+          path: website/_site
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: https://www.africanrivercorridors.com/owd
+    steps:
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

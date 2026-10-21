@@ -46,3 +46,10 @@ to GitHub.
 python3 -m venv website/.venv && website/.venv/bin/pip install -r website/requirements.txt
 website/.venv/bin/python website/build.py && python3 website/check_links.py
 ```
+
+## Go live
+
+Two steps publish the site, and the maintainer approves each: turn on GitHub Pages for the repo (source
+"GitHub Actions"), and add the `/owd`, `/owd/docs` and `/owd/:path*` rewrites to the ARC site's
+`vercel.json`. The `github.io` address serves the same files, but its links point to `/owd/...`, so
+browse the ARC address.
