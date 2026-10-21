@@ -24,6 +24,33 @@ impl Session {
         Err(DesignError::Input(errors.join("; ")))
     }
 
+    /// Record the stretches of generated banks that are low-confidence width. Replaces an earlier
+    /// record; on a refusal the document is unchanged.
+    pub fn set_low_confidence_width(&mut self, value: Value) -> Result<(), DesignError> {
+        let before = self.doc.get("low_confidence_width").cloned();
+        self.doc["low_confidence_width"] = value;
+        let errors = self.validate();
+        if errors.is_empty() {
+            return Ok(());
+        }
+        match before {
+            Some(b) => self.doc["low_confidence_width"] = b,
+            None => {
+                self.doc
+                    .as_object_mut()
+                    .map(|d| d.remove("low_confidence_width"));
+            }
+        }
+        Err(DesignError::Input(errors.join("; ")))
+    }
+
+    /// The recorded low-confidence stretches, if any.
+    pub fn low_confidence_width(&self) -> Option<&Value> {
+        self.doc
+            .get("low_confidence_width")
+            .filter(|v| v.is_object())
+    }
+
     /// The recorded reach, if any.
     pub fn reach(&self) -> Option<&Value> {
         self.doc.get("reach").filter(|v| v.is_object())
@@ -60,5 +87,25 @@ mod tests {
         let mut empty = Session::new("t", "2026-10-21");
         assert!(empty.set_reach(json!({"start": [0, 0]})).is_err());
         assert!(empty.reach().is_none());
+    }
+
+    #[test]
+    fn low_confidence_stretches_round_trip_and_a_bad_kind_is_refused() {
+        let mut s = Session::new("t", "2026-10-21");
+        let v = json!({"min_width_m": 90.0, "provisional": true, "source": "jrc-gsw",
+                       "stretches": [{"from_m": 100.0, "to_m": 250.0, "kind": "narrow", "min_width_m": 60.0}]});
+        s.set_low_confidence_width(v).unwrap();
+        let back = Session::open(&s.to_text()).unwrap();
+        assert_eq!(
+            back.low_confidence_width().unwrap()["stretches"][0]["kind"],
+            "narrow"
+        );
+        let bad =
+            json!({"min_width_m": 90.0, "stretches": [{"from_m": 0, "to_m": 1, "kind": "wide"}]});
+        assert!(s.set_low_confidence_width(bad).is_err());
+        assert_eq!(
+            s.low_confidence_width().unwrap()["stretches"][0]["from_m"],
+            100.0
+        );
     }
 }

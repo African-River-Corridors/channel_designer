@@ -2645,6 +2645,7 @@ dependencies = [
  "owd-format",
  "serde_json",
  "wasm-bindgen-test",
+ "weezl",
 ]
 
 [[package]]

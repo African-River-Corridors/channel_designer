@@ -182,6 +182,31 @@
         }
       }
     },
+    "low_confidence_width": {
+      "description": "Spec 0012: stretches of the generated banks where the water was too narrow to trust (under `min_width_m`) or was not found. Chainage is along the generated centreline, in metres from its start. Optional.",
+      "type": "object",
+      "required": ["min_width_m", "stretches"],
+      "additionalProperties": false,
+      "properties": {
+        "min_width_m": { "type": "number", "minimum": 0 },
+        "provisional": { "type": "boolean" },
+        "source": { "type": "string" },
+        "stretches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from_m", "to_m", "kind"],
+            "additionalProperties": false,
+            "properties": {
+              "from_m": { "type": "number" },
+              "to_m": { "type": "number" },
+              "kind": { "enum": ["narrow", "no-water"] },
+              "min_width_m": { "type": "number", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
     "provenance": {
       "description": "Spec 0012: where each generated input came from, by input name. Optional: a document with none gives the same results. Each record names its source (an `owd-reach` registry id), its date, the licence notice that travels into every export, and a mark: `default` (made by OWD), `edited` (a default the user changed) or `user` (the user's own).",
       "type": "object",
@@ -211,6 +236,10 @@
         "provisional": {
           "description": "True while the default behind this input is not yet calibrated (spec 0012).",
           "type": "boolean"
+        },
+        "settings": {
+          "description": "The parameters the input was made with (for example the JRC mask threshold), so a reviewer can see which choices are provisional defaults.",
+          "type": "object"
         }
       }
     },

@@ -48,6 +48,12 @@ pub fn record(source: &str, date: &str, notice: &str, mark: Mark, provisional: b
     r
 }
 
+/// A record with the parameters it was made with (a JSON object) added.
+pub fn with_settings(mut rec: Value, settings: Value) -> Value {
+    rec["settings"] = settings;
+    rec
+}
+
 impl Session {
     /// Record where `input` came from. Replaces an earlier record for it. Fails on an unknown input
     /// name or a record that breaks the schema, and then changes nothing.

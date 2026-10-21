@@ -10,6 +10,8 @@ repository.workspace = true
 [dependencies]
 owd-format.workspace = true
 serde_json.workspace = true
+# LZW for the tiled GeoTIFF reader (the tiff crate uses it too).
+weezl = "0.1"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
