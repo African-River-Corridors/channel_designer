@@ -5,6 +5,18 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **Default water level from SWORD and SWOT (spec 0012, T6).** New `owd water-level FILE` sets the river's low-water
+  level along its centreline, as the water level profile every stage already reads. The SWORD v17c reaches near the
+  river are read from the database's shapefile release on Zenodo (only the basin the river is in, found from the
+  shapefile headers in the zip by range request). Each reach's SWOT levels come from Hydrocron (good and suspect
+  quality); the 10th percentile is the reach's level, labelled with the dates used. Where a reach has fewer than 3
+  observations, is under 100 m wide, or there is no reach, the DEM water surface on the centreline is used, made to
+  never rise downstream (SWORD's distance to the outlet, else the DEM, says which way that is). `--percentile` and
+  `--min-swot-width` change the provisional defaults, and the level is then marked `user`; a typed level is still
+  `owd import --water-level`. SWOT levels are heights above EGM2008, the datum of the Copernicus DEM, so nothing is
+  converted for it; for a DEM in ellipsoidal heights (`--dem-datum ellipsoid`) each observation adds its geoid height.
+  The provenance names the conversion, the reaches, the dates and the stretches the DEM filled. The `sword` source is
+  now v17c on Zenodo, which a web page can read.
 - **Proofed checks for the channel Rules (spec 0007, T7).** New `crates/owd-core/tests/rules_proofs.rs`: property tests
   on random vessels and radii (the width at a bend never rises as the radius rises; every width is above zero; the
   `capped-widening` widening never exceeds L; quality A ≥ B ≥ C on every quantity; adding a set never makes a design
