@@ -24,6 +24,11 @@ declare module "*/wasm-pkg/owd_web.js" {
     station_near(option: string, lon: number, lat: number): number;
     export_geojson(): string;
     export_csv(): string;
+    reach_route(river: string, points: string, at: string, fetch?: (url: string, start: number, len: number) => Uint8Array): string;
+    reach_add_tile(name: string, bytes: Uint8Array): string;
+    reach_step(step: string, percentile: number | undefined, at: string, fetch?: (url: string, start: number, len: number) => Uint8Array): string;
+    set_bed(points: string, season: string): string;
+    run_fits(): string;
   }
   export function engine_version(): string;
   export default function init(input?: unknown): Promise<unknown>;

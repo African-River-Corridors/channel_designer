@@ -116,7 +116,8 @@ pub fn water_level_with(flags: LevelFlags, fetch: &dyn owd_reach::Fetch, at: &En
         Mark::User
     };
     let dem_notice = copernicus.then_some(COPERNICUS_NOTICE);
-    record_level(&mut session, &level, mark, dem_notice).map_err(|e| input_error(e.to_string()))?;
+    record_level(&mut session, &level, mark, dem_notice, &today())
+        .map_err(|e| input_error(e.to_string()))?;
     let dest = destination(&flags.doc, &flags.output);
     write(&dest, &session.to_text())?;
 

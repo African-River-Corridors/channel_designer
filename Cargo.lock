@@ -2669,6 +2669,7 @@ dependencies = [
  "owd-cli",
  "owd-core",
  "owd-format",
+ "owd-reach",
  "serde_json",
 ]
 
@@ -2679,6 +2680,7 @@ dependencies = [
  "base64 0.22.1",
  "js-sys",
  "owd-format",
+ "owd-reach",
  "owd-shell",
  "serde_json",
  "wasm-bindgen",

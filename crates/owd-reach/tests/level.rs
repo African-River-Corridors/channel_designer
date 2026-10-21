@@ -148,7 +148,7 @@ fn the_flow_runs_toward_the_mouth_and_the_level_goes_into_the_document_as_its_pr
         serde_json::to_string(&c).unwrap()
     );
     s.import(&[(owd_format::design::Role::Centreline, gj.as_str())]).unwrap();
-    record_level(&mut s, &l, Mark::Default, Some("DEM notice")).unwrap();
+    record_level(&mut s, &l, Mark::Default, Some("DEM notice"), "2026-10-21").unwrap();
     // The stages read the input profile exactly as if it had been typed in.
     let (profile, from) = s.water_profile().unwrap();
     assert_eq!(from, "input");
@@ -165,7 +165,7 @@ fn the_flow_runs_toward_the_mouth_and_the_level_goes_into_the_document_as_its_pr
     assert!(s.validate().is_empty(), "{:?}", s.validate());
     // Another percentile is the user's choice.
     let q = LevelParams { percentile: 50.0, ..LevelParams::default() };
-    record_level(&mut s, &level(&q, Datum::Egm2008), Mark::User, None).unwrap();
+    record_level(&mut s, &level(&q, Datum::Egm2008), Mark::User, None, "2026-10-21").unwrap();
     assert_eq!(s.provenance("water_level").unwrap()["mark"], "user");
 }
 }
@@ -187,6 +187,18 @@ fn where_the_reaches_are_too_narrow_the_dem_gives_a_level_that_never_rises_downs
     }
     let swot = l.stretches.iter().filter(|s| matches!(s.source, Source::Swot { .. })).count();
     assert_eq!(swot, 2);
+    // A level the DEM alone gives records as the DEM's, dated the day it was made, with a notice.
+    let all_dem = level(&LevelParams { min_swot_width_m: 5_000.0, ..LevelParams::default() }, Datum::Egm2008);
+    assert!(all_dem.swot_dates.is_none());
+    let mut s = Session::new("DEM only", "2026-10-21");
+    for (notice, source) in [(None, "dem"), (Some("Copernicus notice"), "cop-dem-glo30")] {
+        record_level(&mut s, &all_dem, Mark::Default, notice, "2026-10-21").unwrap();
+        let p = s.provenance("water_level").unwrap();
+        assert_eq!(p["source"], source);
+        assert_eq!(p["date"], "2026-10-21");
+        assert!(!p["notice"].as_str().unwrap().is_empty());
+        assert!(s.validate().is_empty(), "{:?}", s.validate());
+    }
 }
 }
 

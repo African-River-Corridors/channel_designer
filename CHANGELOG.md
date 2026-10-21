@@ -5,6 +5,18 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **Start from a river, in the app (spec 0012, T10).** A "Start from a river" view on the desktop and the web: a
+  river name, a start, an end and via points (typed, or picked on the map), the route with its length, then
+  "Make the inputs": banks from the JRC water mask, moved onto Sentinel-2 (optional), and the default water level
+  from SWORD and SWOT. Each step is its own call, with progress and Cancel (a cancelled step changes nothing). Each
+  input shows who made it in a word and a shape (◇ default, ✎ edited, ■ user) with its source and date, and every
+  licence notice is listed on the map. The JRC and DEM tiles the reach needs are download links; on the web the
+  JRC tiles are given back by hand (their host does not let a web page read them), and Sentinel-2, SWORD and
+  Hydrocron are read from the page's worker. Then a depth (one depth, depths at chainages, a season), "Answer
+  what fits" with the class table and each class's stretches on the map, and "Use this vessel", which sets the
+  sizing and returns to the stages. A DEM loaded by hand is now marked `user` in the provenance. A water level the
+  DEM alone gave was recorded with the date `DEM` and no notice, which the schema refuses: it is now dated the day
+  it was made and carries the DEM's notice.
 - **Default water level from SWORD and SWOT (spec 0012, T6).** New `owd water-level FILE` sets the river's low-water
   level along its centreline, as the water level profile every stage already reads. The SWORD v17c reaches near the
   river are read from the database's shapefile release on Zenodo (only the basin the river is in, found from the

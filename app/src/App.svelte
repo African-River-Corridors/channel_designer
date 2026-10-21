@@ -9,6 +9,7 @@
   import { BASEMAP_TILES } from "./lib/basemap";
   import MapPanel from "./lib/MapPanel.svelte";
   import BankEditor from "./lib/BankEditor.svelte";
+  import StartFromRiver from "./lib/StartFromRiver.svelte";
   import type * as maplibregl from "maplibre-gl";
   import LeftPanel from "./lib/LeftPanel.svelte";
   import { platform } from "./lib/platform";
@@ -33,6 +34,10 @@
   let shadeFor: string | null = null;
   let map = $state<maplibregl.Map | undefined>();
   let editingBanks = $state(false);
+  /** "Start from a river" (spec 0012) is showing in the left panel. */
+  let reachView = $state(false);
+  /** Set while a map click picks a point of the reach. */
+  let reachPicker = $state<((lon: number, lat: number) => void) | undefined>();
 
   // The map redraws from the session's geometry whenever the design changes. A design with
   // nothing to draw yet (no CRS, no inputs) just shows the empty map.
@@ -145,6 +150,15 @@
     await flush();
     const next = await guard(action);
     if (next) snap = next;
+  }
+
+  /** A snapshot from "Start from a river": a new study keeps no selection from the old one. */
+  function openDocDone(next: Snapshot) {
+    if (next.document.project.title !== snap?.document.project.title) {
+      selectedId = null;
+      station = null;
+    }
+    snap = next;
   }
 
   /** New and Open start a different study: its first option (a failing one, if any) is selected, not the old selection. */
@@ -311,6 +325,16 @@
     };
   }
 
+  /** "Use this vessel": size the channel for the class, then back to today's flow (alignment, then volumes). */
+  async function useVessel(rulesetId: string, vesselStandardId: string) {
+    await flush();
+    const next = await guard(() => api.setSizing(rulesetId, vesselStandardId, ""));
+    if (!next) return;
+    snap = next;
+    reachView = false;
+    notice = `Vessel set: ${vesselStandardId} under ${rulesetId}. Next: run the alignment, then the volumes.`;
+  }
+
   let theme = $state<ThemeChoice>(currentTheme());
 
   let anyStale = $derived(snap?.stages.some((s) => s.status === "stale") ?? false);
@@ -324,6 +348,7 @@
     <button onclick={() => openDoc(api.newFile)}>New</button>
     {#if isWeb}<button onclick={() => openDoc(api.openExample)} data-testid="open-example" title="A short synthetic river with its DEM">Open the example</button>{/if}
     <button onclick={() => openDoc(api.openFile)}>Open</button>
+    <button class:on={reachView} data-testid="start-from-river" aria-pressed={reachView} onclick={() => (reachView = !reachView)} title="Make a study's inputs from open data for a river reach">Start from a river</button>
     <button onclick={() => fileAction(api.save)}>Save</button>
     <button onclick={() => fileAction(api.saveAs)}>Save as</button>
     <button disabled={!(table?.rows.length)} onclick={() => exportAs("geojson")} title="Design line options as GeoJSON (WGS84), with their checks">Export GeoJSON</button>
@@ -365,12 +390,23 @@
   {/each}
 
   <div class="body" style:grid-template-columns="{leftWidth}px 6px 1fr" style:grid-template-rows="1fr 6px {bottomHeight}px">
-    <section class="left"><LeftPanel {snap} {choices} {onSizing} {busy} {samples} {dropTarget} onRun={run} onCancel={cancel} onLoad={(r) => load(r)} onFetch={fetchDem} onWater={water} /></section>
+    <section class="left">
+      {#if reachView}
+        <StartFromRiver {map} {snap} onSnap={(next) => openDocDone(next)} onError={(m) => (error = m)} onUseVessel={useVessel} bind:picker={reachPicker} />
+      {:else}
+        <LeftPanel {snap} {choices} {onSizing} {busy} {samples} {dropTarget} onRun={run} onCancel={cancel} onLoad={(r) => load(r)} onFetch={fetchDem} onWater={water} />
+      {/if}
+    </section>
     <div class="handle v" role="separator" aria-orientation="vertical" onpointerdown={drag("x")}></div>
     <section class="main">
       <div class="mapbox">
-        {#if tiles}<MapPanel {geometry} {selectedId} {hillshade} {tiles} stationPosition={crossSection?.position ?? null} onPick={editingBanks ? undefined : pickPoint} onReady={(m) => (map = m)} bind:offline />{/if}
+        {#if tiles}<MapPanel {geometry} {selectedId} {hillshade} {tiles} stationPosition={crossSection?.position ?? null} onPick={editingBanks ? undefined : reachView && reachPicker ? reachPicker : pickPoint} onReady={(m) => (map = m)} bind:offline />{/if}
         <BankEditor {map} {geometry} {snap} onSnap={(next) => (snap = next)} bind:active={editingBanks} />
+        {#if snap?.notices?.length}
+          <ul class="notices" data-testid="map-notices" aria-label="Data notices">
+            {#each snap.notices as n}<li>{n}</li>{/each}
+          </ul>
+        {/if}
       </div>
       <div class="sections" data-testid="sections">
         <div class="longbox">
@@ -439,6 +475,8 @@
   .handle.h { grid-column: 3; grid-row: 2; cursor: row-resize; background: var(--ink); }
   .bottom { grid-column: 3; grid-row: 3; background: var(--surface); }
   .handle:hover { background: var(--ink-2); }
+  .notices { position: absolute; right: var(--sp-2); bottom: 28px; z-index: 2; margin: 0; padding: 2px var(--sp-2); max-width: 60%; list-style: none; background: var(--surface); color: var(--ink-2); border: var(--lw-thin) solid var(--rule); font-size: var(--fs-11); }
+  header button.on { background: var(--accent); color: var(--accent-ink); }
   footer { padding: var(--sp-1) var(--sp-3); background: var(--accent); color: var(--accent-ink); font: 600 var(--fs-12) var(--font-ui); letter-spacing: 0.04em; }
 
   /* The reversed mark shows on the dark theme: chosen by the OS, or by data-theme. */
