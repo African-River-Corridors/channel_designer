@@ -9,8 +9,8 @@ Real open data, cut small:
 - `hydrocron_<reach_id>.json`: the Hydrocron time series of five of those reaches, July 2023 to October 2026,
   as Hydrocron answers it (CSV output inside JSON). SWOT data: NASA and CNES, served by PO.DAAC Hydrocron.
 - `glo30_sassandra_lower.tif`: a window of the Copernicus GLO-30 DEM over the same reaches, joined from the
-  tiles N04 W007 and N05 W007, with every pixel more than about 400 m from a reach set to nodata (so the
-  file stays small). Produced using Copernicus WorldDEM-30 (c) DLR e.V. 2010-2014 and (c) Airbus
+  tiles N04 W007 and N05 W007, with every pixel more than about 400 m from a reach, or from the river arm
+  of `synthetic/sassandra_arm.json`, set to nodata (so the file stays small). Produced using Copernicus WorldDEM-30 (c) DLR e.V. 2010-2014 and (c) Airbus
   Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved.
 
 Needs the network and rasterio; run it once from the repository root:
@@ -135,6 +135,13 @@ while p < len(shp):
         r0, c0 = int(row) - 13, int(col) - 13
         keep[max(r0, 0):max(r0 + 27, 0), max(c0, 0):max(c0 + 27, 0)] = True
     p += 8 + 2 * clen
+# And the river arm the app tests route along (examples/reach/synthetic/sassandra_arm.json).
+arm = [(g["lon"], g["lat"]) for g in json.loads((OUT / "synthetic" / "sassandra_arm.json").read_text())["elements"][0]["geometry"]]
+for (x0, y0), (x1, y1) in zip(arm, arm[1:]):
+    for t in np.linspace(0, 1, 50):
+        col, row = ~transform * (x0 + t * (x1 - x0), y0 + t * (y1 - y0))
+        r0, c0 = int(row) - 13, int(col) - 13
+        keep[max(r0, 0):max(r0 + 27, 0), max(c0, 0):max(c0 + 27, 0)] = True
 NODATA = -32767.0
 data[0][~keep] = NODATA
 profile = dict(driver="GTiff", dtype="float32", nodata=NODATA, count=1, width=data.shape[2], height=data.shape[1], crs="EPSG:4326",

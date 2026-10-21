@@ -2669,6 +2669,7 @@ dependencies = [
  "owd-cli",
  "owd-core",
  "owd-format",
+ "owd-reach",
  "serde_json",
 ]
 

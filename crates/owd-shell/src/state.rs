@@ -32,6 +32,8 @@ pub struct AppState {
     walk: Option<(String, Arc<SectionVolumes>)>,
     /// The design as it stood before each bank edit, newest last, for undo (spec 0012).
     bank_undo: Vec<Session>,
+    /// What "Start from a river" keeps between its steps (spec 0012).
+    reach: crate::reach::ReachMemo,
 }
 
 /// How many bank edits can be undone.
@@ -116,6 +118,7 @@ impl AppState {
             running: None,
             walk: None,
             bank_undo: Vec::new(),
+            reach: Default::default(),
         }
     }
 
@@ -138,6 +141,7 @@ impl AppState {
             running: None,
             walk: None,
             bank_undo: Vec::new(),
+            reach: Default::default(),
         })
     }
 
@@ -228,7 +232,7 @@ impl AppState {
         self.dem.clone()
     }
 
-    fn refuse_while_running(&self) -> Result<(), String> {
+    pub(crate) fn refuse_while_running(&self) -> Result<(), String> {
         match &self.running {
             Some((stage, _)) => Err(format!(
                 "the {} stage is running: wait for it, or press Cancel",
@@ -522,6 +526,36 @@ impl AppState {
         )
     }
 
+    pub(crate) fn session(&self) -> &Session {
+        &self.session
+    }
+
+    pub(crate) fn session_mut(&mut self) -> &mut Session {
+        &mut self.session
+    }
+
+    /// Take a new session made from this one (a reach step): bank edits before it are not undone.
+    pub(crate) fn replace_session(&mut self, session: Session) {
+        self.session = session;
+        self.bank_undo.clear();
+    }
+
+    pub(crate) fn reach_memo(&self) -> &crate::reach::ReachMemo {
+        &self.reach
+    }
+
+    pub(crate) fn reach_memo_mut(&mut self) -> &mut crate::reach::ReachMemo {
+        &mut self.reach
+    }
+
+    pub(crate) fn set_dirty(&mut self) {
+        self.dirty = true;
+    }
+
+    pub(crate) fn usable_dem_for_reach(&self) -> Option<Arc<Dem>> {
+        self.usable_dem()
+    }
+
     /// What the front end shows: the document as the session holds it, and each stage's status.
     pub fn snapshot(&self) -> Value {
         let status: Vec<Value> = self
@@ -551,6 +585,8 @@ impl AppState {
             "warnings": self.warnings,
             "can_undo_bank_edit": !self.bank_undo.is_empty(),
             "running": self.running.as_ref().map(|(s, _)| s.name()),
+            "notices": self.session.notices(),
+            "reach_view": self.reach_view(),
         })
     }
 }
