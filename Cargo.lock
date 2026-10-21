@@ -2602,6 +2602,7 @@ dependencies = [
 name = "owd-cli"
 version = "0.2.0"
 dependencies = [
+ "arc-rules",
  "clap",
  "owd-core",
  "owd-format",
@@ -2628,6 +2629,7 @@ dependencies = [
 name = "owd-format"
 version = "0.2.0"
 dependencies = [
+ "arc-rules",
  "libm",
  "otd",
  "owd-core",

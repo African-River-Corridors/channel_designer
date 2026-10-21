@@ -606,9 +606,12 @@ fn each_value_has_a_note_that_names_its_source() {
         .map(|n| n.as_str().unwrap())
         .collect();
     for (start, source) in [
-        ("BOTTOM WIDTH:", "RULESET PIANC-B"),
-        ("DESIGN DEPTH:", "RULESET PIANC-B"),
-        ("UNDER-KEEL CLEARANCE:", "RULESET PIANC-B"),
+        ("BOTTOM WIDTH:", "RULESET PIANC-WG141@0.3.0 (SE_QUALITY B)"),
+        ("DESIGN DEPTH:", "RULESET PIANC-WG141@0.3.0 (SE_QUALITY B)"),
+        (
+            "UNDER-KEEL CLEARANCE:",
+            "RULESET PIANC-WG141@0.3.0 (SE_QUALITY B)",
+        ),
         ("SIDE SLOPE:", "VOLUMES"),
         ("DESIGN WATER LEVEL:", "WATER PROFILE"),
     ] {

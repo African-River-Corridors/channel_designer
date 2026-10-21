@@ -18,7 +18,6 @@ use owd_core::optimise::cascade::{
 use owd_core::optimise::lattice::{
     HalfWidthSpec, LatticeConfig, PoolOptions, SectionSpec, optimise_pools,
 };
-use owd_core::rules::rulesets::{RulesetRegistry, channel_shape};
 use owd_core::volumes::sections::HalfWidth;
 use serde_json::{Value, json};
 
@@ -123,22 +122,7 @@ impl Session {
                 }
             }
         }
-        let sizing = &self.doc["stages"]["sizing"]["settings"];
-        let (Some(rs), Some(vessel)) = (
-            sizing["ruleset_id"].as_str(),
-            sizing["vessel_standard_id"].as_str(),
-        ) else {
-            return Err(DesignError::Input(
-                "the sizing stage has no settings".into(),
-            ));
-        };
-        let shape = channel_shape(
-            &RulesetRegistry::new(),
-            rs,
-            vessel,
-            sizing["draught_m"].as_f64(),
-        )
-        .map_err(|e| DesignError::Input(e.raw_message().to_string()))?;
+        let shape = self.sized_shape()?;
         let (depth, r_min) = (shape.design_depth_m, shape.min_bend_radius_m);
         // The bottom half-width: the sizing's, unless the settings fix one.
         let half_width = match &settings["half_width_m"] {

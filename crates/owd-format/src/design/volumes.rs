@@ -10,7 +10,6 @@ use super::session::{DesignError, ENGINE_VERSION, Session, Stage, StageStatus};
 use crate::geotiff::Dem;
 use owd_core::cut_model::{CUT_MODEL, WIDEN_RMAX, widened_hb_from_shape};
 use owd_core::geom::{Polygon, Pt};
-use owd_core::rules::rulesets::{RulesetRegistry, channel_shape};
 use owd_core::volumes::sections::{
     DEFAULT_DX_M, DEFAULT_MAXW_M, DEFAULT_STATION_M, DEFAULT_WET_SLOPE, HalfWidth, Level,
     section_volumes,
@@ -228,22 +227,7 @@ impl Session {
             .unwrap_or(CUT_MODEL)
             .to_string();
 
-        let sizing = &self.doc["stages"]["sizing"]["settings"];
-        let (Some(rs), Some(vessel)) = (
-            sizing["ruleset_id"].as_str(),
-            sizing["vessel_standard_id"].as_str(),
-        ) else {
-            return Err(DesignError::Input(
-                "the sizing stage has no settings".into(),
-            ));
-        };
-        let shape = channel_shape(
-            &RulesetRegistry::new(),
-            rs,
-            vessel,
-            sizing["draught_m"].as_f64(),
-        )
-        .map_err(|e| DesignError::Input(e.raw_message().to_string()))?;
+        let shape = self.sized_shape()?;
         let depth = shape.design_depth_m;
 
         let polygon = &self.doc["inputs"]["river_polygon"];

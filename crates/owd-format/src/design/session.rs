@@ -8,16 +8,20 @@ use super::alignment::Terrain;
 use super::crs::{Crs, Utm};
 use super::geojson::{self, Role};
 use super::hash::{hash_value, sha256_hex};
+use super::rule_sets::{default_settings, old_ruleset};
 use super::schema;
-use owd_core::rules::rulesets::{RulesetRegistry, channel_shape};
+use arc_rules::load::Library;
+use owd_core::rules::engine;
+use owd_core::rules::rulesets::{ChannelShape, RulesetRegistry};
 use owd_core::rules::vessel_catalogue;
 use serde_json::{Value, json};
 
 /// The engine version written into documents and stages.
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// The document format version this engine writes (2 since spec 0005; it opens 1 and moves it).
-pub const FORMAT_VERSION: i64 = 2;
+/// The document format version this engine writes and opens: 3 since spec 0007 (the Rule Set
+/// selection). An older file is refused; there is no migration.
+pub const FORMAT_VERSION: i64 = 3;
 
 /// The UTC calendar date, `YYYY-MM-DD`, of a Unix time in seconds. The session has no clock: a caller
 /// reads one and passes the seconds here when it needs a date to write into a new document.
@@ -137,29 +141,25 @@ pub struct ImportReport {
 pub struct Session {
     pub(super) doc: Value,
     pub(super) water_sampling: super::water::WaterSampling,
+    /// The Rule Sets the session can select: the built-in ones and any loaded at run time.
+    pub(super) library: Library,
 }
 
 fn empty_stage() -> Value {
     json!({"settings": null, "results": null, "depends_on": null, "engine_version": null})
 }
 
-fn shape_value(
-    ruleset_id: &str,
-    vessel_standard_id: &str,
-    draught_m: Option<f64>,
-) -> Result<Value, DesignError> {
-    if let Some(d) = draught_m
-        && !(d.is_finite() && d > 0.0)
-    {
-        return Err(DesignError::Input(
-            "the draught must be a positive number of metres".into(),
-        ));
-    }
-    let reg = RulesetRegistry::new();
-    let s = channel_shape(&reg, ruleset_id, vessel_standard_id, draught_m)
-        .map_err(|e| DesignError::Input(e.raw_message().to_string()))?;
-    Ok(json!({
-        "ruleset_id": s.ruleset_id,
+/// The sizing stage of a new design: the default Rule Set selection, no vessel yet.
+fn sizing_stage() -> Value {
+    let mut st = empty_stage();
+    st["settings"] = default_settings();
+    st
+}
+
+/// The sizing results of a channel shape. `label` names the selection.
+fn shape_value(s: &ChannelShape, label: &str) -> Value {
+    json!({
+        "ruleset_id": label,
         "vessel_standard_id": s.vessel_standard_id,
         "loa_m": s.loa_m,
         "beam_m": s.beam_m,
@@ -173,7 +173,7 @@ fn shape_value(
         "width_basis": s.width_basis,
         "source": s.source,
         "warnings": s.warnings,
-    }))
+    })
 }
 
 impl Session {
@@ -181,6 +181,7 @@ impl Session {
     pub fn new(title: &str, created: &str) -> Session {
         Session {
             water_sampling: Default::default(),
+            library: engine::built_in().clone(),
             doc: json!({
                 "format_version": FORMAT_VERSION,
                 "engine_version": ENGINE_VERSION,
@@ -190,7 +191,7 @@ impl Session {
                     "river_polygon": null, "dem": null, "water_level": null
                 },
                 "stages": {
-                    "sizing": empty_stage(), "alignment": empty_stage(),
+                    "sizing": sizing_stage(), "alignment": empty_stage(),
                     "optimise": empty_stage(), "volumes": empty_stage()
                 },
                 "options": []
@@ -202,46 +203,28 @@ impl Session {
     pub fn open(text: &str) -> Result<Session, DesignError> {
         let doc: Value = serde_json::from_str(text)
             .map_err(|e| DesignError::Input(format!("the file is not valid JSON: {e}")))?;
+        if let Some(v) = doc["format_version"].as_i64()
+            && v != FORMAT_VERSION
+        {
+            return Err(DesignError::Input(format!(
+                "the file is document format version {v}; this OWD opens version {FORMAT_VERSION} only \
+                 and moves no older file (spec 0007). Rebuild the design: start a new one, import its \
+                 inputs, size it and run its stages again."
+            )));
+        }
         let mut s = Session {
             doc,
             water_sampling: Default::default(),
+            library: engine::built_in().clone(),
         };
         if s.doc["inputs"].is_object() && s.validate_schema_only().is_empty() {
             s.migrate_water_settings();
-            s.migrate_to_v2();
         }
         let errors = s.validate();
         if errors.is_empty() {
             Ok(s)
         } else {
             Err(DesignError::Document(errors))
-        }
-    }
-
-    /// A version 1 document (before spec 0005) becomes version 2. Its rolling circle records
-    /// `use_water: false`, so a rerun gives the results it already holds; a stage that was fresh
-    /// stays fresh (its hash is taken again over the recorded setting).
-    fn migrate_to_v2(&mut self) {
-        if self.doc["format_version"] != 1 {
-            return;
-        }
-        let fresh: Vec<Stage> = Stage::ALL
-            .iter()
-            .copied()
-            .filter(|st| self.stage_status(*st) == StageStatus::Fresh)
-            .collect();
-        self.doc["format_version"] = json!(FORMAT_VERSION);
-        let settings = &mut self.doc["stages"]["alignment"]["settings"];
-        if !settings.is_object() {
-            *settings = json!({});
-        }
-        if !settings["rolling_circle"].is_object() {
-            settings["rolling_circle"] = json!({});
-        }
-        settings["rolling_circle"]["use_water"] = json!(false);
-        for st in fresh {
-            let h = self.dependency_hash(st);
-            self.doc["stages"][st.name()]["depends_on"] = json!(h);
         }
     }
 
@@ -310,6 +293,9 @@ impl Session {
             "stage": stage.name(),
             "chain": Value::Object(chain),
         });
+        // The content of every selected Rule Set, as the engine holds it now: a changed set makes the
+        // sizing stage, and so every stage after it, stale.
+        dep["rule_sets"] = self.selected_set_hashes();
         if stage != Stage::Sizing {
             dep["inputs"] = self.doc["inputs"].clone();
             // The DEM is identified by its hash, not by where the file sits: moving a design and its
@@ -383,17 +369,23 @@ impl Session {
 
     // --- sizing -------------------------------------------------------------------------
 
-    /// The channel shape for a ruleset, vessel class and draught, without touching the document.
-    /// The app calls this on every edit; `size` runs it and records the result.
+    /// The channel shape for an old ruleset id (mapped to its Rule Set selection), vessel class and
+    /// draught, without touching the document. The app calls this on every edit.
     pub fn preview_sizing(
         ruleset_id: &str,
         vessel_standard_id: &str,
         draught_m: Option<f64>,
     ) -> Result<Value, DesignError> {
-        shape_value(ruleset_id, vessel_standard_id, draught_m)
+        let mut s = Session::new("", "");
+        s.set_sizing(ruleset_id, vessel_standard_id, draught_m)?;
+        let settings = s.sizing_settings();
+        let shape = s.shape_for_settings(&settings)?;
+        Ok(shape_value(&shape, &Session::selection_label(&settings)))
     }
 
-    /// Set the sizing choices. Nothing runs: the sizing stage shows as stale, and so does every
+    /// Set the sizing choices by an old ruleset id, mapped to its Rule Set selection (spec 0007:
+    /// PIANC-B is `pianc-wg141` with `se_quality` B, CN-conservative is `gb50139` with `range_end`
+    /// strict), marked `typed`. Nothing runs: the sizing stage shows as stale, and so does every
     /// stage after it that had results. The choices are checked first, so a typo is refused here.
     pub fn set_sizing(
         &mut self,
@@ -401,28 +393,21 @@ impl Session {
         vessel_standard_id: &str,
         draught_m: Option<f64>,
     ) -> Result<(), DesignError> {
-        shape_value(ruleset_id, vessel_standard_id, draught_m)?;
-        self.doc["stages"]["sizing"]["settings"] = json!({
-            "ruleset_id": ruleset_id,
-            "vessel_standard_id": vessel_standard_id,
-            "draught_m": draught_m,
-        });
+        let (set, input, value) = old_ruleset(ruleset_id)?;
+        let before = self.doc["stages"]["sizing"]["settings"].clone();
+        self.set_rule_sets(&[set], &[(input, value)])?;
+        if let Err(e) = self.set_vessel(vessel_standard_id, draught_m) {
+            self.doc["stages"]["sizing"]["settings"] = before;
+            return Err(e);
+        }
         Ok(())
     }
 
     fn run_sizing(&mut self) -> Result<(), DesignError> {
-        let set = self.doc["stages"]["sizing"]["settings"].clone();
-        let (Some(rs), Some(v)) = (
-            set["ruleset_id"].as_str(),
-            set["vessel_standard_id"].as_str(),
-        ) else {
-            return Err(DesignError::Input(
-                "the sizing stage has no settings: choose a ruleset and a vessel class first"
-                    .into(),
-            ));
-        };
-        let shape = shape_value(rs, v, set["draught_m"].as_f64())?;
-        self.doc["stages"]["sizing"]["results"] = shape;
+        let settings = self.sizing_settings();
+        let shape = self.shape_for_settings(&settings)?;
+        self.doc["stages"]["sizing"]["results"] =
+            shape_value(&shape, &Session::selection_label(&settings));
         self.doc["stages"]["sizing"]["engine_version"] = json!(ENGINE_VERSION);
         let h = self.dependency_hash(Stage::Sizing);
         self.doc["stages"]["sizing"]["depends_on"] = json!(h);
@@ -470,7 +455,12 @@ impl Session {
         for stage in Stage::ALL {
             let due = match self.stage_status(stage) {
                 StageStatus::Stale => true,
-                StageStatus::NotRun => !self.doc["stages"][stage.name()]["settings"].is_null(),
+                StageStatus::NotRun => {
+                    let settings = &self.doc["stages"][stage.name()]["settings"];
+                    // A new design has a Rule Set selection but no vessel: nothing to size yet.
+                    !settings.is_null()
+                        && (stage != Stage::Sizing || !settings["vessel_standard_id"].is_null())
+                }
                 StageStatus::Fresh => false,
             };
             if due {
@@ -484,8 +474,10 @@ impl Session {
     /// The rulesets and vessel classes a user can choose for sizing, for the lists in the app and
     /// for `--help`-style discovery: ids, display labels and the dimensions that matter.
     pub fn sizing_choices() -> Value {
+        // CN-reduced needs a canal reach (spec 0007 T4), so it is not offered.
         let rulesets: Vec<Value> = RulesetRegistry::new()
             .iter()
+            .filter(|r| old_ruleset(&r.ruleset_id).is_ok())
             .map(|r| json!({"id": r.ruleset_id, "label": r.label, "family": r.family}))
             .collect();
         let vessels: Vec<Value> = vessel_catalogue()

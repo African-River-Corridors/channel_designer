@@ -15,6 +15,7 @@ pub mod map;
 pub mod optimise;
 pub mod provenance;
 pub mod reach;
+pub mod rule_sets;
 pub mod schema;
 pub mod sections;
 pub mod session;

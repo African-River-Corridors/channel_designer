@@ -367,8 +367,8 @@ fn exit_code_1_is_a_failed_check() {
     let dir = work_dir("exit1");
     let doc = build(&dir);
     let text = std::fs::read_to_string(&doc).unwrap().replacen(
-        "\"format_version\": 2",
         "\"format_version\": 3",
+        "\"format_version\": \"3\"",
         1,
     );
     std::fs::write(&doc, text).unwrap();
@@ -390,7 +390,20 @@ fn exit_code_2_is_a_usage_or_input_error() {
     let doc = build(&dir);
     // A usage error: an unknown command, a missing required option.
     assert_eq!(code(&run(&["frobnicate"], "")), 2);
-    assert_eq!(code(&run(&["size", &doc], "")), 2);
+    assert_eq!(
+        code(&run(
+            &[
+                "size",
+                &doc,
+                "--ruleset",
+                "PIANC-B",
+                "--rule-set",
+                "gb50139"
+            ],
+            ""
+        )),
+        2
+    );
     // An input error: a missing file, text that is not JSON, an unknown vessel, an unusable CRS.
     assert_eq!(
         code(&run(

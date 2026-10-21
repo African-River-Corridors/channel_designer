@@ -1,0 +1,151 @@
+{
+  "$schema": "../rule-set.schema.json",
+  "id": "owd",
+  "family": "owd",
+  "title": "OWD Checks: the tool's own checks on every channel (never a published rule)",
+  "version": "0.3.0",
+  "edition": {
+    "document": "Open Waterway Designer",
+    "edition": "0.3.0"
+  },
+  "sources": [],
+  "status": "draft",
+  "applies_when": {},
+  "includes": [],
+  "known_conflicts": [],
+  "tables": [],
+  "rules": [
+    {
+      "id": "owd/check/bottom-width-above-zero",
+      "title": "A channel has a bottom width above zero",
+      "origin": "physical",
+      "source": {
+        "document": "Open Waterway Designer",
+        "edition": "0.3.0"
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-21",
+        "review": "#161"
+      },
+      "verified": false,
+      "applies_when": {},
+      "kind": "limit",
+      "measure": {
+        "id": "channel.bottom-width"
+      },
+      "compare": "gt",
+      "limit": {
+        "value": 0.0,
+        "unit": "m"
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": false,
+      "evaluated": true,
+      "finding": null,
+      "since": "0.3.0"
+    },
+    {
+      "id": "owd/check/depth-covers-draught",
+      "title": "The design depth covers the draught",
+      "origin": "physical",
+      "source": {
+        "document": "Open Waterway Designer",
+        "edition": "0.3.0"
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-21",
+        "review": "#161"
+      },
+      "verified": false,
+      "applies_when": {},
+      "kind": "formula",
+      "measure": {
+        "id": "channel.design-depth"
+      },
+      "compare": "ge",
+      "limit": {
+        "shape": "multiple",
+        "unit": "m",
+        "k": 1.0,
+        "x": "vessel.draught"
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": false,
+      "evaluated": true,
+      "finding": null,
+      "since": "0.3.0"
+    },
+    {
+      "id": "owd/5.3.4.3/depth-ratio-floor",
+      "title": "Design depth at least 1.2 x draught, the WG 141 river minimum, under a set that allows less",
+      "origin": "guideline",
+      "source": {
+        "document": "PIANC InCom WG 141, Design Guidelines for Inland Waterway Dimensions",
+        "edition": "PIANC Report 141, 2019",
+        "locator": "5.3.4.3",
+        "page": "108",
+        "access": "paywalled"
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-21",
+        "review": "#161"
+      },
+      "verified": false,
+      "applies_when": {},
+      "kind": "formula",
+      "measure": {
+        "id": "channel.design-depth"
+      },
+      "compare": "ge",
+      "limit": {
+        "shape": "multiple",
+        "unit": "m",
+        "k": 1.2,
+        "x": "vessel.draught"
+      },
+      "tolerance": 0,
+      "consequence": "warn",
+      "sizes": false,
+      "evaluated": true,
+      "finding": null,
+      "since": "0.3.0"
+    },
+    {
+      "id": "owd/check/bed-above-datum",
+      "title": "The design bed lies above the datum (0 m); below it is a marine or tidal dredge reach",
+      "origin": "physical",
+      "source": {
+        "document": "Open Waterway Designer",
+        "edition": "0.3.0"
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-21",
+        "review": "#161"
+      },
+      "verified": false,
+      "applies_when": {},
+      "kind": "limit",
+      "measure": {
+        "id": "channel.bed-level"
+      },
+      "compare": "ge",
+      "limit": {
+        "value": 0.0,
+        "unit": "m"
+      },
+      "tolerance": 0,
+      "consequence": "warn",
+      "sizes": false,
+      "evaluated": false,
+      "gap": "the sizing stage has no water level, so no bed level; the volumes stage reads the pool levels",
+      "finding": null,
+      "since": "0.3.0"
+    }
+  ]
+}

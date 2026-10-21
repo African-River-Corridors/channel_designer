@@ -275,3 +275,123 @@ fn the_swept_path_is_a_note_with_a_value() {
         assert!(matches!(row.value, Some(arc_rules::eval::MeasureValue::Number(x)) if x > 11.4));
     }
 }
+
+/// The selection an old ruleset maps to, with the `owd` checks (spec 0007, "Rule Sets at 0.3.0").
+fn mapped(ruleset: &str) -> engine::Selection {
+    let (set, input, value) = match ruleset {
+        "PIANC-A" => ("pianc-wg141", engine::SE_QUALITY, "A"),
+        "PIANC-B" => ("pianc-wg141", engine::SE_QUALITY, "B"),
+        "PIANC-C" => ("pianc-wg141", engine::SE_QUALITY, "C"),
+        "CN" => ("gb50139", engine::RANGE_END, "permissive"),
+        _ => ("gb50139", engine::RANGE_END, "strict"),
+    };
+    engine::Selection::built_in(&[set, engine::OWD_SET], &[(input, value)]).unwrap()
+}
+
+/// A shape sized from a selection (with the `owd` checks) equals the old ruleset's, numbers,
+/// width basis and warnings: the warnings now come from the Rule Trace of the sized channel.
+#[test]
+fn a_selection_gives_the_old_shape_and_its_warnings() {
+    let reg = RulesetRegistry::new();
+    let mut warned = 0;
+    for ruleset in ENGINE {
+        for (vessel, _) in vessel_catalogue() {
+            for draught in [None, Some(0.8), Some(1.9), Some(2.5), Some(4.75)] {
+                let new = owd_core::rules::rulesets::channel_shape_for(
+                    &mapped(ruleset),
+                    &vessel,
+                    draught,
+                )
+                .unwrap();
+                let old = channel_shape_legacy(&reg, ruleset, &vessel, draught).unwrap();
+                let case = format!("{ruleset} {vessel} {draught:?}");
+                for (a, b) in [
+                    (new.bottom_width_straight_m, old.bottom_width_straight_m),
+                    (new.min_bend_radius_m, old.min_bend_radius_m),
+                    (new.design_depth_m, old.design_depth_m),
+                    (new.bend_widening_at_rmin_m, old.bend_widening_at_rmin_m),
+                    (new.bottom_width_at_rmin_m, old.bottom_width_at_rmin_m),
+                    (new.bend_widening_m(250.0), old.bend_widening_m(250.0)),
+                ] {
+                    assert_eq!(a.to_bits(), b.to_bits(), "{case}");
+                }
+                assert_eq!(new.width_basis, old.width_basis, "{case}");
+                assert_eq!(new.warnings, old.warnings, "{case}");
+                warned += new.warnings.len();
+            }
+        }
+    }
+    assert!(warned > 100, "the warnings were exercised: {warned}");
+}
+
+/// Two sets at once: every Rule applies and the governing limit of each Requirement sizes the
+/// channel, so each quantity is the larger of the two single-set values. A synthetic vessel.
+#[test]
+fn two_sets_size_each_quantity_to_the_larger_single_set_value() {
+    let vessel = engine::Vessel {
+        loa_m: 135.0,
+        beam_m: 14.2,
+        draught_m: 3.1,
+        formation: "pushed_convoy".into(),
+        class_name: "Vb".into(),
+    };
+    let one = |ids: &[&str]| {
+        let s = engine::Selection::built_in(
+            ids,
+            &[(engine::SE_QUALITY, "B"), (engine::RANGE_END, "strict")],
+        )
+        .unwrap();
+        engine::size(&s, &vessel).unwrap()
+    };
+    let p = one(&["pianc-wg141", "owd"]);
+    let g = one(&["gb50139", "owd"]);
+    let both = one(&["pianc-wg141", "gb50139", "owd"]);
+    let max = |a: f64, b: f64| if b > a { b } else { a };
+    assert_eq!(
+        both.bottom_width_straight_m,
+        max(p.bottom_width_straight_m, g.bottom_width_straight_m)
+    );
+    assert_eq!(
+        both.min_bend_radius_m,
+        max(p.min_bend_radius_m, g.min_bend_radius_m)
+    );
+    assert_eq!(both.design_depth_m, max(p.design_depth_m, g.design_depth_m));
+    // The two sets disagree on something, so the test says more than "the same set twice".
+    assert!(
+        p.bottom_width_straight_m != g.bottom_width_straight_m
+            || p.min_bend_radius_m != g.min_bend_radius_m
+    );
+    // The widening at the combined R_min is the larger of the two formulas there.
+    let r = both.min_bend_radius_m;
+    let wid = |ids: &[&str]| {
+        let s = engine::Selection::built_in(ids, &[(engine::SE_QUALITY, "B")]).unwrap();
+        engine::widening(&s, &vessel, r).unwrap()
+    };
+    assert_eq!(
+        both.bend_widening_at_rmin_m,
+        max(wid(&["pianc-wg141"]), {
+            let s = engine::Selection::built_in(&["gb50139"], &[(engine::RANGE_END, "strict")])
+                .unwrap();
+            engine::widening(&s, &vessel, r).unwrap()
+        })
+    );
+}
+
+/// Selecting one set twice changes nothing.
+#[test]
+fn one_set_selected_twice_changes_nothing() {
+    let vessel = engine::Vessel {
+        loa_m: 110.0,
+        beam_m: 11.4,
+        draught_m: 2.5,
+        formation: "motor_vessel".into(),
+        class_name: "IV".into(),
+    };
+    let i = [(engine::SE_QUALITY, "C")];
+    let once = engine::Selection::built_in(&["pianc-wg141", "owd"], &i).unwrap();
+    let twice = engine::Selection::built_in(&["pianc-wg141", "pianc-wg141", "owd"], &i).unwrap();
+    assert_eq!(
+        engine::size(&once, &vessel).unwrap(),
+        engine::size(&twice, &vessel).unwrap()
+    );
+}
