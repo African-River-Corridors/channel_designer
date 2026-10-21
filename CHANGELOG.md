@@ -18,6 +18,18 @@ versions follow [Semantic Versioning](https://semver.org/).
   identifier, `org.africanrivercorridors.openwaterwaydesigner`: macOS, Windows and Linux treat it as a new app, so
   its saved window state and recent files do not carry over. The version is not changed by this entry.
 - Trademark policy: new `TRADEMARKS.md` says how the Open Waterway Designer (OWD) and ARC names and logos may be used. The Apache licence covers the code; this policy covers the marks. No result moves.
+
+### Fixed
+
+- The fairway fit's corridor QP is scaled before it is solved. On a seed with a sharp corner at the default 10 m
+  spacing, the interior-point solver stalled on pass 1 (InsufficientProgress) and the fit returned the lightly
+  smoothed seed (a 90 deg dog-leg in 800 m water: R 84 m, `radius_ok` false). Scaled, the same case reads 735 m.
+
+### Added
+
+- `owd.alignment.fairway.fairway_fit`: the Python wrapper of the corridor solve (poses, must-follow
+  segments, any `FitParams` field by name).
+
 ### Design impact
 
 Every pull request is checked for design impact (`tools/design_impact.py`, CI job `design-impact`): fixed

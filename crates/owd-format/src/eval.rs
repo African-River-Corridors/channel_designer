@@ -11,6 +11,7 @@ use serde_json::{Number, Value, json};
 mod alignment;
 mod cascade;
 mod dem;
+mod fairway;
 mod geometry;
 mod lattice;
 mod plan;
@@ -92,6 +93,7 @@ pub fn eval(entry_point: &str, input: &Value) -> Result<Value, EvalError> {
         "loops" => alignment::loops(function, args),
         "rolling_circle" => alignment::rolling_circle(function, args),
         "route" => route::route(function, args),
+        "fairway" => fairway::fairway(function, args),
         "cascade" => cascade::cascade(function, args),
         "lattice" => lattice::lattice(function, args),
         "sections" => volumes::sections(function, args),

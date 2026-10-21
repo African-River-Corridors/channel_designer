@@ -197,15 +197,20 @@ pub fn fairway_fit(
             at: mf[0],
             heading_rad: heading([mf[1][0] - mf[0][0], mf[1][1] - mf[0][1]]),
         };
-        let piece = piece_seed(&seed, from_s, to_s, from_pt, mf[0]);
-        let piece = with_dubins_ends(&piece, from_pose, Some(to_pose), params, &mut notes);
-        push_piece(
-            &mut nodes,
-            &piece,
-            (from_pose, from_user_pose),
-            (Some(to_pose), false),
-            h,
-        );
+        // A must-follow segment that starts where the free piece would start leaves nothing to fit
+        // between them: building a piece there made a Dubins loop from a point back to itself.
+        let gap = libm::hypot(mf[0][0] - from_pt[0], mf[0][1] - from_pt[1]);
+        if gap > EDGE_TOL_M {
+            let piece = piece_seed(&seed, from_s, to_s, from_pt, mf[0]);
+            let piece = with_dubins_ends(&piece, from_pose, Some(to_pose), params, &mut notes);
+            push_piece(
+                &mut nodes,
+                &piece,
+                (from_pose, from_user_pose),
+                (Some(to_pose), false),
+                h,
+            );
+        }
         for p in Chained::new(mf).resample(h, 1) {
             push_node(&mut nodes, p, Kind::Fixed, Some(k));
         }
@@ -1105,6 +1110,57 @@ mod tests {
         );
         assert!(r.infeasible.is_empty(), "{:?}", r.infeasible);
         assert!(r.radius_ok, "{}", r.measured_min_radius_m);
+    }
+
+    #[test]
+    fn a_must_follow_segment_at_the_start_is_held_without_a_loop() {
+        // The seed starts on its must-follow segment (a designed reach from the berth). Before the
+        // fix, a free piece from the start back to itself became a Dubins loop of about 700 m.
+        let water = vec![Polygon {
+            exterior: vec![
+                [-300.0, -300.0],
+                [4300.0, -300.0],
+                [4300.0, 300.0],
+                [-300.0, 300.0],
+                [-300.0, -300.0],
+            ],
+            holes: vec![],
+        }];
+        let seed = [[0.0, 0.0], [1000.0, 0.0], [2000.0, 100.0], [4000.0, 0.0]];
+        let fixed = Fixed {
+            must_follow: vec![vec![[0.0, 0.0], [1000.0, 0.0]]],
+            ..Fixed::default()
+        };
+        let r = fairway_fit(&seed, &water, &fixed, &FitParams::new(420.0)).unwrap();
+        let len = linear::length(&r.line);
+        assert!(len < 4100.0, "{len}");
+        assert!(
+            r.line.iter().all(|p| p[0] >= -1e-6),
+            "the line runs behind its start"
+        );
+    }
+
+    #[test]
+    fn a_right_angle_seed_in_wide_water_is_fitted_at_the_default_spacing() {
+        // An L-shaped channel 800 m wide and a seed with a 90 deg corner. A 420 m line fits with
+        // room to spare. Before the QP was scaled, pass 1 stalled (InsufficientProgress) at the
+        // default 10 m spacing and the smoothed seed came back at R 84 m.
+        let water = vec![Polygon {
+            exterior: vec![
+                [-400.0, -400.0],
+                [1900.0, -400.0],
+                [1900.0, 1900.0],
+                [1100.0, 1900.0],
+                [1100.0, 400.0],
+                [-400.0, 400.0],
+                [-400.0, -400.0],
+            ],
+            holes: vec![],
+        }];
+        let seed = [[0.0, 0.0], [1500.0, 0.0], [1500.0, 1500.0]];
+        let r = fairway_fit(&seed, &water, &Fixed::default(), &FitParams::new(420.0)).unwrap();
+        assert!(r.radius_ok, "{} {:?}", r.measured_min_radius_m, r.notes);
+        assert!(r.notes.is_empty(), "{:?}", r.notes);
     }
 }
 
