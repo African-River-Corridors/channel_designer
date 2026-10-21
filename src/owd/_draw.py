@@ -26,7 +26,7 @@ def draw(design: PathLike, *, dem: Optional[PathLike] = None, out: Optional[Path
 
     ``design`` is the ``.owd`` file, after the volumes stage. ``dem`` is the DEM file; the default is the
     one the design names, next to it. ``option`` is a design line option by id or name (default the
-    first); ``sheets`` the kinds to draw (``"xs"`` cross sections, ``"ts"`` typical section; default all); ``revision`` and ``date`` are
+    first); ``sheets`` the kinds to draw (``"xs"`` cross sections, ``"ts"`` typical section, ``"so"`` setting-out table and CSV; default all); ``revision`` and ``date`` are
     for the title block (the date defaults to the day the design was created, so the same design
     always gives the same bytes).
 

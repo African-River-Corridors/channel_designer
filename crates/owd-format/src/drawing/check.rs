@@ -318,3 +318,161 @@ pub fn typical(sheets: &[Sheet], f: &super::typical::Facts) -> Vec<Finding> {
     }
     found
 }
+
+/// The checks of the setting-out table: every drawn value is the table's value to the precision it is
+/// written to, every row of the table is drawn once, and the CSV holds the same rows.
+pub fn setting_out(sheets: &[Sheet], t: &super::setting_out::Table) -> Vec<Finding> {
+    use super::setting_out::{bearing_text, chainage_text, coord_text, radius_text};
+    let mut found = Vec::new();
+    let mut drawn_stations: Vec<Vec<String>> = Vec::new();
+    let mut drawn_bends: Vec<Vec<String>> = Vec::new();
+    for sheet in sheets {
+        let mut note = |check: &'static str, message: String| {
+            found.push(Finding {
+                sheet: sheet.number.clone(),
+                check,
+                message,
+            });
+        };
+        for (vp_id, prefix, cols) in [
+            ("so-stations", "so-s", 5usize),
+            ("so-bends", "so-b", 4usize),
+        ] {
+            let Some(vp) = sheet.document["viewports"]
+                .as_array()
+                .and_then(|a| a.iter().find(|v| v["id"] == vp_id))
+            else {
+                continue;
+            };
+            let mut r = 0;
+            while let Some(first) = text_of(vp, &format!("{prefix}-r{r}-c0")) {
+                let cells: Vec<String> = (0..cols)
+                    .map(|c| {
+                        text_of(vp, &format!("{prefix}-r{r}-c{c}"))
+                            .unwrap_or("")
+                            .to_string()
+                    })
+                    .collect();
+                let _ = first;
+                if vp_id == "so-stations" {
+                    drawn_stations.push(cells);
+                } else {
+                    drawn_bends.push(cells);
+                }
+                r += 1;
+            }
+        }
+        let header = sheet.document["notes"][0].as_str().unwrap_or("");
+        if !header.contains(&format!("EPSG:{}", t.epsg)) || !header.contains("0.001 M") {
+            note(
+                "setting-out-header",
+                "the notes do not state the UTM zone, datum and precision".into(),
+            );
+        }
+    }
+    let mut note = |check: &'static str, message: String| {
+        found.push(Finding {
+            sheet: sheets.first().map(|s| s.number.clone()).unwrap_or_default(),
+            check,
+            message,
+        });
+    };
+    let want_stations: Vec<Vec<String>> = t
+        .stations
+        .iter()
+        .map(|r| {
+            vec![
+                chainage_text(r.chainage_m),
+                coord_text(r.easting_m),
+                coord_text(r.northing_m),
+                bearing_text(r.bearing_deg),
+                radius_text(r.radius_m),
+            ]
+        })
+        .collect();
+    if drawn_stations != want_stations {
+        let at = drawn_stations
+            .iter()
+            .zip(&want_stations)
+            .position(|(a, b)| a != b)
+            .map_or_else(
+                || {
+                    format!(
+                        "{} rows drawn, {} in the result",
+                        drawn_stations.len(),
+                        want_stations.len()
+                    )
+                },
+                |i| {
+                    format!(
+                        "station row {} is drawn {:?}, result {:?}",
+                        i + 1,
+                        drawn_stations[i],
+                        want_stations[i]
+                    )
+                },
+            );
+        note("setting-out-station", at);
+    }
+    if drawn_bends.len() != t.bends.len() {
+        note(
+            "setting-out-bend",
+            format!(
+                "{} bend rows drawn, {} in the result",
+                drawn_bends.len(),
+                t.bends.len()
+            ),
+        );
+    } else {
+        for (i, (row, b)) in drawn_bends.iter().zip(&t.bends).enumerate() {
+            let want = [
+                chainage_text(b.start_m),
+                chainage_text(b.end_m),
+                radius_text(Some(b.least_radius_m)),
+                format!("{:.3}", b.deflection_deg),
+            ];
+            if row.as_slice() != want {
+                note(
+                    "setting-out-bend",
+                    format!("bend row {} is drawn {row:?}, result {want:?}", i + 1),
+                );
+            }
+        }
+    }
+    // The CSV: the same rows as the sheets.
+    let csv_text = sheets
+        .iter()
+        .flat_map(|s| s.extra.iter())
+        .find(|(n, _)| n.ends_with(".csv"))
+        .map(|(_, b)| String::from_utf8_lossy(b).into_owned())
+        .unwrap_or_default();
+    let rows: Vec<Vec<&str>> = csv_text
+        .lines()
+        .skip(1)
+        .map(|l| l.split(',').collect())
+        .collect();
+    let csv_stations: Vec<&Vec<&str>> = rows.iter().filter(|r| r[0] == "station").collect();
+    let csv_bends: Vec<&Vec<&str>> = rows.iter().filter(|r| r[0] == "bend").collect();
+    if csv_stations.len() != drawn_stations.len() || csv_bends.len() != drawn_bends.len() {
+        note(
+            "setting-out-csv",
+            "the CSV and the sheets do not hold the same number of rows".into(),
+        );
+    } else {
+        for (c, d) in csv_stations.iter().zip(&drawn_stations) {
+            let ch = chainage_in(&format!("CH {}", d[0])).unwrap_or(f64::NAN);
+            let same = (c[1].parse::<f64>().unwrap_or(f64::NAN) - ch).abs() < 5e-4
+                && c[2] == d[1]
+                && c[3] == d[2]
+                && c[4] == d[3];
+            if !same {
+                note(
+                    "setting-out-csv",
+                    format!("CSV station row {c:?} differs from the sheet row {d:?}"),
+                );
+                break;
+            }
+        }
+    }
+    found
+}

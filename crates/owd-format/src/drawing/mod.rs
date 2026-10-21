@@ -10,6 +10,7 @@
 pub mod check;
 mod furniture;
 mod gallery;
+mod setting_out;
 pub mod style;
 mod typical;
 
@@ -21,6 +22,7 @@ use std::collections::BTreeMap;
 
 pub use check::Finding;
 pub use gallery::GalleryParams;
+pub use setting_out::{SettingOutParams, Table as SettingOutTable, table as setting_out_table};
 pub use style::{Style, StyleError};
 pub use typical::{Facts, TypicalParams, facts as typical_facts};
 
@@ -31,16 +33,23 @@ pub enum SheetKind {
     CrossSections,
     /// The typical section.
     TypicalSection,
+    /// The setting-out table.
+    SettingOut,
 }
 
 impl SheetKind {
-    pub const ALL: &'static [SheetKind] = &[SheetKind::CrossSections, SheetKind::TypicalSection];
+    pub const ALL: &'static [SheetKind] = &[
+        SheetKind::CrossSections,
+        SheetKind::TypicalSection,
+        SheetKind::SettingOut,
+    ];
 
     /// The kind code in the drawing number.
     pub fn code(self) -> &'static str {
         match self {
             SheetKind::CrossSections => "XS",
             SheetKind::TypicalSection => "TS",
+            SheetKind::SettingOut => "SO",
         }
     }
 
@@ -49,6 +58,7 @@ impl SheetKind {
         match self {
             SheetKind::CrossSections => "xs",
             SheetKind::TypicalSection => "ts",
+            SheetKind::SettingOut => "so",
         }
     }
 
@@ -92,6 +102,8 @@ pub struct Sheet {
     /// The drawing number, for example `OWD-SYNTHETIC-XS-001`.
     pub number: String,
     pub document: Value,
+    /// Files that go with the sheet, by name (the setting-out CSV).
+    pub extra: Vec<(String, Vec<u8>)>,
 }
 
 impl Sheet {
@@ -176,6 +188,16 @@ pub fn sheets(
                 }
                 out.extend(built);
             }
+            SheetKind::SettingOut => {
+                let built = setting_out::build(session, &option_id, options)?;
+                let table =
+                    setting_out::table(session, &option_id, options.style.setting_out().spacing_m)?;
+                let findings = check::setting_out(&built, &table);
+                if !findings.is_empty() {
+                    return Err(DrawError::Checks(findings));
+                }
+                out.extend(built);
+            }
             SheetKind::TypicalSection => {
                 let built = typical::build(session, &option_id, options)?;
                 let findings = check::typical(&built, &typical::facts(session)?);
@@ -222,6 +244,8 @@ pub struct SheetOutput {
     pub dxf: String,
     /// Notes from the DXF writer (what it could not draw).
     pub warnings: Vec<String>,
+    /// The sheet's own extra files.
+    pub extra: Vec<(String, Vec<u8>)>,
 }
 
 /// Make every output of a sheet with `otd`.
@@ -251,6 +275,7 @@ pub fn render(sheet: &Sheet) -> Result<SheetOutput, DrawError> {
         pdf: otd::render::pdf::to_pdf(&norm),
         dxf: dxf.text,
         warnings: dxf.warnings,
+        extra: sheet.extra.clone(),
     })
 }
 
@@ -268,7 +293,7 @@ impl SheetOutput {
     /// and DXF. The command line and Python both write exactly these.
     pub fn files(&self) -> Vec<(String, Vec<u8>)> {
         let name = |ext: &str| format!("{}.{ext}", self.stem);
-        vec![
+        let mut files = vec![
             (name("drawing.json"), self.document.clone().into_bytes()),
             (
                 name("normalised.json"),
@@ -277,7 +302,9 @@ impl SheetOutput {
             (name("svg"), self.svg.clone().into_bytes()),
             (name("pdf"), self.pdf.clone()),
             (name("dxf"), self.dxf.clone().into_bytes()),
-        ]
+        ];
+        files.extend(self.extra.clone());
+        files
     }
 }
 

@@ -70,17 +70,7 @@ fn tight_bends(pts: &[Pt], chain: &[f64], r_min: f64, chord: f64) -> Vec<(f64, f
     };
     for i in k..s.len().saturating_sub(k) {
         let (a, b, c) = (s[i - k].1, s[i].1, s[i + k].1);
-        let (ab, bc, ca) = (
-            libm::hypot(b[0] - a[0], b[1] - a[1]),
-            libm::hypot(c[0] - b[0], c[1] - b[1]),
-            libm::hypot(a[0] - c[0], a[1] - c[1]),
-        );
-        let area = 0.5 * ((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])).abs();
-        let r = if area > 1e-9 {
-            ab * bc * ca / (4.0 * area)
-        } else {
-            f64::INFINITY
-        };
+        let r = circumradius(a, b, c);
         if r < limit {
             // Keep the tightest point of each run of tight points.
             match run {
@@ -93,6 +83,21 @@ fn tight_bends(pts: &[Pt], chain: &[f64], r_min: f64, chord: f64) -> Vec<(f64, f
     }
     flush(&mut run, &mut out);
     out
+}
+
+/// The radius of the circle through three points, `INFINITY` for three points on a line.
+pub(crate) fn circumradius(a: Pt, b: Pt, c: Pt) -> f64 {
+    let (ab, bc, ca) = (
+        libm::hypot(b[0] - a[0], b[1] - a[1]),
+        libm::hypot(c[0] - b[0], c[1] - b[1]),
+        libm::hypot(a[0] - c[0], a[1] - c[1]),
+    );
+    let area = 0.5 * ((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])).abs();
+    if area > 1e-9 {
+        ab * bc * ca / (4.0 * area)
+    } else {
+        f64::INFINITY
+    }
 }
 
 /// The tight bends of one design line option as `(chainage, least radius)`: the places where the

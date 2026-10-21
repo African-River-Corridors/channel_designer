@@ -320,6 +320,7 @@ pub(super) fn build(
         kind: SheetKind::TypicalSection,
         number,
         document,
+        extra: Vec::new(),
     }])
 }
 
