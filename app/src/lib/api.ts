@@ -37,6 +37,16 @@ export interface Polygon {
   type: "Polygon";
   coordinates: number[][][];
 }
+export type ProvenanceInput = "left_bank" | "right_bank" | "centreline" | "river_polygon" | "dem" | "water_level" | "route" | "bed";
+/** `default` is made by OWD, `edited` is a default the user changed, `user` is the user's own. */
+export type Mark = "default" | "edited" | "user";
+export interface Provenance {
+  source: string;
+  date: string;
+  notice: string;
+  mark: Mark;
+  provisional?: boolean;
+}
 export interface Snapshot {
   engine_version: string;
   document: {
@@ -55,7 +65,11 @@ export interface Snapshot {
       water_level: { points: number[][] } | null;
     };
     stages: Record<StageName, { settings: SizingSettings | null; results: ChannelShape | null; depends_on?: string | null }>;
+    /** Where each generated or loaded input came from (spec 0012). Absent for a design with none. */
+    provenance?: Partial<Record<ProvenanceInput, Provenance>>;
   };
+  /** True when a bank edit can be undone. */
+  can_undo_bank_edit?: boolean;
   stages: { name: StageName; status: StageState }[];
   file_name: string;
   path: string | null;
@@ -214,3 +228,14 @@ export const exportFile = (kind: "geojson" | "csv") => invoke<string | null>("ex
 
 /** Web only: open the bundled example (a short synthetic river with its DEM). null when the user cancels. */
 export const openExample = () => invoke<Snapshot | null>("open_example");
+
+/** One edit to a bank, with its points as `[lon, lat]`: redraw a stretch, or move, add and delete a vertex. */
+export type BankEdit =
+  | { kind: "splice"; points: LonLat[] }
+  | { kind: "move"; index: number; to: LonLat }
+  | { kind: "add"; after: number; at: LonLat }
+  | { kind: "delete"; index: number };
+/** Edit a bank. The session marks it `edited`, rebuilds the polygon and centreline, and makes later stages stale. Rejects with the reason (for example: it would cross the other bank). */
+export const editBank = (side: "left_bank" | "right_bank", edit: BankEdit) => invoke<Snapshot>("edit_bank", { side, edit });
+/** Undo the last bank edit. */
+export const undoBankEdit = () => invoke<Snapshot>("undo_bank_edit");

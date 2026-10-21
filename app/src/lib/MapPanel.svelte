@@ -16,6 +16,7 @@
     tiles = BASEMAP_TILES,
     stationPosition = null,
     onPick,
+    onReady,
     offline = $bindable(false),
   }: {
     geometry: MapGeometry | null;
@@ -28,6 +29,8 @@
     stationPosition?: [number, number] | null;
     /** A click on the map: the point under it. */
     onPick?: (lon: number, lat: number) => void;
+    /** Called once with the map, when it has loaded: an editor adds its own layers and handlers. */
+    onReady?: (map: maplibregl.Map) => void;
     /** True while the basemap tiles are failing. The parent reads it to fetch the hillshade. */
     offline?: boolean;
   } = $props();
@@ -196,6 +199,7 @@
       m.addLayer({ id: "options", type: "line", source: "options", paint: { "line-color": ["get", "colour"], "line-width": 4, "line-opacity": ["case", ["get", "dim"], 0.55, 1] } });
       m.addLayer({ id: "ticks", type: "circle", source: "ticks", paint: { "circle-radius": 3, "circle-color": cream, "circle-stroke-color": ink, "circle-stroke-width": 1 } });
       ready = true;
+      onReady?.(m);
     });
     // Offline: tiles keep failing and none has loaded. One success puts the imagery back.
     let failed = 0;

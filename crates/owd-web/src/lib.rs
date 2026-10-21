@@ -126,7 +126,23 @@ impl Session {
     ) -> Js<String> {
         let role = ok(input::role_of(role))?;
         let text = ok(input::vector_text(name, bytes, layer.as_deref()))?;
-        self.edit(|s| s.load_inputs(&[(role, text)]))
+        let date = today();
+        self.edit(|s| s.load_inputs(&[(role, text)], &date))
+    }
+
+    /// Edit a bank (spec 0012). `edit` is JSON, see `owd_shell::input::bank_edit_of`.
+    pub fn edit_bank(&mut self, side: &str, edit: &str) -> Js<String> {
+        let side = ok(input::role_of(side))?;
+        let edit: Value =
+            ok(serde_json::from_str(edit).map_err(|e| format!("not a bank edit: {e}")))?;
+        let edit = ok(input::bank_edit_of(&edit))?;
+        let date = today();
+        self.edit(|s| s.edit_bank(side, edit, &date))
+    }
+
+    /// Undo the last bank edit.
+    pub fn undo_bank_edit(&mut self) -> Js<String> {
+        self.edit(|s| s.undo_bank_edit())
     }
 
     /// Load the DEM from the bytes of a GeoTIFF.

@@ -412,7 +412,25 @@ async fn load_input(
     let role = input::role_of(&role)?;
     let text = read_vector(&file.to_string_lossy())?;
     let mut guard = lock(&state)?;
-    guard.load_inputs(&[(role, text)])?;
+    guard.load_inputs(&[(role, text)], &today())?;
+    finish(&window, &guard)
+}
+
+/// Edit a bank (spec 0012): `edit` is JSON, see `owd_shell::input::bank_edit_of`.
+#[tauri::command]
+fn edit_bank(window: Window, state: State<Shared>, side: String, edit: serde_json::Value) -> Reply {
+    let side = input::role_of(&side)?;
+    let edit = input::bank_edit_of(&edit)?;
+    let mut guard = lock(&state)?;
+    guard.edit_bank(side, edit, &today())?;
+    finish(&window, &guard)
+}
+
+/// Undo the last bank edit.
+#[tauri::command]
+fn undo_bank_edit(window: Window, state: State<Shared>) -> Reply {
+    let mut guard = lock(&state)?;
+    guard.undo_bank_edit()?;
     finish(&window, &guard)
 }
 
@@ -538,6 +556,8 @@ pub fn run() {
             hillshade,
             load_input,
             set_water,
+            edit_bank,
+            undo_bank_edit,
             run_stage,
             cancel_run,
             fetch_dem,
