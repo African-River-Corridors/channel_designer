@@ -58,6 +58,15 @@ versions follow [Semantic Versioning](https://semver.org/).
   `owd size --rule-set ID --set-input NAME=VALUE --rule-set-file FILE`, `owd rules`, `owd rules show ID`,
   `owd rules --measures`, and `owd run --rule-set-file`. `owd size --ruleset PIANC-B` still works and maps to its set.
   The warnings of the sizing now come from the Rule Trace of the sized channel (the same text as before).
+- **Reaches of the river and per-reach Rules (spec 0007, T4).** `owd waterway add|list|remove` marks a reach of the
+  river by chainage on its centreline as `canal`, `impounded-river` or `free-flowing-river`, with an optional
+  reduced-radius claim (canal reaches only). Chainage not marked is a free-flowing river with no claim. The radius
+  Rules now test each station (`station.radius`), and a station takes the inputs of its reach through the engine's
+  object-scoped inputs. `gb50139` gains the reduced radius (2L pushed convoy, 3L motor vessel) as Rules that apply
+  only on a canal reach with the claim. The alignment takes one R_min: the largest governing R_min of any reach. One
+  claimed canal reach over the whole line with `gb50139` strict gives the old CN-reduced result bit for bit. The
+  command is `owd waterway`, not `owd reach` as spec 0007 says, because `owd reach` already starts a study from a
+  river reach (spec 0012).
 
 - **A DEM for a reach (spec 0012, T5).** `owd fetch-dem DOC --bbox WEST,SOUTH,EAST,NORTH` fetches the Copernicus
   GLO-30 tiles for a box, and a study started with `owd reach` that has no banks yet fetches for its reach. The

@@ -52,6 +52,24 @@
         "river_polygon": {
           "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/polygon" }]
         },
+        "waterway_reaches": {
+          "description": "Reaches of the river by chainage on its centreline (spec 0007), in chainage order, not overlapping. Each has a waterway kind and the reduced-radius claim; stations take the inputs of the reach their projection falls in. Chainage not covered, or no reach at all, is a free-flowing river with no claim. `end_m` null runs to the end of the river.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["start_m", "end_m", "waterway", "reduced_radius_claim"],
+            "additionalProperties": false,
+            "properties": {
+              "start_m": { "type": "number", "minimum": 0 },
+              "end_m": { "type": ["number", "null"] },
+              "waterway": { "enum": ["canal", "impounded-river", "free-flowing-river"] },
+              "reduced_radius_claim": {
+                "description": "`yes` only where the user claims the reduced GB 50139 radius, and only on a canal reach.",
+                "enum": ["yes", "no"]
+              }
+            }
+          }
+        },
         "dem": {
           "description": "The DEM is referenced, never embedded: path relative to the document, SHA-256 of the file, its CRS and nodata value.",
           "oneOf": [

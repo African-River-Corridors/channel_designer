@@ -20,11 +20,18 @@ use std::sync::{Arc, OnceLock};
 
 /// The object type of the design itself: one channel.
 pub const CHANNEL: &str = "channel";
+/// A reach of the river, by chainage on its centreline: it carries `waterway` and
+/// `reduced_radius_claim` (spec 0007 T4).
+pub const REACH: &str = "reach";
+/// A station of a design line option. It inherits the inputs of the reach its projection onto the
+/// river centreline falls in.
+pub const STATION: &str = "station";
 
 /// Bottom width on a straight (m). Sized.
 pub const BOTTOM_WIDTH: &str = "channel.bottom-width";
-/// Minimum bend radius (m). Sized.
-pub const MIN_BEND_RADIUS: &str = "channel.min-bend-radius";
+/// The radius of the design line at a station (m). The radius Rules size the channel's minimum
+/// bend radius from it, reach by reach.
+pub const MIN_BEND_RADIUS: &str = "station.radius";
 /// Design depth (m). Sized.
 pub const DESIGN_DEPTH: &str = "channel.design-depth";
 /// Bend widening at the radius `channel.bend-radius` (m). Sized.
@@ -43,7 +50,10 @@ pub const GB_SWEPT_PATH: &str = "channel.gb-swept-path";
 /// The Measures, in listing order: id, what it is, and whether a Rule sizes it.
 pub const MEASURES: &[(&str, &str)] = &[
     (BOTTOM_WIDTH, "bottom width of the channel on a straight"),
-    (MIN_BEND_RADIUS, "minimum bend radius of the channel line"),
+    (
+        MIN_BEND_RADIUS,
+        "radius of the design line at a station (sizes the minimum bend radius)",
+    ),
     (DESIGN_DEPTH, "design depth below the design water level"),
     (
         BEND_WIDENING,
@@ -68,7 +78,15 @@ pub const FORMATION: &str = "formation";
 /// The vessel's class (`I` to `VII`, as the vessel classes name it). From the vessel.
 pub const VESSEL_CLASS: &str = "vessel_class";
 
-/// The inputs a Rule may apply on, with their values. All are one value for the design.
+/// The kind of waterway a reach is: `canal`, `impounded-river` or `free-flowing-river`. One value
+/// per station, from its reach.
+pub const WATERWAY: &str = "waterway";
+/// Whether the user claims the reduced GB 50139 radius on a reach (`yes` or `no`). One value per
+/// station, from its reach.
+pub const REDUCED_RADIUS_CLAIM: &str = "reduced_radius_claim";
+
+/// The inputs a Rule may apply on, with their values. `waterway` and `reduced_radius_claim` have one
+/// value per station; the others one for the design.
 pub const INPUTS: &[(&str, &[&str])] = &[
     (SE_QUALITY, &["A", "B", "C"]),
     (RANGE_END, &["permissive", "strict"]),
@@ -79,6 +97,11 @@ pub const INPUTS: &[(&str, &[&str])] = &[
             "I", "II", "III", "IV", "Va", "Vb", "VIa", "VIb", "VIc", "VII",
         ],
     ),
+    (
+        WATERWAY,
+        &["canal", "impounded-river", "free-flowing-river"],
+    ),
+    (REDUCED_RADIUS_CLAIM, &["yes", "no"]),
 ];
 
 /// `k × x`.
@@ -239,7 +262,12 @@ impl Domain for ChannelDomain {
     fn measure(&self, id: &str) -> Option<MeasureInfo> {
         MEASURES.iter().any(|(m, _)| *m == id).then(|| MeasureInfo {
             unit: "m".into(),
-            object: CHANNEL.into(),
+            object: if id.starts_with("station.") {
+                STATION
+            } else {
+                CHANNEL
+            }
+            .into(),
             value: ValueKind::Number,
             args: Vec::new(),
             method_status: MethodStatus::Unverified,
@@ -250,9 +278,13 @@ impl Domain for ChannelDomain {
         INPUTS
             .iter()
             .find(|(n, _)| *n == name)
-            .map(|(_, values)| InputDef {
+            .map(|(n, values)| InputDef {
                 values: values.iter().map(|v| (*v).into()).collect(),
-                scope: InputScope::Design,
+                scope: if [WATERWAY, REDUCED_RADIUS_CLAIM].contains(n) {
+                    InputScope::Object
+                } else {
+                    InputScope::Design
+                },
             })
     }
 
@@ -348,11 +380,48 @@ fn gb_swept_path(vessel: &Vessel, range_end: Option<&str>) -> Result<f64, String
     Ok(swept * (1.0 + bank))
 }
 
-/// One channel as the engine reads it: the vessel, the set inputs, and the value of each sized
-/// Measure (0 while sizing: the evaluator needs a number to report a limit).
+/// A reach of the river as the rules read it: its waterway kind and the reduced-radius claim.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WaterwayReach {
+    /// How the trace names the reach, such as `0 to 2000 m`.
+    pub label: String,
+    pub waterway: String,
+    /// `yes` or `no`.
+    pub claim: String,
+    /// Whether the user typed the claim (`false`: the default `no`).
+    pub claim_typed: bool,
+}
+
+impl WaterwayReach {
+    /// The whole river as one free-flowing reach with no claim: a river with no reach marked.
+    pub fn whole_river() -> Self {
+        Self {
+            label: "the whole river".into(),
+            waterway: "free-flowing-river".into(),
+            claim: "no".into(),
+            claim_typed: false,
+        }
+    }
+}
+
+/// A station of a design line, for a check: the reach it falls in (an index into the selection's
+/// reaches) and the line's radius there.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Station {
+    pub label: String,
+    pub reach: usize,
+    pub radius_m: f64,
+}
+
+/// One channel as the engine reads it: the vessel, the set inputs, the stations with their reaches,
+/// and the value of each sized Measure (0 while sizing: the evaluator needs a number to report a
+/// limit).
 struct Channel<'a> {
     vessel: &'a Vessel,
     inputs: &'a [(String, String)],
+    reaches: &'a [WaterwayReach],
+    /// The stations. While sizing there is one per reach, as no line exists yet.
+    stations: &'a [Station],
     radius_m: f64,
     /// The channel as sized, for a check of the result; `None` while sizing.
     sized: Option<&'a Sized>,
@@ -364,14 +433,26 @@ impl MeasureSource for Channel<'_> {
     }
 
     fn objects(&self, object: &str) -> Vec<String> {
-        if object == CHANNEL {
-            vec![CHANNEL.into()]
-        } else {
-            Vec::new()
+        match object {
+            CHANNEL => vec![CHANNEL.into()],
+            STATION => self.stations.iter().map(|s| s.label.clone()).collect(),
+            _ => Vec::new(),
         }
     }
 
-    fn value(&self, m: &MeasureRef, _: usize) -> Result<MeasureValue, String> {
+    fn object_input(&self, object: &str, index: usize, name: &str) -> Option<String> {
+        let reach = match object {
+            STATION => self.reaches.get(self.stations.get(index)?.reach)?,
+            _ => return self.input(name),
+        };
+        match name {
+            WATERWAY => Some(reach.waterway.clone()),
+            REDUCED_RADIUS_CLAIM => Some(reach.claim.clone()),
+            _ => self.input(name),
+        }
+    }
+
+    fn value(&self, m: &MeasureRef, index: usize) -> Result<MeasureValue, String> {
         let v = match m.id.as_str() {
             LOA => self.vessel.loa_m,
             BEAM => self.vessel.beam_m,
@@ -379,7 +460,10 @@ impl MeasureSource for Channel<'_> {
             BEND_RADIUS => self.radius_m,
             GB_SWEPT_PATH => gb_swept_path(self.vessel, self.input(RANGE_END).as_deref())?,
             BOTTOM_WIDTH => self.sized.map_or(0.0, |s| s.bottom_width_straight_m),
-            MIN_BEND_RADIUS => self.sized.map_or(0.0, |s| s.min_bend_radius_m),
+            MIN_BEND_RADIUS => match self.sized {
+                None => 0.0,
+                Some(_) => self.stations.get(index).ok_or("no such station")?.radius_m,
+            },
             DESIGN_DEPTH => self.sized.map_or(0.0, |s| s.design_depth_m),
             BEND_WIDENING => self.sized.map_or(0.0, |s| s.bend_widening_at_rmin_m),
             other => return Err(format!("unknown Measure `{other}`")),
@@ -406,6 +490,9 @@ pub struct Selection {
     pub sets: Vec<Arc<RuleSet>>,
     /// Set inputs by name, such as `se_quality` = `C`.
     pub inputs: Vec<(String, String)>,
+    /// The reaches of the river, in chainage order. One free-flowing reach with no claim when the
+    /// user marked none.
+    pub reaches: Vec<WaterwayReach>,
 }
 
 impl Selection {
@@ -425,6 +512,7 @@ impl Selection {
                 .iter()
                 .map(|(k, v)| ((*k).into(), (*v).into()))
                 .collect(),
+            reaches: vec![WaterwayReach::whole_river()],
         })
     }
 
@@ -444,7 +532,16 @@ impl Selection {
                 .map(|s| Arc::new(s.clone()))
                 .collect(),
             inputs,
+            reaches: vec![WaterwayReach::whole_river()],
         })
+    }
+
+    /// The same selection on these reaches (at least one).
+    pub fn with_reaches(mut self, reaches: Vec<WaterwayReach>) -> Self {
+        if !reaches.is_empty() {
+            self.reaches = reaches;
+        }
+        self
     }
 
     /// The same selection with only the Rules on `measure` that apply to these inputs. The trace of
@@ -454,6 +551,8 @@ impl Selection {
         let source = Channel {
             vessel,
             inputs: &self.inputs,
+            reaches: &self.reaches,
+            stations: &[],
             radius_m: 0.0,
             sized: None,
         };
@@ -470,24 +569,61 @@ impl Selection {
         Self {
             sets,
             inputs: self.inputs.clone(),
+            reaches: self.reaches.clone(),
         }
     }
 
     /// The Rule Trace of a channel for this vessel, with the bend widening read at `radius_m`.
     pub fn trace(&self, vessel: &Vessel, radius_m: f64) -> Trace {
-        self.evaluate(vessel, radius_m, None)
+        let stations = self.reach_stations(0.0);
+        self.evaluate(vessel, radius_m, None, &stations)
     }
 
-    /// The Rule Trace of a sized channel, read at R_min: every Rule tested on the sized values.
+    /// The Rule Trace of a sized channel, read at R_min: every Rule tested on the sized values, with
+    /// one station per reach at the sized R_min.
     pub fn check(&self, vessel: &Vessel, sized: &Sized) -> Trace {
-        self.evaluate(vessel, sized.min_bend_radius_m, Some(sized))
+        let stations = self.reach_stations(sized.min_bend_radius_m);
+        self.evaluate(vessel, sized.min_bend_radius_m, Some(sized), &stations)
     }
 
-    fn evaluate(&self, vessel: &Vessel, radius_m: f64, sized: Option<&Sized>) -> Trace {
+    /// The Rule Trace of a sized channel at the stations of a design line, each at its own radius.
+    pub fn check_stations(&self, vessel: &Vessel, sized: &Sized, stations: &[Station]) -> Trace {
+        self.evaluate(vessel, sized.min_bend_radius_m, Some(sized), stations)
+    }
+
+    /// One station per reach, at `radius_m`: what sizing evaluates before a line exists. Its label
+    /// names the reach and its inputs, each marked typed or default.
+    pub fn reach_stations(&self, radius_m: f64) -> Vec<Station> {
+        self.reaches
+            .iter()
+            .enumerate()
+            .map(|(i, r)| Station {
+                label: format!(
+                    "{} ({}, reduced_radius_claim {} {})",
+                    r.label,
+                    r.waterway,
+                    r.claim,
+                    if r.claim_typed { "typed" } else { "default" }
+                ),
+                reach: i,
+                radius_m,
+            })
+            .collect()
+    }
+
+    fn evaluate(
+        &self,
+        vessel: &Vessel,
+        radius_m: f64,
+        sized: Option<&Sized>,
+        stations: &[Station],
+    ) -> Trace {
         let sets: Vec<&RuleSet> = self.sets.iter().map(|s| s.as_ref()).collect();
         let source = Channel {
             vessel,
             inputs: &self.inputs,
+            reaches: &self.reaches,
+            stations,
             radius_m,
             sized,
         };
@@ -532,11 +668,39 @@ pub struct Sized {
     pub bend_widening_at_rmin_m: f64,
 }
 
-/// Size a channel: the governing limit of each sized Measure. The bend widening is read at the
-/// governing minimum radius.
+/// The governing limit of the radius Requirement at each station of a trace, in station order.
+pub fn governing_radii(trace: &Trace) -> Result<Vec<(String, f64)>, RuleError> {
+    let mut out: Vec<(String, f64)> = Vec::new();
+    for r in &trace.rows {
+        if r.governing
+            && r.measure.as_ref().is_some_and(|m| m.id == MIN_BEND_RADIUS)
+            && r.compare.is_some_and(|c| c.is_lower_bound())
+            && let (Some(object), Some(limit)) = (&r.object, r.limit)
+        {
+            out.push((object.clone(), limit));
+        }
+    }
+    if out.is_empty() {
+        governing_limit(trace, MIN_BEND_RADIUS)?;
+    }
+    Ok(out)
+}
+
+/// Size a channel: the governing limit of each sized Measure. The alignment takes one minimum
+/// radius: the largest governing radius of any reach (spec 0007), so the line meets every reach's
+/// Rule. The bend widening is read at that radius.
 pub fn size(selection: &Selection, vessel: &Vessel) -> Result<Sized, RuleError> {
     let first = selection.trace(vessel, 0.0);
-    let r_min = governing_limit(&first, MIN_BEND_RADIUS)?;
+    let radii = governing_radii(&first)?;
+    if radii.len() != selection.reaches.len() {
+        return value_err(format!(
+            "no selected Rule sizes `{MIN_BEND_RADIUS}` on every reach"
+        ));
+    }
+    let r_min = radii
+        .iter()
+        .map(|(_, r)| *r)
+        .fold(f64::NEG_INFINITY, py_max);
     let at_rmin = selection.trace(vessel, r_min);
     Ok(Sized {
         bottom_width_straight_m: governing_limit(&at_rmin, BOTTOM_WIDTH)?,
@@ -592,6 +756,8 @@ fn only_formula(
     let source = Channel {
         vessel,
         inputs: &selection.inputs,
+        reaches: &selection.reaches,
+        stations: &[],
         radius_m,
         sized: None,
     };
