@@ -77,6 +77,9 @@ pub struct WaterAwareResult {
     pub rungs: Vec<BendRung>,
     /// Infeasible stretches on the final line; empty without water.
     pub infeasible: Vec<Stretch>,
+    /// False when there are bends and every one is infeasible: no feasible line (issue #366).
+    /// The line is then the fit that breaks the rules least, not a design. True without water.
+    pub feasible: bool,
 }
 
 /// Push-out radii, as multiples of R_min.
@@ -111,6 +114,7 @@ pub fn rolling_circle_with_water(
             result: base,
             rungs: vec![],
             infeasible: vec![],
+            feasible: true,
         });
     };
     let chord = base.radius_check_chord_m;
@@ -139,11 +143,15 @@ pub fn rolling_circle_with_water(
     let mut rungs = Vec::new();
     // Each bend's window, kept by position and read back on the final line (L7).
     let mut windows: Vec<(Pt, Pt)> = Vec::new();
+    // The fit's own stretches in each infeasible bend, by position, so that no infeasible bend
+    // ends with no stretch on the final line (issue #366).
+    let mut fit_stretches: Vec<(Pt, Pt, StretchReason)> = Vec::new();
     for (a, b) in bends {
         let (tangent, contact) = (base_c.at(a), base_c.at(b));
-        let (rung, new_line, window) = ladder.bend(&line, tangent, contact)?;
+        let (rung, new_line, window, own) = ladder.bend(&line, tangent, contact)?;
         line = new_line;
         windows.push(window);
+        fit_stretches.extend(own);
         rungs.push(BendRung {
             tangent_point: tangent,
             contact_point: contact,
@@ -163,6 +171,17 @@ pub fn rolling_circle_with_water(
     let mut all =
         crate::alignment::fairway_fit::stretches(&fin, fin.length(), CHECK_STEP_M, &status);
     all.extend(width_check(&line, w.water, w.shape, min_radius, chord)?);
+    for (p, q, reason) in fit_stretches {
+        let (a, b) = (linear::project(&line, p), linear::project(&line, q));
+        let (a, b) = (a.min(b), a.max(b));
+        all.push(Stretch {
+            start_chainage_m: a,
+            end_chainage_m: b,
+            start: fin.at(a),
+            end: fin.at(b),
+            reason,
+        });
+    }
     let spans_on_final: Vec<(f64, f64)> = windows
         .iter()
         .map(|(a, b)| {
@@ -181,6 +200,7 @@ pub fn rolling_circle_with_water(
             .collect(),
     );
     let measured = min_radius_on_chord(&line, chord)?;
+    let feasible = rungs.is_empty() || rungs.iter().any(|b| b.rung != Rung::Infeasible);
     Ok(WaterAwareResult {
         result: RollingCircleResult {
             centreline: line,
@@ -192,11 +212,13 @@ pub fn rolling_circle_with_water(
         },
         rungs,
         infeasible,
+        feasible,
     })
 }
 
-/// A bend's rung, the line after it, and the bend's window (its two ends, by position).
-type BendOutcome = (Rung, Vec<Pt>, (Pt, Pt));
+/// A bend's rung, the line after it, the bend's window (its two ends, by position), and, for an
+/// infeasible bend, the fit's stretches inside the bend (their ends, by position).
+type BendOutcome = (Rung, Vec<Pt>, (Pt, Pt), Vec<(Pt, Pt, StretchReason)>);
 
 /// The ladder's state: the water, and navigable water per radius (built once each).
 struct Ladder<'a> {
@@ -259,7 +281,12 @@ impl<'a> Ladder<'a> {
         let half = self.chord / 2.0;
         let w1 = c.slice((st - half).max(0.0), (sc + half).min(len));
         if self.no_kink(&c, &[st, sc]) && self.fits(&w1, self.r_min)? {
-            return Ok((Rung::InsideArc, line.to_vec(), (w1[0], w1[w1.len() - 1])));
+            return Ok((
+                Rung::InsideArc,
+                line.to_vec(),
+                (w1[0], w1[w1.len() - 1]),
+                vec![],
+            ));
         }
         // Rung 2: a fillet on the line's tangents, R_min upwards.
         let (s0, s1) = ((st - self.r_min).max(0.0), (sc + self.r_min).min(len));
@@ -276,7 +303,7 @@ impl<'a> Ladder<'a> {
             );
             let w2 = sc2.slice((a - half).max(0.0), (b + half).min(sc2.length()));
             if self.no_kink(&sc2, &[a, b]) && self.fits(&w2, r)? {
-                return Ok((Rung::PushOut(r), spliced, (w2[0], w2[w2.len() - 1])));
+                return Ok((Rung::PushOut(r), spliced, (w2[0], w2[w2.len() - 1]), vec![]));
             }
         }
         // Rungs 3 and 4: the fairway fit over a wider window, between the line's poses.
@@ -318,18 +345,21 @@ impl<'a> Ladder<'a> {
             linear::project(&fit.line, core.0),
             linear::project(&fit.line, core.1),
         );
-        let hit = fit
+        let own: Vec<(Pt, Pt, StretchReason)> = fit
             .infeasible
             .iter()
-            .any(|s| s.end_chainage_m > ca.min(cb) && s.start_chainage_m < ca.max(cb));
+            .filter(|s| s.end_chainage_m > ca.min(cb) && s.start_chainage_m < ca.max(cb))
+            .map(|s| (s.start, s.end, s.reason))
+            .collect();
         Ok((
-            if hit {
-                Rung::Infeasible
-            } else {
+            if own.is_empty() {
                 Rung::FairwayFit
+            } else {
+                Rung::Infeasible
             },
             spliced,
             core,
+            own,
         ))
     }
 }
@@ -458,6 +488,35 @@ mod tests {
             );
         }
         assert!(r.result.centreline.len() > 100);
+        // Issue #366: every bend infeasible is no feasible line.
+        assert!(!r.feasible);
+    }
+
+    #[test]
+    fn a_line_with_bends_that_fit_is_feasible() {
+        assert!(run(300.0, 10.0).feasible);
+        assert!(run(46.0, 2.0).feasible);
+    }
+
+    /// Issue #366: an infeasible bend always leaves a stretch on the final line, even when the
+    /// final line's own checks (navigable water, width) find nothing there.
+    #[test]
+    fn every_infeasible_bend_has_a_stretch_on_the_final_line() {
+        let r = run(40.0, 2.0);
+        let line = &r.result.centreline;
+        for b in &r.rungs {
+            let (a, c) = (
+                linear::project(line, b.tangent_point),
+                linear::project(line, b.contact_point),
+            );
+            assert!(
+                r.infeasible
+                    .iter()
+                    .any(|s| s.end_chainage_m >= a.min(c) && s.start_chainage_m <= a.max(c)),
+                "bend at {:?}",
+                b.tangent_point
+            );
+        }
     }
 
     #[test]
@@ -476,7 +535,7 @@ mod tests {
             r_pref_m: None,
         };
         let mut ladder = Ladder::new(&wi, R_MIN, R_MIN / 3.0);
-        let (rung, out, _) = ladder.bend(&line, [0.0, -300.0], [300.0, 0.0]).unwrap();
+        let (rung, out, _, _) = ladder.bend(&line, [0.0, -300.0], [300.0, 0.0]).unwrap();
         assert_eq!(rung, Rung::PushOut(R_MIN));
         assert!(
             out.iter()

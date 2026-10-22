@@ -222,8 +222,10 @@ impl Session {
                 .unwrap_or(0.0)
                 .total_cmp(&y["start_chainage_m"].as_f64().unwrap_or(0.0))
         });
-        // A failing row: an infeasible stretch, or a line tighter than R_min.
-        let failing = !infeasible.is_empty() || option["checks"]["radius_ok"] == false;
+        // A failing row: an infeasible stretch, a line tighter than R_min, or no feasible line.
+        let failing = !infeasible.is_empty()
+            || option["checks"]["radius_ok"] == false
+            || super::export::no_feasible_line(option);
         let verdict = if failing {
             "not-navigable"
         } else if !found.is_empty() {

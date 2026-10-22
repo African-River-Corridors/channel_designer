@@ -33,8 +33,14 @@ fn after_volumes(dem: &Dem) -> Session {
     s.set_water_profile(&[[0.0, 38.0]]).unwrap();
     let t = dem_sampler(dem, Some(32630)).unwrap();
     let ter: Terrain = &t;
-    s.align(AlignMethod::RollingCircle, &Value::Null, None)
-        .unwrap();
+    // The volumes engine, not the alignment: with water, every bend of the 40 m river is
+    // infeasible, and an option with no feasible line has no volumes (issue #366).
+    s.align(
+        AlignMethod::RollingCircle,
+        &serde_json::json!({"use_water": false}),
+        None,
+    )
+    .unwrap();
     s.run_stage_with(Stage::Volumes, Some(ter)).unwrap();
     s
 }
