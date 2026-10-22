@@ -110,13 +110,16 @@ fn a_wide_river_gives_a_feasible_line() {
     assert!(!failed_checks(&o).contains(&"no_feasible_line"));
 }
 
+/// The volumes flag it rather than skip it: the row keeps the line's numbers (spec 0002: a failed
+/// option keeps its numbers, so the app's table fills), marked `no_feasible_line` with its note.
 #[test]
-fn volumes_do_not_cost_an_option_with_no_feasible_line() {
+fn volumes_flag_an_option_with_no_feasible_line() {
     let s = with_volumes(40.0);
     let row = &s.document()["stages"]["volumes"]["results"]["options"][0];
     assert_eq!(row["no_feasible_line"], true, "{row}");
+    assert_eq!(row["note"], "no feasible line", "{row}");
     for k in ["dredge_m3", "excav_m3", "total_m3", "max_face_h_m"] {
-        assert!(row[k].is_null(), "{k}: {}", row[k]);
+        assert!(row[k].as_f64().is_some(), "{k}: {}", row[k]);
     }
     assert_eq!(row["screening"]["verdict"], "not-navigable");
 }

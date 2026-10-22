@@ -1027,16 +1027,9 @@ pub fn volumes(doc: &str, flags: VolumesFlags, output: &Option<String>, json_mod
     let mut human = Vec::new();
     let mut all_ok = true;
     for r in rows.as_array().into_iter().flatten() {
-        // Issue #366: an option with no feasible line is not a design and is not costed.
-        if r["no_feasible_line"] == true {
-            all_ok = false;
-            human.push(format!(
-                "{}: no feasible line, not costed  [FAILS no_feasible_line]",
-                r["name"].as_str().unwrap_or("?")
-            ));
-            continue;
-        }
-        let ok = r["radius_ok"].as_bool().unwrap_or(false);
+        // Issue #366: an option with no feasible line is not a design: flagged, whatever its radius.
+        let nfl = r["no_feasible_line"] == true;
+        let ok = r["radius_ok"].as_bool().unwrap_or(false) && !nfl;
         all_ok &= ok;
         let f = |k: &str| r[k].as_f64().unwrap_or(f64::NAN);
         human.push(format!(
@@ -1045,7 +1038,13 @@ pub fn volumes(doc: &str, flags: VolumesFlags, output: &Option<String>, json_mod
             f("dredge_m3"),
             f("excav_m3"),
             f("max_face_h_m"),
-            if ok { "" } else { "  [FAILS R_min]" }
+            if nfl {
+                "  [FAILS no_feasible_line: not a design]"
+            } else if ok {
+                ""
+            } else {
+                "  [FAILS R_min]"
+            }
         ));
     }
     say(
