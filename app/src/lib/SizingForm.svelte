@@ -147,6 +147,8 @@
       sendVessel();
       return;
     }
+    // Chosen again (a second change event): keep the fields as typed.
+    if (vessel === CUSTOM && custom) return;
     const from = choices?.vessels.find((v) => v.id === vessel) ?? choices?.vessels[0];
     vessel = CUSTOM;
     const t = (x: number | null | undefined) => (x == null || !Number.isFinite(x) ? "" : String(x));
