@@ -36,18 +36,32 @@ impl Rng {
     }
 }
 
-const CLASSES: [&str; 10] = [
-    "I", "II", "III", "IV", "Va", "Vb", "VIa", "VIb", "VIc", "VII",
-];
+/// The GB 50139-2014 channel classes (Table 3.0.1), which the Chinese vessel classes carry.
+const GB_CLASSES: [&str; 7] = ["I", "II", "III", "IV", "V", "VI", "VII"];
+/// The CEMT classes, which are not GB 50139 classes.
+const CEMT_CLASSES: [&str; 6] = ["IV", "Va", "Vb", "VIa", "VIb", "VIc"];
 
+/// A random Chinese vessel: every set sizes it.
 fn vessel(rng: &mut Rng) -> Vessel {
     Vessel {
         loa_m: rng.range(30.0, 300.0),
         beam_m: rng.range(5.0, 35.0),
         draught_m: rng.range(0.8, 5.0),
         formation: rng.pick(&["motor_vessel", "pushed_convoy"]).into(),
-        class_name: rng.pick(&CLASSES).into(),
+        class_name: rng.pick(&GB_CLASSES).into(),
+        family: engine::CN_FAMILY.into(),
     }
+}
+
+/// A random Chinese or CEMT vessel. `gb50139` sizes no width or depth for a CEMT vessel with no
+/// typed `gb_class`.
+fn any_vessel(rng: &mut Rng) -> Vessel {
+    let mut v = vessel(rng);
+    if rng.pick(&["CN", "CEMT"]) == "CEMT" {
+        v.family = "CEMT".into();
+        v.class_name = rng.pick(&CEMT_CLASSES).into();
+    }
+    v
 }
 
 fn pianc(q: &str) -> Selection {
@@ -134,7 +148,7 @@ fn quality_a_is_at_least_b_and_b_at_least_c_on_every_quantity() {
 fn adding_a_set_never_makes_a_design_basis_value_smaller() {
     let mut rng = Rng(13);
     for _ in 0..CASES {
-        let v = vessel(&mut rng);
+        let v = any_vessel(&mut rng);
         let q = rng.pick(&["A", "B", "C"]);
         let end = rng.pick(&["permissive", "strict"]);
         let one = engine::size(&pianc(q), &v).unwrap();
@@ -175,6 +189,14 @@ impl MeasureSource for Case<'_> {
         vec![object.to_string()]
     }
     fn value(&self, m: &MeasureRef, _: usize) -> Result<MeasureValue, String> {
+        if m.id == engine::GB_TYPICAL {
+            let class = self.input(engine::GB_CLASS);
+            let class = class.as_deref().unwrap_or(&self.vessel.class_name);
+            return Ok(MeasureValue::Text(engine::gb_typical_key(
+                class,
+                self.vessel,
+            )));
+        }
         let v = if m.id == self.rule.measure.id {
             self.value
         } else {
@@ -226,9 +248,9 @@ fn outcome(set: &RuleSet, rule: &Rule, vessel: &Vessel, value: f64) -> (Outcome,
     (row.outcome, row.limit.unwrap_or(f64::NAN))
 }
 
-/// The vessels the boundary cases use: a class IV motor vessel of typical size, and one at each
-/// WG 141 Table A.2 entry, so both branches of the GB width are tested. The formation and class come
-/// from each Rule's applicability where it names them.
+/// The vessels the boundary cases use. A Rule read at a GB 50139 Table 3.0.2-1 row gets typical
+/// vessels of four classes; any other Rule a class IV motor vessel of typical size and three
+/// convoys. The formation and class come from each Rule's applicability where it names them.
 fn boundary_vessels(rule: &Rule) -> Vec<Vessel> {
     let input = |name: &str, default: &str| {
         inputs_for(rule)
@@ -236,14 +258,29 @@ fn boundary_vessels(rule: &Rule) -> Vec<Vessel> {
             .find(|(k, _)| k == name)
             .map_or(default.to_string(), |(_, v)| v)
     };
-    [(110.0, 11.4), (223.0, 32.4), (186.0, 32.4), (167.0, 21.6)]
-        .into_iter()
-        .map(|(loa_m, beam_m)| Vessel {
+    let table = matches!(&rule.limit, Some(Limit::Table { at, .. }) if at == engine::GB_TYPICAL);
+    let class = input(engine::GB_CLASS, &input(engine::VESSEL_CLASS, "IV"));
+    let dims: Vec<(String, f64, f64)> = if table {
+        vec![
+            ("I".into(), 223.0, 32.4),
+            ("II".into(), 186.0, 32.4),
+            ("III".into(), 167.0, 21.6),
+            ("IV".into(), 67.5, 10.8),
+        ]
+    } else {
+        [(110.0, 11.4), (223.0, 32.4), (186.0, 32.4), (167.0, 21.6)]
+            .into_iter()
+            .map(|(l, b)| (class.clone(), l, b))
+            .collect()
+    };
+    dims.into_iter()
+        .map(|(class_name, loa_m, beam_m)| Vessel {
             loa_m,
             beam_m,
             draught_m: 2.5,
             formation: input(engine::FORMATION, "motor_vessel"),
-            class_name: input(engine::VESSEL_CLASS, "IV"),
+            class_name,
+            family: engine::CN_FAMILY.into(),
         })
         .collect()
 }
@@ -366,6 +403,7 @@ fn the_wg141_middle_rhine_example_and_its_known_divergence() {
         draught_m: 2.8,
         formation: "pushed_convoy".into(),
         class_name: "VIb".into(),
+        family: "CEMT".into(),
     };
     let s = pianc("B");
     let sized = engine::size(&s, &v).unwrap();

@@ -135,7 +135,7 @@ enum Command {
         /// Every selected Rule applies and the strictest governs. `owd` is always selected.
         #[arg(long = "rule-set", value_name = "ID")]
         rule_set: Vec<String>,
-        /// A set input, such as se_quality=B or range_end=strict (repeatable).
+        /// A set input, such as se_quality=B, range_end=strict or gb_class=IV (repeatable).
         #[arg(long = "set-input", value_name = "NAME=VALUE")]
         set_input: Vec<String>,
         /// Load a Rule Set file at run time, then select it with --rule-set (repeatable).

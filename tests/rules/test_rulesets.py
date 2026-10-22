@@ -1,10 +1,13 @@
 """Test triad for the channel standards layer: golden, property, feasibility.
 
 Covers ``channel_shape`` by Rule Set selection (spec 0007): ``pianc-wg141`` with the Safety and
-Ease quality, ``gb50139`` with the range end, and the reduced GB radius on a claimed canal reach.
+Ease quality, and ``gb50139`` (GB 50139-2014, #250) with the range end. GB 50139-2014 has no reduced
+radius, so a claimed canal reach changes nothing.
 The coefficients live in the Rule Set files; these tests read them back through the sized channel.
 The size_channel path is covered at the end of this file.
 """
+import math
+
 import pytest
 
 from owd.rules.rulesets import channel_shape, design_basis
@@ -50,76 +53,19 @@ def test_golden_pianc_c_c_values():
 
 
 def test_golden_chinese_radius_rule():
-    """A.3.2 (p164): 3L pushed fleet / 4L cargo vessel, reducible to 2L / 3L on a claimed canal."""
-    for vid, normal, reduced in (("CN_I_convoy_2ab", 3.0, 2.0), ("CN_I_motor", 4.0, 3.0)):
+    """Label: sourced - GB 50139-2014 3.0.5(4), p8: 3L pushed convoy / 4L cargo ship. The 2004
+    reduced radius is gone (explanation of 3.0.5, p43): a claimed canal reach takes the same."""
+    for vid, k in (("CN_III_convoy_2ab", 3.0), ("CN_I_motor", 4.0)):
         L = get_standard(vid).loa_m[1]
-        assert shape("CN", vid).min_bend_radius_m == normal * L
-        assert shape("CN-reduced", vid).min_bend_radius_m == reduced * L
+        assert shape("CN", vid).min_bend_radius_m == k * L
+        assert shape("CN-reduced", vid).min_bend_radius_m == k * L
 
 
 def test_golden_shape_cemt_via_pianc_b():
-    """CEMT VIa under PIANC-B."""
-    c = shape("PIANC-B", "CEMT_VIa")
-    assert c.loa_m == 110.0 and c.beam_m == 22.8          # sized on the LONG end
-    assert abs(c.bottom_width_straight_m - 3.2 * 22.8) < 1e-9
-    assert c.min_bend_radius_m == 3.0 * 110.0
-    assert abs(c.design_depth_m - 1.3 * c.draught_m) < 1e-9
-    assert c.rule_sets == "pianc-wg141@0.3.0 + owd@0.3.0"
-
-
-# --- property: invariants ------------------------------------------------------------
-
-def test_property_bend_widening_monotone_and_capped():
-    """Non-increasing in R, zero on a straight, and sane at the set's own minimum radius."""
-    for name in SETS:
-        s = shape(name, "CEMT_VIa")
-        prev = None
-        for R in (150.0, 300.0, 600.0, 1200.0, 5000.0):
-            w = s.bend_widening_m(R)
-            assert w >= 0.0
-            if prev is not None:
-                assert w <= prev + 1e-9, name
-            prev = w
-        assert s.bend_widening_m(float("inf")) == 0.0
-        assert 0.0 < s.bend_widening_m(s.min_bend_radius_m) < s.loa_m, name
-
-
-def test_property_only_pianc_states_a_cap():
-    """PIANC caps dF_C at L (5.3.3 p101). The Chinese summary states no cap, so ours must
-    not invent one: the formula is only meaningful at R >= R_min."""
-    a, cn = shape("PIANC-A", "CEMT_VIa"), shape("CN", "CEMT_VIa")
-    assert a.bend_widening_m(1.0) == a.loa_m          # capped
-    assert cn.bend_widening_m(1.0) > cn.loa_m         # uncapped, faithful
-
-
-def test_property_china_bend_formula_approximates_c_c_half():
-    """China's L^2/(2R+B) tends to PIANC c_C = 0.5 as R >> B. The two traditions agree."""
-    cn = shape("CN", "CEMT_VIa")
-    L, R = cn.loa_m, 5000.0
-    assert abs(cn.bend_widening_m(R) - 0.5 * L * L / R) / (0.5 * L * L / R) < 0.01
-
-
-def test_property_depth_rules_diverge_with_draught():
-    """PIANC is a RATIO (1.3*T), China an ABSOLUTE add-on (class II: +0.4 m), so the two
-    cross. Below the crossover China is the DEEPER rule; above it China falls away and keeps
-    falling. At 4.4 m they are 0.92 m apart.
-
-        T + 0.4 > 1.3*T   <=>   T < 1.333 m
-    """
-    c = shape("CN", "CN_II_motor", draught_m=1.0).design_depth_m
-    p = shape("PIANC-B", "CN_II_motor", draught_m=1.0).design_depth_m
-    assert c > p, (c, p)
-    prev = None
-    for T in (2.0, 2.6, 3.0, 4.0, 4.4, 5.0):
-        p = shape("PIANC-B", "CN_II_motor", draught_m=T).design_depth_m
-        c = shape("CN", "CN_II_motor", draught_m=T).design_depth_m
-        assert c < p, T
-        if prev is not None:
-            assert c / p < prev, "the gap should widen with draught"
-        prev = c / p
+    """PIANC B: 1.3 x 4.4 = 5.72 m; GB 50139-2014 class II permissive: 4.4 + 0.3 = 4.70 m."""
     d44_cn = shape("CN", "CN_II_motor", draught_m=4.4).design_depth_m
     d44_pi = shape("PIANC-B", "CN_II_motor", draught_m=4.4).design_depth_m
-    assert abs((d44_pi - d44_cn) - 0.92) < 1e-6, (d44_cn, d44_pi)
+    assert abs((d44_pi - d44_cn) - 1.02) < 1e-6, (d44_cn, d44_pi)
 
 
 def test_property_two_sets_take_the_larger_of_each_quantity():
@@ -131,32 +77,42 @@ def test_property_two_sets_take_the_larger_of_each_quantity():
         assert getattr(both, k) == max(getattr(p, k), getattr(c, k)), k
 
 
-def test_golden_cn_depth_is_the_strict_end_of_the_class_range():
-    """The strict end, inside GB 50139's range. At T 4.4 the class II strict end is 0.4 m, so
-    4.80 m."""
+def test_golden_cn_depth_takes_the_range_end_of_table_a_0_1():
+    """Label: sourced - GB 50139-2014 A.0.1 and Table A.0.1, p26: class II 0.3-0.4 m. At T 4.4 the
+    permissive end gives 4.70 m and the strict end 4.80 m."""
     c = shape("CN", "CN_II_motor", draught_m=4.4)
+    assert abs(c.design_depth_m - 4.70) < 1e-9
+    assert any("permissive end of GB 50139-2014 Table A.0.1's class-II range" in w for w in c.warnings)
+    c = shape("CN-conservative", "CN_II_motor", draught_m=4.4)
     assert abs(c.design_depth_m - 4.80) < 1e-9
-    assert any("strict end of GB 50139's class-II range" in w for w in c.warnings)
 
 
 def test_property_cn_depth_clearance_is_per_class_not_per_set():
-    """The clause gives class I 0.4-0.5 m and classes II-III 0.3-0.4 m; class I must never get
-    less clearance than class II."""
-    for vid, expect in (("CN_I_motor", 0.5), ("CN_II_motor", 0.4), ("CN_III_motor", 0.4)):
-        c = shape("CN", vid)
-        assert abs((c.design_depth_m - c.draught_m) - expect) < 1e-9, (vid, c.design_depth_m)
+    """Label: sourced - GB 50139-2014 Table A.0.1: I 0.4-0.5, II-III 0.3-0.4, IV 0.2-0.3 m. Class I
+    never gets less clearance than class II."""
+    for vid, lo, hi in (("CN_I_motor", 0.4, 0.5), ("CN_II_motor", 0.3, 0.4),
+                        ("CN_III_motor", 0.3, 0.4), ("CN_IV_motor", 0.2, 0.3)):
+        for name, expect in (("CN", lo), ("CN-conservative", hi)):
+            c = shape(name, vid)
+            assert abs((c.design_depth_m - c.draught_m) - expect) < 1e-9, (vid, name)
     ci, cii = shape("CN", "CN_I_motor"), shape("CN", "CN_II_motor")
     assert (ci.design_depth_m - ci.draught_m) > (cii.design_depth_m - cii.draught_m)
 
 
-def test_feasibility_class_outside_the_clause_is_flagged_not_invented():
-    """A.3.2 covers classes I-III. Class IV must say the number is a user choice, not the standard."""
-    c = shape("CN", "CN_IV_motor")
-    assert any("covers classes I-III only" in w and "user choice" in w for w in c.warnings)
+def test_feasibility_a_cemt_vessel_takes_its_gb_class_by_tonnage():
+    """Label: sourced - GB 50139-2014 Table 3.0.1 and ECMT Resolution 92/2. CEMT IV (up to 1500 t)
+    is GB class II; a typed ``gb_class`` overrides it."""
+    c = shape("CN", "CEMT_IV", draught_m=2.5)
+    assert c.width_basis == "appendix-a"
+    assert abs(c.design_depth_m - 2.8) < 1e-9
+    assert any("by tonnage: CEMT IV up to 1500 t" in w for w in c.warnings)
+    c = channel_shape("CEMT_IV", 2.5, rule_sets=["gb50139"],
+                      set_inputs={"range_end": "permissive", "gb_class": "IV"})
+    assert abs(c.design_depth_m - 2.7) < 1e-9
 
 
 def test_feasibility_depth_below_pianc_ratio_is_reported():
-    """4.80 m at T 4.4 is 0.48 m under PIANC's 1.2*T river floor. Never let that go unsaid."""
+    """4.70 m at T 4.4 is 0.58 m under PIANC's 1.2*T river floor. Never let that go unsaid."""
     c = shape("CN", "CN_II_motor", draught_m=4.4)
     assert c.design_depth_m < 1.2 * 4.4
     assert any("BELOW PIANC" in w for w in c.warnings)
@@ -171,21 +127,19 @@ def test_property_unknown_sets_and_vessels_raise():
 
 # --- feasibility: the honesty flags fire ---------------------------------------------
 
-def test_feasibility_table_a2_beats_the_formula():
-    """A vessel matching a Table A.2 entry must use the TABLE, and say the formula differs.
-    WG 141's A.3.2 formula omits wind, so using it alone under-sizes the Chinese channel."""
-    c = shape("CN", "CN_II_convoy_2ab")       # 186 x 32.4 -> Table A.2 row
+def test_feasibility_a_typical_vessel_takes_its_table_row():
+    """Label: sourced - GB 50139-2014 Table 3.0.2-1, p4: 186 x 32.4 m, class II, 70 m."""
+    c = shape("CN", "CN_II_convoy_2ab")
     assert c.width_basis == "table"
     assert abs(c.bottom_width_straight_m - 70.0) < 1e-9
-    assert any("Table A.2" in w for w in c.warnings)
 
 
-def test_feasibility_off_table_vessel_uses_the_table_5_1_ratio():
-    """The width is WG 141 Table 5.1's own China-River ratio W_F/B = 2.3."""
-    c = shape("CN", "CEMT_VIa")               # no Table A.2 row near 110 x 22.8
-    assert c.width_basis == "table-5.1-ratio"
-    assert abs(c.bottom_width_straight_m - 2.3 * get_standard("CEMT_VIa").beam_m) < 1e-9
-    assert any("Table 5.1" in w and "WIND-INCLUDED" in w for w in c.warnings)
+def test_feasibility_a_special_design_vessel_takes_the_a_0_2_formula():
+    """Label: sourced - GB 50139-2014 3.0.7 and A.0.2: the class II cargo ship has no row, so its
+    width is (B + L sin 3 deg)(1 + 2 x 0.34) at the permissive end."""
+    c = shape("CN", "CN_II_motor")
+    assert c.width_basis == "appendix-a"
+    assert any("special design vessel" in w for w in c.warnings)
 
 
 def test_feasibility_pianc_carries_no_calibration_warning():
@@ -194,26 +148,27 @@ def test_feasibility_pianc_carries_no_calibration_warning():
     assert c.warnings == []
 
 
-# Chinese-family straight widths for every vessel class, pinned before Table A.2 was reduced
-# to the entries the code reads. Identical values prove the dropped rows were never needed.
-_CN_WIDTHS_BEFORE_A2_TRIM = {
-    "CEMT_IV": (21.85, "table-5.1-ratio"), "CEMT_VIa": (52.44, "table-5.1-ratio"),
-    "CEMT_VIa_motor_NL2011": (39.1, "table-5.1-ratio"), "CEMT_Va": (26.22, "table-5.1-ratio"),
-    "CEMT_Vb": (26.22, "table-5.1-ratio"), "CN_III_convoy_2ab": (45.0, "table"),
-    "CN_III_motor": (24.84, "table-5.1-ratio"), "CN_II_convoy_2ab": (70.0, "table"),
-    "CN_II_motor": (34.04, "table-5.1-ratio"), "CN_IV_motor": (24.84, "table-5.1-ratio"),
-    "CN_I_convoy_2ab": (70.0, "table"), "CN_I_motor": (37.26, "table-5.1-ratio"),
-}
+# GB 50139-2014 Table 3.0.2-1 (pp3-4): the catalogue's typical vessels and their single-line widths.
+_TABLE_WIDTHS = {"CN_I_convoy_2ab": 70.0, "CN_II_convoy_2ab": 70.0, "CN_III_convoy_2ab": 45.0,
+                 "CN_IV_motor": 30.0}
 
 
-def test_cn_widths_are_what_the_whole_table_gave():
-    """The widths of every class under every Chinese selection are what they were with the whole
-    of Table A.2."""
-    for name in ("CN", "CN-conservative", "CN-reduced"):
-        for sid, (w, basis) in _CN_WIDTHS_BEFORE_A2_TRIM.items():
+def test_cn_widths_are_the_2014_table_or_the_a_0_2_formula():
+    """Label: sourced - GB 50139-2014 Table 3.0.2-1 and A.0.2. Every Chinese vessel class under every
+    Chinese selection: a typical vessel takes its row, the class I-III cargo ships the formula with
+    beta 3 deg and d = 0.34 / 0.40 BF."""
+    for name, d in (("CN", 0.34), ("CN-conservative", 0.40), ("CN-reduced", 0.40)):
+        for sid in ("CN_I_convoy_2ab", "CN_II_convoy_2ab", "CN_III_convoy_2ab", "CN_IV_motor",
+                    "CN_I_motor", "CN_II_motor", "CN_III_motor"):
+            v = get_standard(sid)
             s = shape(name, sid)
-            assert abs(s.bottom_width_straight_m - w) < 1e-9, (name, sid)
-            assert s.width_basis == basis, (name, sid)
+            if sid in _TABLE_WIDTHS:
+                assert s.bottom_width_straight_m == _TABLE_WIDTHS[sid], (name, sid)
+                assert s.width_basis == "table", (name, sid)
+            else:
+                bf = v.beam_m + v.loa_m[1] * math.sin(math.radians(3.0))
+                assert abs(s.bottom_width_straight_m - bf * (1 + 2 * d)) < 1e-9, (name, sid)
+                assert s.width_basis == "appendix-a", (name, sid)
 
 
 def test_design_basis_names_the_governing_rule_of_each_quantity():

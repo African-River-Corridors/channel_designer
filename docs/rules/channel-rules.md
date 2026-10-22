@@ -20,7 +20,7 @@ OWD ships three sets:
 | Set | What it holds | Set input |
 |---|---|---|
 | `pianc-wg141` | PIANC WG 141 (2019): bottom width, minimum bend radius, design depth and bend widening on a free-flowing river. Origin `guideline`. | `se_quality`: `A`, `B` or `C` (the Safety and Ease quality) |
-| `gb50139` | The Chinese standard GB 50139 as WG 141 Appendix A.3 summarises it. Origin `national-practice`: read in a summary, so never verified from it. | `range_end`: `permissive` or `strict` |
+| `gb50139` | The Chinese standard GB 50139-2014, read in the standard itself: the Table 3.0.2-1 widths and radii of the typical vessels, the A.0.2 width of any other vessel, the 3.0.5(4) radius and the A.0.1 depth. Origin `national-practice`. The bend widening is WG 141's summary of the 2004 edition (origin `guideline`), as 2014 gives no formula. | `range_end`: `permissive` or `strict`; `gb_class` (`I` to `VII`) to override the channel class OWD finds |
 | `owd` | OWD's own checks (a width above zero, a depth that covers the draught, the WG 141 1.2 × draught floor as a warning). Always selected. | — |
 
 A new design selects `pianc-wg141` at quality C, marked `default`. Choose your own with `owd size`:
@@ -36,7 +36,7 @@ Each choice is recorded as `typed`, so you can see later which choices you made 
 Select a second set when a client asks for both standards:
 
 ```
-owd size design.owd --vessel CEMT_IV \
+owd size design.owd --vessel CN_III_motor \
   --rule-set pianc-wg141 --rule-set gb50139 \
   --set-input se_quality=B --set-input range_end=strict
 ```
@@ -45,6 +45,27 @@ Every Rule of every selected set applies, and no Rule loosens another. For each 
 Rule governs: the largest required width, radius and depth. So the channel can take one set's width and the
 other set's radius, and adding a set never makes a quantity smaller. The design basis (below) names the
 Rule that governs each quantity.
+
+### GB 50139: the channel class
+
+GB 50139-2014 sizes a channel by its channel class (Table 3.0.1, by design tonnage), and the CEMT classes
+share names with the Chinese ones without being the same. OWD finds the class like this:
+
+- A Chinese vessel (`CN_…`) gives its own class.
+- A CEMT vessel takes the smallest GB class whose design tonnage covers the top of its CEMT class's tonnage
+  range (ECMT Resolution 92/2). CEMT IV (up to 1500 t) is class II; Va (up to 3000 t) is class I.
+- A vessel above 3000 t (CEMT Vb and up) is class I (Table 3.0.1, note 2) and a special design vessel (3.0.7).
+- `--set-input gb_class=IV` overrides all of these.
+
+The trace and the warnings say which way the class was found. A vessel with no class and no tonnage gets no
+GB width or depth: alone, `gb50139` refuses it; beside another set, its width and depth Rules are blocking
+Rules not evaluated.
+
+A vessel whose class, length and beam match a row of Table 3.0.2-1 (to the 0.1 m the table prints) is a
+typical vessel and takes that row's width and radius. Any other vessel is a special design vessel (3.0.7):
+its width is the A.0.2 formula, the swept path B + L sin β plus a clearance on each side, with `range_end`
+choosing the clearance. GB 50139-2014 expects a double-line channel (3.0.5(2)); OWD sizes a single line and
+says so in the warnings.
 
 ### A Rule Set of your own
 
@@ -62,9 +83,10 @@ every stage after it go stale.
 
 ## Rules that apply on part of the river: `owd waterway`
 
-Some Rules apply only on one kind of waterway. GB 50139 lets the minimum radius drop (2 × L for a pushed
-convoy, 3 × L for a motor vessel) on a **canal** section, where the extra width and visibility allow it.
-Mark the reaches of the river by chainage along its centreline:
+A Rule may apply only on one kind of waterway, or only where you claim a reduced radius. No built-in Rule
+does today: the 2004 edition of GB 50139 let the radius drop on a canal section, but GB 50139-2014 removed
+that (3.0.5 and its explanation) and asks for a wider channel instead. A Rule Set of your own can use the
+reaches. Mark them by chainage along the river centreline:
 
 ```
 owd waterway add design.owd --from 0 --to 2000 --waterway canal --claim-reduced-radius
@@ -79,7 +101,8 @@ owd waterway remove design.owd --from 0
 - The alignment takes one minimum radius: the largest governing radius of any reach, so the line meets
   every reach's Rule.
 
-The old `CN-reduced` choice is now `gb50139` with `range_end=strict` on a claimed canal reach.
+The old `CN-reduced` choice is now `gb50139` with `range_end=strict`: with GB 50139-2014 it is the same
+channel as `CN-conservative`.
 
 ## Screening outputs
 
@@ -154,7 +177,8 @@ The old names map like this:
 | `CN-conservative` | `--rule-set gb50139 --set-input range_end=strict` |
 | `CN-reduced` | `owd waterway add … --waterway canal --claim-reduced-radius`, then `--rule-set gb50139 --set-input range_end=strict` |
 
-The numbers are the same as before for the same choices.
+The PIANC numbers are the same as before for the same choices. The `CN` numbers moved when `gb50139` was
+read against GB 50139-2014 itself (#250).
 
 In Python, size by selection:
 
