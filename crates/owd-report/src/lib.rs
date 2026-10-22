@@ -6,9 +6,11 @@
 //! them, and a [`Request`]; [`build`] writes an ORD document and [`Report::render`] renders it. A
 //! report computes nothing: every number is read from the document's stage results.
 
+mod figures;
 mod fmt;
 mod limits;
 mod screening;
+mod trace;
 
 use owd_format::design::Session;
 use owd_format::design::screening::SCREENING_NOTICE;
@@ -206,8 +208,9 @@ pub fn build(design: &str, dem: Option<&[u8]>, req: &Request) -> Result<Report, 
     let session = Session::open(design).map_err(|e| ReportError::Design(e.to_string()))?;
     let ctx = Context::new(&session, dem, req.option.as_deref())?;
     let number = format!("OWD-{}-{}", design_code(&ctx.title), req.kind.code());
+    let mut assets = Vec::new();
     let (body, appendices) = match req.kind {
-        Kind::Screening => screening::body(&ctx),
+        Kind::Screening => screening::body(&ctx, &mut assets),
     };
     let c = &req.control;
     let mut control = json!({
@@ -245,11 +248,23 @@ pub fn build(design: &str, dem: Option<&[u8]>, req: &Request) -> Result<Report, 
     if !appendices.is_empty() {
         document["appendices"] = json!(appendices);
     }
+    if !assets.is_empty() {
+        document["assets"] = assets
+            .iter()
+            .map(|(id, _)| {
+                (
+                    id.clone(),
+                    json!({"media_type": "image/svg+xml", "path": format!("{id}.svg")}),
+                )
+            })
+            .collect::<serde_json::Map<_, _>>()
+            .into();
+    }
     Ok(Report {
         kind: req.kind,
         number,
         document,
-        assets: BTreeMap::new(),
+        assets: assets.into_iter().collect(),
     })
 }
 
