@@ -25,6 +25,9 @@ owd report design.owd --kind all --format all -o reports/
 - `--option NAME` picks the design line option (default: the first).
 - Files are named after the document number in lower case, for example `owd-my-river-sr.pdf`.
 
+In the app, open **Sheets**, then **Report…**: pick the kind, the format, the revision, the status and who prepared
+it. The app and the command line make the same files.
+
 ## What every report has
 
 - **Document control:** revision (default `A`), date (default today), status (default `draft`), and who prepared,

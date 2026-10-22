@@ -5,7 +5,7 @@ name: App bundles
 # publishing waits for the maintainer, and signing is a 1.0 gate (the maintainer's purchase).
 
 # Runs only when the app or what it builds from changes: its code, the crates it links (owd-cli pulls in
-# owd-reach; not owd-py or owd-web), the toolchain and this file. The same filter on a push to main.
+# owd-reach and owd-report; not owd-py or owd-web), the toolchain and this file. The same filter on a push to main.
 on:
   pull_request:
     paths:
@@ -15,6 +15,7 @@ on:
       - "crates/owd-cli/**"
       - "crates/owd-shell/**"
       - "crates/owd-reach/**"
+      - "crates/owd-report/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
@@ -28,6 +29,7 @@ on:
       - "crates/owd-cli/**"
       - "crates/owd-shell/**"
       - "crates/owd-reach/**"
+      - "crates/owd-report/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"

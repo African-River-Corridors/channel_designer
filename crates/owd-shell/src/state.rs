@@ -520,6 +520,16 @@ impl AppState {
         crate::sheets::SheetsJob::new(self.session.to_text(), self.dem_bytes.clone(), option)
     }
 
+    /// The inputs of the reports of the design (spec 0014, ticket 6), to run off the lock. `option`
+    /// is the active design line option (none: the first, as `owd report`).
+    pub fn report_job(
+        &self,
+        option: Option<&str>,
+        ask: crate::report::ReportAsk,
+    ) -> crate::report::ReportJob {
+        crate::report::ReportJob::new(self.session.to_text(), self.dem_bytes.clone(), option, ask)
+    }
+
     /// The quantity table as CSV, from the session. The same text as `owd export --csv`.
     pub fn export_csv(&self) -> String {
         self.session

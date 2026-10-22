@@ -70,8 +70,8 @@ sheet is marked "Screening — not for construction".
 `owd report design.owd --kind all --format all -o reports/` writes four reports, each as PDF, HTML and Word, through
 the [Open Report Designer](https://github.com/African-River-Corridors/open-report-designer): the screening report
 (with the Rule Trace as an appendix), the quantity schedule, the section pack and a run report for testers. Every
-report has document control, the screening notice on every page and a "Data and limits" box. See
-[docs/reports.md](docs/reports.md).
+report has document control, the screening notice on every page and a "Data and limits" box. The app's Sheets view
+has a **Report…** button that makes the same files. See [docs/reports.md](docs/reports.md).
 
 Optional extras:
 

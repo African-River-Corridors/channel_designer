@@ -4,6 +4,7 @@
 pub mod input;
 pub mod qa;
 pub mod reach;
+pub mod report;
 pub mod run;
 pub mod sheets;
 pub mod state;

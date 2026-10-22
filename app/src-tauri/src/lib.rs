@@ -369,6 +369,47 @@ async fn export_sheets(
     Ok(Some(folder.to_string_lossy().into_owned()))
 }
 
+/// Write the reports of the design (spec 0014, ticket 6) into a folder the user picks, named as
+/// `owd report` names them. `ask` is `{kind, format, revision?, status?, prepared?, date}`. Returns
+/// the folder, or `null` on cancel. The files have the bytes `owd report` writes.
+#[tauri::command]
+async fn export_report(
+    app: AppHandle,
+    state: State<'_, Shared>,
+    option: Option<String>,
+    ask: serde_json::Value,
+) -> Result<Option<String>, String> {
+    let ask = owd_shell::report::ReportAsk::from_json(
+        &ask,
+        &format!(
+            "Open Waterway Designer {} (desktop)",
+            env!("CARGO_PKG_VERSION")
+        ),
+    )?;
+    let job = lock(&state)?.report_job(option.as_deref(), ask);
+    let picked = match test_answer("report.txt") {
+        Some(answer) => answer.map(PathBuf::from),
+        None => app
+            .dialog()
+            .file()
+            .blocking_pick_folder()
+            .map(|p| p.into_path().map_err(|e| e.to_string()))
+            .transpose()?,
+    };
+    let Some(folder) = picked else {
+        return Ok(None);
+    };
+    let files = tauri::async_runtime::spawn_blocking(move || job.files())
+        .await
+        .map_err(|e| e.to_string())??;
+    std::fs::create_dir_all(&folder)
+        .map_err(|e| format!("cannot create {}: {e}", folder.display()))?;
+    for (name, bytes) in &files {
+        write_bytes(&folder.join(name), bytes)?;
+    }
+    Ok(Some(folder.to_string_lossy().into_owned()))
+}
+
 /// The QA overlay of the study's banks (spec 0013): a PNG and a KMZ in a folder the user picks.
 /// `from_km` and `to_km` cut the stretch along the centreline. The scenes are read over the network.
 #[tauri::command]
@@ -883,6 +924,7 @@ pub fn run() {
             sheets,
             export_qa_overlay,
             export_sheets,
+            export_report,
             long_section,
             cross_section,
             station_near,

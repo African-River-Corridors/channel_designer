@@ -1,6 +1,6 @@
 <script lang="ts">
   import * as api from "./api";
-  import type { SheetPage } from "./api";
+  import type { ReportAsk, SheetPage } from "./api";
 
   let {
     option,
@@ -19,6 +19,24 @@
   let zoom = $state(1);
   let exporting = $state(false);
   let asked = 0;
+
+  // The Report button (spec 0014): the same reports as `owd report`, from the same builder.
+  let reportOpen = $state(false);
+  let reporting = $state(false);
+  let ask = $state<Omit<ReportAsk, "date">>({ kind: "screening", format: "pdf", revision: "A", status: "draft", prepared: "" });
+
+  async function writeReport() {
+    reporting = true;
+    try {
+      const date = new Date().toISOString().slice(0, 10);
+      const where = await api.exportReport(option, { ...ask, date });
+      if (where) onNotice(`Report written: ${where}`);
+    } catch (e) {
+      onError(String(e));
+    } finally {
+      reporting = false;
+    }
+  }
 
   // The sheets come from the same builder as `owd draw`; this view only places and zooms them.
   $effect(() => {
@@ -74,6 +92,37 @@
     <button class="primary" disabled={!pages?.length || exporting} onclick={exportPdfs} data-testid="export-sheets" title="Each sheet as PDF, the same files as owd draw writes">
       {exporting ? "Exporting…" : "Export PDFs"}
     </button>
+    <button aria-expanded={reportOpen} onclick={() => (reportOpen = !reportOpen)} data-testid="report-toggle" title="A report of the design as PDF, HTML or Word, the same files as owd report writes">Report…</button>
+    {#if reportOpen}
+      <form class="report" data-testid="report-form" onsubmit={(e) => (e.preventDefault(), writeReport())}>
+        <label>Kind
+          <select bind:value={ask.kind} data-testid="report-kind">
+            <option value="screening">Screening report</option>
+            <option value="quantities">Quantity schedule</option>
+            <option value="sections">Section pack</option>
+            <option value="run">Run report</option>
+            <option value="all">All four</option>
+          </select>
+        </label>
+        <label>Format
+          <select bind:value={ask.format} data-testid="report-format">
+            <option value="pdf">PDF</option>
+            <option value="html">HTML</option>
+            <option value="docx">Word</option>
+            <option value="all">All three</option>
+          </select>
+        </label>
+        <label>Revision <input bind:value={ask.revision} data-testid="report-revision" /></label>
+        <label>Status
+          <select bind:value={ask.status} data-testid="report-status">
+            <option value="draft">Draft</option>
+            <option value="for-checking">For checking</option>
+          </select>
+        </label>
+        <label>Prepared by <input bind:value={ask.prepared} data-testid="report-prepared" placeholder="a name or a role" /></label>
+        <button class="primary" type="submit" disabled={reporting} data-testid="export-report">{reporting ? "Writing…" : "Write report"}</button>
+      </form>
+    {/if}
   </nav>
   <div class="stage">
     {#if page}
@@ -102,7 +151,9 @@
   .rail li button { width: 100%; text-align: left; display: flex; flex-direction: column; gap: 2px; }
   .rail .number { font-size: var(--fs-12); font-variant-numeric: tabular-nums; }
   .rail .title { font-size: var(--fs-11); color: var(--ink-3); }
-  .rail .primary { margin-top: auto; }
+  .rail > .primary { margin-top: auto; }
+  .report { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-12); }
+  .report label { display: flex; flex-direction: column; gap: 2px; }
   .stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .tools { display: flex; gap: var(--sp-2); align-items: center; padding: var(--sp-1) var(--sp-2); font-size: var(--fs-12); }
   .tools .warn { color: var(--ink-3); }
