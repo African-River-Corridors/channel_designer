@@ -94,6 +94,20 @@ impl Session {
         river: &[Polygon],
         centre: &[Pt],
     ) -> Result<Value, DesignError> {
+        self.screening_value_on(option, walk, river, centre, None)
+    }
+
+    /// [`Session::screening_value`], with the river's own radius read on `radius_line` (a plan line
+    /// such as a fairway fit) instead of the river centreline. The reaches and everything else still
+    /// read the river centreline.
+    pub(super) fn screening_value_on(
+        &self,
+        option: &Value,
+        walk: &SectionVolumes,
+        river: &[Polygon],
+        centre: &[Pt],
+        radius_line: Option<&[Pt]>,
+    ) -> Result<Value, DesignError> {
         let (selection, vessel, sized) = self.engine_inputs()?;
         let line: Vec<Pt> = all_positions(&option["line"]);
         let chord = option["checks"]["radius_check_chord_m"]
@@ -106,6 +120,9 @@ impl Session {
         let on_line = RadiusOn::new(&line);
         let on_centre =
             (centre.len() >= 2).then(|| (RadiusOn::new(centre), linear::ProjectIndex::new(centre)));
+        let on_plan = radius_line
+            .filter(|l| l.len() >= 2)
+            .map(|l| (RadiusOn::new(l), linear::ProjectIndex::new(l)));
         let stations: Vec<StationIn> = walk
             .stations
             .iter()
@@ -123,8 +140,9 @@ impl Session {
                     xy: p,
                     river_width_m: widths.as_ref().map_or(f64::NAN, |w| w.at(cs.chainage_m)),
                     river_depth_m: cs.wl - bed,
-                    river_radius_m: match &on_centre {
-                        Some((r, _)) if !river_s.is_nan() => r.at(river_s, chord),
+                    river_radius_m: match (&on_plan, &on_centre) {
+                        (Some((r, ix)), _) => r.at(ix.project(p), chord),
+                        (None, Some((r, _))) if !river_s.is_nan() => r.at(river_s, chord),
                         _ => f64::NAN,
                     },
                     line_radius_m: on_line.at(cs.chainage_m, chord),
