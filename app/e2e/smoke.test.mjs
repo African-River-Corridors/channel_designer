@@ -598,6 +598,7 @@ describe("Open Waterway Designer app smoke test", () => {
       await until("the upper reach", async () => (await text("reach-length").catch(() => lower)) !== lower, 30000);
       assert.deepEqual(studies(), [first]);
       answer("dem-mirror.txt", path.resolve(here, "../../crates/owd-cli/tests/fixtures/mirror"));
+      await until("the route's status gone", async () => !(await (await browser.$("[data-testid=reach-status]")).isExisting()), 30000);
       await (await browser.$("[data-testid=reach-fetch-dem]")).click();
       const study = () => path.join(PROJECTS, studies()[0], `${studies()[0]}.owd`);
       await until("the DEM in the study", async () => fs.existsSync(study()) && fs.readFileSync(study(), "utf8").includes("cop-dem-glo30"), 60000);
