@@ -5,6 +5,13 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **The fairway fit never returns a line worse than the one it was given (#132).** The fit keeps its best pass:
+  the fewest points outside the water, then the widest tightest bend on the chord. The line it starts from is
+  now a candidate too. So where the input already lies in navigable water, its tightest bend is never fitted
+  sharper. Before, the plain sum of squared curvature could trade a sharper peak for less total bending (up to
+  7 % sharper on synthetic creeks). No fixture result moves (the design-impact check), but a fit of such an
+  input may now return a line with a wider tightest bend than before.
+
 - **Removed: the old-name shims (spec 0006, T10).** `import channel_designer`, the `cdesign` command and the
   ability to open `.cdesign` files are gone; use `import owd`, `owd` and `.owd`. A `.cdesign` file now gives an
   error that says to rename it to `.owd` (the content is the same).
