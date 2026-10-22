@@ -103,7 +103,7 @@
       </table>
       {#if volumesNote}<p class="note" data-testid="volumes-note">{volumesNote}</p>{/if}
     {:else}
-      <p class="slot" data-testid="no-options">Run alignment to see the design line options here.</p>
+      <p class="slot" data-testid="no-options">Load bank lines and a river polygon, then run alignment, to see the design line options here.</p>
     {/if}
     </div>
     {:else}

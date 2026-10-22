@@ -294,9 +294,6 @@
   {#if failure}
     <p class="failure" role="alert" data-testid="map-failure">{failure}</p>
   {/if}
-  {#if ready && !geometry}
-    <p class="hint" data-testid="map-empty">Load bank lines and a river polygon, and run alignment, to see the design lines here.</p>
-  {/if}
   <ul class="legend" data-testid="map-legend">
     {#each geometry?.options ?? [] as o, i}
       <li>
@@ -331,7 +328,7 @@
   .offline { position: absolute; left: var(--sp-2); bottom: 28px; margin: 0; padding: 3px var(--sp-2); font-size: var(--fs-12); background: var(--warn-soft); color: var(--warn); border: var(--lw-thin) solid var(--rule-strong); border-radius: var(--radius); z-index: 2; }
   .fail { color: var(--fail); margin-left: var(--sp-2); font-weight: 600; }
   .fail::before { content: "✕ "; }
-  .hint, .failure { position: absolute; left: 50%; top: 40%; transform: translateX(-50%); margin: 0; padding: var(--sp-2) var(--sp-3); background: var(--surface); color: var(--ink); border: var(--lw-thin) solid var(--ink); z-index: 2; max-width: 80%; text-align: center; }
+  .failure { position: absolute; left: 50%; top: 40%; transform: translateX(-50%); margin: 0; padding: var(--sp-2) var(--sp-3); background: var(--surface); color: var(--ink); border: var(--lw-thin) solid var(--ink); z-index: 2; max-width: 80%; text-align: center; }
   .failure { color: var(--fail); }
   :global(.station-marker) { width: 16px; height: 16px; border-radius: 50%; background: var(--plate-ink); border: 3px solid var(--cream); box-shadow: 0 0 0 1px var(--plate-ink); pointer-events: none; }
   :global(.tick-label) { font-size: var(--fs-11); color: var(--cream); text-shadow: 0 0 3px var(--plate-ink), 0 0 3px var(--plate-ink); white-space: nowrap; }
