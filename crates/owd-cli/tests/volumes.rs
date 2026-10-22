@@ -571,3 +571,54 @@ fn export_writes_the_quantity_table_and_the_options_with_the_screening_label() {
     assert_eq!(code(&none), 2);
     assert!(err(&none).contains("--geojson"), "{}", err(&none));
 }
+
+/// Issue #367: a re-route that cannot hold R_min is saved marked failed, and its summary says so:
+/// `ok: false` and the failed check in the JSON, `FAILS R_min` and "marked failed" in words, exit 1.
+#[test]
+fn a_reroute_that_fails_r_min_is_marked_failed_in_its_summary() {
+    let dir = work_dir("reroute-fails");
+    let (doc, dem) = build(&dir);
+    // A 5 m corridor keeps the line on the river's own bends, which are tighter than R_min.
+    let args = [
+        "align",
+        &doc,
+        "--method",
+        "reroute",
+        "--dem",
+        dem.to_str().unwrap(),
+        "--water-level",
+        "0.0",
+        "--water-slope",
+        "0.0",
+        "--corridors",
+        "5",
+    ];
+    let mut json_args = args.to_vec();
+    json_args.push("--json");
+    let o = run(&json_args);
+    assert_eq!(code(&o), 1, "{}", err(&o));
+    let res: Value = serde_json::from_str(&out(&o)).unwrap();
+    assert_eq!(res["ok"], false, "{res}");
+    assert_eq!(res["failed_checks"], json!(["R_min"]), "{res}");
+    assert_eq!(res["option"]["checks"]["radius_ok"], false);
+    // The option is saved, with its failed check.
+    let saved = read_doc(&doc);
+    let opt = saved["options"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["method"] == "reroute")
+        .unwrap();
+    assert_eq!(opt["checks"]["radius_ok"], false);
+    let o = run(&args);
+    assert_eq!(code(&o), 1);
+    assert!(out(&o).contains("FAILS R_min"), "{}", out(&o));
+    assert!(out(&o).contains("marked failed"), "{}", out(&o));
+    // `owd volumes` costs it with its failed check, and says so.
+    let mut vargs = vec!["volumes", &doc as &str, "--json"];
+    vargs.extend(VOLUME_FLAGS);
+    let o = run(&vargs);
+    assert_eq!(code(&o), 1, "{}", err(&o));
+    let res: Value = serde_json::from_str(&out(&o)).unwrap();
+    assert_eq!(res["ok"], false, "{res}");
+}
