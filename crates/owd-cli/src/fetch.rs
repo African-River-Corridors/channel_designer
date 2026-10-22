@@ -31,10 +31,13 @@ impl Fetcher for Mirror {
     fn get(&self, tile: TileId, mirror: &str) -> Result<Vec<u8>, GetError> {
         let url = tile.url(mirror);
         if mirror.starts_with("http://") || mirror.starts_with("https://") {
-            let mut resp = ureq::get(&url).call().map_err(|e| match e {
-                ureq::Error::StatusCode(404 | 403) => GetError::Withheld,
-                e => GetError::Failed(format!("cannot fetch {url}: {e}")),
-            })?;
+            let mut resp = crate::reach_fetch::agent()
+                .get(&url)
+                .call()
+                .map_err(|e| match e {
+                    ureq::Error::StatusCode(404 | 403) => GetError::Withheld,
+                    e => GetError::Failed(format!("cannot fetch {url}: {e}")),
+                })?;
             resp.body_mut()
                 .with_config()
                 .limit(MAX_TILE_BYTES)
