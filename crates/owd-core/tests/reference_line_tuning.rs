@@ -120,10 +120,32 @@ fn sweep_the_pull_weight() {
         for &wt in &weights {
             let mut p = refit_params_for_tuning(&seed, &l, &r);
             p.seed_pull_weight = wt;
+            if let Ok(r) = std::env::var("OWD_TUNE_REACH") {
+                p.reach_m = r.parse().unwrap();
+            }
             let t = Instant::now();
             let fit = fairway_fit(&seed, &water, &Fixed::default(), &p).unwrap();
             let (f, rm, sh, g) = metrics(&fit.line, &l, &r);
             let jump = max_curvature_step(&fit.line, 20.0, 10.0);
+            // `OWD_TUNE_PROBE=8000,9000`: the gap to each bank at these chainages of the line, and
+            // at the nearest point of the seed.
+            for ch in std::env::var("OWD_TUNE_PROBE")
+                .unwrap_or_default()
+                .split(',')
+            {
+                let Ok(ch) = ch.parse::<f64>() else { continue };
+                let p = owd_core::geom::linear::interpolate(&fit.line, ch).unwrap();
+                let q =
+                    owd_core::geom::linear::interpolate(&seed, ProjectIndex::new(&seed).project(p))
+                        .unwrap();
+                let g = |x: Pt| (point_line_distance(x, &l), point_line_distance(x, &r));
+                println!(
+                    "    at {ch} m: line {:?}  seed {:?}  line-seed {:.1} m",
+                    g(p),
+                    g(q),
+                    libm::hypot(p[0] - q[0], p[1] - q[1])
+                );
+            }
             println!(
                 "  pull {wt:6}: flips/km {f:5.2}  R_min {rm:7.0} m  off-centre {sh:.3}  bank gap {g:6.1} m  dκ {jump:.5}  {:.1} s",
                 t.elapsed().as_secs_f64()

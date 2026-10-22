@@ -143,19 +143,27 @@ pub(crate) fn refit_params(seed: &[Pt], left: &[Pt], right: &[Pt]) -> FitParams 
     params.chord_m = REFIT_CHORD_M;
     // No minimum radius: no row weighs more for being tight.
     params.reweight_cap = 0.0;
+    // The width for the clearance is read along the seed: the gaps to the two banks, which do
+    // not depend on a direction.
     params.clearance = Some(Clearance {
         min_m: CLEARANCE_MIN_M,
         share: CLEARANCE_SHARE,
+        seed_widths_m: Some(bank_gaps(seed, left, right)),
     });
     params.seed_pull_weight = SEED_PULL_WEIGHT;
     // A ray must reach across the widest water, or the width (and so the clearance) reads short.
-    params.reach_m = params.reach_m.max(widest(seed, left, right) * 1.5 + 10.0);
+    let widest = params
+        .clearance
+        .as_ref()
+        .and_then(|c| c.seed_widths_m.as_ref())
+        .map_or(0.0, |w| w.iter().copied().fold(0.0, f64::max));
+    params.reach_m = params.reach_m.max(widest * 1.5 + 10.0);
     params
 }
 
-/// The widest gap between the banks across `line` (m): at each point, its distance to the nearer
-/// point of each bank, summed.
-fn widest(line: &[Pt], left: &[Pt], right: &[Pt]) -> f64 {
+/// The gap between the banks at each point of `line` (m): its distance to the nearest point of
+/// each bank, summed.
+fn bank_gaps(line: &[Pt], left: &[Pt], right: &[Pt]) -> Vec<f64> {
     let (li, ri) = (
         linear::ProjectIndex::new(left),
         linear::ProjectIndex::new(right),
@@ -163,7 +171,7 @@ fn widest(line: &[Pt], left: &[Pt], right: &[Pt]) -> f64 {
     let (lc, rc) = (Chained::new(left), Chained::new(right));
     line.iter()
         .map(|&p| dist(p, lc.at(li.project(p))) + dist(p, rc.at(ri.project(p))))
-        .fold(0.0, f64::max)
+        .collect()
 }
 
 /// Chainage ranges on `from` carried onto `to`: each end is the point at that chainage of `from`,
@@ -354,6 +362,36 @@ mod tests {
         assert!(
             near < need + 5.0,
             "the clearance does not bind ({near:.1} m): a weak test"
+        );
+    }
+
+    #[test]
+    fn the_clearance_reads_the_width_along_the_seed_not_across_the_line() {
+        // Widths given along the seed (here a tenth of the water's) set the clearance: the line,
+        // with no pull, hugs the inside of the bend to a tenth of that clearance, not to a tenth
+        // of the width read across the line.
+        let (l, r, w, _) = channel(&bend(250.0), 200.0, 0.0);
+        let seed = seed_mid_line(&l, &r).unwrap();
+        let mut params = refit_params(&seed, &l, &r);
+        params.seed_pull_weight = 0.0;
+        params.clearance = Some(Clearance {
+            min_m: CLEARANCE_MIN_M,
+            share: CLEARANCE_SHARE,
+            seed_widths_m: Some(vec![20.0; seed.len()]),
+        });
+        let fit = fairway_fit(&seed, &[w], &Fixed::default(), &params).unwrap();
+        let near = fit
+            .line
+            .iter()
+            .map(|&p| point_line_distance(p, &l).min(point_line_distance(p, &r)))
+            .fold(f64::MAX, f64::min);
+        assert!(
+            near < 10.0,
+            "the line keeps {near:.1} m off the bank: the width was read across it"
+        );
+        assert!(
+            near >= CLEARANCE_MIN_M - 1.5,
+            "the line comes {near:.1} m from a bank"
         );
     }
 

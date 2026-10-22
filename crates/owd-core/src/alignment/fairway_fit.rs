@@ -135,10 +135,14 @@ impl FitParams {
 }
 
 /// A clearance from the edge of the water: the larger of `min_m` and `share` of the local width.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Clearance {
     pub min_m: f64,
     pub share: f64,
+    /// The water's width at each vertex of the seed (the line given to the fit). A point reads the
+    /// width where it lies along the seed. Without it, the width is read across the line along
+    /// the point's normal, which runs along the river where the line kinks and reads far too wide.
+    pub seed_widths_m: Option<Vec<f64>>,
 }
 
 impl Clearance {
@@ -691,6 +695,27 @@ fn water_spans(p: Pt, n: Pt, grid: &EdgeGrid, reach: f64) -> Vec<(f64, f64)> {
         .collect()
 }
 
+/// `ys` at chainage `s`, linear between the chainages `xs` (sorted), held flat beyond them.
+fn interp_at(xs: &[f64], ys: &[f64], s: f64) -> f64 {
+    let n = xs.len().min(ys.len());
+    if n == 0 {
+        return 0.0;
+    }
+    let k = xs[..n].partition_point(|&x| x <= s);
+    if k == 0 {
+        return ys[0];
+    }
+    if k >= n {
+        return ys[n - 1];
+    }
+    let (x0, x1) = (xs[k - 1], xs[k]);
+    if x1 > x0 {
+        ys[k - 1] + (ys[k] - ys[k - 1]) * (s - x0) / (x1 - x0)
+    } else {
+        ys[k]
+    }
+}
+
 /// The width of the water across a point: its span's, or, outside the water, the nearest span's.
 fn local_width(spans: &[(f64, f64)]) -> f64 {
     spans
@@ -781,7 +806,13 @@ fn solve_corridor(
         )
     };
     let mut best: Option<((usize, f64), Vec<Node>)> = Some((score(nodes), nodes.clone()));
-    let seed_index = (params.seed_pull_weight > 0.0).then(|| linear::ProjectIndex::new(seed));
+    let by_seed = params
+        .clearance
+        .as_ref()
+        .is_some_and(|c| c.seed_widths_m.is_some());
+    let seed_index =
+        (params.seed_pull_weight > 0.0 || by_seed).then(|| linear::ProjectIndex::new(seed));
+    let seed_c = Chained::new(seed);
     for pass in 0..params.passes {
         let pts: Vec<Pt> = nodes.iter().map(|nd| nd.p).collect();
         let n = pts.len();
@@ -811,9 +842,16 @@ fn solve_corridor(
             .iter()
             .map(|&i| {
                 let spans = water_spans(pts[i], nrm[i], grid, reach);
-                let margin = params.clearance.map_or(params.contact_margin_m, |c| {
-                    params.contact_margin_m.max(c.at(local_width(&spans)))
-                });
+                let margin = params
+                    .clearance
+                    .as_ref()
+                    .map_or(params.contact_margin_m, |c| {
+                        let width = match (&c.seed_widths_m, &seed_index) {
+                            (Some(ws), Some(ix)) => interp_at(&seed_c.cum, ws, ix.project(pts[i])),
+                            _ => local_width(&spans),
+                        };
+                        params.contact_margin_m.max(c.at(width))
+                    });
                 place(&spans, reach, params.chord_m, margin)
             })
             .collect();
@@ -895,8 +933,10 @@ fn solve_corridor(
             }
         }
         // Every free point is pulled softly towards the seed, along its normal.
-        if let Some(ix) = &seed_index {
-            let seed_c = Chained::new(seed);
+        if let Some(ix) = seed_index
+            .as_ref()
+            .filter(|_| params.seed_pull_weight > 0.0)
+        {
             let k = params.seed_pull_weight.sqrt() / params.chord_m;
             for (j, &i) in free.iter().enumerate() {
                 let q = seed_c.at(ix.project(pts[i]));
