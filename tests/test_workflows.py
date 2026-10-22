@@ -92,3 +92,12 @@ def test_every_scheduled_workflow_reports_a_failed_run():
 
 def test_codeql_does_not_run_on_pull_requests():
     assert "pull_request" not in load("codeql.yml")["on"]
+
+
+def test_the_rust_caches_of_ci_and_the_bundles_save_from_main_only():
+    for name in ("ci.yml", "app-bundles.yml"):
+        for job_name, job in load(name)["jobs"].items():
+            for step in job.get("steps", []):
+                if str(step.get("uses", "")).startswith("Swatinem/rust-cache"):
+                    assert (step.get("with") or {}).get("save-if") == "${{ github.ref == 'refs/heads/main' }}", \
+                        f"{name} {job_name}: a pull request must not save a Rust cache"

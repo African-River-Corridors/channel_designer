@@ -38,6 +38,8 @@ concurrency:
   group: app-bundles-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# The Rust caches save from main only (`save-if`): a pull request's cache serves no other pull request,
+# and with every PR saving its own, the repository's 10 GB cache limit evicted main's caches.
 permissions:
   contents: read
 
@@ -68,6 +70,8 @@ jobs:
       - name: Install the pinned Rust toolchain (rust-toolchain.toml)
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Tauri system libraries (Linux)
         if: runner.os == 'Linux'
         run: |
