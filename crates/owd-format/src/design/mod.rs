@@ -12,6 +12,7 @@ pub mod geopackage;
 pub mod hash;
 pub mod hillshade;
 pub mod map;
+pub mod midline;
 pub mod optimise;
 pub mod provenance;
 pub mod reach;

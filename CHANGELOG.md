@@ -382,6 +382,21 @@ scenarios run on the base branch and on the pull request, and a result that move
 (ADR 0005) must have a bullet here, under this heading, saying what moved and why. Add the bullet in the
 pull request that moves the result.
 
+- **Generated banks are checked and repaired, and the centreline is their mid-line (#285, spec 0013
+  T1).** `owd reach --banks` and the edge fit now run the bank checks (each bank on its own side, no
+  outward jump past 2 station steps, a width within 0.5 to 2 times the running median of its neighbours,
+  no crossing) and store the centreline as the mid-line of the final banks. The bank editor rebuilds the
+  centreline by the same mid-line (it paired the banks by their share of length, which drifts where one
+  bank is longer). What moved: every generated bank line where a check failed (cut back to its
+  neighbours and flagged as a `repaired` low-confidence stretch, with the checks that failed), every
+  generated and every edited centreline, and the widths and stretch chainages read on them. On the
+  recorded lower-Sassandra window the edge fit's summed shift goes from 25,709 m to 20,358 m and its
+  bank stations from (410, 536) to (308, 434), because the mask banks and the centreline it starts from
+  are now checked and rebuilt; the window's lagoon mouth is cut as an outward excursion. A narrowing is
+  never widened: a sudden narrowing is flagged (`width-narrow`) and kept. The design-impact scenarios do
+  not use generated banks or the editor, so they show no change. New: `owd check-banks DOC` runs the
+  checks on any document's banks and changes nothing.
+
 - **The water-aware rolling circle in the channel design document (#100, spec 0005).** Format version 2.
   In a new document with a river polygon, the rolling circle is water-aware by default (`use_water`):
   each bend takes the four-rung ladder of #97, and the option carries a `fits_in_water` check (with

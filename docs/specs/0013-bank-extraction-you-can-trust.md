@@ -106,15 +106,22 @@ person can check it by eye.
   connected to the route, so a lake beside the river is not read as river.
 - **`owd-reach::bankcheck` (new): checks and repairs,** on any pair of banks (mask, edge fit, or the
   user's own lines run through `owd check-banks`, see below). In this order:
-  1. **Own side.** Along the centreline's normal, the left bank must lie at a positive offset and the
-     right bank at a negative one. A station that fails is repaired.
-  2. **Lateral jump.** Per bank, the offset from the centreline may change by at most `max_jump_m`
-     between stations (default 3 × the station step: a bank at 20 m stations may run off at 72°). A
-     station past the limit, and the run after it until the bank comes back within the limit of the
-     line before the run, is repaired. This cuts spikes, inlets and tributary mouths.
+  The banks are read along a reference line: the seed centreline (the route, or the last centreline),
+  smoothed over about one median river width, so one inlet cannot drag it and it stays on the water
+  of a narrow, winding river.
+  1. **Own side.** Along the reference's normal, the left bank must lie at a positive offset and the
+     right bank at a negative one. A station that fails is repaired. A normal past the end of a bank
+     is not a fault.
+  2. **Lateral jump, outward.** Per bank, the offset may move outward by at most `max_jump_m`
+     between stations (default 2 × the station step: a bank may run off at 63° at most). A station
+     past the limit, and the run after it until the bank comes back within the limit of the line
+     before the run, is repaired. This cuts spikes, inlets and tributary mouths. A run longer than
+     1 km, or one that runs to the end of the banks, is a real change of the river and is kept. A jump
+     inward narrows the river and is never cut: the width check flags it.
   3. **Width plausibility.** The width at a station must lie between 0.5 and 2 times the running
-     median of the widths over `width_window_m` (default 500 m) either side. A station outside is
-     repaired, on the side that moved most from its own running median.
+     median of the widths over `width_window_m` (default 500 m) either side. A wide station is
+     repaired, on the side that moved most from its own running median. A narrow one is flagged
+     (`width-narrow`) and kept, so a real throat is never widened away.
   4. **No crossing.** After the repairs, neither bank crosses itself or the other. A crossing left
      means the check fails, loudly (an error), not a silent pass.
 
@@ -124,8 +131,9 @@ person can check it by eye.
 - **`owd-format::design::midline` (new): the centreline from the banks.** One function, used by the
   bank generator, the edge fit and the bank editor (`bank_edit.rs` today pairs the banks by arc-length
   share, which drifts where one bank is longer). It starts from a seed line, then three times: at
-  stations every `station_m`, cast the normal both ways to the first crossing with each bank, and move
-  the station to the midpoint. A light smoothing goes between iterations, not after the last one, so the
+  stations every `station_m`, cast the normal both ways to the first crossing with each bank on its
+  own side, and move the station to the midpoint. The normal is the chord over half the median width
+  either side (at least 100 m), so it does not swing on a wide river. A light smoothing goes between iterations, not after the last one, so the
   stored line is a mid-line. Where a normal finds no bank on one side, the station keeps its place and
   the stretch is flagged.
 - **Join smoothing.** The parts and scenes are blended by a cosine weight over the overlap (it replaces
@@ -159,9 +167,9 @@ person can check it by eye.
 | Scenes per part | up to 3, ranked by clear share of the river corridor |
 | Masked SCL classes | 0 (no data), 3 (cloud shadow), 8 and 9 (cloud), 10 (cirrus) |
 | JRC fallback threshold | 75 % occurrence (as spec 0012) |
-| Lateral jump limit | 3 × the station step, per station |
+| Lateral jump limit | 2 × the station step, per station, outward only |
 | Width plausibility | 0.5 to 2 × the running median over ±500 m |
-| Mid-line | 3 iterations, stations every 20 m |
+| Mid-line | 3 iterations, at the banks' station step (20 m on the mask, 5 m after the edge fit) |
 | Edge fit | unchanged: ±40 m search, at most 30 m shift, at most 1.5 m change per 5 m |
 
 The MNDWI threshold of 0.0 is the textbook split (Xu 2006, Int. J. Remote Sensing 27(14)). On the

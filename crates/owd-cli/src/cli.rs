@@ -437,6 +437,16 @@ enum Command {
         #[command(flatten)]
         out: Out,
     },
+    /// Check a document's bank lines (spec 0013): each bank on its own side, no outward jump (an
+    /// inlet or a spike), a width plausible against its neighbours, no crossing. Prints what fails and
+    /// exits 1 if anything does; changes nothing.
+    CheckBanks {
+        /// The channel design. `-` is stdin.
+        doc: String,
+        /// Print a machine-readable result as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Say what vessel class fits the river as it is: for every class, under each ruleset, whether
     /// it fits by width and radius, and the stretches that stop it. Width and radius only, no depth.
     /// The answer is kept in the document and shows as stale when the banks change; it never
@@ -625,6 +635,7 @@ pub fn main() -> ExitCode {
             output: out.output,
             json: out.json,
         }),
+        Command::CheckBanks { doc, json } => crate::check_banks::check_banks(&doc, json),
         Command::Fits {
             doc,
             ruleset,
