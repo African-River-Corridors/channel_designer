@@ -24,6 +24,14 @@ versions follow [Semantic Versioning](https://semver.org/).
   `--rule-set pianc-wg141 --set-input se_quality=B`; for CN-reduced, first `owd waterway add FILE --from 0
   --waterway canal --claim-reduced-radius`, then `--rule-set gb50139 --set-input range_end=strict`), then
   `owd run FILE`.
+- **Edge fit across Sentinel-2 tiles (spec 0012, #264).** A reach longer than one Sentinel-2 tile (about 110 km), or
+  one across a tile edge, found no scene and `--edge-fit` refused it. A reach longer than 15 km is now fitted in parts
+  of 15 km that overlap by 2 km, each on the clearest dry-season scene that covers it. The shifts are blended across
+  each overlap, and the 30 m and 1.5 m per 5 m limits then hold along the whole bank. A part no clear scene covers
+  keeps its mask bank, flagged `no-edge`, and the provenance says why. The provenance lists every part with its
+  scene, and gives the notice once per year of imagery. The scene search now asks the server for the cloud limit:
+  over two years a box could match hundreds of scenes, more than the one page read, and the clearest could be missed.
+  A reach of 15 km or less is fitted exactly as before.
 - **Orthophoto and EOxCloudless imagery on plan sheets (spec 0004, T6).** Plan sheets can now be drawn over
   other backdrops.
   - `owd draw --orthophoto FILE` draws them over the user's orthophoto: an 8 bit RGB GeoTIFF in WGS84 or the
