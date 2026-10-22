@@ -47,6 +47,8 @@ PAGES = {
     "CHANGELOG.md": "changelog.md",
     "docs/known-issues.md": "known-issues.md",
     "docs/design/style-guide.md": "style-guide.md",
+    "docs/rules/channel-rules.md": "channel-rules.md",
+    "docs/rules/codification.md": "codification.md",
 }
 for folder in ("docs/adr", "docs/specs"):
     for md in sorted((REPO / folder).glob("*.md")):

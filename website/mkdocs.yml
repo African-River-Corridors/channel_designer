@@ -53,6 +53,9 @@ validation:
 # "adr/" and "specs/" expand to every page in the folder (hooks.py).
 nav:
   - Overview: index.md
+  - Channel rules:
+      - Rule Sets, reaches and screening: channel-rules.md
+      - Codifying a rule: codification.md
   - Roadmap: roadmap.md
   - Glossary: glossary.md
   - Known issues: known-issues.md
