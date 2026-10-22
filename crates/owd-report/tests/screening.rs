@@ -181,7 +181,12 @@ fn the_data_and_limits_box_follows_the_document() {
     let (design, dem) = web();
     let before = data_box(&design, Some(&dem));
     assert!(before.contains("Depth not recorded"), "{before}");
-    assert!(before.contains("Reach not recorded"), "{before}");
+    // No recorded reach: the box gives the centreline's own length, read from the input.
+    let centre = s_centreline_km(&design);
+    assert!(
+        before.contains(&format!("Reach centreline {centre} km Coordinate")),
+        "{before}"
+    );
 
     // A bed model: the depth and its label.
     let mut s = Session::open(&design).unwrap();
@@ -206,6 +211,65 @@ fn the_data_and_limits_box_follows_the_document() {
     let stale = data_box(&design, Some(&changed));
     assert!(stale.contains("volumes stale"), "{stale}");
     assert!(!before.contains("volumes stale"), "{before}");
+}
+
+/// The centreline's length in km to three places, worked out here from the input.
+fn s_centreline_km(design: &str) -> String {
+    let v: Value = serde_json::from_str(design).unwrap();
+    let c = v["inputs"]["centreline"]["coordinates"].as_array().unwrap();
+    let m: f64 = c
+        .windows(2)
+        .map(|w| {
+            let (a, b) = (&w[0], &w[1]);
+            (b[0].as_f64().unwrap() - a[0].as_f64().unwrap())
+                .hypot(b[1].as_f64().unwrap() - a[1].as_f64().unwrap())
+        })
+        .sum();
+    format!("{:.3}", m / 1000.0)
+}
+
+#[test]
+fn the_box_compares_the_centreline_with_the_route() {
+    let (design, dem) = web();
+    let centre: f64 = s_centreline_km(&design).parse().unwrap();
+    let mut s = Session::open(&design).unwrap();
+    // A route half as long as the centreline: the box says the centreline is twice the route.
+    s.set_reach(serde_json::json!({
+        "river": "Test river", "start": [-1.0, 5.4], "end": [-0.98, 5.42],
+        "route": [{"kind": "as-drawn"}], "length_m": centre * 500.0,
+    }))
+    .unwrap();
+    let b = data_box(&s.to_text(), Some(&dem));
+    assert!(
+        b.contains(&format!(
+            "route {:.3} km; centreline {centre:.3} km, 2.00 times the route",
+            centre / 2.0
+        )),
+        "{b}"
+    );
+}
+
+#[test]
+fn the_box_names_the_rule_sets_the_answers_used() {
+    // The web example: sizing ran; with a fits answer, the box names its rule set too.
+    let (design, dem) = web_with_fits();
+    let b = data_box(&design, Some(&dem));
+    assert!(
+        b.contains("Rule Sets sizing: pianc-wg141@0.3.0, owd@0.3.0, se_quality B; fits answer: PIANC-B; every Rule unverified"),
+        "{b}"
+    );
+    // Sizing not run: its selection is marked as unused.
+    let mut v: Value = serde_json::from_str(&design).unwrap();
+    for k in ["results", "depends_on", "engine_version"] {
+        v["stages"]["sizing"][k] = Value::Null;
+    }
+    let text = v.to_string();
+    Session::open(&text).expect("a design whose sizing has not run opens");
+    let b = data_box(&text, Some(&dem));
+    assert!(
+        b.contains("se_quality B (selected; sizing not run); fits answer: PIANC-B"),
+        "{b}"
+    );
 }
 
 #[test]

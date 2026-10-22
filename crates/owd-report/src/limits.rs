@@ -81,17 +81,44 @@ fn setting(settings: &Value, key: &str, unit: &str) -> Option<String> {
 
 fn reach(d: &Value) -> String {
     let r = &d["reach"];
-    if !r.is_object() {
-        return NOT_RECORDED.into();
+    let mut parts = Vec::new();
+    if r.is_object() {
+        parts.push(text(&r["river"], "unnamed river").to_string());
+        if let (Some(a), Some(b)) = (position(&r["start"]), position(&r["end"])) {
+            parts.push(format!("from {a} to {b} (longitude, latitude)"));
+        }
     }
-    let mut parts = vec![text(&r["river"], "unnamed river").to_string()];
-    if let (Some(a), Some(b)) = (position(&r["start"]), position(&r["end"])) {
-        parts.push(format!("from {a} to {b} (longitude, latitude)"));
+    let route = r["length_m"].as_f64();
+    if let Some(l) = route {
+        parts.push(format!("route {} km", km(l)));
     }
-    if let Some(l) = r["length_m"].as_f64() {
-        parts.push(format!("{} km", km(l)));
+    // The centreline's own length beside the route's: banks that wander make it much longer
+    // (issue #360). A measure of the input, not a design result.
+    if let Some(c) = line_length(&d["inputs"]["centreline"]["coordinates"]) {
+        let ratio = route.filter(|l| *l > 0.0).map_or(String::new(), |l| {
+            format!(", {} times the route", num(c / l, 2))
+        });
+        parts.push(format!("centreline {} km{ratio}", km(c)));
     }
-    parts.join("; ")
+    if parts.is_empty() {
+        NOT_RECORDED.into()
+    } else {
+        parts.join("; ")
+    }
+}
+
+/// The length in metres of a line of projected coordinates; `None` for no line.
+fn line_length(coords: &Value) -> Option<f64> {
+    let pts: Vec<(f64, f64)> = coords
+        .as_array()?
+        .iter()
+        .filter_map(|p| Some((p.get(0)?.as_f64()?, p.get(1)?.as_f64()?)))
+        .collect();
+    (pts.len() > 1).then(|| {
+        pts.windows(2)
+            .map(|w| (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1))
+            .sum()
+    })
 }
 
 fn banks(ctx: &Context) -> String {
@@ -212,26 +239,43 @@ fn plan_line(d: &Value) -> String {
 }
 
 fn rule_sets(d: &Value) -> String {
-    let s = &d["stages"]["sizing"]["settings"];
-    let Some(sets) = s["rule_sets"].as_array() else {
-        return NOT_RECORDED.into();
-    };
-    let mut parts: Vec<String> = sets
-        .iter()
-        .map(|r| format!("{}@{}", text(&r["id"], "?"), text(&r["version"], "?")))
-        .collect();
-    for i in s["set_inputs"].as_array().into_iter().flatten() {
-        let v = match &i["value"] {
-            Value::String(x) => x.clone(),
-            other => other.to_string(),
+    let sizing = &d["stages"]["sizing"];
+    let s = &sizing["settings"];
+    let mut out = Vec::new();
+    if let Some(sets) = s["rule_sets"].as_array() {
+        let mut parts: Vec<String> = sets
+            .iter()
+            .map(|r| format!("{}@{}", text(&r["id"], "?"), text(&r["version"], "?")))
+            .collect();
+        for i in s["set_inputs"].as_array().into_iter().flatten() {
+            let v = match &i["value"] {
+                Value::String(x) => x.clone(),
+                other => other.to_string(),
+            };
+            parts.push(format!("{} {}", text(&i["name"], "?"), v));
+        }
+        let ran = if sizing["results"].is_object() {
+            ""
+        } else {
+            " (selected; sizing not run)"
         };
-        parts.push(format!("{} {}", text(&i["name"], "?"), v));
+        out.push(format!("sizing: {}{ran}", parts.join(", ")));
     }
-    let mut out = parts.join(", ");
-    if d["stages"]["sizing"]["results"]["rules_notice"].is_string() {
-        out.push_str("; every Rule unverified");
+    // The fits answer names its own rule sets: they are the ones its verdicts used.
+    if let Some(sets) = d["fits"]["results"]["rule_sets"].as_array() {
+        let names: Vec<&str> = sets.iter().filter_map(|r| r["rule_set"].as_str()).collect();
+        out.push(format!("fits answer: {}", names.join(", ")));
     }
-    out
+    if out.is_empty() {
+        return NOT_RECORDED.into();
+    }
+    let mut text = out.join("; ");
+    if sizing["results"]["rules_notice"].is_string()
+        || d["fits"]["results"]["rules_notice"].is_string()
+    {
+        text.push_str("; every Rule unverified");
+    }
+    text
 }
 
 fn stale(ctx: &Context) -> String {

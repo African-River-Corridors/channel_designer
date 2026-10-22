@@ -25,6 +25,8 @@ is fetched at run time into `sassandra-study/`; nothing is bundled. The script:
    dry season.
 5. `owd fits` again gives the full answer: width, radius and depth, with a verdict for each vessel class.
 6. The same full answer, reading the river's radius on each class's fairway fit (`--plan-line fairway`).
+7. `owd report --kind all --format all` writes the four reports (spec 0014) as PDF, HTML and Word into
+   `reports/`.
 
 ## Check the banks by eye
 
@@ -127,6 +129,21 @@ These are not yet calibrated against a surveyed reach. Each is named so in the s
 - **The plan line for the radius** is still to be chosen (above).
 - **Width:** the width stretches use the banks as found, with the limits above.
 - **Air draught, rapids and rock** are out of scope (#12, #13). The Soubré dam is the end of the reach.
+
+## Reports
+
+The four reports of the study, from step 7, as PDF:
+
+- [Screening report](sassandra-reports/owd-sassandra-sr.pdf): the reach, the data and its limits, the verdict
+  for each vessel class, and the Rule Trace.
+- [Quantity schedule](sassandra-reports/owd-sassandra-qs.pdf), [section pack](sassandra-reports/owd-sassandra-sp.pdf):
+  the study stops at the fits answer, so it has no design line option. These two say so; they fill in once a
+  vessel is chosen and `owd size`, `owd align` and `owd volumes` have run.
+- [Run report](sassandra-reports/owd-sassandra-rr.pdf): the versions, the stages and the hashes.
+
+They were made from a run on the spec 0013 bank code. Read them with the bank limits: the centreline is
+178.7 km for the 144 km route (1.24 times), and 647 stretches are low-confidence width. The first page of each
+report says so in its "Data and limits" box. Run `bash examples/sassandra/run.sh` to make them again.
 
 ## In the app
 
