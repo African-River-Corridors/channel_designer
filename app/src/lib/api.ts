@@ -151,7 +151,7 @@ export interface ReachView {
   route: LonLat[] | null;
   length_m?: number;
   as_drawn?: number;
-  jrc_tiles: { name: string; url: string; given: boolean }[];
+  jrc_tiles: { name: string; url: string; given: boolean; local?: boolean }[];
   dem_tiles: { name: string; url: string }[];
   has_mask_banks: boolean;
   /** The Overpass server that answered, and what happened when the first did not (#319). */

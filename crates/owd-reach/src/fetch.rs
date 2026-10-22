@@ -50,6 +50,8 @@ pub struct Step {
     pub done: usize,
     pub total: usize,
     pub what: String,
+    /// What `done` and `total` count when it is not steps, such as "MB"; else empty.
+    pub unit: String,
 }
 
 impl Step {
@@ -58,12 +60,26 @@ impl Step {
             done,
             total,
             what: what.into(),
+            unit: String::new(),
+        }
+    }
+
+    /// A step that counts an amount: "downloading JRC tile 1 of 2: 24 of 180 MB".
+    pub fn sized(done: usize, total: usize, what: impl Into<String>, unit: &str) -> Step {
+        Step {
+            unit: unit.to_string(),
+            ..Step::new(done, total, what)
         }
     }
 
     /// "fetching DEM tile 5 of 18", or the words alone when there is no count.
     pub fn line(&self) -> String {
-        if self.total > 0 {
+        if self.total > 0 && !self.unit.is_empty() {
+            format!(
+                "{} {} of {} {}",
+                self.what, self.done, self.total, self.unit
+            )
+        } else if self.total > 0 {
             format!("{} {} of {}", self.what, self.done, self.total)
         } else {
             self.what.clone()
@@ -318,6 +334,7 @@ mod reporting_tests {
         )
         .unwrap();
         r.progress(&Step::new(3, 12, "SWOT level for SWORD reach"));
+        r.progress(&Step::sized(24, 180, "downloading JRC tile 1 of 2:", "MB"));
         assert_eq!(
             *seen.borrow(),
             vec![
@@ -325,6 +342,7 @@ mod reporting_tests {
                 "reading Sentinel-2 imagery (request 1)",
                 "reading Sentinel-2 imagery (request 2)",
                 "SWOT level for SWORD reach 3 of 12",
+                "downloading JRC tile 1 of 2: 24 of 180 MB",
             ]
         );
         stop.set(true);

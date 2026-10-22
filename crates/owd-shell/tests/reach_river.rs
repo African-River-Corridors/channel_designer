@@ -225,3 +225,28 @@ fn a_study_from_a_river_is_named_for_its_river() {
         "Reach study"
     );
 }
+
+#[test]
+fn the_jrc_tiles_a_reach_needs_are_listed_until_they_are_in_the_study_folder() {
+    let f = ReplayFetch::new().with_response_containing("out%20geom", ex("synthetic/network.json"));
+    let mut s = AppState::new_design("t", "2026-10-22");
+    s.reach_route(
+        &f,
+        &endpoints(),
+        None,
+        [-6.0, 5.0],
+        [-5.94, 5.0],
+        &[],
+        "2026-10-22",
+    )
+    .unwrap();
+    let missing = s.reach_jrc_missing();
+    assert_eq!(missing.len(), 1);
+    assert_eq!(missing[0].0, "occurrence_10W_10Nv1_4_2021.tif");
+    assert!(missing[0].1.ends_with("/occurrence_10W_10Nv1_4_2021.tif"));
+    s.reach_mark_local(&[missing[0].0.clone()]);
+    assert!(s.reach_jrc_missing().is_empty());
+    let tile = &s.snapshot()["reach_view"]["jrc_tiles"][0];
+    assert_eq!(tile["given"], true);
+    assert_eq!(tile["local"], true);
+}

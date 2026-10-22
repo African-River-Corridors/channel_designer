@@ -179,7 +179,7 @@ describe("Open Waterway Designer app smoke test", () => {
   });
 
   beforeEach(() => {
-    for (const f of ["open.txt", "save.txt", "discard.txt", "load.txt", "export.txt", "sheets.txt", "report.txt", "qa.txt", "jrc.txt", "reach-endpoints.json", "dem-mirror.txt"]) forget(f);
+    for (const f of ["open.txt", "save.txt", "discard.txt", "load.txt", "export.txt", "sheets.txt", "report.txt", "qa.txt", "jrc.txt", "reach-endpoints.json", "dem-mirror.txt", "jrc-mirror.txt"]) forget(f);
     // Studies from a river save themselves here, not in the runner's home (#322).
     answer("projects.txt", PROJECTS);
   });
@@ -665,17 +665,22 @@ describe("Open Waterway Designer app smoke test", () => {
       await until("the route", async () => /km/.test((await text("reach-length").catch(() => "")) ?? ""), 60000);
       const km = await text("reach-length");
       assert.equal(await (await browser.$("[data-testid=mark-route]")).getAttribute("data-mark"), "default");
-      const tile = path.join(fs.mkdtempSync(path.join(WORK, "jrc-")), "occurrence_10W_10Nv1_4_2021.tif");
-      fs.copyFileSync(path.resolve(here, "../../examples/reach/jrc_occurrence_sassandra_estuary.tif"), tile);
-      answer("jrc.txt", tile);
-      await (await browser.$("[data-testid=reach-add-tile]")).click();
-      await until("the tile given", async () => (await (await browser.$("[data-testid='reach-jrc-occurrence_10W_10Nv1_4_2021.tif']")).getAttribute("data-given")) === "true");
+      // The JRC tile is not given: Make the inputs downloads it into the study's folder (#321).
+      answer("jrc-mirror.txt", `${reach.origin}/jrc`);
+      assert.equal(await (await browser.$("[data-testid='reach-jrc-occurrence_10W_10Nv1_4_2021.tif']")).getAttribute("data-given"), "false");
       answer("load.txt", path.resolve(here, "../../examples/reach/glo30_sassandra_lower.tif"));
       await (await browser.$("[data-testid=reach-load-dem]")).click();
       await until("the DEM", async () => (await (await browser.$("[data-testid=mark-dem]")).getAttribute("data-mark")) === "user");
       await (await browser.$("[data-testid=reach-generate]")).click();
       await until("the banks moved onto Sentinel-2", async () => (await text("reach-input-left_bank")).includes("sentinel2-l2a"), 120000);
       await until("the water level", async () => (await (await browser.$("[data-testid=mark-water_level]")).getAttribute("data-mark")) === "default", 120000);
+      const tileRow = await browser.$("[data-testid='reach-jrc-occurrence_10W_10Nv1_4_2021.tif']");
+      assert.equal(await tileRow.getAttribute("data-given"), "true");
+      assert.match(await tileRow.getText(), /in the study's folder/);
+      const studyDir = fs.readdirSync(PROJECTS).find((d) => d.includes("Reach study") && fs.existsSync(path.join(PROJECTS, d, "jrc")));
+      assert.ok(studyDir, "the study has its folder");
+      assert.ok(fs.existsSync(path.join(PROJECTS, studyDir, "jrc", "occurrence_10W_10Nv1_4_2021.tif")), "the tile is in the study's folder");
+      assert.match(fs.readFileSync(path.join(PROJECTS, studyDir, "jrc", "NOTICE.txt"), "utf8"), /Pekel et al\. 2016/);
       for (const input of ["left_bank", "right_bank", "river_polygon", "centreline"]) {
         const badge = await browser.$(`[data-testid=mark-${input}]`);
         assert.equal(await badge.getAttribute("data-mark"), "default", input);

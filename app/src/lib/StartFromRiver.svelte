@@ -511,10 +511,10 @@
   {#if view && (view.route || docReach)}
     <section aria-label="Make the inputs">
       <h3>2. Make the inputs</h3>
-      <p class="help">The JRC water mask tiles this reach needs{isWeb ? " (download them, then give them here: the host does not let a web page read them)" : " (given here, or read from the network)"}:</p>
+      <p class="help">The JRC water mask tiles this reach needs{isWeb ? " (download them, then give them here: the host does not let a web page read them)" : " (downloaded into the study's folder when you make the inputs, with the licence notice; or give your own here)"}:</p>
       <ul class="files">
         {#each view.jrc_tiles as t}
-          <li data-testid="reach-jrc-{t.name}" data-given={t.given}><a href={t.url} target="_blank" rel="noreferrer">{t.name}</a> {t.given ? "■ given" : "◇ not given"}</li>
+          <li data-testid="reach-jrc-{t.name}" data-given={t.given}><a href={t.url} target="_blank" rel="noreferrer">{t.name}</a> {t.local ? "■ in the study's folder" : t.given ? "■ given" : "◇ not given"}</li>
         {/each}
       </ul>
       <button data-testid="reach-add-tile" disabled={working} onclick={() => act(() => api.reachAddTile())}>Give a JRC tile…</button>
