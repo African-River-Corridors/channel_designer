@@ -251,10 +251,13 @@ fn grid_walk(
     );
     let mut t_in = 0.0;
     loop {
-        if ix >= 0 && iy >= 0 && (ix as usize) < nx && (iy as usize) < ny {
-            if !visit(iy as usize * nx + ix as usize, t_in) {
-                return;
-            }
+        if ix >= 0
+            && iy >= 0
+            && (ix as usize) < nx
+            && (iy as usize) < ny
+            && !visit(iy as usize * nx + ix as usize, t_in)
+        {
+            return;
         }
         if tx < ty {
             t_in = tx;

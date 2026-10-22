@@ -175,9 +175,9 @@ pub fn otsu_split(values: &[f32]) -> Option<f64> {
     let total: f64 = (0..BINS).map(|b| hist[b] as f64 * centre(b)).sum();
     let (mut w0, mut s0) = (0.0, 0.0);
     let mut best: Option<(f64, usize, f64, f64, f64)> = None;
-    for b in 0..BINS - 1 {
-        w0 += hist[b] as f64;
-        s0 += hist[b] as f64 * centre(b);
+    for (b, h) in hist.iter().enumerate().take(BINS - 1) {
+        w0 += *h as f64;
+        s0 += *h as f64 * centre(b);
         let w1 = n as f64 - w0;
         if w0 == 0.0 || w1 == 0.0 {
             continue;

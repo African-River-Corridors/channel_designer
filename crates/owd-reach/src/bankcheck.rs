@@ -12,13 +12,13 @@
 //!    where the bank comes back within the limit of the offset before the run. Only outward jumps are
 //!    cut (inlets, tributary mouths, spikes onto land): a jump inward narrows the river, and narrowing
 //!    is left to the width check, which flags it and never widens it. A run longer than
-//!    `max_run_m`, or one that runs to the end of the banks, is a real change of the river, not an
+//!    `max_run_m`, or one that touches either end of the banks, is a real change of the river, not an
 //!    excursion: it is kept.
-//! 2b. **Excursion.** Per bank, an offset outward of the running median of the bank's own offsets
+//! 3. **Excursion.** Per bank, an offset outward of the running median of the bank's own offsets
 //!    over 250 m either side by more than a quarter of the local median width, and at least 30 m, is
 //!    cut: a bay, a tributary mouth, or a cut across an island into another
 //!    channel, rising too gradually for the jump limit.
-//! 3. **Width.** The width must lie between `width_low` and `width_high` times the running median of
+//! 4. **Width.** The width must lie between `width_low` and `width_high` times the running median of
 //!    the good widths within `width_window_m`. A wide station is repaired on the bank that left its
 //!    own running median the most. A narrow one is flagged and kept: a real throat must never be
 //!    widened away (and where a `narrow` stretch already covers it, it adds nothing).
