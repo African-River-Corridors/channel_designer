@@ -10,6 +10,7 @@ publish = false
 
 # Pure: no file, clock or network (ADR 0012).
 [dependencies]
+owd-core.workspace = true
 owd-format.workspace = true
 ord.workspace = true
 serde_json.workspace = true
