@@ -71,3 +71,54 @@ def test_the_scenarios_are_deterministic():
     one, two = di.run(), di.run()
     assert di.differences(one, two) == []
     assert sum(len(v) for v in one.values()) > 100
+
+
+# --- the entry as a changelog fragment (changelog.d/<id>.design-impact.md) --------------------------
+
+def _frags(tmp_path, name, files):
+    folder = tmp_path / name
+    folder.mkdir()
+    for fname, text in files.items():
+        (folder / fname).write_text(text, encoding="utf-8")
+    return folder
+
+
+def test_a_design_impact_fragment_is_an_entry(tmp_path):
+    head = copy.deepcopy(BASE)
+    head["s"]["vol"] *= 1.01
+    base_f = _frags(tmp_path, "base", {})
+    head_f = _frags(tmp_path, "head", {"301.design-impact.md": "Cut Model B volume rises 1 % (berm).\n"})
+    text, code = di.report(di.differences(BASE, head), di.new_entries(LOG_NONE, LOG_NONE, head_f, base_f))
+    assert code == 0 and "berm" in text
+
+
+def test_a_fragment_of_another_kind_is_not_a_design_impact_entry(tmp_path):
+    head = copy.deepcopy(BASE)
+    head["s"]["vol"] *= 1.01
+    head_f = _frags(tmp_path, "head", {"301.changed.md": "- Cut Model B volume rises 1 %.\n"})
+    text, code = di.report(di.differences(BASE, head), di.new_entries(LOG_NONE, LOG_NONE, head_f, None))
+    assert code == 1 and "changelog.d/<pr>.design-impact.md" in text
+
+
+def test_a_fragment_already_on_the_base_does_not_cover_a_new_move(tmp_path):
+    files = {"290.design-impact.md": "- An older move.\n"}
+    base_f, head_f = _frags(tmp_path, "base", files), _frags(tmp_path, "head", files)
+    assert di.new_entries(LOG_NONE, LOG_NONE, head_f, base_f) == []
+
+
+def test_the_compare_command_reads_the_fragments_next_to_each_changelog(tmp_path):
+    import json
+    head = copy.deepcopy(BASE)
+    head["s"]["vol"] *= 1.01
+    for side in ("base", "head"):
+        (tmp_path / side).mkdir()
+        (tmp_path / side / "CHANGELOG.md").write_text(LOG_NONE, encoding="utf-8")
+    (tmp_path / "base.json").write_text(json.dumps(BASE))
+    (tmp_path / "head.json").write_text(json.dumps(head))
+    args = [str(tmp_path / "base.json"), str(tmp_path / "head.json"),
+            "--changelog", str(tmp_path / "head" / "CHANGELOG.md"),
+            "--base-changelog", str(tmp_path / "base" / "CHANGELOG.md")]
+    assert di.main(["compare"] + args) == 1
+    (tmp_path / "head" / "changelog.d").mkdir()
+    (tmp_path / "head" / "changelog.d" / "301.design-impact.md").write_text("- vol rises 1 %.\n")
+    assert di.main(["compare"] + args) == 0

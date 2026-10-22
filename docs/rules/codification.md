@@ -55,7 +55,7 @@ public.
    what is wrong.
 8. **Differences from the text are findings, not fixes.** Where today's number differs from the text,
    file a finding issue, link it from the Rule (`finding`), and change the number later, as its own design
-   change with a design-impact entry in `CHANGELOG.md`.
+   change with a design-impact entry (a fragment `changelog.d/<pr>.design-impact.md`).
 
 ## Versions
 

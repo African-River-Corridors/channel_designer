@@ -100,8 +100,15 @@ closed. Tickets that depend on it wait.
   never touch another worktree.
 - Never stop a process by name. Stop only a process you started, by its process id.
 - Long builds and test runs go to the background with their output in a file that is polled.
+- **Never edit `CHANGELOG.md` in a ticket PR (since 2026-10-22).** Add a changelog fragment,
+  `changelog.d/<ticket>.<kind>.md` (kinds: `added`, `changed`, `deprecated`, `removed`, `fixed`, `security`,
+  `design-impact`), with one Markdown entry and no heading. Every PR edited `CHANGELOG.md` before (28 of the
+  last 30), so each merge put the other open PRs in conflict. Only the release PR touches `CHANGELOG.md`: it
+  runs `python3 tools/changelog.py release <version>`, which moves `## Unreleased` and every fragment under
+  the version heading and deletes the fragments. See `changelog.d/README.md`.
 - The old pure-Python package is the tag `py-reference` (3fb5f2c), kept for history. The port is closed:
-  a change that moves a design result needs a design-impact entry in `CHANGELOG.md` (`tools/design_impact.py`).
+  a change that moves a design result needs a design-impact entry, a fragment
+  `changelog.d/<ticket>.design-impact.md` (`tools/design_impact.py`).
 
 ## Fixed-number tests: labels
 

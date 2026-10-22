@@ -2,6 +2,7 @@
 
     python tools/design_impact.py run --out results.json
     python tools/design_impact.py compare base.json head.json [--changelog CHANGELOG.md --base-changelog base/CHANGELOG.md]
+        [--fragments changelog.d --base-fragments base/changelog.d]
 
 `run` runs a fixed set of scenarios through the installed `owd` and writes every number
 they produce to one JSON file. The scenarios use synthetic geometry built in code (the two worked
@@ -17,8 +18,10 @@ It prints a report and exits:
 - 0 and the list of what moved when something moved and the changelog has an entry for it;
 - 1 when something moved and the changelog has no entry for it.
 
-The entry is a new bullet under `## Unreleased` > `### Design impact` in `CHANGELOG.md`. Say what moved,
-why, and which way. The check cannot judge whether the words are right; a reviewer does that.
+The entry is a changelog fragment `changelog.d/<id>.design-impact.md` (see `tools/changelog.py`), or a new
+bullet under `## Unreleased` > `### Design impact` in `CHANGELOG.md`. Either counts when the base branch does
+not already have the same words. Say what moved, why, and which way. The check cannot judge whether the
+words are right; a reviewer does that. The fragment folder defaults to `changelog.d` next to each changelog.
 
 The tolerance lives here in one place. Changing it changes what "moved" means: it needs a review.
 """
@@ -228,9 +231,26 @@ def design_impact_entries(changelog: str) -> list:
     return [ln.strip() for ln in sec.group(1).splitlines() if re.match(r"\s*[-*] \S", ln)]
 
 
-def new_entries(head_changelog: str, base_changelog: str) -> list:
-    base = set(design_impact_entries(base_changelog))
-    return [e for e in design_impact_entries(head_changelog) if e not in base]
+def fragment_entries(folder) -> list:
+    """The bullets of the design-impact fragments (`<folder>/*.design-impact.md`)."""
+    if str(Path(__file__).resolve().parent) not in sys.path:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import changelog  # tools/changelog.py, next to this file
+    if folder is None:
+        return []
+    out = []
+    for p in changelog.fragment_files(Path(folder)):
+        if p.name.endswith(".design-impact.md"):
+            entry = changelog.as_entry(p.read_text(encoding="utf-8"))
+            out += [ln.strip() for ln in entry.splitlines() if re.match(r"\s*[-*] \S", ln)]
+    return out
+
+
+def new_entries(head_changelog: str, base_changelog: str, head_fragments=None, base_fragments=None) -> list:
+    """Design-impact entries the head has and the base has not: in CHANGELOG.md or in fragments."""
+    base = set(design_impact_entries(base_changelog)) | set(fragment_entries(base_fragments))
+    head = design_impact_entries(head_changelog) + fragment_entries(head_fragments)
+    return [e for e in head if e not in base]
 
 
 # --- report --------------------------------------------------------------------------------
@@ -266,8 +286,8 @@ def report(diffs: list, entries: list) -> tuple:
     if entries:
         lines += ["The changelog has a design-impact entry for it:", ""] + [f"- {e.lstrip('-* ')}" for e in entries] + [""]
         return "\n".join(lines) + "\n", 0
-    lines += ["**The changelog has no entry for this.** Add a bullet under `## Unreleased` > `### Design impact` "
-              "in `CHANGELOG.md` that says what moved and why, or fix the change so nothing moves.", ""]
+    lines += ["**The changelog has no entry for this.** Add a fragment `changelog.d/<pr>.design-impact.md` "
+              "that says what moved and why, or fix the change so nothing moves.", ""]
     return "\n".join(lines) + "\n", 1
 
 
@@ -281,6 +301,8 @@ def main(argv=None) -> int:
     c.add_argument("head")
     c.add_argument("--changelog", default=str(ROOT / "CHANGELOG.md"))
     c.add_argument("--base-changelog", default=None)
+    c.add_argument("--fragments", default=None, help="default: changelog.d next to --changelog")
+    c.add_argument("--base-fragments", default=None, help="default: changelog.d next to --base-changelog")
     a = ap.parse_args(argv)
     if a.cmd == "run":
         Path(a.out).write_text(json.dumps(run(), indent=1, sort_keys=True) + "\n", encoding="utf-8")
@@ -289,7 +311,9 @@ def main(argv=None) -> int:
     head = json.loads(Path(a.head).read_text(encoding="utf-8"))
     head_log = Path(a.changelog).read_text(encoding="utf-8")
     base_log = Path(a.base_changelog).read_text(encoding="utf-8") if a.base_changelog else ""
-    text, code = report(differences(base, head), new_entries(head_log, base_log))
+    head_frags = a.fragments or Path(a.changelog).parent / "changelog.d"
+    base_frags = a.base_fragments or (Path(a.base_changelog).parent / "changelog.d" if a.base_changelog else None)
+    text, code = report(differences(base, head), new_entries(head_log, base_log, head_frags, base_frags))
     sys.stdout.write(text)
     return code
 
