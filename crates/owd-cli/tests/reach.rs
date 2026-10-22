@@ -436,3 +436,108 @@ fn edge_fit_moves_the_mask_banks_onto_a_recorded_scene_and_records_the_scene() {
     assert!(e.message.contains("no Sentinel-2 scene"), "{}", e.message);
     assert!(e.message.contains("Raise the cloud limit"), "{}", e.message);
 }
+
+/// Serve the recorded Photon answer for "Ank" (`examples/reach/photon_ank.json`, recorded from
+/// photon.komoot.io on 2026-10-22) at `/api/`, to a client that says who it is. Every request line
+/// is kept, so a test can see what was asked.
+fn serve_photon() -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+    const ANK: &str = include_str!("../../../examples/reach/photon_ank.json");
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let log = seen.clone();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/api/", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut s) = stream else { continue };
+            let mut buf = [0u8; 8192];
+            let n = s.read(&mut buf).unwrap_or(0);
+            let req = String::from_utf8_lossy(&buf[..n]);
+            let first = req.lines().next().unwrap_or("").to_string();
+            log.lock().unwrap().push(first.clone());
+            let ua_ok = req
+                .to_lowercase()
+                .contains("user-agent: open-waterway-designer/");
+            let resp = if ua_ok && first.contains("q=Ank&") {
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{ANK}",
+                    ANK.len()
+                )
+            } else {
+                "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    .to_string()
+            };
+            let _ = s.write_all(resp.as_bytes());
+        }
+    });
+    (url, seen)
+}
+
+#[test]
+fn search_lists_rivers_with_region_country_and_osm_id_and_writes_nothing() {
+    let (server, seen) = serve_photon();
+    let o = run(&["reach", "--search", "Ank", "--search-endpoint", &server]);
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert_eq!(
+        o.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let line = out
+        .lines()
+        .find(|l| l.contains("Ankobra"))
+        .expect("the Ankobra is listed");
+    assert!(line.starts_with("relation/3328713"), "{line}");
+    assert!(
+        line.ends_with("Ankobra River \u{2014} Western Region, Ghana"),
+        "{line}"
+    );
+    assert!(out.contains("\u{a9} OpenStreetMap contributors"), "{out}");
+    let j = run(&[
+        "reach",
+        "--search",
+        "Ank",
+        "--search-endpoint",
+        &server,
+        "--json",
+    ]);
+    let v: Value = serde_json::from_slice(&j.stdout).unwrap();
+    let ank = v["rivers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["osm_id"] == "relation/3328713")
+        .unwrap();
+    assert_eq!(ank["country_code"], "GH");
+    assert_eq!(v["source"], "osm-photon");
+    // A country filter goes to the server; too few letters ask nothing.
+    let _ = run(&[
+        "reach",
+        "--search",
+        "Ank",
+        "--country",
+        "gh",
+        "--search-endpoint",
+        &server,
+    ]);
+    assert!(
+        seen.lock()
+            .unwrap()
+            .iter()
+            .any(|r| r.contains("countrycode=GH"))
+    );
+    let before = seen.lock().unwrap().len();
+    let short = run(&["reach", "--search", "An", "--search-endpoint", &server]);
+    assert_eq!(short.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&short.stderr).contains("at least 3 letters"));
+    assert_eq!(seen.lock().unwrap().len(), before);
+}
+
+#[test]
+fn a_search_server_error_exits_2_with_a_plain_message() {
+    let (server, _) = serve_photon();
+    let o = run(&["reach", "--search", "Volta", "--search-endpoint", &server]);
+    assert_eq!(o.status.code(), Some(2));
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(err.contains("cannot fetch"), "{err}");
+}

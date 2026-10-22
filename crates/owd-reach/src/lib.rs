@@ -18,6 +18,7 @@ pub mod overpass;
 pub mod provenance;
 pub mod reach;
 pub mod route;
+pub mod search;
 pub mod sentinel2;
 pub mod sources;
 pub mod sword;

@@ -1,0 +1,284 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "R",
+    "osm_id": 275660,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Black River",
+    "state": "North Region",
+    "country": "Brazil",
+    "countrycode": "BR",
+    "extent": [
+     -69.9077949,
+     2.8378071,
+     -59.8927349,
+     -3.1813522
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -65.5059548,
+     -0.2931886
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "W",
+    "osm_id": 1317585796,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Black River",
+    "city": "Santa Isabel do Rio Negro",
+    "state": "Amazonas",
+    "country": "Brazil",
+    "countrycode": "BR",
+    "extent": [
+     -65.0982031,
+     -0.4016621,
+     -65.0140449,
+     -0.4291487
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -65.0475731,
+     -0.4068548
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "R",
+    "osm_id": 1067684,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Black River",
+    "country": "Vietnam",
+    "countrycode": "VN",
+    "extent": [
+     101.2328105,
+     23.5596039,
+     105.3572564,
+     20.7505734
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     103.2568352,
+     22.0465754
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "R",
+    "osm_id": 17368193,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Black River",
+    "city": "Cape Town",
+    "county": "City of Cape Town",
+    "state": "Western Cape",
+    "country": "South Africa",
+    "countrycode": "ZA",
+    "extent": [
+     18.4648556,
+     -33.9297596,
+     18.4973876,
+     -33.9867396
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     18.4868164,
+     -33.9636076
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "R",
+    "osm_id": 5458853,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Black River",
+    "county": "Windsor County",
+    "state": "Vermont",
+    "country": "United States",
+    "countrycode": "US",
+    "extent": [
+     -72.7517117,
+     43.5496639,
+     -72.4306058,
+     43.258939
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -72.5937887,
+     43.3912836
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "R",
+    "osm_id": 18187291,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Black River",
+    "county": "Gogebic",
+    "state": "Michigan",
+    "country": "United States",
+    "countrycode": "US",
+    "extent": [
+     -90.09463,
+     46.6671889,
+     -89.9921627,
+     46.314542
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -90.0538641,
+     46.5119078
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "R",
+    "osm_id": 19377525,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Black River",
+    "state": "Queensland",
+    "country": "Australia",
+    "countrycode": "AU",
+    "extent": [
+     146.4913445,
+     -19.1949749,
+     146.652267,
+     -19.3423105
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     146.5854672,
+     -19.2839758
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "W",
+    "osm_id": 683622418,
+    "osm_key": "waterway",
+    "osm_value": "canal",
+    "type": "other",
+    "name": "Black River",
+    "district": "Deferiet",
+    "city": "Wilna",
+    "county": "Jefferson",
+    "state": "New York",
+    "country": "United States",
+    "postcode": "13628",
+    "countrycode": "US",
+    "extent": [
+     -75.6803244,
+     44.0425959,
+     -75.6766498,
+     44.0267323
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -75.678617,
+     44.034792
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "R",
+    "osm_id": 5454395,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Black River",
+    "state": "New York",
+    "country": "United States",
+    "countrycode": "US",
+    "extent": [
+     -76.0636592,
+     44.0553327,
+     -74.9138032,
+     43.3921273
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -75.4388699,
+     43.770773
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "R",
+    "osm_id": 16827374,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Big Black River",
+    "county": "Aroostook",
+    "state": "Maine",
+    "country": "United States",
+    "countrycode": "US",
+    "extent": [
+     -70.0896964,
+     46.9608551,
+     -69.4485568,
+     46.8102201
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -69.7650938,
+     46.8970301
+    ]
+   }
+  }
+ ]
+}
