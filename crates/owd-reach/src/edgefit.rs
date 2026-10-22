@@ -34,6 +34,10 @@ pub struct FitParams {
     pub tangent_half_m: f64,
     /// The farthest a bank may move from the mask bank.
     pub max_shift_m: f64,
+    /// A reach longer than this is fitted in parts this long, each on the scene that covers it.
+    pub part_m: f64,
+    /// The overlap of two parts, where their shifts are blended.
+    pub overlap_m: f64,
     /// The most the offset may change from one station to the next one `station_step_m` away.
     pub max_step_m: f64,
     pub sample_m: f64,
@@ -65,6 +69,8 @@ impl Default for FitParams {
             station_step_m: 5.0,
             tangent_half_m: 20.0,
             max_shift_m: 30.0,
+            part_m: 15_000.0,
+            overlap_m: 2_000.0,
             max_step_m: 1.5,
             sample_m: 1.0,
             filter_half_m: 10.0,
@@ -519,6 +525,30 @@ fn pinned_envelope(d: &[i64], fixed: &[bool], cap: i64) -> Vec<i64> {
     (0..n).map(|i| d[i].clamp(lo[i], hi[i])).collect()
 }
 
+/// `d` (integer millimetres, kept stations at 0) with no change over `cap` from one station to the
+/// next: each part's fit keeps the limit by its own path, but blending two parts across an overlap
+/// can step past it. Passes forward and back, kept stations held at 0, until nothing changes.
+fn slope_limited(mut d: Vec<i64>, fixed: &[bool], cap: i64) -> Vec<i64> {
+    let n = d.len();
+    for _ in 0..n.max(1) {
+        let before = d.clone();
+        for i in 1..n {
+            if !fixed[i] {
+                d[i] = d[i].clamp(d[i - 1] - cap, d[i - 1] + cap);
+            }
+        }
+        for i in (0..n.saturating_sub(1)).rev() {
+            if !fixed[i] {
+                d[i] = d[i].clamp(d[i + 1] - cap, d[i + 1] + cap);
+            }
+        }
+        if d == before {
+            break;
+        }
+    }
+    d
+}
+
 struct OneBank {
     d: Vec<f64>,
     fixed: Vec<bool>,
@@ -750,23 +780,47 @@ pub fn fit_banks(
             "the mask banks are too short to fit".into(),
         ));
     }
-    let cfg = params;
-    let geo: Vec<_> = [&banks.left, &banks.right]
-        .iter()
-        .map(|b| {
-            let (s, pts) = stations(b, cfg.station_step_m);
-            let (nrm, dc) = normals(b, &s, cfg.tangent_half_m, &banks.centreline, &pts);
-            (s, pts, nrm, dc)
-        })
-        .collect();
-    let ring = |l: &[P2], r: &[P2]| -> Vec<P2> {
-        let mut v = l.to_vec();
-        v.extend(r.iter().rev());
-        v.push(l[0]);
-        v
+    let geo = bank_geo(banks, params);
+    let seed = ring(&banks.left, &banks.right);
+    let all = [0..geo[0].0.len(), 0..geo[1].0.len()];
+    let res = fit_range(imagery, params, &geo, &all, seed)?;
+    Ok(finish(banks, params, &geo, res))
+}
+
+/// Per bank: the stations' arc lengths, points, outward normals and distances to the centreline.
+type Geo = (Vec<f64>, Vec<P2>, Vec<P2>, Vec<f64>);
+
+fn bank_geo(banks: &MaskBanks, cfg: &FitParams) -> [Geo; 2] {
+    [&banks.left, &banks.right].map(|b| {
+        let (s, pts) = stations(b, cfg.station_step_m);
+        let (nrm, dc) = normals(b, &s, cfg.tangent_half_m, &banks.centreline, &pts);
+        (s, pts, nrm, dc)
+    })
+}
+
+/// A closed ring: one line, then the other back.
+fn ring(l: &[P2], r: &[P2]) -> Vec<P2> {
+    let mut v = l.to_vec();
+    v.extend(r.iter().rev());
+    v.push(l[0]);
+    v
+}
+
+/// Fit the stations `ranges` of each bank to `imagery`, the colours learnt inside `seed` (a ring of
+/// the river): the passes of the fit, each re-seeding from the last.
+fn fit_range(
+    imagery: &Imagery,
+    cfg: &FitParams,
+    geo: &[Geo; 2],
+    ranges: &[std::ops::Range<usize>; 2],
+    mut seed: Vec<P2>,
+) -> Result<[OneBank; 2], ReachError> {
+    let slice = |k: usize| {
+        let (s, pts, nrm, dc) = &geo[k];
+        let r = ranges[k].clone();
+        (&s[r.clone()], &pts[r.clone()], &nrm[r.clone()], &dc[r])
     };
-    let mut seed = ring(&banks.left, &banks.right);
-    let mut res: Vec<OneBank> = Vec::new();
+    let mut res: Option<[OneBank; 2]> = None;
     for pass in 0..cfg.passes {
         let score = water_score(imagery, &seed).ok_or_else(|| {
             ReachError::NoWater(
@@ -774,19 +828,26 @@ pub fn fit_banks(
                     .into(),
             )
         })?;
-        res = geo
-            .iter()
-            .map(|(s, pts, nrm, dc)| fit_one(imagery, &score, cfg, s, pts, nrm, dc))
-            .collect();
+        let fitted = [0, 1].map(|k| {
+            let (s, pts, nrm, dc) = slice(k);
+            fit_one(imagery, &score, cfg, s, pts, nrm, dc)
+        });
         if pass + 1 < cfg.passes {
-            let lines: Vec<Vec<P2>> = geo
-                .iter()
-                .zip(&res)
-                .map(|((_, pts, nrm, _), r)| moved(pts, nrm, r))
+            let lines: Vec<Vec<P2>> = (0..2)
+                .map(|k| {
+                    let (_, pts, nrm, _) = slice(k);
+                    moved(pts, nrm, &fitted[k])
+                })
                 .collect();
             seed = ring(&lines[0], &lines[1]);
         }
+        res = Some(fitted);
     }
+    res.ok_or_else(|| ReachError::Input("the fit needs at least one pass".into()))
+}
+
+/// The fitted banks, centreline, widths and flagged stretches, from the shifts of every station.
+fn finish(banks: &MaskBanks, cfg: &FitParams, geo: &[Geo; 2], res: [OneBank; 2]) -> EdgeFit {
     let left = moved(&geo[0].1, &geo[0].2, &res[0]);
     let right = moved(&geo[1].1, &geo[1].2, &res[1]);
 
@@ -862,7 +923,7 @@ pub fn fit_banks(
         }
     }
     let polygon = ring(&left, &right);
-    Ok(EdgeFit {
+    EdgeFit {
         utm: banks.utm,
         params: *cfg,
         left,
@@ -877,7 +938,7 @@ pub fn fit_banks(
         right_beyond: res[1].beyond.clone(),
         widths,
         stretches,
-    })
+    }
 }
 
 fn moved(pts: &[P2], nrm: &[P2], r: &OneBank) -> Vec<P2> {
@@ -943,49 +1004,251 @@ pub fn default_range(today: &str) -> Result<(String, String), ReachError> {
 #[derive(Debug, Clone)]
 pub struct Fitted {
     pub fit: EdgeFit,
+    /// The scene of the first part that was fitted.
     pub scene: crate::sentinel2::Scene,
+    /// The parts of the reach, along the mask centreline, each with the scene it was fitted on. One
+    /// part for a reach no longer than `FitParams::part_m`.
+    pub parts: Vec<Part>,
 }
 
-/// Find a dry-season, low-cloud scene over the banks, read its window and fit the banks to it.
+/// A part of a long reach, by chainage along the mask centreline, and the scene it was fitted on.
+/// A part with no scene (none clear enough covers it, or its colours could not be learnt) keeps the
+/// mask banks, flagged `no-edge`, and says why.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Part {
+    pub from_m: f64,
+    pub to_m: f64,
+    pub scene: Option<crate::sentinel2::Scene>,
+    pub note: Option<String>,
+}
+
+/// The box `[west, south, east, north]` in degrees of `pts` (UTM), with a margin in metres; and the
+/// same box in UTM, `(min, max)`.
+fn boxes(pts: &[P2], utm: Utm, margin: f64) -> Result<([f64; 4], P2, P2), ReachError> {
+    let (mut lo, mut hi) = ([f64::MAX; 2], [f64::MIN; 2]);
+    for p in pts {
+        for k in 0..2 {
+            lo[k] = lo[k].min(p[k]);
+            hi[k] = hi[k].max(p[k]);
+        }
+    }
+    let (min, max) = (
+        [lo[0] - margin, lo[1] - margin],
+        [hi[0] + margin, hi[1] + margin],
+    );
+    let c = utm
+        .inverse_all(&[min, max, [min[0], max[1]], [max[0], min[1]]])
+        .map_err(ReachError::Input)?;
+    let bbox = [
+        c.iter().map(|p| p[0]).fold(f64::MAX, f64::min),
+        c.iter().map(|p| p[1]).fold(f64::MAX, f64::min),
+        c.iter().map(|p| p[0]).fold(f64::MIN, f64::max),
+        c.iter().map(|p| p[1]).fold(f64::MIN, f64::max),
+    ];
+    Ok((bbox, min, max))
+}
+
+/// The chainage of `p` along `line` (with its arc lengths `s`): of the nearest point.
+fn chainage_on(line: &[P2], s: &[f64], p: P2) -> f64 {
+    let mut best = (f64::MAX, 0.0);
+    for (i, w) in line.windows(2).enumerate() {
+        let d = [w[1][0] - w[0][0], w[1][1] - w[0][1]];
+        let l2 = d[0] * d[0] + d[1] * d[1];
+        let t = if l2 == 0.0 {
+            0.0
+        } else {
+            (((p[0] - w[0][0]) * d[0] + (p[1] - w[0][1]) * d[1]) / l2).clamp(0.0, 1.0)
+        };
+        let q = [w[0][0] + t * d[0], w[0][1] + t * d[1]];
+        let dd = dist(p, q);
+        if dd < best.0 {
+            best = (dd, s[i] + t * (s[i + 1] - s[i]));
+        }
+    }
+    best.1
+}
+
+/// Find a dry-season, low-cloud scene over the banks, read its window and fit the banks to it. A
+/// reach longer than `FitParams::part_m` is fitted in overlapping parts, each on the clearest scene
+/// that covers it (a Sentinel-2 tile is about 110 km across): the shifts are blended across each
+/// overlap, and the slope limit then holds along the whole bank.
 pub fn fit_to_scene(
     fetch: &dyn crate::fetch::Fetch,
     banks: &MaskBanks,
     params: &FitParams,
     q: &SceneQuery,
 ) -> Result<Fitted, ReachError> {
-    use crate::sentinel2::{parse_scenes, pick_scene, read_imagery, search_url};
-    let (mut lo, mut hi) = ([f64::MAX; 2], [f64::MIN; 2]);
-    for p in banks.left.iter().chain(&banks.right) {
-        for k in 0..2 {
-            lo[k] = lo[k].min(p[k]);
-            hi[k] = hi[k].max(p[k]);
-        }
-    }
-    let m = 250.0;
-    let (min, max) = ([lo[0] - m, lo[1] - m], [hi[0] + m, hi[1] + m]);
-    let corners = banks
-        .utm
-        .inverse_all(&[min, max])
-        .map_err(ReachError::Input)?;
-    let bbox = [
-        corners[0][0].min(corners[1][0]),
-        corners[0][1].min(corners[1][1]),
-        corners[0][0].max(corners[1][0]),
-        corners[0][1].max(corners[1][1]),
-    ];
-    let body = fetch.get(&search_url(&q.endpoint, bbox, &q.from, &q.to, 100))?;
-    let scenes = parse_scenes(&body)?;
-    let scene = pick_scene(&scenes, &q.months, q.max_cloud_pct, Some(bbox)).ok_or_else(|| {
-        ReachError::NoWater(format!(
-            "no Sentinel-2 scene between {} and {} over the reach in the dry-season months {:?} with {}% cloud or less (it may cross a scene edge). Raise the cloud limit, widen the dates, or keep the mask banks",
+    use crate::sentinel2::{Scene, parse_scenes, pick_scene, read_imagery, search_url};
+    let none = |q: &SceneQuery, what: &str| {
+        format!(
+            "no Sentinel-2 scene between {} and {} over {what} in the dry-season months {:?} with {}% cloud or less",
             q.from, q.to, q.months, q.max_cloud_pct
+        )
+    };
+    let find = |pts: &[P2]| -> Result<(Option<Scene>, P2, P2), ReachError> {
+        let (bbox, min, max) = boxes(pts, banks.utm, 250.0)?;
+        let body = fetch.get(&search_url(
+            &q.endpoint,
+            bbox,
+            &q.from,
+            &q.to,
+            q.max_cloud_pct,
+            100,
+        ))?;
+        let scenes = parse_scenes(&body)?;
+        Ok((
+            pick_scene(&scenes, &q.months, q.max_cloud_pct, Some(bbox)).cloned(),
+            min,
+            max,
         ))
-    })?;
-    let imagery = read_imagery(fetch, scene, min, max)?;
-    let fit = fit_banks(banks, &imagery, params)?;
+    };
+    let centre = &banks.centreline;
+    let cs = arc(centre);
+    let length = *cs.last().unwrap_or(&0.0);
+
+    // A reach that fits in one part: one scene over it all, as for a short reach.
+    if length <= params.part_m {
+        let all: Vec<P2> = banks.left.iter().chain(&banks.right).copied().collect();
+        let (scene, min, max) = find(&all)?;
+        let scene = scene.ok_or_else(|| {
+            ReachError::NoWater(format!(
+                "{} (it may cross a scene edge). Raise the cloud limit, widen the dates, or keep the mask banks",
+                none(q, "the reach")
+            ))
+        })?;
+        let imagery = read_imagery(fetch, &scene, min, max)?;
+        let fit = fit_banks(banks, &imagery, params)?;
+        return Ok(Fitted {
+            fit,
+            scene: scene.clone(),
+            parts: vec![Part {
+                from_m: 0.0,
+                to_m: length,
+                scene: Some(scene),
+                note: None,
+            }],
+        });
+    }
+
+    let geo = bank_geo(banks, params);
+    let chain: Vec<Vec<f64>> = geo
+        .iter()
+        .map(|g| g.1.iter().map(|p| chainage_on(centre, &cs, *p)).collect())
+        .collect();
+    let count = (length / params.part_m).ceil() as usize;
+    let mut parts: Vec<Part> = Vec::new();
+    // Per part: the station ranges of each bank and their fit, where there is one.
+    let mut fits: Vec<([std::ops::Range<usize>; 2], [OneBank; 2])> = Vec::new();
+    let mut fit_of_part: Vec<Option<usize>> = Vec::new();
+    for k in 0..count {
+        let from = (k as f64 * params.part_m - params.overlap_m / 2.0).max(0.0);
+        let to = ((k + 1) as f64 * params.part_m + params.overlap_m / 2.0).min(length);
+        let range = |b: usize| -> std::ops::Range<usize> {
+            let inside: Vec<usize> = (0..chain[b].len())
+                .filter(|i| chain[b][*i] >= from && chain[b][*i] <= to)
+                .collect();
+            match (inside.first(), inside.last()) {
+                (Some(a), Some(z)) => *a..*z + 1,
+                _ => 0..0,
+            }
+        };
+        let ranges = [range(0), range(1)];
+        let mut part = Part {
+            from_m: from,
+            to_m: to,
+            scene: None,
+            note: None,
+        };
+        if ranges.iter().any(|r| r.len() < 3) {
+            part.note = Some("too few mask bank stations".into());
+            parts.push(part);
+            fit_of_part.push(None);
+            continue;
+        }
+        let (l, r) = (&geo[0].1[ranges[0].clone()], &geo[1].1[ranges[1].clone()]);
+        let pts: Vec<P2> = l.iter().chain(r).copied().collect();
+        let (scene, min, max) = find(&pts)?;
+        let Some(scene) = scene else {
+            part.note = Some(none(q, "this part"));
+            parts.push(part);
+            fit_of_part.push(None);
+            continue;
+        };
+        let fitted = read_imagery(fetch, &scene, min, max)
+            .and_then(|im| fit_range(&im, params, &geo, &ranges, ring(l, r)));
+        part.scene = Some(scene);
+        match fitted {
+            Ok(res) => {
+                fit_of_part.push(Some(fits.len()));
+                fits.push((ranges, res));
+            }
+            Err(ReachError::NoWater(m)) => {
+                part.note = Some(m);
+                fit_of_part.push(None);
+            }
+            Err(e) => return Err(e),
+        }
+        parts.push(part);
+    }
+    let first = parts
+        .iter()
+        .find_map(|p| p.note.is_none().then(|| p.scene.clone()).flatten());
+    let Some(first) = first else {
+        return Err(ReachError::NoWater(format!(
+            "{}. Raise the cloud limit, widen the dates, or keep the mask banks",
+            none(q, "any part of the reach")
+        )));
+    };
+
+    // Blend the parts' shifts station by station, each weighted by how far inside its part the
+    // station is; a station no part fitted keeps its mask bank. Then the slope limit, through every
+    // kept station, along the whole bank.
+    let res = [0, 1].map(|b| {
+        let n = geo[b].0.len();
+        let (mut d, mut fixed, mut beyond) = (vec![0.0; n], vec![true; n], vec![false; n]);
+        for i in 0..n {
+            let c = chain[b][i];
+            let (mut sum, mut wsum, mut best) = (0.0, 0.0, (0.0, false));
+            for (k, part) in parts.iter().enumerate() {
+                let Some(f) = fit_of_part[k] else { continue };
+                let (ranges, res) = &fits[f];
+                if !ranges[b].contains(&i) {
+                    continue;
+                }
+                let j = i - ranges[b].start;
+                if res[b].fixed[j] {
+                    continue;
+                }
+                let w = (c - part.from_m).min(part.to_m - c).max(0.0) + 1e-3;
+                sum += w * res[b].d[j];
+                wsum += w;
+                if w > best.0 {
+                    best = (w, res[b].beyond[j]);
+                }
+            }
+            if wsum > 0.0 {
+                d[i] = sum / wsum;
+                fixed[i] = false;
+                beyond[i] = best.1;
+            }
+        }
+        let ds = if n > 1 {
+            geo[b].0[1] - geo[b].0[0]
+        } else {
+            params.station_step_m
+        };
+        let cap = (params.max_step_m * ds / params.station_step_m * 1000.0 + 1e-6).floor() as i64;
+        let mm: Vec<i64> = d.iter().map(|v| (v * 1000.0).round() as i64).collect();
+        let d = slope_limited(pinned_envelope(&mm, &fixed, cap), &fixed, cap)
+            .iter()
+            .map(|v| *v as f64 / 1000.0)
+            .collect();
+        OneBank { d, fixed, beyond }
+    });
     Ok(Fitted {
-        fit,
-        scene: scene.clone(),
+        fit: finish(banks, params, &geo, res),
+        scene: first,
+        parts,
     })
 }
 
@@ -1048,12 +1311,40 @@ pub fn record_edge_fit(
         .map_err(|e| ReachError::Input(e.to_string()))?;
     let s2 = crate::sources::source("sentinel2-l2a").expect("sentinel2-l2a is in the registry");
     let jrc = crate::sources::source("jrc-gsw").expect("jrc-gsw is in the registry");
-    let notice = format!("{}; {}", s2.notice_for(&f.scene.date), jrc.notice);
-    let rec = record("sentinel2-l2a", &f.scene.date, &notice, Mark::Default, true);
+    // Every scene used: the notice once per year, and the dates as a range when there are several.
+    let used: Vec<&crate::sentinel2::Scene> = f
+        .parts
+        .iter()
+        .filter(|p| p.note.is_none())
+        .filter_map(|p| p.scene.as_ref())
+        .collect();
+    let mut years: Vec<String> = used
+        .iter()
+        .map(|sc| sc.date.chars().take(4).collect())
+        .collect();
+    years.sort();
+    years.dedup();
+    let mut notices: Vec<String> = years.iter().map(|y| s2.notice_for(y)).collect();
+    notices.push(jrc.notice.to_string());
+    let notice = notices.join("; ");
+    let mut dates: Vec<&str> = used.iter().map(|sc| sc.date.as_str()).collect();
+    dates.sort();
+    let date = match (dates.first(), dates.last()) {
+        (Some(a), Some(b)) if a != b => format!("{a}/{b}"),
+        _ => f.scene.date.clone(),
+    };
+    let rec = record("sentinel2-l2a", &date, &notice, Mark::Default, true);
     let q = &f.fit.params;
     let settings = json!({
         "scene_id": f.scene.id,
         "scene_cloud_pct": f.scene.cloud_pct,
+        "parts": f.parts.iter().map(|p| json!({
+            "from_m": p.from_m,
+            "to_m": p.to_m,
+            "scene_id": p.scene.as_ref().map(|sc| sc.id.clone()),
+            "scene_date": p.scene.as_ref().map(|sc| sc.date.clone()),
+            "note": p.note,
+        })).collect::<Vec<_>>(),
         "seed": "jrc-gsw",
         "search_m": q.max_shift_m + q.filter_half_m,
         "max_shift_m": q.max_shift_m,
@@ -1070,4 +1361,45 @@ pub fn record_edge_fit(
     session
         .set_low_confidence_width(f.fit.low_confidence_value())
         .map_err(|e| ReachError::Input(e.to_string()))
+}
+
+#[cfg(test)]
+mod join_tests {
+    //! Label: property
+    use super::*;
+
+    #[test]
+    fn the_slope_limit_holds_after_a_join_and_kept_stations_stay_at_zero() {
+        let mut x: u64 = 7;
+        let mut next = || {
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (x >> 33) as i64
+        };
+        for _ in 0..300 {
+            let n = 5 + (next() % 200) as usize;
+            let cap = 1 + next() % 2000;
+            let fixed: Vec<bool> = (0..n).map(|_| next() % 7 == 0).collect();
+            let d: Vec<i64> = (0..n)
+                .map(|i| {
+                    if fixed[i] {
+                        0
+                    } else {
+                        next() % 60_001 - 30_000
+                    }
+                })
+                .collect();
+            let out = slope_limited(pinned_envelope(&d, &fixed, cap), &fixed, cap);
+            for i in 0..n {
+                if fixed[i] {
+                    assert_eq!(out[i], 0);
+                }
+                assert!(out[i].abs() <= 30_000);
+            }
+            for w in out.windows(2) {
+                assert!((w[1] - w[0]).abs() <= cap, "{w:?} over {cap}");
+            }
+        }
+    }
 }
