@@ -49,6 +49,30 @@ pip install "open-waterway-designer @ git+https://github.com/African-River-Corri
 Your scripts do not change. The 0.2.0 functions and classes have the names, arguments and results of
 0.1.x; see [CHANGELOG.md](CHANGELOG.md) for the few things that moved, and what is deprecated.
 
+### Your own river, DEM and water level
+
+A study starts with `owd new`, which makes an empty design. The river, the DEM and the water level all go in
+with `owd import`. There is no `owd new --dem`.
+
+```
+owd new study.owd --title "My river"
+owd import study.owd --polygon river.geojson --centreline centre.geojson --dem lidar.tif --water-level 38
+owd bed study.owd --depth 3 --season dry
+owd fits study.owd
+```
+
+- **The river.** Give the river polygon and the centreline, or the two bank lines (`--left-bank`, `--right-bank`).
+  GeoJSON or a GeoPackage layer (`FILE#LAYER`), in WGS84 or WGS84 / UTM.
+- **The DEM.** A GeoTIFF in the river's CRS or in WGS84. The design keeps its relative path and its SHA-256, never a
+  copy, so keep the file next to the design. Without a DEM of your own, `owd fetch-dem` gets Copernicus GLO-30.
+- **The water level.** `--water-level 38` is one level for the whole river, in metres. Add `--water-slope` for a
+  level that falls along the river, or give `--water-table FILE` (lines of `chainage_m,level_m`). Without one,
+  `owd water-level` sets a default from SWORD and SWOT.
+- **The depth.** `owd bed` gives an assumed depth where there is no survey. With the DEM, the water level and a
+  depth, `owd fits` gives the full answer (width, radius and depth).
+
+Then size and design for the vessel you choose (below): `owd size`, `owd align`, `owd volumes`.
+
 ### Channel rules
 
 `owd size` sizes the channel to the Rule Sets you select (`--rule-set pianc-wg141 --set-input se_quality=B`); with

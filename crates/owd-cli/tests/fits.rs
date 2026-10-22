@@ -306,3 +306,60 @@ fn the_answer_says_which_plan_line_it_read_the_radius_on() {
     assert_eq!(v["fits"]["plan_line"], "centreline");
     assert!(v["fits"].get("plan_line_note").is_none());
 }
+
+/// The route the README gives for a study with its own DEM and a fixed water level (#370): `owd new`,
+/// then `owd import --dem … --water-level …` with the river, then `owd bed` and `owd fits`.
+#[test]
+fn a_local_dem_and_a_fixed_water_level_go_in_with_import() {
+    use owd_format::geotiff::Dem;
+    let dir = work_dir("fits-local-dem");
+    let doc = dir.join("study.owd").to_str().unwrap().to_string();
+    let ok = |o: Output| {
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        o
+    };
+    ok(owd(&[
+        "new",
+        &doc,
+        "--title",
+        "My river",
+        "--date",
+        "2026-10-23",
+    ]));
+    let (poly, centre) = files(&dir, 0.0);
+    // A flat DEM at 12 m in the river's CRS (WGS84 / UTM 30N), 50 m cells over the whole river.
+    let (w, h) = (100, 80);
+    let dem = Dem {
+        width: w,
+        height: h,
+        data: vec![12.0; w * h],
+        geotransform: [50.0, 0.0, 499_000.0, 0.0, -50.0, 602_000.0],
+        nodata: None,
+        epsg: Some(32630),
+    };
+    let tif = dir.join("dem.tif");
+    std::fs::write(
+        &tif,
+        owd_format::design::dem_source::write_geotiff(&dem).unwrap(),
+    )
+    .unwrap();
+    ok(owd(&[
+        "import",
+        &doc,
+        "--polygon",
+        &poly,
+        "--centreline",
+        &centre,
+        "--dem",
+        tif.to_str().unwrap(),
+        "--water-level",
+        "10",
+    ]));
+    ok(owd(&["bed", &doc, "--depth", "3", "--season", "dry"]));
+    let o = ok(owd(&["fits", &doc, "--json"]));
+    let v: Value = serde_json::from_str(&out(&o)).unwrap();
+    assert_eq!(v["fits"]["mode"], "full", "{}", v["fits"]);
+    let d: Value = serde_json::from_str(&std::fs::read_to_string(&doc).unwrap()).unwrap();
+    assert_eq!(d["inputs"]["dem"]["path"], "dem.tif");
+    ok(owd(&["validate", &doc]));
+}
