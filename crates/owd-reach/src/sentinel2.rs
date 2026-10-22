@@ -50,15 +50,27 @@ pub fn default_dry_months(lat: f64) -> Vec<u32> {
 }
 
 /// The search request for scenes over a box `[west, south, east, north]` between two dates
-/// (`YYYY-MM-DD`).
-pub fn search_url(endpoint: &str, bbox: [f64; 4], from: &str, to: &str, limit: u32) -> String {
+/// (`YYYY-MM-DD`), with at most `max_cloud_pct` cloud. The cloud limit goes to the server: over two
+/// years a box can match hundreds of scenes, more than one page holds, and the clear ones must not
+/// be left on a later page.
+pub fn search_url(
+    endpoint: &str,
+    bbox: [f64; 4],
+    from: &str,
+    to: &str,
+    max_cloud_pct: f64,
+    limit: u32,
+) -> String {
     format!(
-        "{endpoint}?collections=sentinel-2-l2a&bbox={},{},{},{}&datetime={}&limit={limit}",
+        "{endpoint}?collections=sentinel-2-l2a&bbox={},{},{},{}&datetime={}&query={}&limit={limit}",
         bbox[0],
         bbox[1],
         bbox[2],
         bbox[3],
-        urlencode(&format!("{from}T00:00:00Z/{to}T23:59:59Z"))
+        urlencode(&format!("{from}T00:00:00Z/{to}T23:59:59Z")),
+        urlencode(&format!(
+            r#"{{"eo:cloud_cover":{{"lte":{max_cloud_pct}}}}}"#
+        ))
     )
 }
 
@@ -342,11 +354,13 @@ mod tests {
             [-6.15, 4.93, -6.05, 5.0],
             "2024-12-01",
             "2025-03-01",
+            20.0,
             30,
         );
         assert!(u.starts_with("https://earth-search.aws.element84.com/v1/search?collections=sentinel-2-l2a&bbox=-6.15,4.93,-6.05,5&datetime="), "{u}");
         assert!(
             u.contains("2024-12-01T00%3A00%3A00Z%2F2025-03-01T23%3A59%3A59Z")
+                && u.contains("&query=%7B%22eo%3Acloud_cover%22%3A%7B%22lte%22%3A20%7D%7D")
                 && u.ends_with("&limit=30"),
             "{u}"
         );

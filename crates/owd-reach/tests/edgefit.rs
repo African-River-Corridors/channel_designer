@@ -356,3 +356,160 @@ mod recorded {
     const SNAPSHOT_TOTAL_SHIFT_M: f64 = 25_709.149;
     const SNAPSHOT_STATIONS: (usize, usize) = (410, 536);
 }
+
+mod recorded_tiles {
+    //! The recorded window across two Sentinel-2 tiles: 22 km of the Sassandra from 5.30 to 5.45 N,
+    //! where tile 29NQF alone covers the south, 29NQG alone the north, and both the middle
+    //! (`tools/make_s2_tiles_fixture.py`). Both scenes are of 23 December 2023.
+    use super::*;
+    use owd_format::design::Session;
+    use owd_reach::ReplayFetch;
+    use owd_reach::banks::{banks_from_jrc, record_banks};
+    use owd_reach::edgefit::{SceneQuery, fit_to_scene, record_edge_fit};
+    use owd_reach::jrc::Tile;
+    use owd_reach::sentinel2::parse_scenes;
+
+    const ROUTE: &str = include_str!("../../../examples/reach/sassandra_tiles_route.json");
+    const JRC: &[u8] = include_bytes!("../../../examples/reach/jrc_occurrence_sassandra_tiles.tif");
+    const STAC: &str = include_str!("../../../examples/reach/stac_search_sassandra_tiles.json");
+
+    macro_rules! band {
+        ($tile:literal, $band:literal) => {
+            include_bytes!(concat!(
+                "../../../examples/reach/s2tiles_",
+                $tile,
+                "_",
+                $band,
+                ".tif"
+            ))
+        };
+    }
+
+    fn fetch() -> ReplayFetch {
+        let mut f = ReplayFetch::new()
+            .with_response_containing("earth-search.aws.element84.com/v1/search", STAC)
+            .with_response(
+                &Tile {
+                    west: -10,
+                    north: 10,
+                }
+                .url(),
+                JRC.to_vec(),
+            );
+        let files: [(&str, &str, &[u8]); 10] = [
+            ("29NQF", "B03", band!("29NQF", "B03")),
+            ("29NQF", "B04", band!("29NQF", "B04")),
+            ("29NQF", "B08", band!("29NQF", "B08")),
+            ("29NQF", "B11", band!("29NQF", "B11")),
+            ("29NQF", "SCL", band!("29NQF", "SCL")),
+            ("29NQG", "B03", band!("29NQG", "B03")),
+            ("29NQG", "B04", band!("29NQG", "B04")),
+            ("29NQG", "B08", band!("29NQG", "B08")),
+            ("29NQG", "B11", band!("29NQG", "B11")),
+            ("29NQG", "SCL", band!("29NQG", "SCL")),
+        ];
+        for sc in parse_scenes(STAC.as_bytes()).unwrap() {
+            let tile = sc.id.split('_').nth(1).unwrap().to_string();
+            for (url, band) in [
+                (&sc.green, "B03"),
+                (&sc.red, "B04"),
+                (&sc.nir, "B08"),
+                (&sc.swir, "B11"),
+            ]
+            .into_iter()
+            .chain(sc.scl.as_ref().map(|u| (u, "SCL")))
+            {
+                let bytes = files
+                    .iter()
+                    .find(|(t, b, _)| *t == tile && *b == band)
+                    .unwrap()
+                    .2;
+                f = f.with_response(url, bytes.to_vec());
+            }
+        }
+        f
+    }
+
+    t! {
+    fn a_reach_across_two_tiles_is_fitted_in_parts_each_on_a_scene_that_covers_it() {
+        let f = fetch();
+        let v: serde_json::Value = serde_json::from_str(ROUTE).unwrap();
+        let route: Vec<[f64; 2]> = serde_json::from_value(v["route"].clone()).unwrap();
+        // At the default 75 % the JRC mask sees almost no water on this reach (the region is cloudy
+        // more often than not, so occurrence stays low): the worked example uses 30 %, and so does this.
+        let mask = BankParams { threshold_pct: 30.0, ..BankParams::default() };
+        let banks = banks_from_jrc(&f, &route, &mask).unwrap();
+        let q = SceneQuery {
+            endpoint: owd_reach::sentinel2::SEARCH_ENDPOINT.to_string(),
+            from: "2023-12-01".into(),
+            to: "2024-03-01".into(),
+            months: vec![12, 1, 2],
+            max_cloud_pct: 10.0,
+        };
+        // Parts of 6 km, so the 22 km reach has several, south to north.
+        let p = FitParams { part_m: 6_000.0, ..FitParams::default() };
+        let fitted = fit_to_scene(&f, &banks, &p, &q).unwrap();
+        assert!(fitted.parts.len() >= 3, "{:?}", fitted.parts);
+        let used: std::collections::BTreeSet<&str> = fitted
+            .parts
+            .iter()
+            .filter(|x| x.note.is_none())
+            .filter_map(|x| x.scene.as_ref())
+            .map(|sc| sc.id.as_str())
+            .collect();
+        assert_eq!(
+            used.into_iter().collect::<Vec<_>>(),
+            ["S2B_29NQF_20231223_0_L2A", "S2B_29NQG_20231223_0_L2A"],
+            "{:?}",
+            fitted.parts
+        );
+        // Each part's scene covers it: the part's banks lie inside the scene's footprint.
+        let ll = banks.utm.inverse_all(&banks.centreline).unwrap();
+        let cs: Vec<f64> = std::iter::once(0.0)
+            .chain(banks.centreline.windows(2).scan(0.0, |a, w| {
+                *a += ((w[1][0] - w[0][0]).powi(2) + (w[1][1] - w[0][1]).powi(2)).sqrt();
+                Some(*a)
+            }))
+            .collect();
+        for part in fitted.parts.iter().filter(|x| x.note.is_none()) {
+            let b = part.scene.as_ref().unwrap().bbox.unwrap();
+            for (q, c) in ll.iter().zip(&cs) {
+                if *c >= part.from_m && *c <= part.to_m {
+                    assert!(q[0] >= b[0] && q[0] <= b[2] && q[1] >= b[1] && q[1] <= b[3], "{part:?} {q:?}");
+                }
+            }
+        }
+        // The joins keep the limits: no shift over 30 m, and no change over 1.5 m per 5 m from one
+        // station to the next, along each whole bank. The stations split the bank evenly, so they
+        // are a little over 5 m apart, and the limit scales with the spacing (to the millimetre).
+        for (shifts, bank) in [(&fitted.fit.left_shift, &banks.left), (&fitted.fit.right_shift, &banks.right)] {
+            assert!(shifts.iter().all(|d| d.abs() <= p.max_shift_m + 1e-9));
+            let len: f64 = bank.windows(2).map(|w| ((w[1][0] - w[0][0]).powi(2) + (w[1][1] - w[0][1]).powi(2)).sqrt()).sum();
+            let ds = len / (len / p.station_step_m).floor();
+            let cap = (p.max_step_m * ds / p.station_step_m * 1000.0).floor() / 1000.0;
+            assert_eq!(shifts.len() as f64, (len / p.station_step_m).floor() + 1.0);
+            for w in shifts.windows(2) {
+                assert!((w[1] - w[0]).abs() <= cap + 1e-9, "{w:?} over {cap}");
+            }
+        }
+        // And the banks moved: the mask's 75 % line lies inside the dry-season water here too.
+        let moved = fitted.fit.left_shift.iter().chain(&fitted.fit.right_shift).filter(|d| d.abs() > 2.0).count();
+        assert!(moved * 2 > fitted.fit.left_shift.len() + fitted.fit.right_shift.len(), "only {moved} moved");
+        // The provenance lists every scene used.
+        let mut s = Session::new("Tiles", "2026-10-22");
+        record_banks(&mut s, &banks).unwrap();
+        record_edge_fit(&mut s, &fitted).unwrap();
+        assert!(s.validate().is_empty(), "{:?}", s.validate());
+        let pr = s.provenance("left_bank").unwrap();
+        let ids: Vec<&str> = pr["settings"]["parts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|x| x["scene_id"].as_str())
+            .collect();
+        assert!(ids.contains(&"S2B_29NQF_20231223_0_L2A") && ids.contains(&"S2B_29NQG_20231223_0_L2A"), "{ids:?}");
+        assert_eq!(pr["date"], "2023-12-23");
+        assert_eq!(pr["notice"].as_str().unwrap().matches("Contains modified Copernicus Sentinel data 2023").count(), 1);
+    }
+    }
+}
