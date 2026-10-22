@@ -7,6 +7,7 @@
 //! made it. No threshold of the gallery lives only in code.
 
 use super::gallery::GalleryParams;
+use super::long_section::{Exaggeration, LongSectionParams};
 use super::setting_out::SettingOutParams;
 use super::typical::TypicalParams;
 use crate::design::hash::hash_value;
@@ -250,6 +251,46 @@ impl Style {
             margin_right_mm: num(&m["right"]),
             margin_below_mm: num(&m["below"]),
             margin_above_mm: num(&m["above"]),
+        }
+    }
+
+    /// What the long section reads. The schema holds `vertical_exaggeration` to `"auto"` or a whole
+    /// number of 2 or more, so nothing else reaches here.
+    pub fn long_section(&self) -> LongSectionParams {
+        let v = &self.value;
+        let l = &v["long_section"];
+        let bands = &l["bands_mm"];
+        let num = |x: &Value| x.as_f64().unwrap_or(0.0);
+        LongSectionParams {
+            sheet_size: v["sheets"]["ls"]["size"]
+                .as_str()
+                .unwrap_or("A1")
+                .to_string(),
+            landscape: v["sheets"]["ls"]["orientation"] != "portrait",
+            scales: l["scales"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_u64)
+                        .map(|n| n as u32)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            exaggeration: match l["vertical_exaggeration"].as_u64() {
+                Some(e) => Exaggeration::Factor(u32::try_from(e).unwrap_or(u32::MAX)),
+                None => Exaggeration::Auto,
+            },
+            auto_min_fill: num(&l["auto_min_fill"]),
+            below_invert_m: num(&l["below_invert_m"]),
+            above_ground_m: num(&l["above_ground_m"]),
+            band_left_mm: num(&bands["left"]),
+            band_right_mm: num(&bands["right"]),
+            band_top_mm: num(&bands["top"]),
+            band_bottom_mm: num(&bands["bottom"]),
+            chainage_pitch_mm: num(&l["chainage_pitch_mm"]),
+            level_pitch_mm: num(&l["level_pitch_mm"]),
+            grid: v["layers"]["GRID"] == true,
+            water: v["layers"]["WATER"] == true,
         }
     }
 

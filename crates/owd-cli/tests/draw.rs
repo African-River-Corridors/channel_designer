@@ -200,6 +200,59 @@ fn sheets_picks_the_kinds_and_the_default_draws_both() {
         both.contains(&"XS".to_string()) && both.contains(&"TS".to_string()),
         "{both:?}"
     );
+    assert!(both.contains(&"LS".to_string()), "{both:?}");
+    assert_eq!(kinds(&["--sheets", "ls"]), ["LS"]);
+}
+
+#[test]
+fn vertical_exaggeration_overrides_the_style_and_a_bad_one_is_refused() {
+    let ex = example();
+    let ex = ex.to_str().unwrap();
+    let viewport = |args: &[&str]| -> Value {
+        let mut a = vec!["draw", ex, "--document", "--sheets", "ls"];
+        a.extend_from_slice(args);
+        let o = run(&a);
+        assert_eq!(code(&o), 0, "{}", err(&o));
+        let docs: Value = serde_json::from_str(&out(&o)).unwrap();
+        let doc = docs.as_object().unwrap().values().next().unwrap().clone();
+        doc["viewports"][0].clone()
+    };
+    assert_eq!(
+        viewport(&["--vertical-exaggeration", "10"])["vertical_exaggeration"],
+        10
+    );
+    assert_eq!(
+        viewport(&["--vertical-exaggeration", "auto"])["vertical_exaggeration"],
+        viewport(&[])["vertical_exaggeration"]
+    );
+    for bad in ["1", "big"] {
+        let o = run(&[
+            "draw",
+            ex,
+            "--document",
+            "--sheets",
+            "ls",
+            "--vertical-exaggeration",
+            bad,
+        ]);
+        assert_eq!(code(&o), 2, "{bad}");
+        assert!(
+            err(&o).contains("/long_section/vertical_exaggeration"),
+            "{bad}: {}",
+            err(&o)
+        );
+    }
+    let o = run(&[
+        "draw",
+        ex,
+        "--document",
+        "--sheets",
+        "ls",
+        "--vertical-exaggeration",
+        "3",
+    ]);
+    assert_eq!(code(&o), 2);
+    assert!(err(&o).contains("vertical exaggeration ×3"), "{}", err(&o));
 }
 
 #[test]

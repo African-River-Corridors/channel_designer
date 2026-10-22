@@ -23,10 +23,10 @@ owd-reach = { path = "crates/owd-reach" }
 # The shared rules engine (spec 0007, ADR 0008), from the sister project open-vessel-concept-drawings.
 # Pinned by git tag, never a path, a branch or a commit.
 arc-rules = { git = "https://github.com/African-River-Corridors/open-vessel-concept-drawings", tag = "v0.2.4" }
-otd = { git = "https://github.com/African-River-Corridors/open-technical-drawer", tag = "v0.3.0" }
+otd = { git = "https://github.com/African-River-Corridors/open-technical-drawer", tag = "v0.4.0" }
 # Fetched imagery for plan backdrops (EOxCloudless 2016), from the same tag. It holds the network, so
 # owd-format takes it only with its `imagery` feature, which the command line turns on.
-otd-imagery = { git = "https://github.com/African-River-Corridors/open-technical-drawer", tag = "v0.3.0" }
+otd-imagery = { git = "https://github.com/African-River-Corridors/open-technical-drawer", tag = "v0.4.0" }
 # float_roundtrip, arbitrary_precision: read every number exactly as written, big ints too.
 # preserve_order: a JSON object keeps its key order, as a Python dict does.
 serde_json = { version = "1", features = ["float_roundtrip", "arbitrary_precision", "preserve_order"] }

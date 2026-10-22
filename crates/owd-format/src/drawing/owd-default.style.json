@@ -17,6 +17,10 @@
     "pl": {
       "size": "A1",
       "orientation": "landscape"
+    },
+    "ls": {
+      "size": "A1",
+      "orientation": "landscape"
     }
   },
   "layers": {
@@ -119,5 +123,30 @@
         ]
       }
     ]
+  },
+  "long_section": {
+    "scales": [
+      500,
+      1000,
+      2000,
+      2500,
+      5000,
+      10000,
+      20000,
+      50000,
+      100000
+    ],
+    "vertical_exaggeration": "auto",
+    "auto_min_fill": 0.5,
+    "below_invert_m": 4,
+    "above_ground_m": 3,
+    "chainage_pitch_mm": 25,
+    "level_pitch_mm": 10,
+    "bands_mm": {
+      "left": 45,
+      "right": 12,
+      "top": 16,
+      "bottom": 32
+    }
   }
 }

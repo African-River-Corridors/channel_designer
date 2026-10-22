@@ -1319,6 +1319,8 @@ pub struct DrawFlags {
     pub section_spacing: Option<f64>,
     pub sheet_size: Option<String>,
     pub scale: Option<u32>,
+    /// The long section's vertical exaggeration: a whole number, or `auto`.
+    pub vertical_exaggeration: Option<String>,
     pub orthophoto: Option<String>,
     pub imagery: Option<String>,
     pub imagery_cache: Option<String>,
@@ -1379,6 +1381,15 @@ pub fn draw(doc: &str, flags: DrawFlags, json_mode: bool) -> Result {
     }
     if let Some(n) = flags.scale {
         overrides.push(("gallery.scales".into(), json!([n])));
+    }
+    if let Some(e) = &flags.vertical_exaggeration {
+        // a whole number goes in as a number; anything else as text, which the style's schema
+        // refuses unless it is `auto`
+        let v = e
+            .trim()
+            .parse::<u64>()
+            .map_or_else(|_| json!(e.trim()), |n| json!(n));
+        overrides.push(("long_section.vertical_exaggeration".into(), v));
     }
     style = style
         .with_overrides(&overrides)

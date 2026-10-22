@@ -14,7 +14,8 @@
     "gallery",
     "typical",
     "setting_out",
-    "plan"
+    "plan",
+    "long_section"
   ],
   "properties": {
     "style_version": {
@@ -32,7 +33,8 @@
         "xs",
         "ts",
         "so",
-        "pl"
+        "pl",
+        "ls"
       ],
       "properties": {
         "xs": {
@@ -45,6 +47,9 @@
           "$ref": "#/$defs/sheet"
         },
         "pl": {
+          "$ref": "#/$defs/sheet"
+        },
+        "ls": {
           "$ref": "#/$defs/sheet"
         }
       }
@@ -488,6 +493,125 @@
                 }
               }
             ]
+          }
+        }
+      }
+    },
+    "long_section": {
+      "description": "The long section (spec 0004, ticket 10): the bed, the water level and the design bed along chainage, drawn with a vertical exaggeration (Drawing Format Standard 1.2, clause 7.3.6).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scales",
+        "vertical_exaggeration",
+        "auto_min_fill",
+        "below_invert_m",
+        "above_ground_m",
+        "chainage_pitch_mm",
+        "level_pitch_mm",
+        "bands_mm"
+      ],
+      "properties": {
+        "scales": {
+          "description": "The horizontal scales to try, the largest scale first: the first at which the whole line fits one sheet is used; if none does, the last, and the line is split over sheets.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              1,
+              2,
+              5,
+              10,
+              20,
+              25,
+              50,
+              100,
+              200,
+              250,
+              500,
+              1000,
+              1250,
+              2000,
+              2500,
+              5000,
+              10000,
+              20000,
+              50000,
+              100000,
+              200000,
+              500000,
+              1000000,
+              2000000,
+              5000000,
+              10000000
+            ]
+          }
+        },
+        "vertical_exaggeration": {
+          "description": "How many times the levels are drawn larger than the chainage. \"auto\": the smallest factor of 2 or more whose levels fill at least auto_min_fill of the plot height, with a vertical scale that is a ratio of the standard; none when the levels already fill it. A whole number of 2 or more: that factor, at the first scale where the horizontal scale divided by it is a ratio of the standard (clause 7.3.6.2).",
+          "oneOf": [
+            {
+              "const": "auto"
+            },
+            {
+              "type": "integer",
+              "minimum": 2
+            }
+          ]
+        },
+        "auto_min_fill": {
+          "description": "With vertical_exaggeration auto: the least share of the plot height that the levels must fill.",
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 1
+        },
+        "below_invert_m": {
+          "description": "Room under the lowest level, in metres.",
+          "type": "number",
+          "minimum": 0
+        },
+        "above_ground_m": {
+          "description": "Room above the highest level, in metres.",
+          "type": "number",
+          "minimum": 0
+        },
+        "chainage_pitch_mm": {
+          "description": "The least paper distance between two chainage labels; the step is 1, 2 or 5 times a power of ten metres.",
+          "type": "number",
+          "minimum": 15
+        },
+        "level_pitch_mm": {
+          "description": "The least paper distance between two level labels; the step is 1, 2 or 5 times a power of ten metres.",
+          "type": "number",
+          "minimum": 4
+        },
+        "bands_mm": {
+          "description": "The bands round the plot, in millimetres: the level labels and the vertical scale bar on the left, the headings on top, the chainage labels and the scale bar below.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "left",
+            "right",
+            "top",
+            "bottom"
+          ],
+          "properties": {
+            "left": {
+              "type": "number",
+              "minimum": 40
+            },
+            "right": {
+              "type": "number",
+              "minimum": 10
+            },
+            "top": {
+              "type": "number",
+              "minimum": 16
+            },
+            "bottom": {
+              "type": "number",
+              "minimum": 32
+            }
           }
         }
       }

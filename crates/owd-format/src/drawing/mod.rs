@@ -10,6 +10,7 @@
 pub mod check;
 mod furniture;
 mod gallery;
+mod long_section;
 pub mod plan;
 mod setting_out;
 pub mod style;
@@ -24,6 +25,7 @@ use std::collections::BTreeMap;
 
 pub use check::Finding;
 pub use gallery::GalleryParams;
+pub use long_section::{Exaggeration, LongSectionParams};
 pub use plan::Background;
 pub use setting_out::{SettingOutParams, Table as SettingOutTable, table as setting_out_table};
 pub use style::{Style, StyleError};
@@ -40,6 +42,8 @@ pub enum SheetKind {
     SettingOut,
     /// The plan sheets: an overview and strips along chainage.
     Plan,
+    /// The long section, with a vertical exaggeration (standard 1.2).
+    LongSection,
 }
 
 impl SheetKind {
@@ -48,6 +52,7 @@ impl SheetKind {
         SheetKind::TypicalSection,
         SheetKind::SettingOut,
         SheetKind::Plan,
+        SheetKind::LongSection,
     ];
 
     /// The kind code in the drawing number.
@@ -57,6 +62,7 @@ impl SheetKind {
             SheetKind::TypicalSection => "TS",
             SheetKind::SettingOut => "SO",
             SheetKind::Plan => "PL",
+            SheetKind::LongSection => "LS",
         }
     }
 
@@ -67,6 +73,7 @@ impl SheetKind {
             SheetKind::TypicalSection => "ts",
             SheetKind::SettingOut => "so",
             SheetKind::Plan => "pl",
+            SheetKind::LongSection => "ls",
         }
     }
 
@@ -236,6 +243,15 @@ pub fn sheets_with(
             SheetKind::Plan => {
                 let built = plan::build(session, &option_id, &walk, terrain, options, background)?;
                 let findings = check::plan(&built, &walk, session, &option_id, options);
+                if !findings.is_empty() {
+                    return Err(DrawError::Checks(findings));
+                }
+                out.extend(built);
+            }
+            SheetKind::LongSection => {
+                let built = long_section::build(session, &option_id, &walk, options)?;
+                let series = session.long_section(&option_id, &walk)?;
+                let findings = check::long_section(&built, &series);
                 if !findings.is_empty() {
                     return Err(DrawError::Checks(findings));
                 }
