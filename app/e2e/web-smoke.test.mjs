@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { remote } from "webdriverio";
 import { serve } from "./web-server.mjs";
+import { reportEngineHost } from "./report-engine-hosts.mjs";
 import { endpoints, searches, serveReach } from "./reach-server.mjs";
 import { compare } from "../../tools/web_parity_compare.mjs";
 
@@ -390,7 +391,7 @@ describe("OWD web smoke tests", () => {
     // www.opengis.net and www.google.com are the KML 2.2 namespace and its `gx` extension, written into
     // the QA overlay's KMZ (spec 0013): names of XML vocabularies, never fetched.
     const KNOWN = ["tiles.maps.eox.at", "cloudless.eox.at", "www.w3.org", "svelte.dev", "maplibre.org", "maplibre.invalid", "github.com", "wiki.openstreetmap.org", "json-schema.org", "tribby.com", "scripts.sil.org", "www.opengis.net", "www.google.com"];
-    const allowed = (h) => [...PUBLIC_HOSTS, ...KNOWN].some((k) => h === k || h.startsWith(k));
+    const allowed = (h) => [...PUBLIC_HOSTS, ...KNOWN].some((k) => h === k || h.startsWith(k)) || reportEngineHost(h);
     const unknown = [...hosts].filter((h) => !allowed(h));
     assert.deepEqual(unknown, [], `hosts in the web bundle that are neither a public source nor known: ${unknown.join(" ")}`);
     for (const h of ["overpass-api.de", "earth-search.aws.element84.com", "zenodo.org", "soto.podaac.earthdatacloud.nasa.gov"]) assert.ok(hosts.has(h), `the bundle reads ${h}`);

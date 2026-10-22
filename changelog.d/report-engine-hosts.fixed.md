@@ -1,0 +1,1 @@
+- **Web smoke test: the report engine's hosts.** The bundle's host scan now knows the hosts the report engine names in its bundled data (citation styles, syntax definitions, XML vocabularies), kept as SHA-256 hashes because some are personal sites. They are text: the engine opens no network. A new host still fails the scan.
