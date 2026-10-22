@@ -5,6 +5,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **The Sassandra worked example (spec 0012, T12).** `examples/sassandra/run.sh` makes a study of the Sassandra,
+  Côte d'Ivoire, from the sea to the Soubré dam, from a river name and two points, with open data fetched at run
+  time. It gives the plan-only answer, then the full answer with an assumed 3 m depth, on both plan lines. The docs
+  page "Worked example: the Sassandra" gives the result, its labels and notices, the provisional defaults, and the
+  limits: no class fits as it is, the mask needs a 30 % threshold here, and the plan line for the radius is still
+  to be chosen.
 - **Width-method plugins load from the `owd.width_methods` entry-point group only.** The old group
   `channel_designer.width_methods`, read for one release after the rename, is no longer read. **Plugin authors:** declare
   your method under `[project.entry-points."owd.width_methods"]` in your package's `pyproject.toml`.

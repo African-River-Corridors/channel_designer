@@ -7,7 +7,7 @@
 #   bash examples/sassandra/run.sh            # writes ./sassandra-study/
 #   OWD=/path/to/owd bash examples/sassandra/run.sh
 #
-# Needs the network. Takes about 15 minutes, most of it the route (Overpass) and the edge fit.
+# Needs the network. Takes about 20 minutes, most of it the route (Overpass) and the edge fit.
 set -euo pipefail
 OWD="${OWD:-owd}"
 OUT="${1:-sassandra-study}"
@@ -35,5 +35,12 @@ DOC=sassandra.owd
 # 5. The full answer: width, radius and depth, with the spec 0007 verdict per class.
 "$OWD" fits "$DOC" --json > fits-full.json
 "$OWD" fits "$DOC" --show > fits-full.txt
+
+# 6. The same full answer with the river's radius read on each class's fairway fit (ADR 0007) instead of
+#    the river centreline, an opt-in: the centreline drawn from the banks wiggles at the scale of its
+#    stations, and every wiggle reads as a tight bend. Which is the default is still to be chosen.
+cp "$DOC" sassandra-fairway.owd
+"$OWD" fits sassandra-fairway.owd --plan-line fairway --json > fits-full-fairway.json
+"$OWD" fits sassandra-fairway.owd --show > fits-full-fairway.txt
 
 echo "wrote $OUT/: $DOC and the answers (fits-plan-only.*, fits-full.*)"
