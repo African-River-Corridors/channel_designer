@@ -44,15 +44,16 @@ fi
 "$OWD" fetch-dem "$DOC" --json > dem.json
 "$OWD" water-level "$DOC" --json > water-level.json
 
-# 3. The plan-only answer: width and radius, no depth.
+# 3. The plan-only answer: width and radius, no depth, read on the reference line (the default plan line,
+#    ADR 0014), which this step makes from the banks and stores in the study.
 "$OWD" fits "$DOC" --json > fits-plan-only.json
 "$OWD" fits "$DOC" --show > fits-plan-only.txt
 
 # 4. The depth people who use the river give: 3 m at low water in the dry season, assumed, not measured.
 "$OWD" bed "$DOC" --depth 3 --season dry --json > bed.json
 
-# 5. The full answer: width, radius and depth, with the spec 0007 verdict per class. The river's radius is
-#    read on each class's fairway fit (ADR 0007), the default plan line (ADR 0013).
+# 5. The full answer: width, radius and depth, with the spec 0007 verdict per class, all read along the
+#    reference line.
 "$OWD" fits "$DOC" --json > fits-full.json
 "$OWD" fits "$DOC" --show > fits-full.txt
 

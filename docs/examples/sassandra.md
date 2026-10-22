@@ -27,12 +27,12 @@ bundled. The script:
    "Limits"), so it exits 1. The study is written all the same, and the script goes on.
 2. `owd fetch-dem` gets the Copernicus GLO-30 DEM. `owd water-level` sets the low-water level from SWORD and
    SWOT, with the DEM where they give none.
-3. `owd fits` gives the plan-only answer: width and radius, no depth. It reads the radius on the
-   centreline, and says so: the fairway fit runs only for the full answer.
+3. `owd fits` gives the plan-only answer: width and radius, no depth. It reads them on the reference line
+   (ADR 0014): one smooth line in the water, made from the banks, that belongs to no vessel.
 4. `owd bed --depth 3 --season dry` gives the one depth people who use the river know: 3 m at low water in the
    dry season.
-5. `owd fits` again gives the full answer: width, radius and depth, with a verdict for each vessel class. It
-   reads the river's radius on each class's fairway fit, the default plan line (ADR 0013).
+5. `owd fits` again gives the full answer: width, radius and depth, with a verdict for each vessel class,
+   all read along the reference line.
 6. The same full answer, reading the radius on the river centreline instead (`--plan-line centreline`), to
    compare.
 7. `owd report --kind all --format all` writes the four reports (spec 0014) as PDF, HTML and Word into
@@ -85,20 +85,26 @@ Under PIANC WG 141 quality B, **no vessel class fits the Sassandra as it is.** E
 is one depth stretch (works: dredge). Where it is 3 m or less, the few depth stretches left are single
 stations (see "Limits").
 
-### Two plan lines
+### Three plan lines
 
-The radius columns differ by plan line:
-- **On each class's fairway fit (the default):** 3 to 25 radius stretches per class.
+The table above is from the run at `7609e40`, before the reference line became the default (ADR 0014). It
+has no reference-line column yet; the next run of `run.sh` adds the default's numbers. Its radius columns
+differ by plan line:
+- **On each class's fairway fit (`--plan-line fairway`, the default in 0.3.0):** 3 to 25 radius stretches per class.
 - **On the river centreline (`--plan-line centreline`):** 572 to 837.
 
-The centreline is drawn from the bank lines, and it wiggles at the scale of its 5 m stations. Each wiggle
-reads as a tight bend, so most of those hundreds are not the river. The fairway fit (ADR 0007) is the smoothest
-line a channel of that class can take in the water. The radius stretches left on it are mostly where the
-water itself forces a bend, but some may be where the fit is infeasible. The width and depth stretches are
-the same on both lines.
+On an earlier run (the spec 0012 bank seed), the 12 classes together had about 1,400 radius stretches on the
+reference line, 3,300 on the fairway fits and 12,000 on the centreline.
 
-On 2026-10-22 the maintainer compared the two on the whole river and chose the fairway as the default
-(ADR 0013). The answer says which line it read: `Plan line: fairway` in the table, `plan_line` in the JSON.
+The centreline is drawn from the bank lines, and it wiggles at the scale of its 5 m stations. Each wiggle
+reads as a tight bend, so most of its radius stretches are not the river. The fairway fit (ADR 0007) is
+the smoothest line a channel of one class can take in the water. The reference line (spec 0016) is one
+smooth line in the water for every vessel: the smoothed mid-line of the banks, refitted in the water. Width
+and depth are read along the plan line too. The depth can read shallower on the reference line than on the
+centreline for the classes that need less than the 3 m assumed, where the bed model is deepest on the
+centreline (see "Limits").
+
+The answer says which line it read: `Plan line: reference` in the table, `plan_line` in the JSON.
 
 ## Labels and notices
 
@@ -146,8 +152,9 @@ These are not yet calibrated against a surveyed reach. Each is named so in the s
   stretch for them. At a few stations the edge-fitted centreline leaves the water the bed model covers. There
   the DEM surface (which sits above the water) is read instead, and the depth found there is negative.
   These show as single-station depth stretches.
-- **The plan line for the radius** is each class's fairway fit (above). The plan-only answer reads the
-  centreline, so its radius stretches are mostly the centreline's wiggle.
+- **The plan line** is the reference line (above), in the plan-only answer and the full one. The bed
+  model's parabola is deepest on the centreline, not on the reference line, so the depth read on the
+  reference line is shallower where the two lines part.
 - **Width:** the width stretches use the banks as found, with the limits above.
 - **Air draught, rapids and rock** are out of scope (#12, #13). The Soubré dam is the end of the reach.
 
