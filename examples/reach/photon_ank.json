@@ -1,0 +1,293 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "R",
+    "osm_id": 1227018,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Ankara River",
+    "state": "Ankara",
+    "country": "Turkey",
+    "countrycode": "TR",
+    "extent": [
+     31.8867541,
+     40.0031256,
+     32.9305309,
+     39.7676971
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     32.4069391,
+     39.843574
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "R",
+    "osm_id": 3328713,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Ankobra River",
+    "state": "Western Region",
+    "country": "Ghana",
+    "countrycode": "GH",
+    "extent": [
+     -2.2745332,
+     5.7297061,
+     -2.1050123,
+     4.8983929
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -2.1533567,
+     5.3025015
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "W",
+    "osm_id": 1320715130,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Ankona",
+    "district": "Manakanda",
+    "city": "Ankerana",
+    "county": "Ambohimahasoa",
+    "state": "Haute Matsiatra",
+    "country": "Madagascar",
+    "countrycode": "MG",
+    "extent": [
+     47.1529168,
+     -21.1029155,
+     47.154876,
+     -21.1092341
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     47.1541143,
+     -21.105846
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "W",
+    "osm_id": 1319230641,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Ankona",
+    "city": "Sahave",
+    "county": "Ambohimahasoa",
+    "state": "Haute Matsiatra",
+    "country": "Madagascar",
+    "countrycode": "MG",
+    "extent": [
+     47.0918716,
+     -21.0639368,
+     47.1428279,
+     -21.1038673
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     47.1131167,
+     -21.0831756
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "W",
+    "osm_id": 870729348,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Ankaibe",
+    "district": "Amponaomby",
+    "city": "Ambodimanga I",
+    "county": "Andapa",
+    "state": "Sava",
+    "country": "Madagascar",
+    "countrycode": "MG",
+    "extent": [
+     49.5233309,
+     -14.7989231,
+     49.5390681,
+     -14.8166555
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     49.5322482,
+     -14.8053099
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "W",
+    "osm_id": 233589222,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Ankofa",
+    "city": "Andranomadio",
+    "county": "Bealanana",
+    "state": "Sofia Region",
+    "country": "Madagascar",
+    "countrycode": "MG",
+    "extent": [
+     49.0067992,
+     -14.7562369,
+     49.0257213,
+     -14.816608
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     49.0130616,
+     -14.7827535
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "W",
+    "osm_id": 969850681,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Ankarongana",
+    "city": "Anony",
+    "county": "Amparafaravola",
+    "state": "Alaotra-Mangoro",
+    "country": "Madagascar",
+    "countrycode": "MG",
+    "extent": [
+     48.5523397,
+     -17.233603,
+     48.5601121,
+     -17.243659
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     48.5565588,
+     -17.2378537
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "W",
+    "osm_id": 429512961,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Ankaramy",
+    "city": "Ankaramy",
+    "county": "Analalava",
+    "state": "Sofia Region",
+    "country": "Madagascar",
+    "countrycode": "MG",
+    "extent": [
+     48.1775295,
+     -13.9853169,
+     48.177932,
+     -13.9859196
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     48.1777307,
+     -13.9856183
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "W",
+    "osm_id": 178239908,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Ankaibe",
+    "city": "Ambodimanga I",
+    "county": "Andapa",
+    "state": "Sava",
+    "country": "Madagascar",
+    "countrycode": "MG",
+    "extent": [
+     49.5685477,
+     -14.6266612,
+     49.6492425,
+     -14.7340083
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     49.6149761,
+     -14.6916144
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "osm_type": "W",
+    "osm_id": 1230204402,
+    "osm_key": "waterway",
+    "osm_value": "river",
+    "type": "other",
+    "name": "Ankwill Creek",
+    "city": "Area C (Stuart Lake/Omineca Valley)",
+    "county": "Bulkley-Nechako",
+    "state": "British Columbia",
+    "country": "Canada",
+    "countrycode": "CA",
+    "extent": [
+     -126.1937342,
+     55.6576424,
+     -126.1905421,
+     55.6574316
+    ]
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -126.1921601,
+     55.6575204
+    ]
+   }
+  }
+ ]
+}

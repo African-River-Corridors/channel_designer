@@ -63,6 +63,14 @@ const REGISTRY: &[Source] = &[
         browser_readable: true,
     },
     Source {
+        id: "osm-photon",
+        name: "OpenStreetMap river search (Photon)",
+        url_pattern: "https://photon.komoot.io/api/?q={text}",
+        licence: "ODbL 1.0",
+        notice: "\u{a9} OpenStreetMap contributors",
+        browser_readable: true,
+    },
+    Source {
         id: "jrc-gsw",
         name: "JRC Global Surface Water, occurrence",
         url_pattern: "https://storage.googleapis.com/global-surface-water/downloads2021/occurrence/occurrence_{lon}_{lat}v1_4_2021.tif",
@@ -160,9 +168,10 @@ mod tests {
                 .iter()
                 .all(|s| !s.id.to_lowercase().contains("hydro") || s.id == "swot-hydrocron")
         );
-        // Readable from a page: Overpass, Earth Search, Hydrocron, SWORD on Zenodo. Not: DEM, JRC.
+        // Readable from a page: Overpass, Photon, Earth Search, Hydrocron, SWORD on Zenodo. Not: DEM, JRC.
         for (id, cors) in [
             ("osm-overpass", true),
+            ("osm-photon", true),
             ("sentinel2-l2a", true),
             ("swot-hydrocron", true),
             ("sword", true),

@@ -1708,6 +1708,67 @@ pub fn reach(flags: ReachFlags) -> Result {
     reach_with(flags, &http, jrc)
 }
 
+/// `owd reach --search`: the rivers and canals for a text, one per line, best first.
+pub fn reach_search(
+    text: &str,
+    country: Option<&str>,
+    endpoint: Option<&str>,
+    json: bool,
+) -> Result {
+    reach_search_with(
+        text,
+        country,
+        endpoint,
+        json,
+        &crate::reach_fetch::HttpFetch,
+    )
+}
+
+/// `reach_search` with the fetcher given, so a test can serve a recorded answer.
+pub fn reach_search_with(
+    text: &str,
+    country: Option<&str>,
+    endpoint: Option<&str>,
+    json: bool,
+    fetch: &dyn owd_reach::Fetch,
+) -> Result {
+    use owd_reach::search::{MIN_CHARS, PHOTON_ENDPOINT, RiverSearch};
+    if text.trim().chars().count() < MIN_CHARS {
+        return Err(input_error(format!(
+            "give at least {MIN_CHARS} letters of the river's name"
+        )));
+    }
+    let s = RiverSearch::with_endpoint(fetch, endpoint.unwrap_or(PHOTON_ENDPOINT));
+    let hits = s
+        .search(text, country)
+        .map_err(|e| input_error(e.to_string()))?;
+    let mut human = String::new();
+    if hits.is_empty() {
+        human.push_str(&format!("no river or canal found for \"{}\"", text.trim()));
+    }
+    for h in &hits {
+        human.push_str(&format!("{:<18} {}\n", h.osm.to_string(), h.label()));
+    }
+    human.push_str("\n\u{a9} OpenStreetMap contributors (ODbL); search by Photon");
+    let list: Vec<Value> = hits
+        .iter()
+        .map(|h| {
+            json!({
+                "osm_id": h.osm.to_string(), "label": h.label(), "name": h.name, "kind": h.kind,
+                "region": h.region, "country": h.country, "country_code": h.country_code,
+                "also": h.also.iter().map(ToString::to_string).collect::<Vec<_>>(), "bbox": h.bbox,
+            })
+        })
+        .collect();
+    say(
+        false,
+        json,
+        human.trim_end(),
+        json!({"ok": true, "source": "osm-photon", "rivers": list}),
+    );
+    Ok(())
+}
+
 /// `reach` with the fetchers given (Overpass, and the JRC tiles), so a test can serve recorded answers.
 pub fn reach_with(
     flags: ReachFlags,

@@ -20,8 +20,10 @@ would the next size up need?* OWD cannot answer it.
 
 A front door: **Start from a river.**
 
-1. **Pick the reach.** Search a river by name and click a start and an end, or trace it roughly on the
-   map. Both snap to the OSM waterway graph. The route may cross from one river to another and follow
+1. **Pick the reach.** Type a few letters of a river's name and choose it from a list ("river —
+   region, country"). OWD draws the whole river, with Start at its mouth and End at its upstream end.
+   Drag Start or End, or click on the map, to cut a reach; or trace it roughly on the map. All snap to
+   the OSM waterway graph. The route may cross from one river to another and follow
    a split.
 2. **OWD makes every input,** each marked as a default with its source:
    - bank lines, river polygon and centreline from the JRC water mask, moved onto a dry-season
@@ -45,8 +47,9 @@ It runs on the CLI, the desktop app and the web app. There is no server.
 An engineer wants to screen the Sassandra in Côte d'Ivoire, from the sea at Sassandra town upstream
 to the Soubré dam, and see what barge could use it today. They have no data of their own.
 
-1. As an engineer, I want to type "Sassandra" and see the river drawn on the map, so that I know OWD
-   found the right one.
+1. As an engineer, I want to type "Sass", choose "Sassandra — region, Côte d'Ivoire" from a list and see
+   the whole river drawn on the map with its length, so that I know OWD found the right one and not
+   another river with the same name.
 2. As an engineer, I want to click a start at the river mouth and an end below the dam, and see the
    route between them along the river with its length, so that I know which water I am screening.
 3. As an engineer, I want OWD to make the bank lines, river polygon and centreline for that route,
@@ -132,8 +135,10 @@ An engineer wants a route that leaves one river, follows a creek and joins anoth
 - **`owd-reach` (new crate, ADR 0010).** Pure Rust; builds native and wasm. Network access is the
   `Fetch` trait. It holds:
   - **sources:** a registry of sources (URL pattern, licence, required notice);
-  - **route:** OSM waterway graph for the reach's bounding box (Overpass), name search, a shortest
-    route through start, via points and end, and trace matching;
+  - **search:** the river list as the user types (see "River search" below);
+  - **route:** OSM waterway graph for the reach's bounding box (Overpass), a shortest route through
+    start, via points and end, trace matching, and the whole river of a chosen OSM relation or way,
+    from its mouth to its upstream end;
   - **banks:** JRC occurrence mask by window, threshold, the water polygon of the routed channel,
     bank lines and centreline; the low-confidence width flag;
   - **edge fit:** a dry-season, low-cloud Sentinel-2 L2A scene from the Earth Search STAC, a water
@@ -161,6 +166,23 @@ An engineer wants a route that leaves one river, follows a creek and joins anoth
   profile form, the class table with "Use this vessel", and a bank-line editor (redraw a stretch, and
   move, add and delete vertices). The app computes nothing: every field comes from the session.
 
+### River search (T13 to T15)
+
+- One search box. From 3 letters, and 350 ms after the last key, a list shows the rivers and canals
+  whose name starts with or matches the text, one entry per OSM relation or way: "River name —
+  region, country", with the length once known. An optional country filter (two-letter code).
+- The list comes from **Photon** (photon.komoot.io, OSM data, built for search as you type), with our
+  User-Agent and answers cached by request. The Nominatim usage policy forbids type-ahead on its
+  public API, so Nominatim is not used for the list. Only `owd_reach::search` knows the provider.
+- Choosing an entry reads its waterways from Overpass and routes the main stem. OSM draws a waterway
+  in the direction of flow: the **mouth** is the downstream end, and the **upstream end** is the
+  source reached by the longest route from the mouth. Start is set to the mouth and End to the
+  upstream end; the user drags either, or clicks, to cut a reach. Via points work as before.
+- The document records the chosen OSM id with the reach, and the search source with its date in the
+  provenance, beside Overpass.
+- CLI: `owd reach --search TEXT [--country CC]` lists the entries with their OSM ids; `owd reach FILE
+  --osm-id relation/N` makes the study from the whole river, and `--start`, `--end` and `--via` cut it.
+
 ### Defaults (provisional until calibrated against a surveyed reach)
 
 | Default | Value |
@@ -175,7 +197,7 @@ An engineer wants a route that leaves one river, follows a creek and joins anoth
 ### Licences and notices
 
 Every notice is shown on the map and carried in every export while its input is used: "© OpenStreetMap
-contributors" for the route; the Copernicus DEM notice and disclaimer; "Contains modified Copernicus
+contributors" for the route and the river search; the Copernicus DEM notice and disclaimer; "Contains modified Copernicus
 Sentinel data [year]"; "Source: EC JRC/Google" and Pekel et al. 2016; SWORD (CC BY 4.0) and SWOT
 (NASA). OSM geometry is never stored in the document: the route is kept as way ids, and the bank
 lines come from the water mask and imagery.
@@ -227,6 +249,12 @@ Each is a sub-issue of the spec issue (#225). Blocking uses native links.
 11. **T11 (#236): app: bank-line editor.** Blocked by T1.
 12. **T12 (#237): the Sassandra worked example,** end to end, plan only and full. Its PR closes #1. Blocked by T4,
     T6, T9 and T10.
+13. **T13 (#306): river search with a list to choose from,** `owd_reach::search` (Photon) and `owd reach
+    --search`. Added after the maintainer's test of T10.
+14. **T14 (#307): the whole river from a search hit,** mouth and upstream end found, `owd reach --osm-id`.
+    Blocked by T13.
+15. **T15 (#308): app: the search dropdown, the whole-river route, and dragging Start and End,** desktop
+    and web. Blocked by T13 and T14.
 
 ## Out of scope
 
@@ -234,6 +262,7 @@ Each is a sub-issue of the spec issue (#225). Blocking uses native links.
 - A vessel that is not an `ovcd-core` class (a free beam, length and draught).
 - Calibrating the defaults against a surveyed reach. It is planned; until then they are marked
   provisional.
-- HydroSHEDS, Nominatim, and any imagery with non-open terms.
+- HydroSHEDS, and any imagery with non-open terms.
+- Nominatim for the river list: its policy forbids type-ahead (see "River search").
 - A server, accounts or saved studies online.
 - Survey import formats beyond what OWD reads today.

@@ -264,10 +264,23 @@ enum Command {
     },
     /// Start a study from a river reach (spec 0012): search a river by name and give a start and an
     /// end (and via points), or give a rough trace. The route is found on the OSM waterway graph and
-    /// kept as way ids. Writes a new document. Uses the network (Overpass).
+    /// kept as way ids. Writes a new document. Uses the network (Overpass). With --search, lists the
+    /// rivers whose name starts with or matches a text, and writes nothing.
     Reach {
-        /// The `.owd` file to create. `-` is stdout.
-        file: String,
+        /// The `.owd` file to create. `-` is stdout. Not needed with --search.
+        #[arg(required_unless_present = "search")]
+        file: Option<String>,
+        /// List the rivers and canals whose name starts with or matches this text (at least 3
+        /// letters), each with its region, country and OSM id. Writes no file. Uses the network
+        /// (Photon, OSM data).
+        #[arg(long, value_name = "TEXT", conflicts_with_all = ["start", "trace", "banks"])]
+        search: Option<String>,
+        /// With --search: only rivers in this country, as a two-letter code (for example GH).
+        #[arg(long, value_name = "CC", requires = "search")]
+        country: Option<String>,
+        /// With --search: another Photon server (default: photon.komoot.io).
+        #[arg(long, value_name = "URL", requires = "search")]
+        search_endpoint: Option<String>,
         /// The river's name, searched in OSM. The route may leave this river.
         #[arg(long)]
         river: Option<String>,
@@ -839,6 +852,13 @@ pub fn main() -> ExitCode {
             json,
         } => commands::fetch_dem(&doc, margin, mirror.as_deref(), bbox.as_deref(), json),
         Command::Reach {
+            search: Some(text),
+            country,
+            search_endpoint,
+            json,
+            ..
+        } => commands::reach_search(&text, country.as_deref(), search_endpoint.as_deref(), json),
+        Command::Reach {
             file,
             river,
             start,
@@ -855,6 +875,7 @@ pub fn main() -> ExitCode {
             overpass,
             date,
             json,
+            ..
         } => commands::reach(commands::ReachFlags {
             banks,
             jrc_tile,
@@ -862,7 +883,7 @@ pub fn main() -> ExitCode {
             edge_fit,
             max_cloud,
             stac,
-            file,
+            file: file.unwrap_or_default(),
             river,
             start,
             end,
