@@ -49,6 +49,14 @@ pip install "open-waterway-designer @ git+https://github.com/African-River-Corri
 Your scripts do not change. The 0.2.0 functions and classes have the names, arguments and results of
 0.1.x; see [CHANGELOG.md](CHANGELOG.md) for the few things that moved, and what is deprecated.
 
+### Channel rules
+
+`owd size` sizes the channel to the Rule Sets you select (`--rule-set pianc-wg141 --set-input se_quality=B`); with
+two sets the strictest Rule governs. `owd waterway` marks canal and river reaches, so a Rule can apply on part of
+the river. After the volumes stage each design line option has a verdict and its constraint stretches
+(`owd export --csv --stretches`), and `owd trace` prints the full Rule Trace. Designs are document format 3: a file
+from an earlier OWD is refused and must be rebuilt. See [docs/rules/channel-rules.md](docs/rules/channel-rules.md).
+
 ### Drawings
 
 After the volumes stage, `owd draw design.owd --out sheets/` writes, for each sheet, the drawing document, the
