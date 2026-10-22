@@ -40,7 +40,8 @@ not (
     (binary_id(owd-format::sections) & test(=a_point_picked_on_the_map_gives_the_nearest_station)) |
     (binary_id(owd-format::volumes) & test(=volumes_needs_a_water_level_and_a_fresh_alignment)) |
     (binary_id(owd-format::volumes) & test(=volumes_refuses_without_a_dem_and_names_the_dem_it_cannot_read)) |
-    (binary_id(owd-format::alignment) & test(=two_methods_give_two_options_and_a_rerun_replaces_only_its_own))
+    (binary_id(owd-format::alignment) & test(=two_methods_give_two_options_and_a_rerun_replaces_only_its_own)) |
+    (binary_id(owd-reach::bankcheck) & test(=the_recorded_whole_river_gives_a_centreline_about_as_long_as_its_seed))
 )
 '''
 
