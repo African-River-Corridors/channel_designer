@@ -42,6 +42,8 @@ function answer(url, origin) {
   }
   // A busy Overpass server, for the mirror fallback (#319).
   if (p === "/down/api/interpreter") return { status: 502, body: Buffer.from("busy"), type: "text/plain" };
+  // A JRC occurrence tile, by its own name, for the desktop's download into a study's folder (#321).
+  if (p === "/jrc/occurrence_10W_10Nv1_4_2021.tif") return { body: read("jrc_occurrence_sassandra_estuary.tif"), type: "image/tiff" };
   if (p === "/nominatim/search") {
     searches.push(`nominatim:${url.searchParams.get("q") ?? ""}`);
     return { body: read("nominatim_ankobra.json"), type: "application/json" };

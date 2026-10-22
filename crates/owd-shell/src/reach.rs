@@ -72,6 +72,8 @@ pub struct ReachMemo {
     banks: Option<MaskBanks>,
     /// JRC tiles the user gave, by file name.
     tiles: Vec<(String, Arc<Vec<u8>>)>,
+    /// JRC tiles downloaded into the study's folder, by file name (#321): read from there.
+    local: Vec<String>,
 }
 
 /// One step after the route.
@@ -216,6 +218,15 @@ impl ReachJob {
         }
         Ok(self)
     }
+}
+
+/// The text that goes beside downloaded JRC tiles: the source, its notice and licence (#321).
+pub fn jrc_notice() -> String {
+    let s = owd_reach::source("jrc-gsw").expect("jrc-gsw is in the registry");
+    format!(
+        "{}\n\n{}\nLicence: {}\nFrom: {}\n",
+        s.name, s.notice, s.licence, s.url_pattern
+    )
 }
 
 /// One river search hit as the app lists it.
@@ -457,6 +468,7 @@ impl AppState {
             river,
             banks: None,
             tiles,
+            local: Vec::new(),
         };
         next.set_dirty();
         *self = next;
@@ -464,6 +476,32 @@ impl AppState {
     }
 
     /// Give a JRC occurrence tile the user downloaded (the web has no other way to read it).
+    /// The JRC tiles the reach needs that are neither given nor in the study's folder, as
+    /// `(file name, URL)`: what the desktop downloads before it makes the banks (#321).
+    pub fn reach_jrc_missing(&self) -> Vec<(String, String)> {
+        let memo = self.reach_memo();
+        let Some(plan) = &memo.plan else {
+            return Vec::new();
+        };
+        window_bbox(&plan.route.line(), &BankParams::default())
+            .map(owd_reach::jrc::tiles_for)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|t| (t.file_name(), t.url()))
+            .filter(|(n, _)| !memo.local.contains(n) && !memo.tiles.iter().any(|(g, _)| g == n))
+            .collect()
+    }
+
+    /// Note JRC tiles that are now in the study's folder.
+    pub fn reach_mark_local(&mut self, names: &[String]) {
+        let memo = self.reach_memo_mut();
+        for n in names {
+            if !memo.local.contains(n) {
+                memo.local.push(n.clone());
+            }
+        }
+    }
+
     pub fn reach_add_tile(&mut self, name: &str, bytes: Vec<u8>) -> Result<(), String> {
         if !name.starts_with("occurrence_") || !name.ends_with(".tif") {
             return Err(format!(
@@ -553,7 +591,11 @@ impl AppState {
             .map(owd_reach::jrc::tiles_for)
             .unwrap_or_default()
             .into_iter()
-            .map(|t| json!({"name": t.file_name(), "url": t.url(), "given": given.contains(&t.file_name().as_str())}))
+            .map(|t| {
+                let n = t.file_name();
+                let local = memo.local.contains(&n);
+                json!({"name": n, "url": t.url(), "given": local || given.contains(&n.as_str()), "local": local})
+            })
             .collect();
         let dem: Vec<Value> = owd_reach::geo::bbox(&line)
             .map(|b| owd_reach::dem::download_list(b, 1000.0))

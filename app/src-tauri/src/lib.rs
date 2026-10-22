@@ -996,8 +996,67 @@ fn reach_add_tile(app: AppHandle, window: Window, state: State<Shared>) -> Reply
     finish(&window, &guard)
 }
 
+/// Download the JRC tiles the reach needs into `<study>/jrc/` (#321), with progress and Cancel, and
+/// the source's notice beside them. `None` for a study with no folder. A debug build reads the
+/// tiles from the folder or URL in `jrc-mirror.txt`.
+async fn fetch_jrc_tiles(
+    app: &AppHandle,
+    state: &State<'_, Shared>,
+) -> Result<Option<PathBuf>, String> {
+    use std::sync::atomic::Ordering;
+    let (dir, missing) = {
+        let guard = lock(state)?;
+        let Some(dir) = guard.path().and_then(Path::parent).map(|d| d.join("jrc")) else {
+            return Ok(None);
+        };
+        (dir, guard.reach_jrc_missing())
+    };
+    let mirror = test_answer("jrc-mirror.txt").flatten();
+    let turn = REACH_TURN.load(Ordering::SeqCst);
+    let ticker = app.clone();
+    let into = dir.clone();
+    let names = tauri::async_runtime::spawn_blocking(move || {
+        let report = progress_events(ticker);
+        let stop = || REACH_TURN.load(Ordering::SeqCst) != turn;
+        let n = missing.len();
+        let mut got = Vec::new();
+        for (i, (name, url)) in missing.iter().enumerate() {
+            let dest = into.join(name);
+            if !dest.is_file() {
+                let what = format!("downloading JRC tile {} of {n} ({name}):", i + 1);
+                match mirror.as_deref() {
+                    Some(m) if !m.contains("://") => {
+                        std::fs::create_dir_all(&into).map_err(|e| e.to_string())?;
+                        std::fs::copy(Path::new(m).join(name), &dest).map_err(|e| e.to_string())?;
+                    }
+                    Some(m) => {
+                        let from = format!("{}/{name}", m.trim_end_matches('/'));
+                        owd_cli::reach_fetch::download(&from, &dest, &what, &report, &stop)?;
+                    }
+                    None => {
+                        owd_cli::reach_fetch::download(url, &dest, &what, &report, &stop)?;
+                    }
+                }
+            }
+            got.push(name.clone());
+        }
+        if !got.is_empty() {
+            write_file(&into.join("NOTICE.txt"), &owd_shell::reach::jrc_notice())?;
+        }
+        Ok::<_, String>(got)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    if REACH_TURN.load(Ordering::SeqCst) != turn {
+        return Err("cancelled".into());
+    }
+    lock(state)?.reach_mark_local(&names);
+    Ok(Some(dir))
+}
+
 /// Run one step of the reach (`banks`, `edge_fit` or `level`) off the main thread, and keep its
-/// result unless Cancel came first.
+/// result unless Cancel came first. Before the banks, the JRC tiles are downloaded into the study's
+/// folder; every step reads them from there.
 #[tauri::command]
 async fn reach_step(
     app: AppHandle,
@@ -1007,10 +1066,26 @@ async fn reach_step(
     percentile: Option<f64>,
 ) -> Reply {
     let step = owd_shell::reach::ReachStep::of(&step, percentile)?;
+    let local = if step == owd_shell::reach::ReachStep::Banks {
+        fetch_jrc_tiles(&app, &state).await?
+    } else {
+        lock(&state)?
+            .path()
+            .and_then(Path::parent)
+            .map(|d| d.join("jrc"))
+    };
     let job = lock(&state)?.begin_reach(step)?;
     let at = reach_endpoints();
     let date = today();
-    let job = watched(&app, move |f| job.run(f, &at, &date)).await?;
+    let job = watched(&app, move |f| match local {
+        Some(dir) => job.run(
+            &owd_cli::reach_fetch::LocalFirst { dir, inner: f },
+            &at,
+            &date,
+        ),
+        None => job.run(f, &at, &date),
+    })
+    .await?;
     let mut guard = lock(&state)?;
     guard.keep_reach(job)?;
     autosave(&mut guard)?;
