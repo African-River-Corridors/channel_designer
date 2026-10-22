@@ -17,12 +17,55 @@ const USER_AGENT: &str = concat!(
 /// connections (#375).
 pub struct HttpFetch;
 
-/// The one HTTP agent of the process (#375). `ureq::get` makes a new agent for each call, so no
-/// connection was reused: each range read opened a new TCP and TLS connection, and on a long reach
-/// the closed ones used up the local ports (`os error 49`).
+/// The time limits of a native request (#372). A server that accepts the connection and never
+/// answers fails the request, so a caller can move on (the Overpass search to its next mirror).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Limits {
+    /// To resolve the host and open the connection.
+    pub connect: std::time::Duration,
+    /// From the request sent to the response head.
+    pub response: std::time::Duration,
+    /// For the whole body, from the response head on.
+    pub body: std::time::Duration,
+}
+
+/// The limits of every native request. Provisional, and long enough for the largest honest answer:
+/// the Overpass queries ask the server for at most 120 s (`[timeout:120]`), and a busy mirror
+/// queues before it starts, so the response head may take up to 300 s. A body may take 30 min: a
+/// whole JRC tile at 0.5 MB/s is under 15 min, and a Sentinel-2 window or an Overpass answer far
+/// less.
+pub const LIMITS: Limits = Limits {
+    connect: std::time::Duration::from_secs(30),
+    response: std::time::Duration::from_secs(300),
+    body: std::time::Duration::from_secs(1800),
+};
+
+/// An agent with `limits`.
+pub fn agent_with(limits: &Limits) -> ureq::Agent {
+    ureq::Agent::config_builder()
+        .timeout_resolve(Some(limits.connect))
+        .timeout_connect(Some(limits.connect))
+        .timeout_recv_response(Some(limits.response))
+        .timeout_recv_body(Some(limits.body))
+        .build()
+        .into()
+}
+
+/// The one HTTP agent of the process (#375), with [`LIMITS`] (#372). `ureq::get` makes a new agent
+/// for each call, so no connection was reused: each range read opened a new TCP and TLS
+/// connection, and on a long reach the closed ones used up the local ports (`os error 49`).
 pub fn agent() -> &'static ureq::Agent {
     static AGENT: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
-    AGENT.get_or_init(|| ureq::Agent::config_builder().build().into())
+    AGENT.get_or_init(|| agent_with(&LIMITS))
+}
+
+/// [`Fetch`] through a given agent. [`HttpFetch`] is this over [`agent`].
+pub struct AgentFetch<'a>(pub &'a ureq::Agent);
+
+/// The host of a URL, for messages.
+fn host_of(url: &str) -> &str {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    rest.split('/').next().unwrap_or(rest)
 }
 
 /// Progress on stderr (#320): every counted step, and the first request of each kind of work and
@@ -48,6 +91,12 @@ fn failed(url: &str, e: ureq::Error) -> FetchError {
     if matches!(e, ureq::Error::StatusCode(404 | 403)) {
         return FetchError::NotFound(url.to_string());
     }
+    if let ureq::Error::Timeout(t) = e {
+        return FetchError::Failed {
+            url: url.to_string(),
+            reason: format!("{} timed out ({t})", host_of(url)),
+        };
+    }
     FetchError::Failed {
         url: url.to_string(),
         reason: e.to_string(),
@@ -55,9 +104,15 @@ fn failed(url: &str, e: ureq::Error) -> FetchError {
 }
 
 fn read_failed(url: &str, e: impl std::fmt::Display) -> FetchError {
+    let reason = e.to_string();
+    let reason = if reason.contains("timeout") || reason.contains("timed out") {
+        format!("{} timed out ({reason})", host_of(url))
+    } else {
+        reason
+    };
     FetchError::Failed {
         url: url.to_string(),
-        reason: e.to_string(),
+        reason,
     }
 }
 
@@ -68,7 +123,18 @@ fn range_header(start: u64, len: u64) -> String {
 
 impl Fetch for HttpFetch {
     fn get(&self, url: &str) -> Result<Vec<u8>, FetchError> {
-        let mut resp = agent()
+        AgentFetch(agent()).get(url)
+    }
+
+    fn get_range(&self, url: &str, start: u64, len: u64) -> Result<Vec<u8>, FetchError> {
+        AgentFetch(agent()).get_range(url, start, len)
+    }
+}
+
+impl Fetch for AgentFetch<'_> {
+    fn get(&self, url: &str) -> Result<Vec<u8>, FetchError> {
+        let mut resp = self
+            .0
             .get(url)
             .header("User-Agent", USER_AGENT)
             .header("Accept", "*/*")
@@ -82,7 +148,8 @@ impl Fetch for HttpFetch {
     }
 
     fn get_range(&self, url: &str, start: u64, len: u64) -> Result<Vec<u8>, FetchError> {
-        let mut resp = agent()
+        let mut resp = self
+            .0
             .get(url)
             .header("User-Agent", USER_AGENT)
             .header("Range", range_header(start, len))
@@ -336,6 +403,98 @@ mod agent_tests {
         }
         let n = conns.load(Ordering::SeqCst);
         assert!(n <= 2, "50 reads made {n} connections");
+    }
+}
+
+#[cfg(test)]
+mod timeout_tests {
+    //! Label: property (a local server that accepts the connection and never answers, #372).
+    use super::*;
+    use std::io::{Read as _, Write as _};
+    use std::time::{Duration, Instant};
+
+    /// A server that accepts every connection, reads the request and never answers.
+    fn silent_server() -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let at = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let mut held = Vec::new();
+            for mut s in listener.incoming().flatten() {
+                let mut b = [0u8; 4096];
+                let _ = s.read(&mut b);
+                held.push(s);
+            }
+        });
+        format!("http://{at}/api/interpreter")
+    }
+
+    /// A server that answers every request with `body`.
+    fn answering_server(body: &'static [u8]) -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let at = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            for mut s in listener.incoming().flatten() {
+                let mut b = [0u8; 4096];
+                let _ = s.read(&mut b);
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = s.write_all(head.as_bytes());
+                let _ = s.write_all(body);
+            }
+        });
+        format!("http://{at}/api/interpreter")
+    }
+
+    fn short() -> ureq::Agent {
+        agent_with(&Limits {
+            connect: Duration::from_secs(1),
+            response: Duration::from_millis(500),
+            body: Duration::from_millis(500),
+        })
+    }
+
+    #[test]
+    fn a_server_that_never_answers_fails_within_the_limit_naming_the_host() {
+        let url = silent_server();
+        let a = short();
+        let t = Instant::now();
+        let e = AgentFetch(&a).get(&url).unwrap_err();
+        assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
+        let m = e.to_string();
+        let host = url.split('/').nth(2).unwrap();
+        assert!(m.contains(host) && m.contains("timed out"), "{m}");
+        assert!(matches!(e, FetchError::Failed { .. }));
+        let e = AgentFetch(&a).get_range(&url, 0, 10).unwrap_err();
+        assert!(e.to_string().contains("timed out"), "{e}");
+    }
+
+    #[test]
+    fn on_a_timeout_the_overpass_search_moves_to_the_next_server() {
+        let (hung, good) = (silent_server(), answering_server(br#"{"elements":[]}"#));
+        let a = short();
+        let f = AgentFetch(&a);
+        let ov = owd_reach::overpass::Overpass::with_endpoint(&f, &format!("{hung},{good}"));
+        assert_eq!(ov.search_rivers("Nowhere").unwrap(), vec![]);
+        let good_host = good.split('/').nth(2).unwrap();
+        assert_eq!(
+            ov.answered_by().as_deref().map(owd_reach::overpass::host),
+            Some(good_host)
+        );
+        assert!(
+            ov.notes().iter().any(|n| n.contains("timed out")),
+            "{:?}",
+            ov.notes()
+        );
+    }
+
+    #[test]
+    fn the_limits_leave_room_for_the_largest_honest_answer() {
+        // The Overpass queries ask the server for at most 120 s (`[timeout:120]`).
+        assert!(LIMITS.response >= Duration::from_secs(240));
+        assert!(LIMITS.connect >= Duration::from_secs(10));
+        assert!(LIMITS.body >= Duration::from_secs(900));
     }
 }
 
