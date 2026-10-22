@@ -7,11 +7,13 @@ use crate::fmt::md;
 use owd_format::drawing::{self, DrawOptions, SheetKind};
 use serde_json::{Value, json};
 
-/// One sheet, ready to place: its number, its SVG and its drawing document.
+/// One sheet, ready to place: its number, its SVG, its drawing document and its extra files (the
+/// setting-out CSV).
 pub struct SheetFigure {
     pub number: String,
     pub svg: String,
     pub document: Value,
+    pub extra: Vec<(String, Vec<u8>)>,
 }
 
 /// The sheets of `kind` for the report's option, or why there are none.
@@ -33,6 +35,7 @@ pub fn sheets(ctx: &Context, kind: SheetKind) -> Result<Vec<SheetFigure>, String
                 number: out.number,
                 svg: out.svg,
                 document: s.document.clone(),
+                extra: out.extra,
             })
         })
         .collect()
