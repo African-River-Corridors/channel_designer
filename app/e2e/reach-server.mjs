@@ -1,6 +1,6 @@
 // Recorded answers for "Start from a river" (spec 0012, T10), so no e2e test touches the network: the
-// Overpass network of a river arm of the lower Sassandra (synthetic), the Earth Search answer and the
-// Sentinel-2 band windows of 23 December 2023, the SWORD subset on a Zenodo-like record, and the
+// Overpass network of a river arm of the lower Sassandra (synthetic), the Earth Search answer, each scene by
+// its id, and the Sentinel-2 band windows of 23 December 2023 (blue B02 too, for the QA overlay), the SWORD subset on a Zenodo-like record, and the
 // Hydrocron series; and, for the river search (T13 to T15), Photon's answer for "Ank" and the Ankobra
 // relation from Overpass, both recorded on 2026-10-22 (© OpenStreetMap contributors). Byte ranges are honoured and every answer allows CORS, as the real hosts do.
 // `endpoints(origin)` gives what to point the app at.
@@ -11,6 +11,10 @@ import path from "node:path";
 const EX = path.resolve(import.meta.dirname, "../../examples/reach");
 const S2 = "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/29/N/RF/2023/12/S2B_29NRF_20231223_0_L2A";
 const read = (name) => fs.readFileSync(path.join(EX, name));
+// The recorded scene is served from here; every other scene in the answer points here too and is not
+// found, so no test reads a real scene (the seed of spec 0013 ranks every scene it is offered).
+const stac = (origin) =>
+  read("stac_search_sassandra.json").toString().replaceAll(S2, `${origin}/s2`).replaceAll("https://sentinel-cogs.s3.us-west-2.amazonaws.com/", `${origin}/cogs/`);
 
 export function endpoints(origin) {
   return {
@@ -42,8 +46,14 @@ function answer(url, origin) {
   }
   if (p === "/overpass/api/interpreter" && (url.searchParams.get("data") ?? "").includes("rel(3328713)")) return { body: read("overpass_ankobra.json"), type: "application/json" };
   if (p === "/overpass/api/interpreter") return { body: read("synthetic/sassandra_arm.json"), type: "application/json" };
-  if (p === "/stac/search") return { body: Buffer.from(read("stac_search_sassandra.json").toString().replaceAll(S2, `${origin}/s2`)), type: "application/json" };
-  const band = p.match(/^\/s2\/(B03|B04|B08|B11|SCL)\.tif$/);
+  if (p === "/stac/search") return { body: Buffer.from(stac(origin)), type: "application/json" };
+  // One scene by its id, as the QA overlay asks for it (spec 0013).
+  const item = p.match(/^\/stac\/collections\/sentinel-2-l2a\/items\/([^/]+)$/);
+  if (item) {
+    const f = JSON.parse(stac(origin)).features.find((x) => x.id === item[1]);
+    return f ? { body: Buffer.from(JSON.stringify(f)), type: "application/json" } : { status: 404, body: Buffer.from("not found"), type: "text/plain" };
+  }
+  const band = p.match(/^\/s2\/(B02|B03|B04|B08|B11|SCL)\.tif$/);
   if (band) return { body: read(`s2_sassandra_${band[1]}.tif`), type: "image/tiff" };
   if (p === "/zenodo/record") {
     const size = fs.statSync(path.join(EX, "sword_v17c_shp_subset.zip")).size;

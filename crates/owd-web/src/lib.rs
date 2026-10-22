@@ -431,6 +431,29 @@ impl Session {
             .collect())
     }
 
+    /// The QA overlay of the study's banks (spec 0013): `[[name, bytes], ...]` for the PNG and the
+    /// KMZ, the scenes read through `fetch`, as the desktop's export writes them.
+    pub fn qa_overlay(
+        &self,
+        from_km: Option<f64>,
+        to_km: Option<f64>,
+        at: &str,
+        fetch: js_sys::Function,
+    ) -> Js<js_sys::Array> {
+        let at = ok(endpoints(at))?;
+        let job = ok(self.state.qa_job())?;
+        let files = ok(job.files(&JsFetch(fetch), &at, from_km, to_km))?;
+        Ok(files
+            .into_iter()
+            .map(|(name, bytes)| {
+                let pair = js_sys::Array::new();
+                pair.push(&JsValue::from_str(&name));
+                pair.push(&js_sys::Uint8Array::from(bytes.as_slice()));
+                JsValue::from(pair)
+            })
+            .collect())
+    }
+
     pub fn long_section(&mut self, option: &str) -> Js<String> {
         let w = self.walked(option)?;
         Ok(ok(w

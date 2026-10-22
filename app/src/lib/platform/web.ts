@@ -268,6 +268,12 @@ export async function createWebPlatform(): Promise<Platform> {
       for (const [name, bytes] of pdfs) download(name, bytes as BlobPart, "application/pdf");
       return pdfs.length ? `${pdfs.length} PDF${pdfs.length === 1 ? "" : "s"}` : null;
     },
+    export_qa_overlay: async (a) => {
+      // the QA overlay's PNG and KMZ (spec 0013), drawn in the worker from the scenes; saved as downloads
+      const files = await host.rpc<[string, Uint8Array][]>("qa_overlay", a.fromKm ?? undefined, a.toKm ?? undefined, reachAt);
+      for (const [name, bytes] of files) download(name, bytes as BlobPart, name.endsWith(".kmz") ? "application/vnd.google-earth.kmz" : "image/png");
+      return files.length ? files.map(([name]) => name).join(", ") : null;
+    },
     cross_section: (a) => json("cross_section", a.option, a.chainage),
     station_near: (a) => host.rpc("station_near", a.option, a.lon, a.lat),
     load_input: (a) => loadInput(a.role as string, a.path),

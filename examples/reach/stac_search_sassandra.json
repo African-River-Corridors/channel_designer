@@ -873,6 +873,28 @@
       "data",
       "reflectance"
      ]
+    },
+    "blue": {
+     "href": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/29/N/RF/2023/12/S2B_29NRF_20231223_0_L2A/B02.tif",
+     "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+     "title": "Blue (band 2) - 10m",
+     "gsd": 10,
+     "proj:shape": [
+      10980,
+      10980
+     ],
+     "proj:transform": [
+      10,
+      0,
+      799980,
+      0,
+      -10,
+      600000
+     ],
+     "roles": [
+      "data",
+      "reflectance"
+     ]
     }
    },
    "bbox": [

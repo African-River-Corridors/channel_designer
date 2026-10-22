@@ -64,6 +64,10 @@
   let edgeFit = $state(true);
   let progress = $state<string | null>(null);
   let working = $state(false);
+  // The QA overlay (spec 0013): the stretch to draw, in km along the centreline, and where it went.
+  let qaFrom = $state<number | null>(null);
+  let qaTo = $state<number | null>(null);
+  let qaSaved = $state<string | null>(null);
   let cancelled = false;
   let percentile = $state("");
   let typedLevel = $state("");
@@ -225,7 +229,7 @@
 
   /** The steps after the route, one call each, so Cancel can stop between them. */
   async function generate() {
-    const steps: { step: ReachStepName; label: string }[] = [{ step: "banks", label: "banks from the JRC water mask" }];
+    const steps: { step: ReachStepName; label: string }[] = [{ step: "banks", label: "banks from Sentinel-2 water" }];
     if (edgeFit) steps.push({ step: "edge_fit", label: "banks moved onto Sentinel-2" });
     steps.push({ step: "level", label: "water level from SWORD and SWOT" });
     working = true;
@@ -236,6 +240,18 @@
       if (!(await act(() => api.reachStep(s.step))) && s.step !== "level") break;
     }
     progress = cancelled ? "Cancelled." : null;
+    working = false;
+  }
+
+  /** Draw the banks over the Sentinel-2 image of their scenes and save the PNG and the KMZ. */
+  async function qaOverlay() {
+    working = true;
+    qaSaved = null;
+    progress = "Drawing the banks on the Sentinel-2 image";
+    await act(async () => {
+      qaSaved = await api.exportQaOverlay(qaFrom ?? undefined, qaTo ?? undefined);
+    });
+    progress = null;
     working = false;
   }
 
@@ -448,6 +464,15 @@
       </table>
       {#if lowConfidence.length}
         <p class="note" data-testid="reach-low-confidence">{lowConfidence.length} stretch(es) of low-confidence width to check: {[...new Set(lowConfidence.map((s) => s.kind))].join(", ")}.</p>
+      {/if}
+      {#if prov("left_bank")}
+        <p class="help">Check the banks by eye: they are drawn over the Sentinel-2 image, with the stretches to check, as a picture and a KMZ for Google Earth. At most 30 km at a time.</p>
+        <div class="row">
+          <label>From km <input type="number" min="0" step="0.1" data-testid="reach-qa-from" bind:value={qaFrom} /></label>
+          <label>to km <input type="number" min="0" step="0.1" data-testid="reach-qa-to" bind:value={qaTo} /></label>
+          <button data-testid="reach-qa-overlay" disabled={working} onclick={qaOverlay}>Check the banks on the image…</button>
+        </div>
+        {#if qaSaved}<p role="status" data-testid="reach-qa-saved">Saved: {qaSaved}</p>{/if}
       {/if}
     </section>
 

@@ -39,10 +39,21 @@ fn fetch() -> ReplayFetch {
     );
     let mut f = ReplayFetch::new()
         .with_response_containing("overpass.example", ex("synthetic/sassandra_arm.json"))
-        .with_response_containing("stac.example", ex("stac_search_sassandra.json"))
+        .with_response_containing("stac.example/v1/search", ex("stac_search_sassandra.json"))
         .with_response("https://zenodo.example/record", record)
         .with_response("https://zenodo.example/sword.zip", zip);
-    for b in ["B03", "B04", "B08", "B11", "SCL"] {
+    // Each scene by its id, as the QA overlay asks for it.
+    let stac: Value = serde_json::from_slice(&ex("stac_search_sassandra.json")).unwrap();
+    for item in stac["features"].as_array().unwrap() {
+        f = f.with_response_containing(
+            &format!(
+                "stac.example/v1/collections/sentinel-2-l2a/items/{}",
+                item["id"].as_str().unwrap()
+            ),
+            item.to_string(),
+        );
+    }
+    for b in ["B02", "B03", "B04", "B08", "B11", "SCL"] {
         f = f.with_response(
             &format!("{s2}/{b}.tif"),
             ex(&format!("s2_sassandra_{b}.tif")),
@@ -110,6 +121,23 @@ fn a_reach_becomes_a_study_with_marked_inputs_a_level_a_bed_and_an_answer() {
         p["notice"].as_str().unwrap().contains("EC JRC/Google"),
         "{p}"
     );
+    // The QA overlay of the seeded banks (spec 0013): a PNG and a KMZ, the same bytes the CLI draws.
+    let files = s
+        .qa_job()
+        .unwrap()
+        .files(&f, &endpoints(), None, None)
+        .unwrap();
+    let names: Vec<&str> = files.iter().map(|(n, _)| n.as_str()).collect();
+    assert!(
+        names[0].ends_with("QA overlay.png") && names[1].ends_with("QA overlay.kmz"),
+        "{names:?}"
+    );
+    assert_eq!(&files[0].1[1..4], b"PNG");
+    assert_eq!(&files[1].1[..2], b"PK");
+    let doc = s.snapshot()["document"].clone();
+    let cli = owd_reach::overlay::render_document(&f, &doc, &endpoints().stac, &Default::default())
+        .unwrap();
+    assert_eq!((&files[0].1, &files[1].1), (&cli.png, &cli.kmz));
     step(&mut s, &f, ReachStep::EdgeFit);
     let snap = s.snapshot();
     for input in ["left_bank", "right_bank", "centreline", "river_polygon"] {

@@ -26,7 +26,7 @@ function syncFetch(url: string, start: number, len: number): Uint8Array {
 }
 
 /** The methods that reach the network take the fetch as their last argument. */
-const NETWORK = new Set(["reach_route", "reach_step", "reach_search", "reach_river"]);
+const NETWORK = new Set(["reach_route", "reach_step", "reach_search", "reach_river", "qa_overlay"]);
 
 self.onmessage = async (e: MessageEvent<{ id: number; method: string; args: unknown[] }>) => {
   const { id, method, args } = e.data;

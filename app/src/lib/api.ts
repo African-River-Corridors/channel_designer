@@ -374,6 +374,10 @@ export type SheetPage = { number: string; title: string; svg: string; warnings: 
 export const sheets = (option: string) => invoke<SheetPage[]>("sheets", { option });
 /** Write each sheet's PDF of an option; the folder (desktop) or what was saved (web), or null on cancel. */
 export const exportSheets = (option: string) => invoke<string | null>("export_sheets", { option });
+/** The QA overlay of the study's banks over the Sentinel-2 image (spec 0013): a PNG and a KMZ, saved to a
+ * folder the user picks (desktop) or as downloads (web). `fromKm`/`toKm` cut the stretch. null on cancel. */
+export const exportQaOverlay = (fromKm?: number, toKm?: number) =>
+  invoke<string | null>("export_qa_overlay", { fromKm: fromKm ?? null, toKm: toKm ?? null });
 
 /** Web only: open the bundled example (a short synthetic river with its DEM). null when the user cancels. */
 export const openExample = () => invoke<Snapshot | null>("open_example");
