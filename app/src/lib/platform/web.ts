@@ -2,7 +2,7 @@
 // design or a DEM. Where the desktop opens a dialog or writes a file, the browser picks a file or
 // downloads one. A run that is cancelled ends the worker, and a new worker starts from the design as
 // it was before the run. Errors thrown by the session are strings; they become rejected promises.
-import type { FileDropEvent, Platform } from "./types";
+import type { FileDropEvent, Platform, ReachProgress } from "./types";
 
 const LAST_DESIGN = "owd.lastDesign";
 const DEFAULT_NAME = "waterway-design.owd";
@@ -31,10 +31,14 @@ class Host {
   private worker: Worker;
   private next = 1;
   private waiting = new Map<number, { ok: (v: unknown) => void; fail: (e: unknown) => void }>();
-  constructor(private onProgress: (n: number) => void) {
+  constructor(
+    private onProgress: (n: number) => void,
+    private onReach: (p: ReachProgress) => void,
+  ) {
     this.worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
     this.worker.onmessage = (e: MessageEvent) => {
       if ("progress" in e.data) return this.onProgress(e.data.progress as number);
+      if ("reach" in e.data) return this.onReach(e.data.reach as ReachProgress);
       const w = this.waiting.get(e.data.id);
       this.waiting.delete(e.data.id);
       if (!w) return;
@@ -100,7 +104,9 @@ const bytesOf = async (file: File) => new Uint8Array(await file.arrayBuffer());
 export async function createWebPlatform(): Promise<Platform> {
   const progressHandlers = new Set<(n: number) => void>();
   const onProgress = (n: number) => progressHandlers.forEach((h) => h(n));
-  let host = new Host(onProgress);
+  const reachHandlers = new Set<(p: ReachProgress) => void>();
+  const onReach = (p: ReachProgress) => reachHandlers.forEach((h) => h(p));
+  let host = new Host(onProgress, onReach);
   await host.rpc("ping");
 
   /** The DEM the session holds, kept so a restart can give it back. */
@@ -141,7 +147,7 @@ export async function createWebPlatform(): Promise<Platform> {
 
   /** Bring back the design as it stood before a run, in a new worker. */
   async function restart(before: { name: string; text: string; dem: Uint8Array | null; dirty: boolean }) {
-    host = new Host(onProgress);
+    host = new Host(onProgress, onReach);
     await host.rpc("ping");
     dem = before.dem;
     await host.rpc("open_text", before.name, before.text, before.dem ?? undefined);
@@ -188,19 +194,21 @@ export async function createWebPlatform(): Promise<Platform> {
   })();
 
   /** One reach step in the worker. Cancel ends the worker, as for a stage, and the design comes back as it was. */
-  async function reachStep(step: string, percentile: number | null) {
+  /** Network work in the worker (a route, a reach step). Cancel ends the worker, as for a stage, and
+   * the design comes back as it was. */
+  async function network(method: string, ...args: unknown[]) {
     const snap = await json<{ file_name: string; dirty: boolean }>("snapshot");
     const before = { name: snap.file_name, text: await host.rpc<string>("save_text", snap.file_name), dem, dirty: snap.dirty || carriedDirty };
-    running = { stage: step, cancelled: false };
+    running = { stage: method, cancelled: false };
     const mine = running;
     try {
-      const result = await change<{ dirty: boolean; title: string; file_name: string }>("reach_step", step, percentile ?? undefined, reachAt);
+      const result = await change<{ dirty: boolean; title: string; file_name: string }>(method, ...args);
       carriedDirty = false;
       return result;
     } catch (e) {
       if (mine.cancelled) {
         await restart(before);
-        throw "cancelled: the design is as it was before the step (pick the reach again to make more inputs)";
+        throw "cancelled: the design is as it was";
       }
       throw e;
     } finally {
@@ -304,26 +312,26 @@ export async function createWebPlatform(): Promise<Platform> {
     reach_route: async (a) => {
       if (!confirmDiscard()) return null;
       carriedDirty = false;
-      return change("reach_route", a.river ?? "", JSON.stringify({ start: a.start, end: a.end, via: a.via ?? [] }), reachAt);
+      return network("reach_route", a.river ?? "", JSON.stringify({ start: a.start, end: a.end, via: a.via ?? [] }), reachAt);
     },
     reach_search: (a) => json("reach_search", a.text ?? "", a.country ?? "", a.once === true, reachAt),
     reach_river: async (a) => {
       if (!confirmDiscard()) return null;
       carriedDirty = false;
-      return change("reach_river", a.osmId, JSON.stringify(a.also ?? []), (a.search as string) ?? "", reachAt);
+      return network("reach_river", a.osmId, JSON.stringify(a.also ?? []), (a.search as string) ?? "", reachAt);
     },
     reach_cut: async (a) => {
       if (!(await host.rpc<boolean>("reach_route_only")) && !confirmDiscard()) return null;
       carriedDirty = false;
       return change("reach_cut", JSON.stringify({ start: a.start, end: a.end, via: a.via ?? [] }));
     },
-    reach_restore: () => change("reach_restore", reachAt),
+    reach_restore: () => network("reach_restore", reachAt),
     reach_add_tile: async (a) => {
       const file = a.file instanceof File ? a.file : await pickFile(".tif,.tiff");
       if (!file) return null;
       return change("reach_add_tile", file.name, await bytesOf(file));
     },
-    reach_step: (a) => reachStep(a.step as string, (a.percentile as number | null) ?? null),
+    reach_step: (a) => network("reach_step", a.step as string, (a.percentile as number | null) ?? undefined, reachAt),
     reach_cancel: async () => {
       if (!running) return;
       running.cancelled = true;
@@ -367,6 +375,10 @@ export async function createWebPlatform(): Promise<Platform> {
     call: (command, args) => {
       const run = commands[command];
       return (run ? run(args ?? {}) : Promise.reject(`\`${command}\` is not available in the browser`)) as Promise<never>;
+    },
+    onReachProgress: async (handler) => {
+      reachHandlers.add(handler);
+      return () => reachHandlers.delete(handler);
     },
     onProgress: async (handler) => {
       progressHandlers.add(handler);

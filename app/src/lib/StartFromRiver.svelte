@@ -8,6 +8,7 @@
   import * as api from "./api";
   import { docPart } from "./api";
   import type { FitsResult, FitsSelection, LonLat, Provenance, ProvenanceInput, ReachStepName, RiverHit, Snapshot } from "./api";
+  import type { ReachProgress } from "./platform/types";
   import MarkBadge from "./MarkBadge.svelte";
   import { platform } from "./platform";
   import { token } from "./theme";
@@ -65,6 +66,40 @@
   let picking = $state<"start" | "end" | "via" | null>(null);
   let edgeFit = $state(true);
   let progress = $state<string | null>(null);
+  // --- what a long network step is doing (#320) ---------------------------------------------
+  /** The latest report of the step that is running: step `done` of `total`, in words. */
+  let detail = $state<ReachProgress | null>(null);
+  let started = $state(0);
+  let now = $state(0);
+  $effect(() => {
+    let off: (() => void) | undefined;
+    platform()
+      .onReachProgress((p) => (detail = p))
+      .then((u) => (off = u))
+      .catch(() => {});
+    return () => off?.();
+  });
+  $effect(() => {
+    if (!working) return;
+    started = Date.now();
+    now = started;
+    detail = null;
+    const tick = setInterval(() => (now = Date.now()), 500);
+    return () => clearInterval(tick);
+  });
+  const elapsed = $derived.by(() => {
+    const t = Math.max(0, Math.round((now - started) / 1000));
+    return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+  });
+  /** One long step: what it is, for the status line, and the work. */
+  async function long(label: string, work: () => Promise<Snapshot | null | void>) {
+    progress = label;
+    working = true;
+    const ok = await act(work);
+    working = false;
+    progress = null;
+    return ok;
+  }
   let working = $state(false);
   // The QA overlay (spec 0013): the stretch to draw, in km along the centreline, and where it went.
   let qaFrom = $state<number | null>(null);
@@ -159,9 +194,7 @@
     letGo = false;
     river = h.label;
     listOpen = false;
-    working = true;
-    const ok = await act(() => api.reachRiver(h.osm_id, h.also, hitSource));
-    working = false;
+    const ok = await long(`Reading the ${h.name} from OpenStreetMap`, () => api.reachRiver(h.osm_id, h.also, hitSource));
     if (ok && map) map.fitBounds([[h.bbox[0], h.bbox[1]], [h.bbox[2], h.bbox[3]]], { padding: 40, duration: 0 });
   }
   function keys(e: KeyboardEvent) {
@@ -209,7 +242,7 @@
   let restoredFor = "";
   async function restore() {
     restoring = true;
-    await act(() => api.reachRestore());
+    await long("Drawing the route again from OpenStreetMap", () => api.reachRestore());
     restoring = false;
   }
   $effect(() => {
@@ -260,10 +293,8 @@
       if (!p) return onError(`\`${t.trim()}\` is not longitude, latitude.`);
       via.push(p);
     }
-    working = true;
     // With a river chosen, the reach is cut out of it; otherwise the route is planned as before.
-    await act(() => (holding ? api.reachCut(start, end, via) : api.reachRoute(river, start, end, via)));
-    working = false;
+    await long("Finding the route", () => (holding ? api.reachCut(start, end, via) : api.reachRoute(river, start, end, via)));
   }
 
   /** The steps after the route, one call each, so Cancel can stop between them. */
@@ -271,15 +302,12 @@
     const steps: { step: ReachStepName; label: string }[] = [{ step: "banks", label: "banks from Sentinel-2 water" }];
     if (edgeFit) steps.push({ step: "edge_fit", label: "banks moved onto Sentinel-2" });
     steps.push({ step: "level", label: "water level from SWORD and SWOT" });
-    working = true;
     cancelled = false;
     for (const [i, s] of steps.entries()) {
       if (cancelled) break;
-      progress = `Step ${i + 1} of ${steps.length}: ${s.label}`;
-      if (!(await act(() => api.reachStep(s.step))) && s.step !== "level") break;
+      if (!(await long(`Step ${i + 1} of ${steps.length}: ${s.label}`, () => api.reachStep(s.step))) && s.step !== "level") break;
     }
-    progress = cancelled ? "Cancelled." : null;
-    working = false;
+    if (cancelled) onError("Cancelled: the study is as it was before the step.");
   }
 
   /** Draw the banks over the Sentinel-2 image of their scenes and save the PNG and the KMZ. */
@@ -302,9 +330,7 @@
   async function overrideLevel() {
     const p = Number(percentile);
     if (!percentile.trim() || !Number.isFinite(p)) return onError("Give a percentile from 0 to 100.");
-    working = true;
-    await act(() => api.reachStep("level", p));
-    working = false;
+    await long("Water level from SWORD and SWOT", () => api.reachStep("level", p));
   }
 
   async function setDepth() {
@@ -418,6 +444,14 @@
 
 <div class="reach" data-testid="reach-view">
   <h2>Start from a river</h2>
+  {#if working && progress}
+    <div class="status" role="status" aria-live="polite" data-testid="reach-status">
+      <p class="phase" data-testid="reach-progress">{progress}</p>
+      <progress data-testid="reach-bar" max={detail?.total || undefined} value={detail?.total ? detail.done : undefined}></progress>
+      <p class="now"><span data-testid="reach-now">{detail?.what ?? "starting…"}</span> <span class="time" data-testid="reach-elapsed">{elapsed}</span></p>
+      <button data-testid="reach-cancel" onclick={cancel}>Cancel</button>
+    </div>
+  {/if}
 
   <section aria-label="Pick the reach">
     <h3>1. Pick the reach</h3>
@@ -487,9 +521,7 @@
       <label class="check"><input type="checkbox" data-testid="reach-edge-fit" bind:checked={edgeFit} /> Move the banks onto Sentinel-2 imagery</label>
       <div class="row">
         <button class="primary" data-testid="reach-generate" disabled={working} onclick={generate}>Make the inputs</button>
-        {#if working && progress}<button data-testid="reach-cancel" onclick={cancel}>Cancel</button>{/if}
       </div>
-      {#if progress}<p role="status" data-testid="reach-progress">{progress}</p>{/if}
 
       <table class="marks" data-testid="reach-inputs">
         <thead><tr><th>Input</th><th>Made by</th><th>Source, date</th></tr></thead>
@@ -527,7 +559,7 @@
         <p class="help">Download the tiles, then load one as the DEM (drop it on the map, or Load).</p>
       {:else}
         <p class="help">Fetch them (save the study first: the tiles are written next to it), or load a DEM of your own.</p>
-        <button data-testid="reach-fetch-dem" onclick={() => act(api.fetchDem)}>Fetch DEM</button>
+        <button data-testid="reach-fetch-dem" disabled={working} onclick={() => long("Fetching the Copernicus DEM", api.fetchDem)}>Fetch DEM</button>
       {/if}
       <button data-testid="reach-load-dem" onclick={() => act(() => api.loadInput("dem"))}>Load DEM…</button>
     </section>
@@ -603,6 +635,12 @@
   .fail { color: var(--fail); }
   tr.shown { background: var(--surface-2); }
   .fits tbody tr { cursor: pointer; }
+  .status { position: sticky; top: 0; z-index: 4; display: grid; grid-template-columns: 1fr auto; gap: 2px var(--sp-2); align-items: center; padding: var(--sp-2); background: var(--surface); border: var(--lw-thin) solid var(--rule); }
+  .status .phase { margin: 0; font-weight: 600; grid-column: 1; }
+  .status progress { grid-column: 1; width: 100%; }
+  .status .now { margin: 0; grid-column: 1; color: var(--ink-3); }
+  .status .time { font-variant-numeric: tabular-nums; margin-left: var(--sp-2); }
+  .status button { grid-column: 2; grid-row: 1 / span 3; }
   .search { position: relative; display: flex; flex-direction: column; gap: var(--sp-1); }
   .search input.cc { flex: 0 0 3.5em; min-width: 0; text-transform: uppercase; }
   .search input.cc::placeholder { text-transform: none; }

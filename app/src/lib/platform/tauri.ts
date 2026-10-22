@@ -1,6 +1,6 @@
 // The desktop adapter: the Tauri commands, unchanged.
 import { invoke } from "@tauri-apps/api/core";
-import type { Platform } from "./types";
+import type { Platform, ReachProgress } from "./types";
 
 export const tauriPlatform: Platform = {
   kind: "tauri",
@@ -9,6 +9,10 @@ export const tauriPlatform: Platform = {
   onProgress: async (handler) => {
     const { listen } = await import("@tauri-apps/api/event");
     return listen<number>("stage-progress", (e) => handler(e.payload));
+  },
+  onReachProgress: async (handler) => {
+    const { listen } = await import("@tauri-apps/api/event");
+    return listen<ReachProgress>("reach-progress", (e) => handler(e.payload));
   },
   onFileDrop: async (handler) => {
     const { getCurrentWebview } = await import("@tauri-apps/api/webview");

@@ -11,6 +11,7 @@ use owd_shell::state::AppState;
 use serde_json::{Value, json};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
+use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 type Js<T> = Result<T, JsValue>;
@@ -68,6 +69,24 @@ impl owd_reach::Fetch for JsFetch {
     fn get_range(&self, url: &str, start: u64, len: u64) -> Result<Vec<u8>, owd_reach::FetchError> {
         self.call(url, start as f64, len as f64)
     }
+}
+
+/// Progress for the page (#320): the Worker sets `self.owdReachProgress(done, total, what)`, which
+/// posts it to the page. Cancel on the web ends the Worker, so nothing here stops the work.
+fn report_to_page(s: &owd_reach::Step) {
+    let hook = js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str("owdReachProgress"));
+    if let Ok(f) = hook.and_then(|h| h.dyn_into::<js_sys::Function>()) {
+        let _ = f.call3(
+            &JsValue::NULL,
+            &JsValue::from_f64(s.done as f64),
+            &JsValue::from_f64(s.total as f64),
+            &JsValue::from_str(&s.line()),
+        );
+    }
+}
+
+fn never() -> bool {
+    false
 }
 
 fn endpoints(json: &str) -> Result<owd_shell::reach::ReachEndpoints, String> {
@@ -229,7 +248,9 @@ impl Session {
         let at = ok(endpoints(at))?;
         let date = today();
         let river = Some(river).filter(|r| !r.trim().is_empty());
-        self.edit(|s| s.reach_route(&JsFetch(fetch), &at, river, start, end, &via, &date))
+        let js = JsFetch(fetch);
+        let f = owd_reach::Reporting::new(&js, &report_to_page, &never);
+        self.edit(|s| s.reach_route(&f, &at, river, start, end, &via, &date))
     }
 
     /// The rivers and canals whose name starts with or matches a text, as a JSON list (spec 0012,
@@ -266,8 +287,9 @@ impl Session {
         let also: Vec<String> =
             ok(serde_json::from_str(also).map_err(|e| format!("not a list of OSM ids: {e}")))?;
         let at = ok(endpoints(at))?;
+        let js = JsFetch(fetch);
         let river = ok(owd_shell::reach::read_river(
-            &JsFetch(fetch),
+            &owd_reach::Reporting::new(&js, &report_to_page, &never),
             &at,
             osm_id,
             &also,
@@ -298,7 +320,12 @@ impl Session {
         }
         let at = ok(endpoints(at))?;
         let doc = self.state.snapshot()["document"].clone();
-        let restored = ok(owd_shell::reach::plan_restore(&JsFetch(fetch), &at, &doc))?;
+        let js = JsFetch(fetch);
+        let restored = ok(owd_shell::reach::plan_restore(
+            &owd_reach::Reporting::new(&js, &report_to_page, &never),
+            &at,
+            &doc,
+        ))?;
         self.edit(|s| s.restore_reach(restored))
     }
 
@@ -324,7 +351,12 @@ impl Session {
         let at = ok(endpoints(at))?;
         let date = today();
         let job = ok(self.state.begin_reach(step))?;
-        let job = ok(job.run(&JsFetch(fetch), &at, &date))?;
+        let js = JsFetch(fetch);
+        let job = ok(job.run(
+            &owd_reach::Reporting::new(&js, &report_to_page, &never),
+            &at,
+            &date,
+        ))?;
         self.edit(|s| s.keep_reach(job))
     }
 

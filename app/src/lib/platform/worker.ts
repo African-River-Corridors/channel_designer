@@ -28,6 +28,10 @@ function syncFetch(url: string, start: number, len: number): Uint8Array {
 /** The methods that reach the network take the fetch as their last argument. */
 const NETWORK = new Set(["reach_route", "reach_step", "reach_search", "reach_river", "qa_overlay", "reach_restore"]);
 
+// Progress of a reach step (#320), which the session reports through this hook.
+(self as unknown as { owdReachProgress: (done: number, total: number, what: string) => void }).owdReachProgress = (done, total, what) =>
+  self.postMessage({ reach: { done, total, what } });
+
 self.onmessage = async (e: MessageEvent<{ id: number; method: string; args: unknown[] }>) => {
   const { id, method, args } = e.data;
   try {

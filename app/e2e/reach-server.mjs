@@ -72,9 +72,14 @@ function answer(url, origin) {
   return null;
 }
 
+/** Delay every answer by this many milliseconds, so a test can see a step's progress and cancel it. */
+let delayMs = 0;
+export const slow = (ms) => (delayMs = ms);
+
 export function serveReach(port = 0) {
   let origin = "";
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
+    if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
     const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "range", "access-control-expose-headers": "content-range, content-length" };
     if (req.method === "OPTIONS") return res.writeHead(204, cors).end();
     const a = answer(new URL(req.url, origin), origin);

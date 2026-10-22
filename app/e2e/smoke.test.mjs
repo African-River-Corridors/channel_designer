@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { remote } from "webdriverio";
-import { endpoints, searches, serveReach } from "./reach-server.mjs";
+import { endpoints, searches, serveReach, slow } from "./reach-server.mjs";
 
 const here = import.meta.dirname;
 const EXAMPLE = path.resolve(here, "../../examples/synthetic-river.owd");
@@ -583,6 +583,41 @@ describe("Open Waterway Designer app smoke test", () => {
         el.dispatchEvent(new Event("input", { bubbles: true }));
       }, await browser.$("[data-testid=reach-river]"));
     } finally {
+      reach.server.close();
+    }
+  });
+  it("shows what a long step is doing, with a bar, the time and Cancel, which leaves the study as it was", async () => {
+    const reach = await serveReach();
+    try {
+      const at = path.join(WORK, "reach-endpoints.json");
+      fs.writeFileSync(at, JSON.stringify(endpoints(reach.origin)));
+      answer("reach-endpoints.json", at);
+      answer("discard.txt", "yes");
+      await openReachView();
+      await (await browser.$("[data-testid=reach-start]")).setValue("-6.0715, 4.966");
+      await (await browser.$("[data-testid=reach-end]")).setValue("-6.07, 4.983");
+      slow(300);
+      await (await browser.$("[data-testid=reach-route]")).click();
+      await until("the route's status", async () => (await browser.$("[data-testid=reach-status]")).isExisting(), 30000);
+      assert.match(await text("reach-progress"), /Finding the route/);
+      await until("the route", async () => /km/.test((await text("reach-length").catch(() => "")) ?? ""), 60000);
+      const tile = path.join(WORK, "occurrence_10W_10Nv1_4_2021.tif");
+      fs.copyFileSync(path.resolve(here, "../../examples/reach/jrc_occurrence_sassandra_estuary.tif"), tile);
+      answer("jrc.txt", tile);
+      await (await browser.$("[data-testid=reach-add-tile]")).click();
+      await until("the tile given", async () => (await (await browser.$("[data-testid='reach-jrc-occurrence_10W_10Nv1_4_2021.tif']")).getAttribute("data-given")) === "true");
+      const mark = async () => (await browser.$("[data-testid=mark-left_bank]")).getAttribute("data-mark");
+      const before = await mark();
+      await (await browser.$("[data-testid=reach-generate]")).click();
+      await until("a request named in the status line", async () => /\(request \d+\)/.test((await text("reach-now").catch(() => "")) ?? ""), 30000);
+      assert.match(await text("reach-progress"), /Step 1 of \d+: /);
+      assert.match(await text("reach-elapsed"), /^\d+:\d\d$/);
+      await (await browser.$("[data-testid=reach-cancel]")).click();
+      await until("the status gone", async () => !(await (await browser.$("[data-testid=reach-status]")).isExisting()), 30000);
+      assert.match(await text("error"), /cancelled/i);
+      assert.equal(await mark(), before, "Cancel leaves the study as it was");
+    } finally {
+      slow(0);
       reach.server.close();
     }
   });

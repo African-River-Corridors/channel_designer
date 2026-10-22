@@ -9,6 +9,7 @@ use crate::state::AppState;
 use owd_format::design::Session;
 use owd_format::design::provenance::Mark;
 use owd_format::geotiff::Dem;
+use owd_reach::DroppedFiles;
 use owd_reach::banks::{BankParams, MaskBanks, window_bbox};
 use owd_reach::edgefit::{FitParams, SceneQuery, default_range, fit_to_scene, record_edge_fit};
 use owd_reach::level::{Datum, LevelParams, SWOT_SCIENCE_START, level_from_sources, record_level};
@@ -17,7 +18,7 @@ use owd_reach::reach::{Planned, plan_points, plan_trace, record_reach};
 use owd_reach::river::{WholeRiver, record_river_reach, whole_river};
 use owd_reach::search::{OsmRef, RiverHit, RiverSearch};
 use owd_reach::seed::{SeedParams, banks_from_s2, record_s2_banks};
-use owd_reach::{DroppedFiles, Fetch};
+pub use owd_reach::{Fetch, Reporting, Step};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
