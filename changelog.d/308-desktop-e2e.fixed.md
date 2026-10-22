@@ -1,0 +1,1 @@
+- **Desktop smoke test for the river search.** The test cleared the search box with empty text, which the desktop WebDriver refuses, and clicked "Start from a river" twice, which closed the view for the next test. It now clears the box with an input event and opens the view only when it is closed. (#308)
