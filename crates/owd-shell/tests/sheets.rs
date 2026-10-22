@@ -67,6 +67,7 @@ fn exported_pdfs_are_byte_identical_to_owd_draw() {
             section_spacing: None,
             sheet_size: None,
             scale: None,
+            vertical_exaggeration: None,
             orthophoto: None,
             imagery: None,
             imagery_cache: None,

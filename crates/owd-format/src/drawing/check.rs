@@ -741,3 +741,211 @@ fn plan_stretches(
     }
     out
 }
+
+/// The checks of the long section, against the series of [`Session::long_section`] (the app's own
+/// long-section call). Each point of the bed, the water level and the design bed is a station's
+/// chainage and that station's value, exactly; each sheet draws every station in its range and the
+/// sheets together draw every station; each heading value is the result to its two decimals; each
+/// axis label sits at the value it writes; and the notes state the factor and the two scales of the
+/// viewport in words.
+///
+/// [`Session::long_section`]: crate::design::Session::long_section
+pub fn long_section(sheets: &[Sheet], series: &Value) -> Vec<Finding> {
+    use super::long_section::{Series, axis_chainage_text, axis_level_text, factor_note};
+    let s = Series::read(series);
+    let mut found = Vec::new();
+    let mut covered = vec![false; s.chainage.len()];
+    let keys: [(&str, &str, &[Option<f64>]); 3] = [
+        ("bed", "river bed", &s.bed),
+        ("wl", "water level", &s.wl),
+        ("invert", "design bed", &s.invert),
+    ];
+    for sheet in sheets {
+        let mut note = |check: &'static str, message: String| {
+            found.push(Finding {
+                sheet: sheet.number.clone(),
+                check,
+                message,
+            });
+        };
+        let Some(vp) = sheet.document["viewports"]
+            .as_array()
+            .and_then(|a| a.iter().find(|v| v["id"] == "ls"))
+        else {
+            note(
+                "long-section-viewport",
+                "the sheet has no long-section viewport".into(),
+            );
+            continue;
+        };
+        let station_at = |x: f64| s.chainage.iter().position(|c| (c - x).abs() <= 1e-9);
+        // the series, point for point
+        let mut drawn: Vec<Vec<usize>> = vec![Vec::new(); keys.len()];
+        for e in vp["entities"].as_array().into_iter().flatten() {
+            let eid = e["id"].as_str().unwrap_or("");
+            let Some(k) = keys
+                .iter()
+                .position(|(key, _, _)| eid.starts_with(&format!("ls-{key}-")))
+            else {
+                continue;
+            };
+            let (_, what, values) = keys[k];
+            for (x, z) in points(e) {
+                let ok = station_at(x).filter(|&i| {
+                    values
+                        .get(i)
+                        .copied()
+                        .flatten()
+                        .is_some_and(|v| (v - z).abs() <= 1e-9)
+                });
+                match ok {
+                    Some(i) => drawn[k].push(i),
+                    None => {
+                        note(
+                            "long-section-series",
+                            format!("a {what} point ({x}, {z}) is not a station's result"),
+                        );
+                        break;
+                    }
+                }
+            }
+        }
+        // every station in the sheet's range, of every series drawn
+        let all: Vec<usize> = drawn.iter().flatten().copied().collect();
+        let (Some(&lo), Some(&hi)) = (all.iter().min(), all.iter().max()) else {
+            note(
+                "long-section-series",
+                "the sheet draws no station of the long section".into(),
+            );
+            continue;
+        };
+        for (k, (key, what, values)) in keys.iter().enumerate() {
+            if drawn[k].is_empty()
+                && !sheet.document["layers"]
+                    .as_array()
+                    .is_some_and(|l| l.iter().any(|x| x["name"] == layer_of(key)))
+            {
+                continue; // a layer the style turned off
+            }
+            let mut got = drawn[k].clone();
+            got.sort_unstable();
+            got.dedup();
+            let want: Vec<usize> = (lo..=hi)
+                .filter(|&i| values.get(i).copied().flatten().is_some_and(f64::is_finite))
+                .collect();
+            // a lone station between two gaps has no line to draw
+            let lone = |i: &usize| {
+                let has = |j: usize| values.get(j).copied().flatten().is_some_and(f64::is_finite);
+                (*i == lo || !has(i - 1)) && (*i == hi || !has(i + 1))
+            };
+            let want: Vec<usize> = want.into_iter().filter(|i| !lone(i)).collect();
+            if got != want {
+                note(
+                    "long-section-series",
+                    format!(
+                        "the {what} draws {} stations from CH {:.1} to {:.1}; the result has {}",
+                        got.len(),
+                        s.chainage[lo],
+                        s.chainage[hi],
+                        want.len()
+                    ),
+                );
+            }
+        }
+        for c in covered.iter_mut().take(hi + 1).skip(lo) {
+            *c = true;
+        }
+        // the heading values at each end, to their printed precision
+        let water_on = sheet.document["layers"]
+            .as_array()
+            .is_some_and(|l| l.iter().any(|x| x["name"] == "WATER"));
+        for end in ["start", "end"] {
+            let Some(ch) = text_of(vp, &format!("ls-{end}-chainage"))
+                .and_then(|t| t.split_once(' ').map(|(_, r)| r))
+                .and_then(chainage_in)
+            else {
+                note(
+                    "long-section-chainage",
+                    format!("the {end} of the sheet has no readable chainage"),
+                );
+                continue;
+            };
+            let Some(i) = s
+                .chainage
+                .iter()
+                .position(|c| (c - ch).abs() <= half_step(1))
+            else {
+                note(
+                    "long-section-chainage",
+                    format!("the {end} is drawn at CH {ch}, which is not a station"),
+                );
+                continue;
+            };
+            for (key, what, values) in keys {
+                let text = text_of(vp, &format!("ls-{end}-{key}"));
+                let want = values.get(i).copied().flatten().filter(|v| v.is_finite());
+                match (text.and_then(|t| number_in(t, 1)), want) {
+                    (Some(got), Some(want)) if (got - want).abs() <= half_step(2) => {}
+                    (None, None) => {}
+                    (None, Some(_)) if key == "wl" && !water_on => {} // the style turned it off
+                    (got, want) => note(
+                        "long-section-level",
+                        format!(
+                            "the {what} at the {end} (CH {ch}) is drawn {got:?}, result {want:?}"
+                        ),
+                    ),
+                }
+            }
+        }
+        // each axis label is at the value it writes
+        for e in vp["entities"].as_array().into_iter().flatten() {
+            let eid = e["id"].as_str().unwrap_or("");
+            let text = e["text"].as_str().unwrap_or("");
+            let at = (e["anchor_m"][0].as_f64(), e["anchor_m"][1].as_f64());
+            let wrong = if eid.starts_with("ls-clabel-") {
+                at.0.is_none_or(|x| axis_chainage_text(x) != text)
+            } else if eid.starts_with("ls-zlabel-") {
+                at.1.is_none_or(|z| axis_level_text(z) != text)
+            } else {
+                false
+            };
+            if wrong {
+                note(
+                    "long-section-axis",
+                    format!("the axis label `{text}` ({eid}) is not at the value it writes"),
+                );
+            }
+        }
+        // the factor and the two scales, in words
+        let n = vp["scale"].as_u64().unwrap_or(0) as u32;
+        let e = vp["vertical_exaggeration"].as_u64().unwrap_or(1) as u32;
+        let want = factor_note(n, e);
+        if sheet.document["notes"][0].as_str() != Some(want.as_str()) {
+            note(
+                "long-section-exaggeration",
+                format!(
+                    "the notes do not state the factor of the viewport: `{}`, want `{want}`",
+                    sheet.document["notes"][0].as_str().unwrap_or("")
+                ),
+            );
+        }
+    }
+    let missing = covered.iter().filter(|c| !**c).count();
+    if missing > 0 {
+        found.push(Finding {
+            sheet: sheets.first().map(|s| s.number.clone()).unwrap_or_default(),
+            check: "long-section-coverage",
+            message: format!("{missing} stations of the line are on no sheet"),
+        });
+    }
+    found
+}
+
+/// The layer each series of the long section is drawn on.
+fn layer_of(key: &str) -> &'static str {
+    match key {
+        "wl" => "WATER",
+        "invert" => "OUTLINE",
+        _ => "OBJECT",
+    }
+}

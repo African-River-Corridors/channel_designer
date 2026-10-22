@@ -2575,8 +2575,8 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "otd"
-version = "0.3.0"
-source = "git+https://github.com/African-River-Corridors/open-technical-drawer?tag=v0.3.0#d3825201a284971c1348423ef2de28d87a2ea428"
+version = "0.4.0"
+source = "git+https://github.com/African-River-Corridors/open-technical-drawer?tag=v0.4.0#728e1295cbebf34dd1e927665440e2b95a8a87f0"
 dependencies = [
  "jpeg-encoder",
  "libm",
@@ -2591,7 +2591,7 @@ dependencies = [
 [[package]]
 name = "otd-imagery"
 version = "0.1.0"
-source = "git+https://github.com/African-River-Corridors/open-technical-drawer?tag=v0.3.0#d3825201a284971c1348423ef2de28d87a2ea428"
+source = "git+https://github.com/African-River-Corridors/open-technical-drawer?tag=v0.4.0#728e1295cbebf34dd1e927665440e2b95a8a87f0"
 dependencies = [
  "jpeg-decoder",
  "libm",

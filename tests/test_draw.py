@@ -34,8 +34,9 @@ def test_draw_returns_five_files_per_sheet_and_writes_them(tmp_path):
             assert f"{stem}.{ext}" in files
         assert files[f"{stem}.pdf"].startswith(b"%PDF")
         doc = json.loads(files[f"{stem}.drawing.json"])
-        # plan sheets hold an image, which needs standard 1.1 (clause 18.2.1)
-        version = "1.1" if "-pl-" in stem else "1.0"
+        # plan sheets hold an image, which needs standard 1.1; the long section's vertical exaggeration
+        # needs 1.2 (clause 18.2.1)
+        version = "1.1" if "-pl-" in stem else "1.2" if "-ls-" in stem else "1.0"
         assert doc["status"] == "concept" and doc["standard_version"] == version
 
 

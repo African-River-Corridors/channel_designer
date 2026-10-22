@@ -21,8 +21,9 @@ OWD draws through **`otd`**, the Drawing Format Standard in Rust, shared with OV
 turns a channel design document into drawing documents; `otd` turns those into normalised content,
 SVG, PDF and DXF.
 
-- Four kinds of sheet: **cross-section gallery**, **typical section**, **setting-out table** and
-  **plan sheets** (an overview and strips along chainage, over shaded relief or an orthophoto).
+- Five kinds of sheet: **cross-section gallery**, **typical section**, **setting-out table**,
+  **long section** and **plan sheets** (an overview and strips along chainage, over shaded relief or an
+  orthophoto).
 - What a sheet shows comes from a **sheet style**: a JSON file with defaults, so no layout choice is
   hard-coded.
 - A sheet labels exceptions and governing values, not every station. A sheet with no problems stays
@@ -97,7 +98,7 @@ Every ticket ships in the next release.
   sheet title, scale, revision, date and the sheet style's hash. Status `concept`, with the line
   "Screening — not for construction".
 - Drawing numbers: `OWD-<design>-<kind>-<nnn>`, where kind is `PL` (plan), `XS` (cross sections), `TS`
-  (typical section) or `SO` (setting out).
+  (typical section), `SO` (setting out) or `LS` (long section).
 - Coordinates are in the design's UTM zone (ADR 0003). Each sheet that shows coordinates states the zone
   and datum.
 - Layers come from the standard's layer table. Colour uses the standard's colour print profile only on
@@ -146,7 +147,10 @@ Every ticket ships in the next release.
   offer them. Every sheet that shows it prints this attribution, in full, on the sheet:
   "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)". Tiles are cached on disk and are never shipped in this repository or as a dataset of
   their own.
-- **Long section.** Not in this build: it needs vertical exaggeration. The app keeps its own view.
+- **Long section.** The bed on the design line, the water level and the design bed along chainage, from the
+  same series as the app's long-section view, with a chainage axis and a level axis. Drawn with a vertical
+  exaggeration (standard 1.2, clause 7.3.6): the style's whole number, or by default the smallest factor whose
+  levels fill half the plot height with an allowed vertical ratio. The sheet states the factor in words.
 
 ### CLI
 
@@ -191,7 +195,6 @@ Every ticket ships in the next release.
 ## Out of scope
 
 - Any change to the standard. Requests go to its repository.
-- The long section, until the standard allows vertical exaggeration.
 - Intersection-point setting out (a later spec).
 - Drawings of structures (locks, weirs, bank protection).
 - Editing the sheet style in the app.

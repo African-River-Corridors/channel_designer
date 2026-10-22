@@ -5,6 +5,18 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **Long section (spec 0004, T10).** `owd draw` now draws the long section, kind `LS`: the river bed (the ground
+  on the design line), the water level and the design bed (the invert) along chainage, with a chainage axis and a
+  level axis. The values are the series of the app's long-section view, so the sheet and the app agree. The sheet
+  uses the vertical exaggeration of Drawing Format Standard 1.2: levels are drawn larger than chainage by a whole
+  factor, the vertical scale is a ratio of the standard, and the sheet prints a vertical scale bar, the words
+  "Vertical exaggeration ×E" and a note such as "VERTICAL EXAGGERATION ×100: LEVELS DRAWN AT 1:50, CHAINAGE AT
+  1:5000". The title block scale is AS SHOWN. The style's new `long_section` section sets the scales, the bands and
+  `vertical_exaggeration`: `"auto"` (the default, the smallest factor whose levels fill half the plot) or a whole
+  number of 2 or more; `owd draw --vertical-exaggeration N` overrides it. A line too long for one sheet is split
+  over sheets at one scale. `owd draw` checks that every drawn level and chainage equals its result. The `otd` pin
+  moves to v0.4.0 (standard 1.2). Only the LS documents use 1.2; no earlier sheet changes.
+
 - **The default water level never rises downstream, across SWOT–DEM joins too (#280).** A DEM-filled stretch was
   made never rising only within itself, so where it met a lower SWOT level just upstream, the level jumped up
   going downstream (about 2.5 m at km 16.4 on the Sassandra). `owd water-level` now makes the whole profile never

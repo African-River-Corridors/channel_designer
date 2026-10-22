@@ -357,7 +357,7 @@ enum Command {
         #[arg(short = 'o', long = "output", value_name = "FILE")]
         output: Option<String>,
     },
-    /// Draw sheets of a design line option: cross sections, the typical section and the setting-out table now, more kinds as they land. Writes, for
+    /// Draw sheets of a design line option: cross sections, the typical section, the setting-out table, plan sheets and the long section. Writes, for
     /// each sheet, its drawing document, normalised content, SVG, PDF and DXF. `owd draw run FILE`
     /// reads one drawing document with the drawing crate and prints the result of clause 17.3.
     #[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
@@ -375,7 +375,7 @@ enum Command {
         /// The design line option, by id or name (default: the first).
         #[arg(long, value_name = "NAME")]
         option: Option<String>,
-        /// The kinds of sheet, comma separated: xs (cross sections), ts (typical section), so (setting-out table and CSV). Default: all.
+        /// The kinds of sheet, comma separated: xs (cross sections), ts (typical section), so (setting-out table and CSV), pl (plan sheets), ls (long section). Default: all.
         #[arg(long, value_name = "KINDS")]
         sheets: Option<String>,
         /// The revision letter in the title block (default A).
@@ -397,6 +397,10 @@ enum Command {
         /// Override the style: draw the cross sections at this one scale (the denominator, for example 1000).
         #[arg(long, value_name = "N")]
         scale: Option<u32>,
+        /// Override the style: the long section's vertical exaggeration, a whole number of 2 or more,
+        /// or `auto` (the default: the smallest factor that makes the depth readable).
+        #[arg(long, value_name = "N")]
+        vertical_exaggeration: Option<String>,
         /// Draw the plan sheets over this orthophoto (an 8 bit RGB GeoTIFF in WGS84 or the design's UTM
         /// zone) instead of shaded relief.
         #[arg(long, value_name = "GEOTIFF", conflicts_with = "imagery")]
@@ -841,6 +845,7 @@ pub fn main() -> ExitCode {
             section_spacing,
             sheet_size,
             scale,
+            vertical_exaggeration,
             orthophoto,
             imagery,
             imagery_cache,
@@ -859,6 +864,7 @@ pub fn main() -> ExitCode {
                 section_spacing,
                 sheet_size,
                 scale,
+                vertical_exaggeration,
                 orthophoto,
                 imagery,
                 imagery_cache,
