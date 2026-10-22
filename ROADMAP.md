@@ -9,8 +9,9 @@ Planned work, roughly in order. Each item links to its issue. Comments and pull 
   non-commercial). The example downloads the tiles; nothing is bundled in the repository.
 - **PyPI publication.** ([#2](https://github.com/African-River-Corridors/open-waterway-designer/issues/2)) `pip install open-waterway-designer` with trusted publishing from a tagged
   release. Until then, install from git.
-- **Reports via `sankofa-doc`.** ([#3](https://github.com/African-River-Corridors/open-waterway-designer/issues/3)) Section packs and quantity schedules as documents, once the
-  document tool is released.
+- **Reports.** ([#3](https://github.com/African-River-Corridors/open-waterway-designer/issues/3)) The screening report, quantity schedule, section pack and run report as PDF,
+  HTML and Word, through the [Open Report Designer](https://github.com/African-River-Corridors/open-report-designer)
+  (spec 0014, in progress).
 - **More rulesets.** ([#4](https://github.com/African-River-Corridors/open-waterway-designer/issues/4)) Each national standard is a ruleset: Dutch RVW, German, US (USACE EM
   1110-2-1613), Brazilian, Indian IWAI. A ruleset is coefficients as data, each with its clause,
   table and page. A method that is not coefficients plugs in as a width method
@@ -18,10 +19,8 @@ Planned work, roughly in order. Each item links to its issue. Comments and pull 
 
 ## Later
 
-- **Smooth rolling-circle exits.** ([#5](https://github.com/African-River-Corridors/open-waterway-designer/issues/5)) Make each spliced arc leave the old line tangentially (see
-  [docs/known-issues.md](docs/known-issues.md)).
 - **Tangent joins between optimised pools.** ([#6](https://github.com/African-River-Corridors/open-waterway-designer/issues/6)) `optimise.optimise_pools` meets the design line
   within half a lattice pitch at each pool end; close that gap with a short tangent fit.
-- **Plan sheets.** ([#7](https://github.com/African-River-Corridors/open-waterway-designer/issues/7)) Plan-view drawings of the alignment, footprint and sections key, alongside the
-  cross-section gallery.
+- **Split the app layer by feature.** ([#343](https://github.com/African-River-Corridors/open-waterway-designer/issues/343)) One module per feature for the desktop commands,
+  the wasm exports, the web calls and the app tests, so more work on the app can run in parallel.
 - **DEM despike helper.** ([#8](https://github.com/African-River-Corridors/open-waterway-designer/issues/8)) The single-cell spike repair used before volume integration.
