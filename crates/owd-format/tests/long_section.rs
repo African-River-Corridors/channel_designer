@@ -427,9 +427,38 @@ fn a_long_line_splits_over_sheets_at_one_scale() {
     let sheets = drawn(style);
     assert!(sheets.len() >= 2, "{} sheets", sheets.len());
     assert_eq!(check::long_section(&sheets, &series()), []);
+    let s = series();
+    let p = Style::builtin().long_section();
+    let chainage: Vec<f64> = s["chainage_m"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_f64().unwrap())
+        .collect();
     for sheet in &sheets {
-        assert_eq!(viewport(sheet)["scale"], 500);
+        let vp = viewport(sheet);
+        assert_eq!(vp["scale"], 500);
         drawing::render(sheet).unwrap_or_else(|e| panic!("{e}"));
+        // each sheet's level axis fits the levels of its own stations
+        let (x0, x1, _, _) = plot_box(vp);
+        let on = |i: usize| chainage[i] >= x0 - 1e-9 && chainage[i] <= x1 + 1e-9;
+        let levels: Vec<f64> = ["bed_m", "water_level_m", "design_invert_m"]
+            .iter()
+            .flat_map(|k| {
+                let v = s[*k].as_array().unwrap();
+                (0..v.len())
+                    .filter(|&i| on(i))
+                    .filter_map(move |i| v[i].as_f64())
+            })
+            .collect();
+        let zmin = levels.iter().copied().fold(f64::MAX, f64::min);
+        let zmax = levels.iter().copied().fold(f64::MIN, f64::max);
+        let (labels, step) = level_labels(vp);
+        assert_eq!(labels[0], ((zmin - p.below_invert_m) / step).floor() * step);
+        assert_eq!(
+            labels[labels.len() - 1],
+            ((zmax + p.above_ground_m) / step).ceil() * step
+        );
     }
 }
 

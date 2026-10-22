@@ -15,7 +15,8 @@
 //!
 //! The axes fit the data. The level axis runs from the level grid line at or below the lowest level
 //! less `below_invert_m` to the one at or above the highest level plus `above_ground_m`; the
-//! chainage axis from the sheet's first station to its last.
+//! chainage axis from the sheet's first station to its last. On a line split over sheets, the scale and
+//! the factor are the whole line's, and each sheet's level axis fits that sheet's own levels.
 
 use super::furniture::{self, Area, Titles, clean};
 use super::gallery::chainage_text;
@@ -511,21 +512,25 @@ pub(super) fn build(
             "option `{option_id}` has fewer than two stations to draw a long section"
         )));
     }
-    // the level range of the whole line, so every sheet of it has the same levels
-    let levels: Vec<f64> = s
-        .bed
-        .iter()
-        .chain(&s.invert)
-        .chain(if p.water { &s.wl[..] } else { &[] })
-        .filter_map(|v| v.filter(|v| v.is_finite()))
-        .collect();
-    if levels.is_empty() {
+    // the lowest and the highest level drawn at the stations `lo..=hi`
+    let level_range = |lo: usize, hi: usize| -> Option<(f64, f64)> {
+        let wl: &[Option<f64>] = if p.water { &s.wl } else { &[] };
+        let levels = [&s.bed[..], &s.invert[..], wl]
+            .into_iter()
+            .flat_map(|v| v.iter().take(hi + 1).skip(lo))
+            .filter_map(|v| v.filter(|v| v.is_finite()));
+        levels.fold(None, |r, z| match r {
+            None => Some((z, z)),
+            Some((a, b)) => Some((f64::min(a, z), f64::max(b, z))),
+        })
+    };
+    // the scale and the factor are chosen on the whole line, so every sheet of it has the same;
+    // each sheet's level axis then fits its own levels
+    let Some((zmin, zmax)) = level_range(0, s.chainage.len() - 1) else {
         return Err(DrawError::Missing(format!(
             "option `{option_id}` has no levels to draw"
         )));
-    }
-    let zmin = levels.iter().copied().fold(f64::INFINITY, f64::min);
-    let zmax = levels.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    };
     let (c_first, c_last) = (s.chainage[0], s.chainage[s.chainage.len() - 1]);
 
     let notes_len = 5;
@@ -546,7 +551,6 @@ pub(super) fn build(
     let (n, e, split) = choose(c_last - c_first, (zmin, zmax), plot_w, plot_h, p)?;
     let k = 1000.0 / f64::from(n);
     let kv = k * f64::from(e);
-    let z_axis = level_axis(zmin, zmax, kv, p);
 
     // the stations of each sheet: the whole line, or runs of at most a plot's length; the last
     // station of a sheet is the first of the next, so the lines meet
@@ -606,6 +610,8 @@ pub(super) fn build(
     for (si, &(lo, hi)) in ranges.iter().enumerate() {
         let stations: Vec<usize> = (lo..=hi).collect();
         // the window: the sheet's chainage from the plot's left edge, the level axis centred in it
+        let (lo_z, hi_z) = level_range(lo, hi).unwrap_or((zmin, zmax));
+        let z_axis = level_axis(lo_z, hi_z, kv, p);
         let slack = plot_h - (z_axis.1 - z_axis.0) * kv;
         let f = Frame {
             area: frame_area,
