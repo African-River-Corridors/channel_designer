@@ -14,12 +14,15 @@ use serde_json::{Value, json};
 const UTM30: &str = r#""crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:EPSG::32630"}}"#;
 
 fn line(pts: &[[f64; 2]]) -> String {
-    format!(r#"{{"type":"LineString",{UTM30},"coordinates":{}}}"#, json!(pts))
+    format!(
+        r#"{{"type":"LineString",{UTM30},"coordinates":{}}}"#,
+        json!(pts)
+    )
 }
 
 fn wiggle(i: usize, amp: f64) -> f64 {
     let t = i as f64;
-    amp * (0.6 * (1.7 * t).sin() + 0.3 * (4.1 * t + 1.0).sin() + 0.1 * (9.3 * t).sin())
+    amp * (0.6 * libm::sin(1.7 * t) + 0.3 * libm::sin(4.1 * t + 1.0) + 0.1 * libm::sin(9.3 * t))
 }
 
 fn meander(with_banks: bool) -> Session {
@@ -28,8 +31,8 @@ fn meander(with_banks: bool) -> Session {
     let (mut left, mut right, mut centre) = (vec![], vec![], vec![]);
     for i in 0..=600 {
         let x = 10.0 * i as f64;
-        let (y, d) = (150.0 * (k * x).sin(), 150.0 * k * (k * x).cos());
-        let l = (1.0 + d * d).sqrt();
+        let (y, d) = (150.0 * libm::sin(k * x), 150.0 * k * libm::cos(k * x));
+        let l = libm::hypot(1.0, d);
         let n = [-d / l, 1.0 / l];
         let (hl, hr) = (60.0 + wiggle(i, 4.0), 60.0 + wiggle(i + 7919, 4.0));
         left.push(at(x + hl * n[0], y + hl * n[1]));
@@ -40,7 +43,10 @@ fn meander(with_banks: bool) -> Session {
     let mut ring = right.clone();
     ring.extend(left.iter().rev());
     ring.push(ring[0]);
-    let polygon = format!(r#"{{"type":"Polygon",{UTM30},"coordinates":[{}]}}"#, json!(ring));
+    let polygon = format!(
+        r#"{{"type":"Polygon",{UTM30},"coordinates":[{}]}}"#,
+        json!(ring)
+    );
     let mut s = Session::new("Meander", "2026-10-22");
     let (l, r, c) = (line(&left), line(&right), line(&centre));
     let mut roles = vec![
@@ -69,9 +75,11 @@ fn radius_stretches(results: &Value) -> usize {
 fn the_reference_line_reads_fewer_radius_stretches_than_a_jumpy_centreline() {
     let choices = ["PIANC-B".to_string()];
     let mut s = meander(true);
-    s.run_fits_on(Some(&choices), None, PlanLine::Centreline).unwrap();
+    s.run_fits_on(Some(&choices), None, PlanLine::Centreline)
+        .unwrap();
     let on_centre = s.fits_result().unwrap().clone();
-    s.run_fits_on(Some(&choices), None, PlanLine::Reference).unwrap();
+    s.run_fits_on(Some(&choices), None, PlanLine::Reference)
+        .unwrap();
     let on_ref = s.fits_result().unwrap().clone();
     assert_eq!(on_ref["plan_line"], "reference");
     let (a, b) = (radius_stretches(&on_ref), radius_stretches(&on_centre));
@@ -80,7 +88,7 @@ fn the_reference_line_reads_fewer_radius_stretches_than_a_jumpy_centreline() {
     let rl = s.reference_line().unwrap();
     let len: f64 = rl
         .windows(2)
-        .map(|w| ((w[1][0] - w[0][0]).powi(2) + (w[1][1] - w[0][1]).powi(2)).sqrt())
+        .map(|w| libm::hypot(w[1][0] - w[0][0], w[1][1] - w[0][1]))
         .sum();
     assert!((on_ref["length_m"].as_f64().unwrap() - len).abs() < 1.0);
     // Stored with the answer, and both fresh when the study is opened again.
@@ -126,18 +134,33 @@ fn the_full_answer_walks_the_reference_line() {
         .reference_line()
         .unwrap()
         .windows(2)
-        .map(|w| ((w[1][0] - w[0][0]).powi(2) + (w[1][1] - w[0][1]).powi(2)).sqrt())
+        .map(|w| libm::hypot(w[1][0] - w[0][0], w[1][1] - w[0][1]))
         .sum();
     for c in r["rule_sets"][0]["classes"].as_array().unwrap() {
         assert!(c["verdict"].is_string(), "{}", c["vessel_standard_id"]);
         for st in c["constraint_stretches"].as_array().unwrap() {
             let end = st["end_chainage_m"].as_f64().unwrap();
-            assert!(end <= len + 1.0, "a stretch ends at {end} m, past the line's {len} m");
+            assert!(
+                end <= len + 1.0,
+                "a stretch ends at {end} m, past the line's {len} m"
+            );
             // The bed model gives 4 m everywhere in the water: every station of the walk is in it.
             if st["kind"] == "depth" {
                 let d = st["river"].as_f64().unwrap();
-                assert!(d > 3.9, "a station reads {d} m deep, not the bed model's 4 m");
+                assert!(
+                    d > 3.9,
+                    "a station reads {d} m deep, not the bed model's 4 m"
+                );
             }
         }
     }
+}
+
+#[test]
+fn the_default_plan_line_is_the_reference_line() {
+    assert_eq!(PlanLine::default(), PlanLine::Reference);
+    let mut s = meander(true);
+    s.run_fits(None).unwrap();
+    assert_eq!(s.fits_result().unwrap()["plan_line"], "reference");
+    assert_eq!(s.document()["fits"]["settings"]["plan_line"], "reference");
 }

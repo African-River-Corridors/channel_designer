@@ -153,22 +153,30 @@ mod tests {
     use super::*;
     use crate::design::{Role, Stage};
 
-    const UTM30: &str = r#""crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:EPSG::32630"}}"#;
+    const UTM30: &str =
+        r#""crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:EPSG::32630"}}"#;
 
     fn at(x: f64, y: f64) -> [f64; 2] {
         [x + 500_000.0, y + 600_000.0]
     }
 
     fn line(pts: &[[f64; 2]]) -> String {
-        format!(r#"{{"type":"LineString",{UTM30},"coordinates":{}}}"#, json!(pts))
+        format!(
+            r#"{{"type":"LineString",{UTM30},"coordinates":{}}}"#,
+            json!(pts)
+        )
     }
 
     /// A straight river 100 m wide and 2 km long, with its banks, polygon and centreline.
     fn study(shift: f64) -> Session {
         let mut s = Session::new("t", "2026-10-22");
-        let left: Vec<[f64; 2]> = (0..=100).map(|i| at(20.0 * i as f64, 50.0 + shift)).collect();
+        let left: Vec<[f64; 2]> = (0..=100)
+            .map(|i| at(20.0 * i as f64, 50.0 + shift))
+            .collect();
         let right: Vec<[f64; 2]> = (0..=100).map(|i| at(20.0 * i as f64, -50.0)).collect();
-        let centre: Vec<[f64; 2]> = (0..=100).map(|i| at(20.0 * i as f64, shift / 2.0)).collect();
+        let centre: Vec<[f64; 2]> = (0..=100)
+            .map(|i| at(20.0 * i as f64, shift / 2.0))
+            .collect();
         let mut ring = right.clone();
         ring.extend(left.iter().rev());
         ring.push(ring[0]);
@@ -206,7 +214,8 @@ mod tests {
         let mut s = study(0.0);
         s.run_reference_line().unwrap();
         let moved: Vec<[f64; 2]> = (0..=100).map(|i| at(20.0 * i as f64, 60.0)).collect();
-        s.import(&[(Role::LeftBank, line(&moved).as_str())]).unwrap();
+        s.import(&[(Role::LeftBank, line(&moved).as_str())])
+            .unwrap();
         assert_eq!(s.reference_line_status(), StageStatus::Stale);
         let l = s.fresh_reference_line().unwrap();
         assert_eq!(s.reference_line_status(), StageStatus::Fresh);

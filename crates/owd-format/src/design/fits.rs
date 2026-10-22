@@ -58,18 +58,19 @@ use serde_json::{Value, json};
 /// The label of a full answer: what it read, and what it assumed.
 pub const FULL_LABEL: &str = "width, radius and depth; depth assumed, not measured";
 
-/// The line the full answer reads the river's own radius on (ADR 0013).
+/// The line the answer reads the river on (ADR 0013, spec 0016).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PlanLine {
     /// The river centreline. It is drawn from the bank lines, and each wiggle of it reads as a
     /// tight bend.
     Centreline,
-    /// A fairway fit (ADR 0007) for each class (the default): the smoothest line a channel of that
-    /// class can take in the water, seeded from the river centreline.
-    #[default]
+    /// A fairway fit (ADR 0007) for each class: the smoothest line a channel of that class can
+    /// take in the water, seeded from the river centreline.
     Fairway,
-    /// The reference line (spec 0016): one smooth line in the water that belongs to no vessel,
-    /// made from the banks. Width, radius, depth and the reaches are all read along it.
+    /// The reference line (spec 0016, the default): one smooth line in the water that belongs to
+    /// no vessel, made from the banks. Width, radius, depth and the reaches are all read along
+    /// it, in the plan-only answer and the full one. Without both banks, the centreline is read.
+    #[default]
     Reference,
 }
 

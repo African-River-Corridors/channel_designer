@@ -256,7 +256,8 @@ mod tests {
             .collect();
         let n = (rc * core::f64::consts::FRAC_PI_2 / 10.0).ceil() as usize;
         for i in 0..n {
-            let t = -core::f64::consts::FRAC_PI_2 + core::f64::consts::FRAC_PI_2 * i as f64 / n as f64;
+            let t =
+                -core::f64::consts::FRAC_PI_2 + core::f64::consts::FRAC_PI_2 * i as f64 / n as f64;
             let (s, co) = (libm::sin(t), libm::cos(t));
             c.push(([rc * co, rc + rc * s], [-co, -s]));
         }
@@ -298,12 +299,15 @@ mod tests {
     fn its_ends_lie_inside_the_water_not_on_its_edge() {
         // The banks end on the polygon's end edges, so the mid-line's ends lie on them.
         let (l, r, w, _) = channel(&meander(3000.0, 100.0, 1200.0), 100.0, 0.0);
-        let rl = reference_line(&l, &r, &[w.clone()]).unwrap();
-        let grid = crate::geom::grid::EdgeGrid::new(&[w.clone()]);
+        let rl = reference_line(&l, &r, std::slice::from_ref(&w)).unwrap();
+        let grid = crate::geom::grid::EdgeGrid::new(std::slice::from_ref(&w));
         for p in [rl.line[0], rl.line[rl.line.len() - 1]] {
             assert!(grid.contains(p), "an end {p:?} is not inside the water");
             let d = point_line_distance(p, &w.exterior);
-            assert!(d > END_TRIM_M - 0.5, "an end {p:?} is {d:.2} m from the edge");
+            assert!(
+                d > END_TRIM_M - 0.5,
+                "an end {p:?} is {d:.2} m from the edge"
+            );
         }
     }
 
@@ -343,8 +347,14 @@ mod tests {
             .iter()
             .map(|&p| point_line_distance(p, &l).min(point_line_distance(p, &r)))
             .fold(f64::MAX, f64::min);
-        assert!(near >= need - 1.5, "the line comes {near:.1} m from a bank, under {need} m");
-        assert!(near < need + 5.0, "the clearance does not bind ({near:.1} m): a weak test");
+        assert!(
+            near >= need - 1.5,
+            "the line comes {near:.1} m from a bank, under {need} m"
+        );
+        assert!(
+            near < need + 5.0,
+            "the clearance does not bind ({near:.1} m): a weak test"
+        );
     }
 
     #[test]
@@ -363,7 +373,7 @@ mod tests {
     #[test]
     fn on_a_bend_it_stays_nearer_the_centre_than_a_small_vessel_s_fairway() {
         let (l, r, w, centre) = channel(&bend(250.0), 200.0, 0.0);
-        let rl = reference_line(&l, &r, &[w.clone()]).unwrap();
+        let rl = reference_line(&l, &r, std::slice::from_ref(&w)).unwrap();
         let v = CustomVessel {
             name: "10 x 2".into(),
             loa_m: 10.0,
@@ -397,7 +407,10 @@ mod tests {
                 / (n + 1) as f64
         };
         let (a, b) = (mean_off(&rl.line), mean_off(&fit.line));
-        assert!(a < b, "mean offset from the centre: reference {a:.1} m, fairway {b:.1} m");
+        assert!(
+            a < b,
+            "mean offset from the centre: reference {a:.1} m, fairway {b:.1} m"
+        );
         assert!(a < 10.0, "the reference line strays {a:.1} m on average");
     }
 
@@ -413,7 +426,9 @@ mod tests {
             .collect();
         let t = taubin_smoothing(&zig, 60, TAUBIN_LAMBDA, TAUBIN_MU);
         assert_eq!((t[0], t[19]), (zig[0], zig[19]));
-        let spread = t[5..15].iter().fold(0.0f64, |m, p| m.max((p[1] - 0.5).abs()));
+        let spread = t[5..15]
+            .iter()
+            .fold(0.0f64, |m, p| m.max((p[1] - 0.5).abs()));
         assert!(spread < 0.1, "the zigzag keeps {spread} m");
     }
 

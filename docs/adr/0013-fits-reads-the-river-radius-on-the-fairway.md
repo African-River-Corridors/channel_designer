@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR 0014 (the default plan line)
 ---
 # `fits` reads the river's radius on the fairway
 

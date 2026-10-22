@@ -604,9 +604,12 @@ enum Command {
         /// Print the answer the document holds, and say if it is stale, without running.
         #[arg(long)]
         show: bool,
-        /// The line the full answer reads the river's own radius on: `fairway` (the default), each
-        /// class's fairway fit (ADR 0007) in the water, or `centreline`. A plan-only answer, and a
-        /// class whose fit cannot run, read the centreline, and the answer says so (ADR 0013).
+        /// The line the answer reads the river on: `reference` (the default), one smooth line in
+        /// the water made from the banks, on which width, radius, depth and the reaches are read
+        /// (spec 0016); `fairway`, each class's fairway fit (ADR 0007), on which the full answer
+        /// reads the radius; or `centreline`. When a line cannot be made (no banks; a plan-only
+        /// answer for `fairway`; a fit that cannot run), the centreline is read and the answer
+        /// says so.
         #[arg(long, value_name = "LINE")]
         plan_line: Option<String>,
         /// Check every class in the shared vessel catalogue a channel can be sized for (default:

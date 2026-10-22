@@ -44,9 +44,13 @@ fn curvatures(line: &[Pt]) -> Vec<f64> {
             let s = 10.0 * i as f64;
             let (a, b, c) = (at(s - 20.0), at(s), at(s + 20.0));
             let (u, v) = ([b[0] - a[0], b[1] - a[1]], [c[0] - b[0], c[1] - b[1]]);
-            let d = |p: Pt, q: Pt| ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2)).sqrt();
+            let d = |p: Pt, q: Pt| libm::hypot(p[0] - q[0], p[1] - q[1]);
             let den = d(a, b) * d(b, c) * d(a, c);
-            if den > 0.0 { 2.0 * (u[0] * v[1] - u[1] * v[0]) / den } else { 0.0 }
+            if den > 0.0 {
+                2.0 * (u[0] * v[1] - u[1] * v[0]) / den
+            } else {
+                0.0
+            }
         })
         .collect()
 }
@@ -103,7 +107,10 @@ fn sweep_the_pull_weight() {
         .collect();
     for w in windows.split(',') {
         let (a, b) = w.split_once('-').unwrap();
-        let (a, b): (f64, f64) = (a.parse::<f64>().unwrap() * 1e3, b.parse::<f64>().unwrap() * 1e3);
+        let (a, b): (f64, f64) = (
+            a.parse::<f64>().unwrap() * 1e3,
+            b.parse::<f64>().unwrap() * 1e3,
+        );
         let (l, r) = (clip(&left, &ci, a, b), clip(&right, &ci, a, b));
         let seed = seed_mid_line(&l, &r).unwrap();
         let (f, rm, sh, g) = metrics(&seed, &l, &r);
