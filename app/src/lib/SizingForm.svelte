@@ -26,6 +26,8 @@
   let values = $state<Record<string, string>>({});
   let vessel = $state("");
   let draught = $state("");
+  /** What the vessel search matches: the id, the name, the family or the region. */
+  let vesselSearch = $state("");
 
   // Take the choices from the document whenever it changes (open, new, a sent choice).
   $effect(() => {
@@ -38,6 +40,24 @@
     const typed = untrack(() => draught).trim();
     if (doc == null ? typed !== "" : Number(typed) !== doc) draught = doc == null ? "" : String(doc);
   });
+
+  // The vessel classes by family (scheme), CEMT, RWS and CN first, in catalogue order within a
+  // family; the search keeps the classes it matches, and always the one chosen.
+  const FIRST = ["CEMT", "RWS", "CN"];
+  const rank = (family: string) => {
+    const i = FIRST.findIndex((f) => family.startsWith(f));
+    return i < 0 ? FIRST.length : i;
+  };
+  let vesselGroups = $derived.by(() => {
+    const q = vesselSearch.trim().toLowerCase();
+    const shown = (choices?.vessels ?? []).filter(
+      (v) => v.id === vessel || !q || [v.id, v.label, v.family, v.region].some((t) => t?.toLowerCase().includes(q)),
+    );
+    const groups = new Map<string, typeof shown>();
+    for (const v of shown) groups.set(v.family, [...(groups.get(v.family) ?? []), v]);
+    return [...groups.entries()].sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b));
+  });
+  let vesselCount = $derived(vesselGroups.reduce((n, [, vs]) => n + vs.length, 0));
 
   const setChoice = (id: string): RuleSetChoice | undefined => choices?.rule_sets.find((r) => r.id === id);
   /** The set inputs the chosen sets read, each once. */
@@ -160,9 +180,15 @@
   </fieldset>
   <label>
     Vessel class
+    <input type="search" aria-label="Search vessel classes" data-testid="vessel-search" placeholder="search: id, name, family or region" bind:value={vesselSearch} />
     <select aria-label="Vessel class" bind:value={vessel} onchange={sendVessel}>
-      {#each choices?.vessels ?? [] as v}<option value={v.id}>{v.label}</option>{/each}
+      {#each vesselGroups as [family, vs] (family)}
+        <optgroup label={family}>
+          {#each vs as v (v.id)}<option value={v.id}>{v.label}</option>{/each}
+        </optgroup>
+      {/each}
     </select>
+    {#if vesselSearch.trim()}<span class="dim" data-testid="vessel-search-count">{vesselCount} of {choices?.vessels.length ?? 0} classes</span>{/if}
   </label>
   <label>
     Draught (m)

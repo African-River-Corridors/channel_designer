@@ -21,7 +21,7 @@ libm = "0.2"
 dubins_paths = { version = "=3.2.0", default-features = false, features = ["libm", "alloc"] }
 clarabel = "=0.11.1"
 arc-rules.workspace = true
-ovcd-core = { git = "https://github.com/African-River-Corridors/open-vessel-concept-drawings", tag = "v0.2.2" }
+ovcd-core = { git = "https://github.com/African-River-Corridors/open-vessel-concept-drawings", tag = "v0.2.4" }
 
 # web-time (spec 0011): `std::time::Instant` panics on wasm32-unknown-unknown; this is the same type on top of
 # the browser's clock. Used on wasm only.

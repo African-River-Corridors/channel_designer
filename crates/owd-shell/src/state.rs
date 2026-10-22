@@ -730,7 +730,8 @@ mod tests {
         s.set_vessel("CEMT_Va", Some(2.5)).unwrap();
         let after = s.snapshot()["document"]["stages"]["sizing"]["results"].clone();
         assert_ne!(before["min_bend_radius_m"], after["min_bend_radius_m"]);
-        assert_eq!(after["vessel_standard_id"], "CEMT_Va");
+        // An older id is saved as its catalogue id (spec 0015 T0).
+        assert_eq!(after["vessel_standard_id"], "CEMT-Va");
         assert_eq!(stage_status(&s, "sizing"), "fresh");
         assert!(s.is_dirty());
     }
@@ -821,8 +822,8 @@ mod tests {
     #[test]
     fn a_stale_sizing_in_an_opened_file_is_shown_and_run_reruns_it() {
         let text = worked_example().replacen(
-            "\"vessel_standard_id\": \"CEMT_IV\",\n        \"draught_m\"",
-            "\"vessel_standard_id\": \"CEMT_Va\",\n        \"draught_m\"",
+            "\"vessel_standard_id\": \"CEMT-IV\",\n        \"draught_m\"",
+            "\"vessel_standard_id\": \"CEMT-Va\",\n        \"draught_m\"",
             1,
         );
         let mut s = AppState::open(Path::new("a.owd"), &text, None).unwrap();

@@ -336,9 +336,10 @@ pub struct Vessel {
     pub draught_m: f64,
     /// `motor_vessel` or `pushed_convoy`.
     pub formation: String,
-    /// The class, such as `IV` or `VIa`.
+    /// The class: its catalogue id, such as `CEMT-IV` (`IV` in older terms).
     pub class_name: String,
-    /// The family of vessel classes the class belongs to, such as `CEMT` or `CN`.
+    /// The family (scheme) of vessel classes the class belongs to, such as `CEMT-1992` or
+    /// `CN-GB50139` (`CEMT` or `CN` in older terms).
     pub family: String,
 }
 
@@ -510,7 +511,8 @@ pub struct GbClass {
 
 /// A vessel's GB 50139 channel class. In order: the typed `gb_class`; a Chinese vessel's own class;
 /// for a CEMT vessel, the smallest class of Table 3.0.1 whose design tonnage covers the top of its
-/// CEMT class's range (above 3000 t: class I, a special design vessel); else `unknown`.
+/// CEMT class's range; for any other catalogue class, the top of its deadweight range in the vessel
+/// catalogue (above 3000 t: class I, a special design vessel); else `unknown`.
 pub fn gb_class_found(vessel: &Vessel, inputs: &[(String, String)]) -> GbClass {
     let found = |class: &str, how: String, above_3000_t| GbClass {
         class: class.into(),
@@ -520,19 +522,43 @@ pub fn gb_class_found(vessel: &Vessel, inputs: &[(String, String)]) -> GbClass {
     if let Some((_, typed)) = inputs.iter().find(|(k, _)| k == GB_CLASS) {
         return found(typed, "typed".into(), false);
     }
-    if vessel.family == CN_FAMILY {
-        return found(
-            &vessel.class_name,
-            "from the vessel (a Chinese class)".into(),
-            false,
-        );
+    // The Chinese classes: `CN-III-MOTOR` in the catalogue (`III` in older studies' terms).
+    if vessel.family == CN_FAMILY || vessel.family.starts_with("CN-") {
+        let class = vessel
+            .class_name
+            .strip_prefix("CN-")
+            .map_or(vessel.class_name.as_str(), |r| {
+                r.split('-').next().unwrap_or(r)
+            });
+        return found(class, "from the vessel (a Chinese class)".into(), false);
     }
+    // A CEMT class letter: `CEMT-Va` in the catalogue (`Va` in older studies' terms).
     let cemt = vessel.family.starts_with("CEMT");
-    let top = CEMT_TONNAGE_TOP_T
+    let letter = vessel
+        .class_name
+        .strip_prefix("CEMT-")
+        .unwrap_or(&vessel.class_name);
+    let by_cemt = CEMT_TONNAGE_TOP_T
         .iter()
-        .find(|(c, _)| cemt && *c == vessel.class_name)
-        .map(|(_, t)| *t);
-    let Some(t) = top else {
+        .find(|(c, _)| cemt && *c == letter)
+        .map(|(_, t)| {
+            (
+                *t,
+                format!("by tonnage: CEMT {letter} up to {t} t (ECMT Resolution 92/2)"),
+            )
+        });
+    let by_catalogue = || {
+        super::classes::deadweight_top_t(&vessel.class_name).map(|t| {
+            (
+                t,
+                format!(
+                    "by deadweight: {} up to {t} t (the vessel catalogue)",
+                    vessel.class_name
+                ),
+            )
+        })
+    };
+    let Some((t, by)) = by_cemt.or_else(by_catalogue) else {
         return found(
             GB_CLASS_UNKNOWN,
             format!(
@@ -542,10 +568,6 @@ pub fn gb_class_found(vessel: &Vessel, inputs: &[(String, String)]) -> GbClass {
             false,
         );
     };
-    let by = format!(
-        "by tonnage: CEMT {} up to {} t (ECMT Resolution 92/2)",
-        vessel.class_name, t
-    );
     match GB_CLASS_TONNAGE_T.iter().find(|(_, cap)| *cap >= t) {
         Some((class, cap)) => found(
             class,

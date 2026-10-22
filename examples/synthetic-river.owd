@@ -14288,12 +14288,12 @@
             "source": "typed"
           }
         ],
-        "vessel_standard_id": "CEMT_IV",
+        "vessel_standard_id": "CEMT-IV",
         "draught_m": 2.5
       },
       "results": {
         "rule_sets": "pianc-wg141@0.3.0 (se_quality B)",
-        "vessel_standard_id": "CEMT_IV",
+        "vessel_standard_id": "CEMT-IV",
         "loa_m": 85.0,
         "beam_m": 9.5,
         "draught_m": 2.5,
@@ -14304,7 +14304,7 @@
         "bend_widening_at_rmin_m": 14.166666666666666,
         "bottom_width_at_rmin_m": 44.56666666666667,
         "width_basis": "rule",
-        "source": "Rule Sets pianc-wg141@0.3.0, owd@0.3.0; vessel WG 141 Table 2.1 (p15)",
+        "source": "Rule Sets pianc-wg141@0.3.0, owd@0.3.0; vessel ECMT Resolution 92/2 (CEMT/CM(92)6/FINAL) Table 1, read from scan p3: https://www.itf-oecd.org/sites/default/files/docs/wat19922e.pdf (via web.archive.org); vessel_designer core/vessel_standards.py (PIANC WG141 Table 2.1 p15)",
         "warnings": [],
         "design_basis": [
           {
@@ -14380,7 +14380,7 @@
         ],
         "rules_notice": "Every Rule is unverified until a second reader checks it against its source."
       },
-      "depends_on": "66369dd2a8b203db412eff2c6857cac478c8d130da3e7fed37668704cacf0253",
+      "depends_on": "360a03f44fceebc9b833f2c39c694f1a401d101859431155f51e0fe9ef26ad22",
       "engine_version": "0.2.0"
     },
     "alignment": {

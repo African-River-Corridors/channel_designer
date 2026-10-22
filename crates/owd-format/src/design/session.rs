@@ -13,7 +13,6 @@ use super::schema;
 use arc_rules::load::Library;
 use owd_core::rules::engine;
 use owd_core::rules::rulesets::ChannelShape;
-use owd_core::rules::vessel_catalogue;
 use serde_json::{Value, json};
 
 /// The engine version written into documents and stages.
@@ -235,12 +234,47 @@ impl Session {
         };
         if s.doc["inputs"].is_object() && s.validate_schema_only().is_empty() {
             s.migrate_water_settings();
+            s.canonical_vessel_ids();
         }
         let errors = s.validate();
         if errors.is_empty() {
             Ok(s)
         } else {
             Err(DesignError::Document(errors))
+        }
+    }
+
+    /// Older studies name a vessel class by an id the shared catalogue replaced (`CEMT_Va`). The
+    /// class still works; the study moves to the catalogue id (`CEMT-Va`), and stages that were fresh
+    /// stay fresh (spec 0015 T0).
+    fn canonical_vessel_ids(&mut self) {
+        let fresh: Vec<Stage> = Stage::ALL
+            .iter()
+            .copied()
+            .filter(|s| self.stage_status(*s) == StageStatus::Fresh)
+            .collect();
+        let mut moved = false;
+        for part in ["settings", "results"] {
+            // `get_mut`, not indexing: indexing would turn a missing part into an empty object.
+            let Some(at) = self
+                .doc
+                .pointer_mut(&format!("/stages/sizing/{part}/vessel_standard_id"))
+            else {
+                continue;
+            };
+            if let Some(id) = at.as_str()
+                && let Some(new) = owd_core::rules::classes::canonical_id(id)
+                && new != id
+            {
+                *at = json!(new);
+                moved = true;
+            }
+        }
+        if moved {
+            for s in fresh {
+                let h = self.dependency_hash(s);
+                self.doc["stages"][s.name()]["depends_on"] = json!(h);
+            }
         }
     }
 
@@ -484,20 +518,32 @@ impl Session {
     /// apart, as `always`: it is always selected.
     pub fn sizing_choices() -> Value {
         let (rule_sets, always) = super::rule_sets::rule_set_choices();
-        let vessels: Vec<Value> = vessel_catalogue()
+        // Every class a channel can be sized for (spec 0015 T0), with its family for the picker's
+        // groups and the words its search matches; `default` marks the 12 `owd fits` checks.
+        let defaults = owd_core::rules::classes::default_class_ids();
+        let vessels: Vec<Value> = owd_core::rules::full_catalogue()
             .into_iter()
             .map(|(id, v)| {
+                let (lo, hi) = v.loa_m.unwrap_or((f64::NAN, f64::NAN));
+                let loa = if lo == hi {
+                    format!("{hi}")
+                } else {
+                    format!("{lo}-{hi}")
+                };
                 json!({
                     "id": id,
                     "label": format!(
-                        "{} {} ({}, LOA {}-{} m)",
-                        v.family, v.class_name, v.formation.replace('_', " "), v.loa_m.0, v.loa_m.1
+                        "{id} ({}, LOA {loa} m, beam {} m)",
+                        v.formation.replace('_', " "),
+                        v.beam_m.unwrap_or(f64::NAN)
                     ),
                     "family": v.family,
+                    "region": v.region,
                     "formation": v.formation,
-                    "loa_m": [v.loa_m.0, v.loa_m.1],
+                    "loa_m": v.loa_m.map(|(a, b)| [a, b]),
                     "beam_m": v.beam_m,
                     "draught_nominal_m": v.draught_nominal_m(),
+                    "default": defaults.contains(&id.as_str()),
                 })
             })
             .collect();
