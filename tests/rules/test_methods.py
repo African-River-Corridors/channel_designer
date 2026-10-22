@@ -123,11 +123,11 @@ def test_entry_point_is_loaded_on_first_miss(monkeypatch):
         M.unregister_width_method("toy")
 
 
-def test_legacy_entry_point_group_still_loads(monkeypatch):
-    """A plugin that still declares the pre-rename group `channel_designer.width_methods` is found."""
+def test_only_the_owd_entry_point_group_is_read(monkeypatch):
+    """A plugin is found under `owd.width_methods` only; a plugin in any other group (the group
+    before the rename included) is not loaded."""
     class EP:
         name = "toy"
-        group = M.LEGACY_ENTRY_POINT_GROUP
 
         @staticmethod
         def load():
@@ -135,12 +135,9 @@ def test_legacy_entry_point_group_still_loads(monkeypatch):
 
     import importlib.metadata as md
     monkeypatch.setattr(md, "entry_points",
-                        lambda group=None: [EP()] if group == M.LEGACY_ENTRY_POINT_GROUP else [])
+                        lambda group=None: [EP()] if group != M.ENTRY_POINT_GROUP else [])
     monkeypatch.setattr(M, "_ENTRY_POINTS_LOADED", False)
-    try:
-        assert M.get_width_method("toy") is TOY
-    finally:
-        M.unregister_width_method("toy")
+    assert "toy" not in M.width_methods()
 
 
 def test_entry_point_name_must_match(monkeypatch):

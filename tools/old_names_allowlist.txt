@@ -23,10 +23,6 @@ app/e2e/smoke.test.mjs | tests that the app gives the conversion error
 # --- the wheel smoke test: it asserts the old import name is gone
 .github/workflows/wheels.yml | asserts that `import channel_designer` no longer works
 
-# --- the rules lane's old entry-point group (not part of the shims removed in T10)
-src/owd/rules/methods.py | still reads the old entry-point group `channel_designer.width_methods`
-tests/rules/test_methods.py | tests the old entry-point group
-
 # --- this check
 tools/old_names.py | holds the patterns it searches for
 tools/old_names_allowlist.txt | this file

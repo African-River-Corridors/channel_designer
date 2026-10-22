@@ -49,8 +49,6 @@ from typing import Callable, Mapping, Optional
 from .. import _rust
 
 ENTRY_POINT_GROUP = "owd.width_methods"
-#: The group name before the rename to owd. Read for one release, so a plugin that has not moved still loads.
-LEGACY_ENTRY_POINT_GROUP = "channel_designer.width_methods"
 
 Options = Mapping[str, object]
 
@@ -101,7 +99,7 @@ def _load_entry_points() -> None:
         return
     _ENTRY_POINTS_LOADED = True
     from importlib.metadata import entry_points
-    for ep in (*entry_points(group=ENTRY_POINT_GROUP), *entry_points(group=LEGACY_ENTRY_POINT_GROUP)):
+    for ep in entry_points(group=ENTRY_POINT_GROUP):
         if ep.name in _REGISTRY:
             continue
         obj = ep.load()
