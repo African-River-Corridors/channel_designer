@@ -1,8 +1,9 @@
 name: Design impact
 
 # On every pull request: run fixed scenarios on the base branch and on the pull request, compare
-# the numbers (ADR 0005 tolerance), and fail only when a result moved and CHANGELOG.md has no
-# entry for it under "Unreleased > Design impact". See tools/design_impact.py.
+# the numbers (ADR 0005 tolerance), and fail only when a result moved and the pull request adds no
+# design-impact entry for it: a fragment changelog.d/<id>.design-impact.md, or a bullet under
+# "Unreleased > Design impact" in CHANGELOG.md. See tools/design_impact.py and tools/changelog.py.
 on:
   pull_request:
 
@@ -59,7 +60,8 @@ jobs:
         run: |
           set +e
           head-venv/bin/python head/tools/design_impact.py compare base.json head.json \
-            --changelog head/CHANGELOG.md --base-changelog base/CHANGELOG.md | tee report.md
+            --changelog head/CHANGELOG.md --base-changelog base/CHANGELOG.md \
+            --fragments head/changelog.d --base-fragments base/changelog.d | tee report.md
           code=${PIPESTATUS[0]}
           cat report.md >> "$GITHUB_STEP_SUMMARY"
           exit $code

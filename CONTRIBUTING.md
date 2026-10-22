@@ -53,9 +53,9 @@ What guards a change now is the **design-impact check**, `design-impact` in CI
 3. compares every number by the ADR 0005 tolerance (1e-9 relative; counts and names exactly).
 
 If nothing moved it says **no design impact** and passes. If a result moved, it lists what moved (scenario,
-result, base, your branch, change) and passes only when your pull request adds a bullet under
-`## Unreleased` > `### Design impact` in `CHANGELOG.md` saying what moved and why. A moved result with no
-entry fails. You can run it yourself:
+result, base, your branch, change) and passes only when your pull request adds a design-impact entry
+saying what moved and why: a changelog fragment `changelog.d/<pr>.design-impact.md` (see below). A moved
+result with no entry fails. You can run it yourself:
 
 ```
 python tools/design_impact.py run --out head.json     # on your branch
@@ -69,6 +69,16 @@ deliberate and written down. Never loosen the tolerance to make a number pass; i
 
 Other guards: `bash tools/gates.sh` (format, clippy with warnings as errors, Rust tests with Python made
 unusable, pytest) and `python tools/release_guard.py` (no embargoed terms or local paths).
+
+## The changelog: one fragment per pull request
+
+Do not edit `CHANGELOG.md` in a pull request. Add a small file `changelog.d/<pr>.<kind>.md` instead, where
+`<pr>` is the issue or pull request number and `<kind>` is `added`, `changed`, `deprecated`, `removed`,
+`fixed`, `security` or `design-impact`. Write one entry in Markdown, with no heading. Two pull requests then
+never conflict over the changelog. `changelog.d/README.md` has the details; `python3 tools/changelog.py
+check` checks the files, and pytest runs that check too. At release time the maintainer runs
+`python3 tools/changelog.py release <version>`, which moves every entry into `CHANGELOG.md` and deletes the
+fragments.
 
 ## Pull requests
 
