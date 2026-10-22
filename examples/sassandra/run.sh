@@ -43,4 +43,8 @@ cp "$DOC" sassandra-fairway.owd
 "$OWD" fits sassandra-fairway.owd --plan-line fairway --json > fits-full-fairway.json
 "$OWD" fits sassandra-fairway.owd --show > fits-full-fairway.txt
 
-echo "wrote $OUT/: $DOC and the answers (fits-plan-only.*, fits-full.*)"
+# 7. The reports (spec 0014): all four, as PDF, HTML and Word. The study stops at the fits answer, so it has no
+#    design line option: the quantity schedule and the section pack say so.
+"$OWD" report "$DOC" --kind all --format all -o reports --json > reports.json
+
+echo "wrote $OUT/: $DOC, the answers (fits-plan-only.*, fits-full.*) and the reports (reports/)"

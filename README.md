@@ -65,6 +65,14 @@ normalised content, SVG, PDF and DXF. `owd draw design.owd --document` prints th
 [`otd`](https://github.com/African-River-Corridors/open-technical-drawer), the Drawing Format Standard in Rust. Every
 sheet is marked "Screening — not for construction".
 
+### Reports
+
+`owd report design.owd --kind all --format all -o reports/` writes four reports, each as PDF, HTML and Word, through
+the [Open Report Designer](https://github.com/African-River-Corridors/open-report-designer): the screening report
+(with the Rule Trace as an appendix), the quantity schedule, the section pack and a run report for testers. Every
+report has document control, the screening notice on every page and a "Data and limits" box. See
+[docs/reports.md](docs/reports.md).
+
 Optional extras:
 
 | Extra | Adds | For |
