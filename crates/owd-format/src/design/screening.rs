@@ -36,11 +36,18 @@ impl Session {
     /// The selection (with the reaches), the vessel and the sized channel of the sizing settings.
     pub(super) fn engine_inputs(&self) -> Result<(Selection, Vessel, Sized), DesignError> {
         let settings = self.sizing_settings();
-        let vessel_id = settings["vessel_standard_id"].as_str().ok_or_else(|| {
-            DesignError::Input("the sizing stage has no vessel class: choose one first".into())
-        })?;
         let selection = self.selection()?;
-        let vessel = vessel_for(vessel_id, settings["draught_m"].as_f64()).map_err(err)?;
+        let vessel = match self.custom_vessel() {
+            Some(c) => c.vessel(),
+            None => {
+                let vessel_id = settings["vessel_standard_id"].as_str().ok_or_else(|| {
+                    DesignError::Input(
+                        "the sizing stage has no vessel class: choose one first".into(),
+                    )
+                })?;
+                vessel_for(vessel_id, settings["draught_m"].as_f64()).map_err(err)?
+            }
+        };
         let sized = engine::size(&selection, &vessel).map_err(err)?;
         Ok((selection, vessel, sized))
     }

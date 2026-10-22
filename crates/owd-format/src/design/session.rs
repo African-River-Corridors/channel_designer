@@ -18,9 +18,20 @@ use serde_json::{Value, json};
 /// The engine version written into documents and stages.
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// The document format version this engine writes and opens: 3 since spec 0007 (the Rule Set
-/// selection). An older file is refused; there is no migration.
-pub const FORMAT_VERSION: i64 = 3;
+/// The document format version this engine writes: the string `"0.4"` since spec 0015 (the custom
+/// vessel). A file with the number `3` (format 0.3, spec 0007) opens and is saved as 0.4, with
+/// nothing else changed. An older file is refused; there is no migration. Until format 1.0 (after
+/// an external review) a format change raises the minor number.
+pub const FORMAT_VERSION: &str = "0.4";
+
+/// The format 0.3 files wrote as a number.
+const FORMAT_0_3: i64 = 3;
+
+/// A format version string as `(major, minor)`, such as `"0.4"` -> `(0, 4)`.
+fn format_number(v: &str) -> Option<(u64, u64)> {
+    let (a, b) = v.split_once('.')?;
+    Some((a.parse().ok()?, b.parse().ok()?))
+}
 
 /// The UTC calendar date, `YYYY-MM-DD`, of a Unix time in seconds. The session has no clock: a caller
 /// reads one and passes the seconds here when it needs a date to write into a new document.
@@ -173,7 +184,7 @@ fn sizing_stage() -> Value {
 /// The sizing results of a channel shape. `label` names the selection, such as
 /// `pianc-wg141@0.3.0 (se_quality B)`.
 fn shape_value(s: &ChannelShape, label: &str) -> Value {
-    json!({
+    let mut v = json!({
         "rule_sets": label,
         "vessel_standard_id": s.vessel_standard_id,
         "loa_m": s.loa_m,
@@ -188,7 +199,13 @@ fn shape_value(s: &ChannelShape, label: &str) -> Value {
         "width_basis": s.width_basis,
         "source": s.source,
         "warnings": s.warnings,
-    })
+    });
+    // A custom vessel has no class id; every output shows its label (spec 0015 T1).
+    if s.custom {
+        v["vessel_standard_id"] = Value::Null;
+        v["vessel_label"] = json!(s.vessel_standard_id);
+    }
+    v
 }
 
 impl Session {
@@ -216,16 +233,31 @@ impl Session {
 
     /// Parse and validate `.owd` text.
     pub fn open(text: &str) -> Result<Session, DesignError> {
-        let doc: Value = serde_json::from_str(text)
+        let mut doc: Value = serde_json::from_str(text)
             .map_err(|e| DesignError::Input(format!("the file is not valid JSON: {e}")))?;
-        if let Some(v) = doc["format_version"].as_i64()
-            && v != FORMAT_VERSION
-        {
-            return Err(DesignError::Input(format!(
-                "the file is document format version {v}; this OWD opens version {FORMAT_VERSION} only \
-                 and moves no older file (spec 0007). Rebuild the design: start a new one, import its \
-                 inputs, size it and run its stages again."
-            )));
+        match &doc["format_version"] {
+            // Format 0.3 reads as it is, and is saved as 0.4 (spec 0015).
+            Value::Number(n) if n.as_i64() == Some(FORMAT_0_3) => {
+                doc["format_version"] = json!(FORMAT_VERSION);
+            }
+            Value::Number(n) => {
+                return Err(DesignError::Input(format!(
+                    "the file is document format version {n}; this OWD opens format \
+                     {FORMAT_VERSION} and 0.3 only, and moves no older file (spec 0007). Rebuild \
+                     the design: start a new one, import its inputs, size it and run its stages \
+                     again."
+                )));
+            }
+            Value::String(v)
+                if format_number(v).is_some_and(|n| Some(n) > format_number(FORMAT_VERSION)) =>
+            {
+                return Err(DesignError::Input(format!(
+                    "the file is document format {v}, made by a newer OWD; this OWD opens format \
+                     {FORMAT_VERSION} and older. Update OWD to open it."
+                )));
+            }
+            // Anything else is for the schema to name.
+            _ => {}
         }
         let mut s = Session {
             doc,
@@ -501,7 +533,9 @@ impl Session {
                     let settings = &self.doc["stages"][stage.name()]["settings"];
                     // A new design has a Rule Set selection but no vessel: nothing to size yet.
                     !settings.is_null()
-                        && (stage != Stage::Sizing || !settings["vessel_standard_id"].is_null())
+                        && (stage != Stage::Sizing
+                            || !settings["vessel_standard_id"].is_null()
+                            || settings["custom_vessel"].is_object())
                 }
                 StageStatus::Fresh => false,
             };
