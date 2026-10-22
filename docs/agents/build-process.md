@@ -41,6 +41,31 @@ ticket whose blockers are all closed, and no other. For each ticket:
 There is no mutation test and no per-ticket reviewer before a merge, and none after it either: see
 below.
 
+## Which CI jobs run where (since 2026-10-22)
+
+Only `test` and `release-guard` are required, and they run on every pull request. The rest run only when
+their inputs change, so a skipped job never blocks a merge:
+
+| Job | On a pull request | On main | Other |
+|---|---|---|---|
+| CI `test`, `release-guard`, `drawing-crosscheck` | always | always | weekly, by hand |
+| CI `app-linux`, `app-e2e` | `app/**`, the crates the app links, `examples/**`, Cargo files, toolchain, `ci.yml` | always | weekly, by hand |
+| CI `web-parity`, `web-app` | the same, plus `crates/owd-web/**` and the web tools | always | weekly, by hand |
+| App bundles (3 jobs) | `app/**`, the crates the app links, Cargo files, toolchain | the same paths | by hand |
+| Wheels (5 jobs) | `crates/owd-py`, `owd-format`, `owd-core`, `src/**`, packaging files | the same paths | by hand |
+| Website | `website/**`, `docs/**`, root `*.md`, `app/src/tokens.css` | the wider list in `website.yml` | by hand |
+| Design impact | always | – | – |
+| CodeQL (`codeql.yml`) | never | always | weekly, by hand |
+| Nightly (every slow test) | its own files | – | daily, by hand |
+
+A failed scheduled run (the nightly, the weekly CI run, CodeQL) opens an issue titled "Scheduled run
+failed: <workflow>", or comments on the open one (`scheduled-failure.yml`). `tests/test_workflows.py`
+checks that the required jobs are never filtered and that every scheduled workflow is watched.
+
+CodeQL moves to `codeql.yml` only when the maintainer turns off the repository's CodeQL "default setup"
+and sets the repository variable `CODEQL_ADVANCED_SETUP` to `true`. Until then the default setup still
+runs on each pull request, and `codeql.yml` skips its job.
+
 ## Mutation testing is a separate hardening pass (since 2026-10-16)
 
 Builders do **not** run mutation tests during the build, before or after a merge. Parallel post-merge

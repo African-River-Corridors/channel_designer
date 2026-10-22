@@ -19,6 +19,57 @@ permissions:
   contents: read
 
 jobs:
+  # Which parts of the tree a pull request changes. The app and web jobs below run on a pull request only
+  # when their inputs change, and always on main, on the weekly run and by hand. The required jobs (`test`,
+  # `release-guard`) never depend on this job and always run. A skipped job does not block a merge: only
+  # `test` and `release-guard` are required.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      app: ${{ steps.filter.outputs.app }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      # On a pull request the filter reads the changed files from the API; no checkout is needed.
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          # The desktop app and what it builds from: its own code, the crates it links (owd-cli pulls in
+          # owd-reach), the example files its smoke test opens, the toolchain and this workflow.
+          # Any change under app/ runs the app jobs (app-e2e found a real bug in #268).
+          filters: |
+            app:
+              - "app/**"
+              - "crates/owd-core/**"
+              - "crates/owd-format/**"
+              - "crates/owd-cli/**"
+              - "crates/owd-shell/**"
+              - "crates/owd-reach/**"
+              - "examples/**"
+              - "Cargo.toml"
+              - "Cargo.lock"
+              - "rust-toolchain.toml"
+              - ".github/workflows/ci.yml"
+            web:
+              - "app/**"
+              - "crates/owd-core/**"
+              - "crates/owd-format/**"
+              - "crates/owd-cli/**"
+              - "crates/owd-shell/**"
+              - "crates/owd-reach/**"
+              - "crates/owd-web/**"
+              - "examples/**"
+              - "tools/build_web.sh"
+              - "tools/web_parity*.mjs"
+              - "Cargo.toml"
+              - "Cargo.lock"
+              - "rust-toolchain.toml"
+              - ".github/workflows/ci.yml"
+
   # Fast gate (spec 0001): one fail-closed script, tools/gates.sh. Target under 5 minutes.
   test:
     runs-on: ubuntu-latest
@@ -112,6 +163,8 @@ jobs:
   # The desktop app (spec 0003). Kept out of the fast gate: it needs Node and the Tauri system
   # libraries, and the workspace's default members must build without them.
   app-linux:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -142,6 +195,8 @@ jobs:
   # End-to-end smoke test (spec 0003): the built debug app, driven by Tauri's WebDriver on Linux.
   # Its own job, so the fast gate keeps its time budget.
   app-e2e:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -181,6 +236,8 @@ jobs:
   # native `owd run`, by the ADR 0005 tolerance. Not a required check, and apart from `test` so the fast
   # gate keeps its time budget. The wasm-bindgen CLI is the version the owd-web crate pins, and is cached.
   web-parity:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -230,6 +287,8 @@ jobs:
   # The web app (spec 0011): the web build of the front end over the wasm design session, in headless
   # Chrome. Not a required check, and apart from `test`.
   web-app:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
