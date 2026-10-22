@@ -5,6 +5,7 @@ pub mod bank_edit;
 pub mod bed;
 pub mod crs;
 pub mod dem_source;
+pub mod envelope;
 pub mod export;
 pub mod fits;
 pub mod geojson;

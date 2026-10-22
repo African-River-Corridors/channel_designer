@@ -11,7 +11,11 @@ pub type SyncTerrain<'a> = &'a (dyn Fn(&[f64], &[f64]) -> Vec<f64> + Sync);
 
 /// Run `f` on every job and give the answers in the jobs' order: on as many threads as the machine
 /// has when `parallel` (native), or one after another (always in wasm, which has no threads here).
-fn run_all<J: Sync, T: Send>(jobs: &[J], f: impl Fn(&J) -> T + Sync, parallel: bool) -> Vec<T> {
+pub(super) fn run_all<J: Sync, T: Send>(
+    jobs: &[J],
+    f: impl Fn(&J) -> T + Sync,
+    parallel: bool,
+) -> Vec<T> {
     #[cfg(not(target_arch = "wasm32"))]
     if parallel {
         use std::sync::atomic::{AtomicUsize, Ordering};

@@ -210,7 +210,18 @@
         "sizing": { "$ref": "#/$defs/sizing_stage" },
         "alignment": { "$ref": "#/$defs/alignment_stage" },
         "optimise": { "$ref": "#/$defs/stage" },
-        "volumes": { "$ref": "#/$defs/stage" }
+        "volumes": { "$ref": "#/$defs/stage" },
+        "envelope": {
+          "description": "Spec 0016 T2: the largest vessel the river allows, a sweep of single-hull sizes on the reference line (`owd envelope`). Not a stage of the chain: never rerun by `run`, stale when the banks, the river polygon, the reference line, the custom vessel or the settings change. Optional.",
+          "type": "object",
+          "required": ["settings", "results", "depends_on"],
+          "properties": {
+            "settings": { "type": "object" },
+            "results": { "type": "object" },
+            "depends_on": { "type": ["string", "null"] },
+            "engine_version": { "type": "string" }
+          }
+        }
       }
     },
     "fits": {

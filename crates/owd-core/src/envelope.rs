@@ -179,7 +179,11 @@ pub fn size_result(
         &Fixed::default(),
         &FitParams::new(r_min),
     )?;
-    let who = (size.label(), "series".to_string(), "motor_vessel".to_string());
+    let who = (
+        size.label(),
+        "series".to_string(),
+        "motor_vessel".to_string(),
+    );
     let row = class_fit(&Chained::new(&fit.line), water, &shape, who)?;
     // Onto the reference line, so the sizes and the strip share one chainage.
     let ix = linear::ProjectIndex::new(reference);
@@ -272,7 +276,9 @@ pub fn envelope(
     custom: Option<&CustomVessel>,
 ) -> Result<Envelope, PyError> {
     if reference.len() < 2 {
-        return Err(PyError::value("the reference line needs at least two points."));
+        return Err(PyError::value(
+            "the reference line needs at least two points.",
+        ));
     }
     let sizes = settings
         .sizes
@@ -294,7 +300,11 @@ mod tests {
             .iter()
             .map(|(p, n)| [p[0] - h * n[0], p[1] - h * n[1]])
             .collect();
-        ring.extend(c.iter().rev().map(|(p, n)| [p[0] + h * n[0], p[1] + h * n[1]]));
+        ring.extend(
+            c.iter()
+                .rev()
+                .map(|(p, n)| [p[0] + h * n[0], p[1] + h * n[1]]),
+        );
         ring.push(ring[0]);
         Polygon {
             exterior: ring,
@@ -358,10 +368,20 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(e.largest, Some(2), "{:?}", e.sizes.iter().map(|s| s.passes).collect::<Vec<_>>());
+        assert_eq!(
+            e.largest,
+            Some(2),
+            "{:?}",
+            e.sizes.iter().map(|s| s.passes).collect::<Vec<_>>()
+        );
         assert!(e.per_km.iter().all(|k| k.largest == Some(2)));
         assert!(!e.sizes[3].stretches.is_empty());
-        assert!(e.sizes[3].stretches.iter().all(|s| s.kind.as_str() == "width"));
+        assert!(
+            e.sizes[3]
+                .stretches
+                .iter()
+                .all(|s| s.kind.as_str() == "width")
+        );
     }
 
     #[test]
@@ -373,8 +393,13 @@ mod tests {
         let (_, r30) = shape(2);
         let rc = (r20 + r30) / 2.0;
         let c = bend(rc);
-        let e = envelope(&line(&c), &[water_along(&c, w50 + 4.0)], Settings::default(), None)
-            .unwrap();
+        let e = envelope(
+            &line(&c),
+            &[water_along(&c, w50 + 4.0)],
+            Settings::default(),
+            None,
+        )
+        .unwrap();
         let first = e.per_km[0].largest;
         let last = e.per_km[e.per_km.len() - 1].largest;
         let (bend_from, bend_to) = (1500.0, 1500.0 + rc * core::f64::consts::FRAC_PI_2);
@@ -417,8 +442,13 @@ mod tests {
     #[test]
     fn the_catalogue_is_marked_against_the_largest_size() {
         let c = straight(1000.0);
-        let e = envelope(&line(&c), &[water_along(&c, 2000.0)], Settings::default(), None)
-            .unwrap();
+        let e = envelope(
+            &line(&c),
+            &[water_along(&c, 2000.0)],
+            Settings::default(),
+            None,
+        )
+        .unwrap();
         assert_eq!(e.largest, Some(4));
         assert_eq!(e.marks.len(), 12);
         for m in &e.marks {
@@ -429,7 +459,13 @@ mod tests {
     #[test]
     fn sizes_are_read_from_a_list() {
         let s = Size::parse_list("10x2, 25X5,40×8").unwrap();
-        assert_eq!(s[1], Size { loa_m: 25.0, beam_m: 5.0 });
+        assert_eq!(
+            s[1],
+            Size {
+                loa_m: 25.0,
+                beam_m: 5.0
+            }
+        );
         assert_eq!(s[2].label(), "40x8");
         assert!(Size::parse_list("10x").is_err());
         assert!(Size::parse_list("10x-2").is_err());

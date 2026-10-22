@@ -5,6 +5,7 @@ pub mod bed;
 pub mod check_banks;
 pub mod cli;
 pub mod commands;
+pub mod envelope;
 pub mod fetch;
 pub mod fits;
 pub mod level;
