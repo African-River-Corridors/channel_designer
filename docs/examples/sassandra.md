@@ -26,6 +26,28 @@ is fetched at run time into `sassandra-study/`; nothing is bundled. The script:
 5. `owd fits` again gives the full answer: width, radius and depth, with a verdict for each vessel class.
 6. The same full answer, reading the river's radius on each class's fairway fit (`--plan-line fairway`).
 
+## Check the banks by eye
+
+Spec 0013 seeds the bank lines from the water seen in Sentinel-2 itself, checks and repairs them, and
+draws them over the image so you can check a stretch:
+
+```bash
+owd qa-overlay sassandra.owd --png km148-152.png --kmz km148-152.kmz --from-km 148 --to-km 152
+```
+
+This is km 148 to 152, where the river opens into the Soubré reservoir, on the recorded window of the
+acceptance test (`crates/owd-reach/tests/s2window.rs`): the left bank in red, the right in blue, the
+centreline in cream, and the repaired stretches to check in red bands.
+
+![The banks, centreline and repaired stretches of km 148 to 152 over Sentinel-2 scene S2B_29NQG_20250205](sassandra-qa-km148-152.png)
+
+On this window the median width is 199 m from the seed and 202 m after the edge fit, against 219 m of
+open water measured on the scene across nine transects. The JRC mask alone gives 112 m. No station has
+both banks on one side, and the centreline is within 1 m of the banks' mid-line at the 95th percentile.
+
+> The whole-river numbers below are from the spec 0012 run, with banks from the JRC mask. They are
+> regenerated on the spec 0013 seed in a follow-up.
+
 ## The answer
 
 Under PIANC WG 141 quality B, **no vessel class fits the Sassandra as it is.** Every class is
