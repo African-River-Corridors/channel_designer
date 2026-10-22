@@ -6,23 +6,22 @@ The algorithm, per side and per pass:
 2. At each sample, place a circle of radius ``min_radius`` tangent to the line on that side.
 3. Find the furthest forward point where the circle touches the line again, more than
    ``min_chainage_gap`` along it (default: the larger of ``step`` and 0.25 × ``min_radius``).
-4. If there is one, replace the line between the tangent point and that touch with the
-   circle arc, and resume from the touch.
+4. If there is one, replace the line from the tangent point with the circle arc and a
+   tangent exit, and resume from where the exit joins the old line.
 
 The original pipeline runs two passes, each covering the left then the right side.
+
+Tangent exits (from 0.3.0, issue #5): circle, then straight, as in a Dubins path. The arc
+keeps R_min past the touch; the line leaves it along a straight tangent to the circle that
+meets the old line at a vertex with the old line's heading. When no such vertex exists (the
+old line curves away first, or ends), that circle keeps the crossing exit of before 0.3.0 and
+its record says ``tangent_exit: False``. The exact rule is in the Rust core
+(``crates/owd-core/src/alignment/rolling_circle.rs``, module doc).
 
 Pure geometry in a projected CRS (metres). Each spliced circle is returned as a record.
 
 KNOWN_ISSUES
 ------------
-Rejoin kinks. The arc leaves the old line where the circle CROSSES it, not where it is
-tangent, so each arc exit carries a short kink. On a vessel-length chord the spliced line
-holds R_min; on a short chord the kink reads as a much tighter radius. Measured on
-``synthetic_river()`` at R_min 300 m, 10 m step: minimum radius 111 m on a 10 m chord, 288 m
-on 25 m, 297 m on 50 m (25 m step: 55 / 165 / 296 m). Read curvature on a chord of about one
-vessel length, or smooth the exits first. Kept as is on purpose; a test pins it. See
-``docs/known-issues.md``.
-
 Unresolved bends. The circle does not always lift the line to R_min. On a jagged input (a
 trace digitised at coarse vertices, with zigzags) more passes do not converge. The result
 says so: ``radius_ok``, ``measured_min_radius_m`` and the chord it was read on

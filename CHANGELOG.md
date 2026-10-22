@@ -5,6 +5,15 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **Rolling-circle tangent exits (issue #5).** Each arc the rolling circle splices in now leaves the circle along
+  a straight tangent to it, which meets the old line at a vertex with the old line's heading (circle, then
+  straight, as in a Dubins path). Up to 0.2.0 the arc ended where the circle crossed the old line, which left a
+  short kink at every exit. The arc also has a vertex at least every metre (it had 32 segments whatever its
+  length), so it reads its own radius on a short chord. A circle whose straight cannot meet the old line keeps
+  the crossing exit. Each circle record gains `exit_point` (where the arc ends) and `tangent_exit` (false on that
+  fallback); `contact_point` and `end_chainage_m` are now where the splice joins the old line. On the synthetic
+  river at R_min 300 m and a 10 m step, the minimum radius on a 10 m resample goes from 111 m to 295 m
+  (`docs/known-issues.md`).
 - **The Sassandra worked example (spec 0012, T12).** `examples/sassandra/run.sh` makes a study of the Sassandra,
   Côte d'Ivoire, from the sea to the Soubré dam, from a river name and two points, with open data fetched at run
   time. It gives the plan-only answer, then the full answer with an assumed 3 m depth, on both plan lines. The docs
@@ -401,6 +410,13 @@ pull request that moves the result.
   `fold_share`, `reweight_cap`, `free_cap_m`, `pull_weight`); `FitLevel` is gone; `JoinParams` loses
   `r_ceiling_m` and `radius_step_m`. The fixed scenarios of this check do not call these functions
   (#100 wires them into the document and CLI), so no scenario moves.
+- **Rolling-circle tangent exits (issue #5).** What moved: every rolled line (rolling circle, with or without
+  water), and so everything built on one. Why: the crossing exit left a kink at each arc exit that read as a
+  much tighter radius on a short chord. Which way, in the quickstart (R_min 255 m): the rolled line's measured
+  minimum radius rises from 253.2 to 254.4 m, it gets one more arc (17, was 16) and 2,514 vertices (was 702, from
+  the arc's vertex every metre), and it is 0.11 m shorter. The re-route, which starts from the rolled line, saves
+  2.440 % (was 2.444 %) and its minimum radius rises from 254.0 to 254.8 m. Volumes move by less than 0.05 %:
+  least-cost dredge 512,936 m3 (was 513,163), rolling-circle total 1,504,641 m3 (was 1,504,620).
 
 ## 0.2.0
 

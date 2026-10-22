@@ -239,6 +239,8 @@ pub(super) fn rolling_circle(function: &str, args: &Value) -> Result<Value, Eval
                             "radius_m": float_json(c.radius_m),
                             "tangent_point": pt_json(c.tangent_point),
                             "contact_point": pt_json(c.contact_point),
+                            "exit_point": pt_json(c.exit_point),
+                            "tangent_exit": c.tangent_exit,
                             "start_chainage_m": float_json(c.start_chainage_m),
                             "end_chainage_m": float_json(c.end_chainage_m),
                         })
