@@ -102,7 +102,8 @@ fn fits_answers_every_class_and_stores_the_answer_in_the_document() {
             assert!((s["end_chainage_m"].as_f64().unwrap() - 1600.0).abs() < 0.05);
         }
     }
-    assert_eq!(rs["largest_fitting"], "CEMT_VIa_motor_NL2011");
+    // The old `CEMT_VIa_motor_NL2011`, by its catalogue id (spec 0015 T0).
+    assert_eq!(rs["largest_fitting"], "RWS-M12");
     // The document holds it, and the table reads the same.
     let text = std::fs::read_to_string(&doc).unwrap();
     let d: Value = serde_json::from_str(&text).unwrap();
@@ -111,10 +112,39 @@ fn fits_answers_every_class_and_stores_the_answer_in_the_document() {
     let t = out(&owd(&["fits", &doc]));
     assert!(t.contains("width and radius only, no depth"), "{t}");
     assert!(
-        t.contains("Largest class that fits as it is: CEMT_VIa_motor_NL2011"),
+        t.contains("Largest class that fits as it is: RWS-M12"),
         "{t}"
     );
     assert!(t.contains("width from 900 m to 1600 m"), "{t}");
+}
+
+#[test]
+fn all_checks_every_class_of_the_catalogue_and_is_kept_in_the_settings() {
+    let (_dir, doc) = setup("fits-all");
+    let o = owd(&["fits", &doc, "--all", "--json"]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let v: Value = serde_json::from_str(&out(&o)).unwrap();
+    let classes = v["fits"]["rule_sets"][0]["classes"].as_array().unwrap();
+    assert!(classes.len() > 12, "{}", classes.len());
+    assert!(
+        classes
+            .iter()
+            .any(|c| c["vessel_standard_id"] == "CEMT-VIb-motor")
+    );
+    let d: Value = serde_json::from_str(&std::fs::read_to_string(&doc).unwrap()).unwrap();
+    assert_eq!(d["fits"]["settings"]["all_classes"], true);
+    // Back to the default 12: the setting goes, so an `--all` answer reads as stale until rerun.
+    let o = owd(&["fits", &doc, "--json"]);
+    let v: Value = serde_json::from_str(&out(&o)).unwrap();
+    assert_eq!(
+        v["fits"]["rule_sets"][0]["classes"]
+            .as_array()
+            .unwrap()
+            .len(),
+        12
+    );
+    let d: Value = serde_json::from_str(&std::fs::read_to_string(&doc).unwrap()).unwrap();
+    assert!(d["fits"]["settings"]["all_classes"].is_null());
 }
 
 #[test]

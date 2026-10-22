@@ -36,6 +36,10 @@ fn the_engine_gives_the_old_pianc_rulesets_numbers_and_warnings_bit_for_bit() {
         let rs = row["ruleset"].as_str().unwrap();
         let vessel = row["vessel"].as_str().unwrap();
         let draught = row["draught_m"].as_f64();
+        // Spec 0015 T0: the shared catalogue (ovcd-core v0.2.4) gives CEMT-Va a draught range of
+        // 2.5-2.8 m (v0.2.2: 2.5-4.5 m), so its default draught moved from 3.5 m to 2.65 m. The
+        // engine is checked here on the inputs the snapshot was made with; the move is design impact.
+        let draught = draught.or((vessel == "CEMT_Va").then_some(3.5));
         let s =
             channel_shape_for(&selection_for_old_ruleset(rs).unwrap(), vessel, draught).unwrap();
         let case = format!("{rs} {vessel} {draught:?}");

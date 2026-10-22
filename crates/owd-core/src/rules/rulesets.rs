@@ -29,7 +29,6 @@ use arc_rules::eval::{MeasureValue, Outcome, Trace, TraceRow};
 use arc_rules::model::Limit;
 use ovcd_core::checks::Check;
 use ovcd_core::pyfmt::{fixed, py_str};
-use ovcd_core::vessel_standards::get_standard;
 use std::sync::Arc;
 
 // =====================================================================================
@@ -132,11 +131,12 @@ impl ChannelShape {
 /// The vessel the engine sizes for a vessel class: the long end of its LOA, its beam, the draught
 /// (the class's nominal one unless given), its formation and class.
 pub fn vessel_for(vessel_standard_id: &str, draught_m: Option<f64>) -> Result<Vessel, RuleError> {
-    let v = get_standard(vessel_standard_id).map_err(RuleError::Key)?;
+    let v = super::classes::class(vessel_standard_id)?;
+    let f = super::classes::design_figures(&v, draught_m);
     Ok(Vessel {
-        loa_m: v.loa_m.1,
-        beam_m: v.beam_m,
-        draught_m: draught_m.unwrap_or_else(|| v.draught_nominal_m()),
+        loa_m: f.loa_m,
+        beam_m: f.beam_m,
+        draught_m: f.draught_m,
         formation: v.formation.clone(),
         class_name: v.class_name.clone(),
         family: v.family.clone(),
@@ -152,16 +152,39 @@ pub fn channel_shape_for(
     vessel_standard_id: &str,
     draught_m: Option<f64>,
 ) -> Result<ChannelShape, RuleError> {
-    let v = get_standard(vessel_standard_id).map_err(RuleError::Key)?;
-    let vessel = Vessel {
-        loa_m: v.loa_m.1, // size on the LONG end of the class
-        beam_m: v.beam_m,
-        draught_m: draught_m.unwrap_or_else(|| v.draught_nominal_m()),
-        formation: v.formation.clone(),
-        class_name: v.class_name.clone(),
-        family: v.family.clone(),
-    };
-    let sized = engine::size(selection, &vessel)?;
+    let v = super::classes::class(vessel_standard_id)?;
+    let vessel = vessel_for(vessel_standard_id, draught_m)?; // sized on the LONG end of the class
+    let sized = engine::size(selection, &vessel).map_err(|e| {
+        // GB 50139's Rules cover motor vessels and pushed convoys with a GB class. A catalogue
+        // class may be neither (spec 0015 T0): say so in words, not as a missing Measure.
+        let gb = engine::gb_class_found(&vessel, &selection.inputs);
+        let gb_only = selection
+            .sets
+            .iter()
+            .any(|s| s.key().starts_with("gb50139"))
+            && !selection.sets.iter().any(|s| s.key().starts_with("pianc"));
+        let why = if gb.class == engine::GB_CLASS_UNKNOWN {
+            Some(format!(
+                "{}; give it a GB 50139 class (the `gb_class` set input)",
+                gb.how
+            ))
+        } else if !["motor_vessel", "pushed_convoy"].contains(&vessel.formation.as_str()) {
+            Some(format!(
+                "its Rules cover motor vessels and pushed convoys, not a {}",
+                vessel.formation.replace('_', " ")
+            ))
+        } else {
+            None
+        };
+        match why {
+            Some(why) if gb_only => RuleError::Value(format!(
+                "GB 50139 cannot size a channel for {}: {why}. Select PIANC WG 141 too, or pick \
+                 another class.",
+                v.standard_id
+            )),
+            _ => e,
+        }
+    })?;
     let check = selection.check(&vessel, &sized);
     let keys: Vec<String> = selection.sets.iter().map(|s| s.key()).collect();
     Ok(ChannelShape {

@@ -1,40 +1,48 @@
-//! The `ovcd-core` dependency is pinned to a tag, never a branch (ADR 0001), and the vessel
-//! classes it holds are the ones the Python reference gets from `vessel_designer` at the same tag.
+//! The `ovcd-core` dependency is pinned to a tag, never a branch (ADR 0001), and it is the same OVCD
+//! release `arc-rules` comes from, so OWD links one OVCD version (spec 0015 T0).
 //!
-//! Label: snapshot. The class table below is what `vessel_designer` v0.2.2 printed
-//! (`VESSEL_STANDARDS`, the Python pinned in `pyproject.toml`). Never hand-edit it.
+//! Label: snapshot. The class table below is what `ovcd-core` v0.2.4 gives for the 12 classes OWD
+//! listed by hand before the shared catalogue, found by their old ids. Never hand-edit it. Against
+//! v0.2.2 two classes changed: CEMT-Va's draught range is 2.5-2.8 m (was 2.5-4.5 m), and the
+//! old `CEMT_VIa_motor_NL2011` is the catalogue's `RWS-M12` (RWS 2010 family, length 135 m; the
+//! design length, the long end, is unchanged).
 
 use ovcd_core::vessel_standards::get_standard;
 
-#[test]
-fn ovcd_core_is_pinned_to_a_tag_not_a_branch() {
-    let manifest = include_str!("../Cargo.toml");
+/// The git tag a manifest line pins (`tag = "vX.Y.Z"`).
+fn tag_of(manifest: &str, dependency: &str) -> String {
     let line = manifest
         .lines()
-        .find(|l| l.trim_start().starts_with("ovcd-core"))
-        .expect("owd-core depends on ovcd-core");
+        .find(|l| l.trim_start().starts_with(dependency))
+        .unwrap_or_else(|| panic!("no {dependency} line"));
     assert!(
         line.contains("tag = \"v"),
-        "ovcd-core must be pinned by tag: {line}"
+        "{dependency} must be pinned by tag: {line}"
     );
     assert!(
         !line.contains("branch"),
-        "ovcd-core must not follow a branch: {line}"
+        "{dependency} must not follow a branch: {line}"
     );
-    let pyproject = include_str!("../../../pyproject.toml");
-    let tag = line
-        .split("tag = \"")
+    line.split("tag = \"")
         .nth(1)
         .and_then(|r| r.split('"').next())
-        .unwrap();
-    assert!(
-        pyproject.contains(&format!("open-vessel-concept-drawings@{tag}")),
-        "the Python reference must pin the same tag ({tag}) as the Rust dependency"
+        .unwrap()
+        .to_string()
+}
+
+#[test]
+fn ovcd_core_is_pinned_to_the_tag_arc_rules_comes_from() {
+    let core = tag_of(include_str!("../Cargo.toml"), "ovcd-core");
+    let rules = tag_of(include_str!("../../../Cargo.toml"), "arc-rules");
+    assert_eq!(
+        core, rules,
+        "ovcd-core and arc-rules must come from one OVCD release"
     );
 }
 
-/// (id, class, formation, LOA min, LOA max, beam, draught min, draught max)
+/// (old id, catalogue id, family, formation, LOA min, LOA max, beam, draught min, draught max)
 type Row = (
+    &'static str,
     &'static str,
     &'static str,
     &'static str,
@@ -45,12 +53,33 @@ type Row = (
     f64,
 );
 
-const PYTHON_V0_2_2: [Row; 12] = [
-    ("CEMT_IV", "IV", "motor_vessel", 80.0, 85.0, 9.5, 2.5, 2.5),
-    ("CEMT_Va", "Va", "motor_vessel", 95.0, 110.0, 11.4, 2.5, 4.5),
+const OVCD_V0_2_4: [Row; 12] = [
+    (
+        "CEMT_IV",
+        "CEMT-IV",
+        "CEMT-1992",
+        "motor_vessel",
+        80.0,
+        85.0,
+        9.5,
+        2.5,
+        2.5,
+    ),
+    (
+        "CEMT_Va",
+        "CEMT-Va",
+        "CEMT-1992",
+        "motor_vessel",
+        95.0,
+        110.0,
+        11.4,
+        2.5,
+        2.8,
+    ),
     (
         "CEMT_Vb",
-        "Vb",
+        "CEMT-Vb",
+        "CEMT-1992",
         "pushed_convoy",
         172.0,
         185.0,
@@ -60,7 +89,8 @@ const PYTHON_V0_2_2: [Row; 12] = [
     ),
     (
         "CEMT_VIa",
-        "VIa",
+        "CEMT-VIa",
+        "CEMT-1992",
         "pushed_convoy",
         95.0,
         110.0,
@@ -70,9 +100,10 @@ const PYTHON_V0_2_2: [Row; 12] = [
     ),
     (
         "CEMT_VIa_motor_NL2011",
-        "VIa",
+        "RWS-M12",
+        "RWS-2010",
         "motor_vessel",
-        110.0,
+        135.0,
         135.0,
         17.0,
         4.0,
@@ -80,7 +111,8 @@ const PYTHON_V0_2_2: [Row; 12] = [
     ),
     (
         "CN_I_motor",
-        "I",
+        "CN-I-MOTOR",
+        "CN-GB50139",
         "motor_vessel",
         95.0,
         95.0,
@@ -90,7 +122,8 @@ const PYTHON_V0_2_2: [Row; 12] = [
     ),
     (
         "CN_II_motor",
-        "II",
+        "CN-II-MOTOR",
+        "CN-GB50139",
         "motor_vessel",
         90.0,
         90.0,
@@ -100,7 +133,8 @@ const PYTHON_V0_2_2: [Row; 12] = [
     ),
     (
         "CN_III_motor",
-        "III",
+        "CN-III-MOTOR",
+        "CN-GB50139",
         "motor_vessel",
         85.0,
         85.0,
@@ -109,8 +143,20 @@ const PYTHON_V0_2_2: [Row; 12] = [
         2.0,
     ),
     (
+        "CN_IV_motor",
+        "CN-IV-MOTOR",
+        "CN-GB50139",
+        "motor_vessel",
+        67.5,
+        67.5,
+        10.8,
+        1.6,
+        1.6,
+    ),
+    (
         "CN_III_convoy_2ab",
-        "III",
+        "CN-III-CONVOY-2x2",
+        "CN-GB50139",
         "pushed_convoy",
         167.0,
         167.0,
@@ -119,18 +165,9 @@ const PYTHON_V0_2_2: [Row; 12] = [
         2.0,
     ),
     (
-        "CN_IV_motor",
-        "IV",
-        "motor_vessel",
-        67.5,
-        67.5,
-        10.8,
-        1.6,
-        1.6,
-    ),
-    (
         "CN_II_convoy_2ab",
-        "II",
+        "CN-II-CONVOY-2x2",
+        "CN-GB50139",
         "pushed_convoy",
         186.0,
         186.0,
@@ -140,7 +177,8 @@ const PYTHON_V0_2_2: [Row; 12] = [
     ),
     (
         "CN_I_convoy_2ab",
-        "I",
+        "CN-I-CONVOY-2x2",
+        "CN-GB50139",
         "pushed_convoy",
         223.0,
         223.0,
@@ -151,13 +189,15 @@ const PYTHON_V0_2_2: [Row; 12] = [
 ];
 
 #[test]
-fn the_rust_vessel_classes_match_the_python_reference_dimension_for_dimension() {
-    for (id, class, formation, loa_lo, loa_hi, beam, t_lo, t_hi) in PYTHON_V0_2_2 {
-        let v = get_standard(id).unwrap_or_else(|e| panic!("{id}: {e}"));
-        assert_eq!(v.class_name, class, "{id} class");
-        assert_eq!(v.formation, formation, "{id} formation");
-        assert_eq!(v.loa_m, (loa_lo, loa_hi), "{id} LOA");
-        assert_eq!(v.beam_m, beam, "{id} beam");
-        assert_eq!(v.draught_m, (t_lo, t_hi), "{id} draught");
+fn the_twelve_old_ids_find_their_catalogue_classes_dimension_for_dimension() {
+    for (old, id, family, formation, loa_lo, loa_hi, beam, t_lo, t_hi) in OVCD_V0_2_4 {
+        let v = get_standard(old).unwrap_or_else(|e| panic!("{old}: {e}"));
+        assert_eq!(v.standard_id, id, "{old} id");
+        assert_eq!(v.family, family, "{old} family");
+        assert_eq!(v.formation, formation, "{old} formation");
+        assert_eq!(v.loa_m, Some((loa_lo, loa_hi)), "{old} LOA");
+        assert_eq!(v.beam_m, Some(beam), "{old} beam");
+        assert_eq!(v.draught_m, Some((t_lo, t_hi)), "{old} draught");
+        assert_eq!(get_standard(id).unwrap(), v, "{id} and {old} are one class");
     }
 }

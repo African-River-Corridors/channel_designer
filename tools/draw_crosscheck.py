@@ -90,7 +90,7 @@ def fixtures(owd_bin: str, tmp: Path) -> list[Path]:
         if name == "tight-bends":
             # A larger vessel class needs a larger radius, so the line has bends that are too tight.
             owd(owd_bin, "size", d, "--rule-set", "pianc-wg141", "--set-input", "se_quality=B",
-                "--vessel", "CEMT_Va")
+                "--vessel", "CEMT-Va")
             owd(owd_bin, "align", d, "--method", "rolling-circle", ok=(0, 1))
             owd(owd_bin, "volumes", d, ok=(0, 1))
         elif name == "reroute":

@@ -146,7 +146,7 @@ const choose = (testid, value) =>
   );
 
 /** The worked example is sized for this class. After an open the form takes a moment to show it. */
-const EXAMPLE_VESSEL = "CEMT_IV";
+const EXAMPLE_VESSEL = "CEMT-IV"; // the catalogue id (spec 0015 T0); older files say CEMT_IV
 const formShowsExample = () => until("the form to show the example's vessel", async () => (await vesselChoices()).current === EXAMPLE_VESSEL);
 
 /** Click a header button, after the dialog answer is in place. */

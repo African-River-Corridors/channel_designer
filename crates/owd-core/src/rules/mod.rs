@@ -13,11 +13,27 @@
 //! that wants one process-wide registry. A Rule Set is added as a file, loaded at run time.
 //! The width methods are design assumptions, not verified rules.
 
-/// The built-in vessel classes (from `ovcd-core`, pinned to a tag): key and class, in catalogue order.
-pub use ovcd_core::vessel_standards::{
-    Catalogue, VesselStandard, built_in_catalogue as vessel_catalogue,
-};
+/// Vessel classes (from `ovcd-core`, pinned to a tag): key and class.
+pub use ovcd_core::vessel_standards::{Catalogue, VesselStandard};
 
+/// The 12 classes OWD checks by default (`owd fits`), keyed by catalogue id, in their old order
+/// (spec 0015 T0). [`full_catalogue`] has every class a channel can be sized for.
+pub fn vessel_catalogue() -> Catalogue {
+    classes::default_class_ids()
+        .into_iter()
+        .filter_map(|id| classes::class(id).ok().map(|v| (id.to_string(), v)))
+        .collect()
+}
+
+/// Every class in the shared catalogue a channel can be sized for, keyed by catalogue id.
+pub fn full_catalogue() -> Catalogue {
+    classes::pickable_classes()
+        .into_iter()
+        .map(|v| (v.standard_id.clone(), v))
+        .collect()
+}
+
+pub mod classes;
 pub mod design;
 pub mod engine;
 pub mod methods;

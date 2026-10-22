@@ -212,14 +212,19 @@ export interface Choices {
   rule_sets: RuleSetChoice[];
   /** Sets that are always selected (the `owd` checks). */
   always: { id: string; version: string; title: string; label: string }[];
+  /** Every class of the shared vessel catalogue a channel can be sized for (spec 0015). */
   vessels: {
     id: string;
     label: string;
+    /** The scheme, such as `CEMT-1992`: the picker's group. */
     family: string;
+    region: string;
     formation: string;
     loa_m: [number, number];
     beam_m: number;
     draught_nominal_m: number;
+    /** One of the 12 classes `owd fits` checks by default. */
+    default: boolean;
   }[];
 }
 

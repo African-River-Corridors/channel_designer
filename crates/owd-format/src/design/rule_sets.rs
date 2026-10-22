@@ -220,14 +220,16 @@ impl Session {
                 "the draught must be a positive number of metres".into(),
             ));
         }
-        owd_core::rules::vessel_catalogue()
-            .iter()
-            .find(|(id, _)| id == vessel_standard_id)
-            .ok_or_else(|| {
+        // Any class of the shared catalogue a channel can be sized for (spec 0015 T0), saved by its
+        // catalogue id (an older id such as `CEMT_Va` gives `CEMT-Va`).
+        let class = owd_core::rules::classes::class(vessel_standard_id).map_err(|e| match e {
+            owd_core::rules::RuleError::Key(_) => {
                 DesignError::Input(format!("unknown vessel standard `{vessel_standard_id}`"))
-            })?;
+            }
+            e => DesignError::Input(e.raw_message().to_string()),
+        })?;
         let mut settings = self.sizing_settings();
-        settings["vessel_standard_id"] = json!(vessel_standard_id);
+        settings["vessel_standard_id"] = json!(class.standard_id);
         settings["draught_m"] = json!(draught_m);
         // The shape must size before the choice is kept, so a set that cannot size it is refused here.
         self.shape_for_settings(&settings)?;

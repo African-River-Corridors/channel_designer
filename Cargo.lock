@@ -3647,9 +3647,10 @@ dependencies = [
 
 [[package]]
 name = "ovcd-core"
-version = "0.2.2"
-source = "git+https://github.com/African-River-Corridors/open-vessel-concept-drawings?tag=v0.2.2#5dbeee00579fc2c0377e3ed370894d84e2481e5a"
+version = "0.2.4"
+source = "git+https://github.com/African-River-Corridors/open-vessel-concept-drawings?tag=v0.2.4#5789530300e0b0ec0007941a5c351e8f9cb21faa"
 dependencies = [
+ "arc-rules",
  "libm",
 ]
 

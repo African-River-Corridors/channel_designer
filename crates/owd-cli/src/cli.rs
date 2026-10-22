@@ -141,7 +141,9 @@ enum Command {
         /// Load a Rule Set file at run time, then select it with --rule-set (repeatable).
         #[arg(long = "rule-set-file", value_name = "FILE")]
         rule_set_file: Vec<String>,
-        /// The vessel class, for example CEMT_IV (default: the one the design has).
+        /// The vessel class: any class of the shared vessel catalogue with a length, a beam and a
+        /// draught, by id, for example CEMT-IV or CEMT-VIb-motor (an older id such as CEMT_IV also
+        /// works). Default: the one the design has.
         #[arg(long)]
         vessel: Option<String>,
         /// The design draught in metres (default: the vessel class's).
@@ -571,6 +573,10 @@ enum Command {
         /// or `fairway`, each class's fairway fit (ADR 0007) in the water.
         #[arg(long, value_name = "LINE")]
         plan_line: Option<String>,
+        /// Check every class in the shared vessel catalogue a channel can be sized for (default:
+        /// the 12 classes OWD has always checked).
+        #[arg(long)]
+        all: bool,
         #[command(flatten)]
         out: Out,
     },
@@ -795,12 +801,14 @@ pub fn main() -> ExitCode {
             ruleset,
             show,
             plan_line,
+            all,
             out,
         } => crate::fits::fits(
             &doc,
             &ruleset,
             show,
             plan_line.as_deref(),
+            all,
             &out.output,
             out.json,
         ),

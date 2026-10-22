@@ -207,9 +207,9 @@ fn a_changed_vessel_shows_sizing_stale_and_nothing_reruns() {
     let text = std::fs::read_to_string(&doc).unwrap();
     // Change the vessel in the settings only, as an edit of the file would.
     let edited = text.replacen(
-        r#""vessel_standard_id": "CEMT_IV",
+        r#""vessel_standard_id": "CEMT-IV",
         "draught_m""#,
-        r#""vessel_standard_id": "CEMT_Va",
+        r#""vessel_standard_id": "CEMT-Va",
         "draught_m""#,
         1,
     );
@@ -581,9 +581,9 @@ fn run_reruns_a_stale_stage_and_leaves_fresh_ones_alone() {
     );
     // Edit the vessel in the settings, as the app does before a run: sizing is stale, run reruns it.
     let edited = fresh.replacen(
-        r#""vessel_standard_id": "CEMT_IV",
+        r#""vessel_standard_id": "CEMT-IV",
         "draught_m""#,
-        r#""vessel_standard_id": "CEMT_Va",
+        r#""vessel_standard_id": "CEMT-Va",
         "draught_m""#,
         1,
     );
@@ -596,7 +596,7 @@ fn run_reruns_a_stale_stage_and_leaves_fresh_ones_alone() {
     let saved: Value = serde_json::from_str(&std::fs::read_to_string(&doc).unwrap()).unwrap();
     assert_eq!(
         saved["stages"]["sizing"]["results"]["vessel_standard_id"],
-        "CEMT_Va"
+        "CEMT-Va"
     );
     let s = run(&["status", &doc, "--json"], "");
     assert_eq!(
@@ -731,9 +731,9 @@ fn align_with_sizing_stale_is_refused_and_names_the_size_command() {
     let dir = work_dir("align-stale");
     let doc = build(&dir);
     let text = std::fs::read_to_string(&doc).unwrap().replacen(
-        r#""vessel_standard_id": "CEMT_IV",
+        r#""vessel_standard_id": "CEMT-IV",
         "draught_m""#,
-        r#""vessel_standard_id": "CEMT_Va",
+        r#""vessel_standard_id": "CEMT-Va",
         "draught_m""#,
         1,
     );

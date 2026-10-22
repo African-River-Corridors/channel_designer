@@ -12,6 +12,7 @@ import path from "node:path";
 import { remote } from "webdriverio";
 import { serve } from "./web-server.mjs";
 import { reportEngineHost } from "./report-engine-hosts.mjs";
+import { catalogueHost } from "./catalogue-hosts.mjs";
 import { endpoints, searches, serveReach, slow } from "./reach-server.mjs";
 import { compare } from "../../tools/web_parity_compare.mjs";
 
@@ -161,6 +162,36 @@ describe("OWD web smoke tests", () => {
     await (await tid(b, "export-report")).click();
     await until(b, "the report", async () => (await exists(b, "notice")) && /Report written: owd-.+-sr\.pdf/.test(await text(b, "notice")), 240000);
     assert.equal(await exists(b, "error"), false);
+  });
+
+  it("lists the shared vessel catalogue by family, finds a class by search, and sizes for it", async () => {
+    const b = await start();
+    await b.url(`${origin}/owd/app`);
+    await loaded(b);
+    await (await tid(b, "open-example")).click();
+    await until(b, "the example", async () => (await text(b, "file-label")).includes("river-example.owd"));
+    const select = await b.$("select[aria-label='Vessel class']");
+    // The example's class, by its catalogue id; the list groups the catalogue by family.
+    assert.equal(await select.getValue(), "CEMT-IV");
+    const groups = await b.execute(() => [...document.querySelectorAll("select[aria-label='Vessel class'] optgroup")].map((g) => g.label));
+    assert.ok(groups.length > 3, `${groups}`);
+    assert.equal(groups[0], "CEMT-1992");
+    const count = await b.execute(() => document.querySelectorAll("select[aria-label='Vessel class'] option").length);
+    assert.ok(count > 12, `${count} classes`);
+    // The search keeps the classes it matches, and the one chosen.
+    await (await tid(b, "vessel-search")).setValue("VIb");
+    await until(b, "the search to narrow the list", async () => (await exists(b, "vessel-search-count")) && /of \d+ classes/.test(await text(b, "vessel-search-count")));
+    const ids = await b.execute(() => [...document.querySelectorAll("select[aria-label='Vessel class'] option")].map((o) => o.value));
+    assert.ok(ids.includes("CEMT-VIb-motor") && ids.includes("CEMT-IV") && ids.length < count, `${ids}`);
+    await b.execute(() => {
+      const sel = document.querySelector("select[aria-label='Vessel class']");
+      sel.value = "CEMT-VIb-motor";
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await until(b, "the design sized for CEMT-VIb-motor", async () => (await pageDoc(b)).stages.sizing.results?.vessel_standard_id === "CEMT-VIb-motor");
+    const sized = (await pageDoc(b)).stages.sizing.results;
+    assert.equal(sized.loa_m, 140);
+    assert.equal(sized.beam_m, 15);
   });
 
   it("picks the quality in the Rule Set picker, runs, shows the verdict, design basis and stretches, and a picked stretch on the map", async () => {
@@ -441,7 +472,7 @@ describe("OWD web smoke tests", () => {
     // www.opengis.net and www.google.com are the KML 2.2 namespace and its `gx` extension, written into
     // the QA overlay's KMZ (spec 0013): names of XML vocabularies, never fetched.
     const KNOWN = ["tiles.maps.eox.at", "cloudless.eox.at", "www.w3.org", "svelte.dev", "maplibre.org", "maplibre.invalid", "github.com", "wiki.openstreetmap.org", "json-schema.org", "tribby.com", "scripts.sil.org", "www.opengis.net", "www.google.com"];
-    const allowed = (h) => [...PUBLIC_HOSTS, ...KNOWN].some((k) => h === k || h.startsWith(k)) || reportEngineHost(h);
+    const allowed = (h) => [...PUBLIC_HOSTS, ...KNOWN].some((k) => h === k || h.startsWith(k)) || reportEngineHost(h) || catalogueHost(h);
     const unknown = [...hosts].filter((h) => !allowed(h));
     assert.deepEqual(unknown, [], `hosts in the web bundle that are neither a public source nor known: ${unknown.join(" ")}`);
     for (const h of ["overpass-api.de", "earth-search.aws.element84.com", "zenodo.org", "soto.podaac.earthdatacloud.nasa.gov"]) assert.ok(hosts.has(h), `the bundle reads ${h}`);

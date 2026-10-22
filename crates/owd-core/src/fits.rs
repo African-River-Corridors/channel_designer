@@ -103,13 +103,25 @@ pub struct Fits {
 }
 
 /// The vessel class ids in size order: by beam, then overall length, then id. The same order for
-/// every Rule Set choice, so "a larger class" means one thing.
+/// every Rule Set choice, so "a larger class" means one thing. The 12 default classes.
 pub fn classes_in_size_order() -> Vec<String> {
-    let mut all = vessel_catalogue();
+    classes_in_size_order_of(false)
+}
+
+/// [`classes_in_size_order`], over every class a channel can be sized for when `all` is true
+/// (`owd fits --all`, spec 0015 T0).
+pub fn classes_in_size_order_of(all: bool) -> Vec<String> {
+    let mut all = if all {
+        crate::rules::full_catalogue()
+    } else {
+        vessel_catalogue()
+    };
+    let dims = |v: &crate::rules::VesselStandard| crate::rules::classes::design_figures(v, None);
     all.sort_by(|(ka, a), (kb, b)| {
-        a.beam_m
-            .total_cmp(&b.beam_m)
-            .then(a.loa_m.1.total_cmp(&b.loa_m.1))
+        dims(a)
+            .beam_m
+            .total_cmp(&dims(b).beam_m)
+            .then(dims(a).loa_m.total_cmp(&dims(b).loa_m))
             .then(ka.cmp(kb))
     });
     all.into_iter().map(|(k, _)| k).collect()
@@ -122,13 +134,23 @@ pub fn plan_only_fits(
     water: &[Polygon],
     choices: &[&str],
 ) -> Result<Fits, PyError> {
+    plan_only_fits_of(centreline, water, choices, false)
+}
+
+/// [`plan_only_fits`] over every class a channel can be sized for when `all` is true.
+pub fn plan_only_fits_of(
+    centreline: &[Pt],
+    water: &[Polygon],
+    choices: &[&str],
+    all: bool,
+) -> Result<Fits, PyError> {
     if centreline.len() < 2 {
         return Err(PyError::value(
             "the river centreline needs at least two points.",
         ));
     }
     let chained = Chained::new(centreline);
-    let classes = classes_in_size_order();
+    let classes = classes_in_size_order_of(all);
     let mut rule_sets = Vec::new();
     for &rs in choices {
         // An old ruleset name, sized through its Rule Set selection (spec 0007).
@@ -184,11 +206,8 @@ fn class_fit(
             .map(|s| s.deficit_m)
             .fold(0.0, f64::max)
     };
-    let std = crate::rules::vessel_catalogue()
-        .into_iter()
-        .find(|(k, _)| k == class)
-        .map(|(_, v)| v)
-        .ok_or_else(|| PyError::value(format!("unknown vessel class {class}")))?;
+    let std = crate::rules::classes::class(class)
+        .map_err(|_| PyError::value(format!("unknown vessel class {class}")))?;
     Ok(ClassFit {
         vessel_standard_id: class.to_string(),
         class_name: std.class_name,

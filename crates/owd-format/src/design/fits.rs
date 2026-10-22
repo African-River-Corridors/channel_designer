@@ -51,7 +51,7 @@ fn run_all<J: Sync, T: Send>(jobs: &[J], f: impl Fn(&J) -> T + Sync, parallel: b
 }
 use super::hash::hash_value;
 use super::session::{DesignError, ENGINE_VERSION, Session, StageStatus};
-use owd_core::fits::{ClassFit, Fits, PLAN_ONLY_LABEL, plan_only_fits};
+use owd_core::fits::{ClassFit, Fits, PLAN_ONLY_LABEL, plan_only_fits_of};
 use owd_core::rules::engine::old_name_choice;
 use serde_json::{Value, json};
 
@@ -231,6 +231,19 @@ impl Session {
         terrain: Option<SyncTerrain>,
         plan_line: PlanLine,
     ) -> Result<(), DesignError> {
+        self.run_fits_classes(choices, terrain, plan_line, false)
+    }
+
+    /// [`Session::run_fits_on`] over every class a channel can be sized for when `all_classes` is
+    /// true (`owd fits --all`, spec 0015 T0), else the 12 default classes. The choice is kept in the
+    /// answer's settings (only when true), so changing it makes the answer stale.
+    pub fn run_fits_classes(
+        &mut self,
+        choices: Option<&[String]>,
+        terrain: Option<SyncTerrain>,
+        plan_line: PlanLine,
+        all_classes: bool,
+    ) -> Result<(), DesignError> {
         let ids: Vec<String> = match choices {
             Some(r) if !r.is_empty() => r.to_vec(),
             _ => self.fits_choices(),
@@ -243,8 +256,8 @@ impl Session {
         })?;
         let line = self.river_centreline()?;
         let refs: Vec<&str> = ids.iter().map(String::as_str).collect();
-        let fits =
-            plan_only_fits(&line, &water, &refs).map_err(|e| DesignError::Input(e.message))?;
+        let fits = plan_only_fits_of(&line, &water, &refs, all_classes)
+            .map_err(|e| DesignError::Input(e.message))?;
         let mut results = fits_json(&fits);
         if let Some(t) =
             terrain.filter(|_| self.bed_model_value().is_some() && self.water_profile().is_some())
@@ -254,6 +267,9 @@ impl Session {
         let mut settings = json!({"rule_sets": ids});
         if plan_line != PlanLine::Centreline {
             settings["plan_line"] = json!(plan_line.name());
+        }
+        if all_classes {
+            settings["all_classes"] = json!(true);
         }
         self.doc["fits"] = json!({
             "settings": settings,

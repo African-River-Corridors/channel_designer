@@ -309,7 +309,23 @@ fn the_sizing_choices_list_rule_sets_with_their_inputs_and_vessel_classes_with_l
     };
     assert_eq!(ids("rule_sets"), ["pianc-wg141", "gb50139"]);
     assert_eq!(ids("always"), ["owd"]);
-    assert!(ids("vessels").contains(&"CEMT_IV".to_string()));
+    // Every class of the shared catalogue a channel can be sized for (spec 0015 T0), by catalogue
+    // id, with its family for the picker's groups; the 12 `owd fits` checks are marked `default`.
+    let vessels = ids("vessels");
+    assert!(vessels.contains(&"CEMT-IV".to_string()));
+    assert!(vessels.contains(&"CEMT-VIb-motor".to_string()));
+    assert!(vessels.len() > 12, "{}", vessels.len());
+    let list = c["vessels"].as_array().unwrap();
+    assert_eq!(list.iter().filter(|v| v["default"] == true).count(), 12);
+    assert!(
+        list.iter()
+            .all(|v| v["family"].is_string() && v["label"].is_string())
+    );
+    let va = list.iter().find(|v| v["id"] == "CEMT-Va").unwrap();
+    assert_eq!(
+        va["label"],
+        "CEMT-Va (motor vessel, LOA 95-110 m, beam 11.4 m)"
+    );
     let inputs = |i: usize| c["rule_sets"][i]["inputs"].as_array().unwrap().clone();
     assert_eq!(inputs(0).len(), 1);
     assert_eq!(inputs(0)[0]["name"], "se_quality");
@@ -331,12 +347,69 @@ fn the_sizing_choices_list_rule_sets_with_their_inputs_and_vessel_classes_with_l
                 value["value"].as_str().unwrap(),
             )];
             for v in ids("vessels") {
-                assert!(
-                    Session::preview_sizing(&[id], &pair, &v, None).is_ok(),
-                    "{id} {pair:?} x {v}"
-                );
+                match Session::preview_sizing(&[id], &pair, &v, None) {
+                    Ok(_) => {}
+                    // A catalogue class with no GB 50139 class (no Chinese or CEMT class, no
+                    // deadweight) cannot be sized by GB 50139 alone, and the refusal says why.
+                    Err(e) if id == "gb50139" => {
+                        let m = e.to_string();
+                        assert!(
+                            m.contains("GB 50139 cannot size a channel for") && m.contains(&v),
+                            "{m}"
+                        );
+                    }
+                    Err(e) => panic!("{id} {pair:?} x {v}: {e}"),
+                }
             }
         }
     }
     assert!(c["vessels"][0]["label"].as_str().unwrap().contains("LOA"));
+}
+
+/// A study saved before the shared catalogue names its class by an old id (`CEMT_IV`): it opens with
+/// the same stages fresh, the same sizing, and saves the catalogue id (spec 0015 T0).
+#[test]
+fn a_study_with_an_old_class_id_opens_fresh_and_saves_the_catalogue_id() {
+    let text = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/web/river-example.owd"),
+    )
+    .unwrap();
+    assert!(
+        text.contains(r#""vessel_standard_id": "CEMT_IV""#),
+        "the fixture holds the old id"
+    );
+    let before: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let s = Session::open(&text).unwrap();
+    let doc = s.document();
+    assert_eq!(
+        doc["stages"]["sizing"]["settings"]["vessel_standard_id"],
+        "CEMT-IV"
+    );
+    assert_eq!(
+        doc["stages"]["sizing"]["results"]["vessel_standard_id"],
+        "CEMT-IV"
+    );
+    for stage in [Stage::Sizing, Stage::Alignment, Stage::Volumes] {
+        assert_eq!(
+            s.stage_status(stage),
+            StageStatus::Fresh,
+            "{stage:?} was fresh in the file and stays fresh"
+        );
+    }
+    for k in [
+        "bottom_width_straight_m",
+        "min_bend_radius_m",
+        "design_depth_m",
+        "loa_m",
+        "beam_m",
+        "draught_m",
+    ] {
+        assert_eq!(
+            doc["stages"]["sizing"]["results"][k], before["stages"]["sizing"]["results"][k],
+            "{k}"
+        );
+    }
+    assert!(s.to_text().contains(r#""vessel_standard_id": "CEMT-IV""#));
+    assert!(!s.to_text().contains("CEMT_IV"));
 }
