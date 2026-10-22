@@ -15,7 +15,6 @@ use crate::cut_model::{
     CUT_MODEL, CUT_MODEL_B, DX_M, MAXW_M, STATION_M, WET_SLOPE_H_PER_V, cut_model_a_bench_gate,
     cut_model_a_section_face, normalise_model, section_area,
 };
-use crate::geom::overlay::contains_xy;
 use crate::geom::{Polygon, Pt, linear};
 use crate::py_sum;
 use crate::pyrepr::repr_str;
@@ -256,6 +255,8 @@ pub fn section_volumes(
     }
 
     let offs = arange(-maxw_m, maxw_m + 0.1 * dx_m, dx_m);
+    // Every sample's wet test reads the one river: index it once (the same answers as `contains_xy`).
+    let inside = crate::geom::overlay::PolygonIndex::new(river_polygon);
     let sidewhich: Vec<i8> = offs.iter().map(|&o| if o < 0.0 { -1 } else { 1 }).collect();
     let m = offs.len();
     let mut out = SectionVolumes {
@@ -291,7 +292,7 @@ pub fn section_volumes(
             let grade = wl_i - depth;
             let z = &z_all[j * m..(j + 1) * m];
             let w: Vec<bool> = (0..m)
-                .map(|k| contains_xy(river_polygon, [ax[j * m + k], ay[j * m + k]]))
+                .map(|k| inside.contains_xy([ax[j * m + k], ay[j * m + k]]))
                 .collect();
             let zl: Vec<f64> = z
                 .iter()

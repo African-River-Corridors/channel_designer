@@ -6,7 +6,7 @@
 use super::geojson::all_positions;
 use super::rule_sets::reach_ranges;
 use super::session::{DesignError, Session};
-use owd_core::alignment::navigable::{local_radius_on, water_width_on};
+use owd_core::alignment::navigable::{RadiusOn, WaterWidth, local_radius_on};
 use owd_core::geom::linear;
 use owd_core::geom::{Polygon, Pt};
 use owd_core::rules::engine::{self, Selection, Sized, Station, Vessel};
@@ -74,7 +74,11 @@ impl Session {
         if centre.len() < 2 {
             return 0;
         }
-        let s = linear::project(centre, p);
+        Self::reach_at(ranges, linear::project(centre, p))
+    }
+
+    /// The reach of the river chainage `s`.
+    fn reach_at(ranges: &[(f64, f64, engine::WaterwayReach)], s: f64) -> usize {
         ranges
             .iter()
             .position(|(a, b, _)| s >= *a && s < *b)
@@ -96,6 +100,12 @@ impl Session {
             .as_f64()
             .unwrap_or(DEFAULT_CHORD_M);
         let ranges = reach_ranges(&self.doc);
+        // Many stations on one long line and one water: index them once (the same answers as the
+        // plain functions, to the last bit).
+        let widths = (!river.is_empty()).then(|| WaterWidth::new(&line, river));
+        let on_line = RadiusOn::new(&line);
+        let on_centre =
+            (centre.len() >= 2).then(|| (RadiusOn::new(centre), linear::ProjectIndex::new(centre)));
         let stations: Vec<StationIn> = walk
             .stations
             .iter()
@@ -107,27 +117,22 @@ impl Session {
                     .zip(&cs.terrain)
                     .min_by(|a, b| a.0.abs().total_cmp(&b.0.abs()))
                     .map_or(f64::NAN, |(_, t)| *t);
-                let river_s = if centre.len() >= 2 {
-                    linear::project(centre, p)
-                } else {
-                    f64::NAN
-                };
+                let river_s = on_centre.as_ref().map_or(f64::NAN, |(_, ix)| ix.project(p));
                 StationIn {
                     chainage_m: cs.chainage_m,
                     xy: p,
-                    river_width_m: if river.is_empty() {
-                        f64::NAN
-                    } else {
-                        water_width_on(&line, cs.chainage_m, river)
-                    },
+                    river_width_m: widths.as_ref().map_or(f64::NAN, |w| w.at(cs.chainage_m)),
                     river_depth_m: cs.wl - bed,
-                    river_radius_m: if river_s.is_nan() {
-                        f64::NAN
-                    } else {
-                        local_radius_on(centre, river_s, chord)
+                    river_radius_m: match &on_centre {
+                        Some((r, _)) if !river_s.is_nan() => r.at(river_s, chord),
+                        _ => f64::NAN,
                     },
-                    line_radius_m: local_radius_on(&line, cs.chainage_m, chord),
-                    reach: Session::reach_of(&ranges, centre, p),
+                    line_radius_m: on_line.at(cs.chainage_m, chord),
+                    reach: if on_centre.is_some() {
+                        Session::reach_at(&ranges, river_s)
+                    } else {
+                        0
+                    },
                     dredge_area_m2: cs.dredge_area_m2,
                     dry_cut_area_m2: cs.excav_area_m2,
                 }

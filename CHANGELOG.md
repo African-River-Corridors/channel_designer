@@ -5,6 +5,13 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **Point-in-water and water-width tests indexed (spec 0012).** The full `fits` answer on the edge-fitted Sassandra
+  (a 181 km centreline, a 77,000-vertex river polygon) took 748 s. It now takes 45 s, with the same answer to the
+  last bit. Many points tested against one long river now go through an index: `PolygonIndex` (each ring's segments
+  by horizontal strips, the same answers as `contains_xy`) and `WaterIndex` (the cross-section ray walked through a
+  grid of the segments, the same answers as `cross_section`). The volumes' wet test, the per-station width check and
+  the spec 0007 screening use them, and the screening also chains its line and projects onto the centreline once,
+  not once per station.
 - **The app's Rule Set picker, and the last of the old names (spec 0007, T6 and T8 part 2).** The inputs panel
   picks one Rule Set or two, with their set inputs (quality A, B or C for `pianc-wg141`; the permissive or strict
   end for `gb50139`), each marked `default` or `typed` in words and a shape. A pick goes through the session and

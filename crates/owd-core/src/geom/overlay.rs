@@ -105,6 +105,121 @@ pub fn locate_all(p: Pt, polys: &[Polygon]) -> Loc {
     out
 }
 
+/// One ring, its segments grouped by horizontal strips: only a segment whose y range holds the
+/// point's y can change [`ring_contains`], so those, in their order, give its answer exactly.
+#[derive(Debug, Clone)]
+struct RingStrips {
+    ring: Vec<Pt>,
+    y0: f64,
+    h: f64,
+    strips: Vec<Vec<u32>>,
+}
+
+impl RingStrips {
+    fn new(ring: &[Pt]) -> RingStrips {
+        let n = ring.len().saturating_sub(1).max(1);
+        let (y0, y1) = ring
+            .iter()
+            .fold((f64::MAX, f64::MIN), |(a, b), p| (a.min(p[1]), b.max(p[1])));
+        let count = ((n as f64).sqrt().ceil() as usize).max(1);
+        let h = ((y1 - y0) / count as f64).max(1e-9);
+        let mut strips = vec![Vec::new(); count];
+        let at = |y: f64| (((y - y0) / h).floor().max(0.0) as usize).min(count - 1);
+        for (i, w) in ring.windows(2).enumerate() {
+            let (a, b) = (at(w[0][1].min(w[1][1])), at(w[0][1].max(w[1][1])));
+            for strip in &mut strips[a..=b] {
+                strip.push(i as u32);
+            }
+        }
+        RingStrips {
+            ring: ring.to_vec(),
+            y0,
+            h,
+            strips,
+        }
+    }
+
+    /// [`ring_contains`], over the segments of the point's strip.
+    fn contains(&self, p: Pt) -> Option<bool> {
+        if !(p[1].is_finite() && p[0].is_finite()) || self.ring.len() < 2 {
+            return ring_contains(&self.ring, p);
+        }
+        let k = (p[1] - self.y0) / self.h;
+        if k < 0.0 || k >= self.strips.len() as f64 + 1.0 {
+            // Outside every segment's y range: no segment can count.
+            return ring_contains(&[], p);
+        }
+        let k = (k.floor() as usize).min(self.strips.len() - 1);
+        let mut seg: Vec<Pt> = Vec::new();
+        let mut crossings = 0u32;
+        for &i in &self.strips[k] {
+            let i = i as usize;
+            seg.clear();
+            seg.extend_from_slice(&self.ring[i..i + 2]);
+            match ring_contains(&seg, p) {
+                None => return None,
+                Some(true) => crossings += 1,
+                Some(false) => {}
+            }
+        }
+        Some(crossings % 2 == 1)
+    }
+}
+
+/// [`locate_all`] and [`contains_xy`] for many points in one set of polygons: the same answers,
+/// with each ring's segments grouped by horizontal strips (see `RingStrips`).
+#[derive(Debug, Clone)]
+pub struct PolygonIndex {
+    polys: Vec<(RingStrips, Vec<RingStrips>)>,
+}
+
+impl PolygonIndex {
+    pub fn new(polys: &[Polygon]) -> PolygonIndex {
+        PolygonIndex {
+            polys: polys
+                .iter()
+                .map(|p| {
+                    (
+                        RingStrips::new(&p.exterior),
+                        p.holes.iter().map(|h| RingStrips::new(h)).collect(),
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    /// [`locate_all`].
+    pub fn locate_all(&self, p: Pt) -> Loc {
+        let mut out = Loc::Exterior;
+        for (ext, holes) in &self.polys {
+            let here = match ext.contains(p) {
+                None => Loc::Boundary,
+                Some(false) => Loc::Exterior,
+                Some(true) => holes
+                    .iter()
+                    .map(|h| h.contains(p))
+                    .find_map(|c| match c {
+                        None => Some(Loc::Boundary),
+                        Some(true) => Some(Loc::Exterior),
+                        Some(false) => None,
+                    })
+                    .unwrap_or(Loc::Interior),
+            };
+            match here {
+                Loc::Interior => return Loc::Interior,
+                Loc::Boundary => out = Loc::Boundary,
+                Loc::Exterior => {}
+            }
+        }
+        out
+    }
+
+    /// [`contains_xy`].
+    pub fn contains_xy(&self, p: Pt) -> bool {
+        self.locate_all(p) == Loc::Interior
+    }
+}
+
 /// shapely `contains_xy(polygon, x, y)`: strictly inside (the boundary is not contained).
 pub fn contains_xy(polys: &[Polygon], p: Pt) -> bool {
     locate_all(p, polys) == Loc::Interior
