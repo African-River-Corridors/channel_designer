@@ -113,7 +113,7 @@ pub(crate) fn open(path: &str) -> core::result::Result<Session, Failure> {
 }
 
 /// Where a document's relative paths start: its own folder (the working folder for stdin).
-fn doc_dir(doc: &str) -> std::path::PathBuf {
+pub(crate) fn doc_dir(doc: &str) -> std::path::PathBuf {
     match Path::new(doc).parent() {
         Some(p) if doc != "-" && !p.as_os_str().is_empty() => p.to_path_buf(),
         _ => std::path::PathBuf::from("."),
