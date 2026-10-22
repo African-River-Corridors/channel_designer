@@ -624,7 +624,9 @@ async fn fetch_dem(window: Window, state: State<'_, Shared>) -> Reply {
         .and_then(|rel| std::fs::read(path.parent().unwrap_or(Path::new(".")).join(rel)).ok());
     let opened = AppState::open(&path, &text, dem.as_deref())?;
     let mut guard = lock(&state)?;
-    *guard = opened;
+    // The same study, read again: the panel keeps its route and steps (#318).
+    let next = guard.reopened(opened);
+    *guard = next;
     finish(&window, &guard)
 }
 
@@ -757,6 +759,28 @@ fn reach_cut(
     finish(&window, &guard)
 }
 
+/// Draw the reach of an opened study again: its route is planned once more from OSM (#318). The
+/// document is not changed.
+#[tauri::command]
+async fn reach_restore(window: Window, state: State<'_, Shared>) -> Reply {
+    let doc = {
+        let guard = lock(&state)?;
+        if !guard.reach_needs_restore() {
+            return finish(&window, &guard);
+        }
+        guard.snapshot()["document"].clone()
+    };
+    let at = reach_endpoints();
+    let restored = tauri::async_runtime::spawn_blocking(move || {
+        owd_shell::reach::plan_restore(&owd_cli::reach_fetch::HttpFetch, &at, &doc)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let mut guard = lock(&state)?;
+    guard.restore_reach(restored)?;
+    finish(&window, &guard)
+}
+
 /// Give a JRC occurrence tile the user downloaded.
 #[tauri::command]
 fn reach_add_tile(app: AppHandle, window: Window, state: State<Shared>) -> Reply {
@@ -875,6 +899,7 @@ pub fn run() {
             reach_search,
             reach_river,
             reach_cut,
+            reach_restore,
             reach_add_tile,
             reach_step,
             reach_cancel,

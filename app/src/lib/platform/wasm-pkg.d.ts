@@ -30,6 +30,7 @@ declare module "*/wasm-pkg/owd_web.js" {
     reach_search(text: string, country: string, once: boolean, at: string, fetch?: (url: string, start: number, len: number) => Uint8Array): string;
     reach_river(osm_id: string, also: string, search: string, at: string, fetch?: (url: string, start: number, len: number) => Uint8Array): string;
     reach_cut(points: string): string;
+    reach_restore(at: string, fetch?: (url: string, start: number, len: number) => Uint8Array): string;
     reach_route_only(): boolean;
     reach_add_tile(name: string, bytes: Uint8Array): string;
     reach_step(step: string, percentile: number | undefined, at: string, fetch?: (url: string, start: number, len: number) => Uint8Array): string;

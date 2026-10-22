@@ -49,6 +49,8 @@
   let hitSource = $state("osm-photon");
   /** The hit the user chose; cleared when they type again. */
   let chosen = $state<RiverHit | null>(null);
+  /** Set when the user types in the search box: they let go of the river the session holds. */
+  let letGo = $state(false);
   /** Answers by country and text, and river lengths by OSM id once known: a repeat asks nothing. */
   const answers = new Map<string, RiverHit[]>();
   const lengths = new Map<string, number>();
@@ -77,6 +79,10 @@
   let shownClass = $state<string | null>(null);
 
   const view = $derived(snap?.reach_view);
+  /** The reach the document records: an opened study has one before its route is drawn again. */
+  const docReach = $derived(docPart<{ start: LonLat; end: LonLat; length_m?: number }>(snap, "reach"));
+  /** Reaches are cut out of the river the session holds, until the user types a new search. */
+  const holding = $derived(!!view?.river && !letGo);
   const provenance = $derived(snap?.document.provenance ?? {});
   const fits = $derived(docPart<FitsResult>(snap, "fits", "results"));
   const lowConfidence = $derived(docPart<{ stretches: { kind: string }[] }>(snap, "low_confidence_width")?.stretches ?? []);
@@ -94,6 +100,7 @@
   // --- the river search: a list as the user types ------------------------------------------------
   function typed() {
     chosen = null;
+    letGo = true;
     clearTimeout(timer);
     const text = river.trim();
     if (text.length < MIN_CHARS) {
@@ -149,6 +156,7 @@
   }
   async function choose(h: RiverHit) {
     chosen = h;
+    letGo = false;
     river = h.label;
     listOpen = false;
     working = true;
@@ -171,14 +179,45 @@
     e.preventDefault();
   }
   const km = (m: number) => `${(m / 1000).toFixed(m < 10000 ? 1 : 0)} km`;
-  // The session's start and end fill the fields when they change (a river chosen, a reach cut).
+  // The session's start and end fill the fields when they change (a river chosen, a reach cut, a
+  // study opened).
   let shownEnds = "";
   $effect(() => {
-    const k = JSON.stringify([view?.start, view?.end]);
+    const start = view?.start ?? docReach?.start;
+    const end = view?.end ?? docReach?.end;
+    const k = JSON.stringify([start, end]);
     if (k === shownEnds) return;
     shownEnds = k;
-    if (view?.start) startText = fmt(view.start);
-    if (view?.end) endText = fmt(view.end);
+    if (start) startText = fmt(start);
+    if (end) endText = fmt(end);
+  });
+  // A river the session holds anew (chosen, or an opened study drawn again) is held until the user
+  // types a new search.
+  let heldRiver = "";
+  $effect(() => {
+    const id = view?.river?.osm_id ?? "";
+    if (id === heldRiver) return;
+    heldRiver = id;
+    if (id) {
+      letGo = false;
+      if (!chosen && view?.river?.name) river = view.river.name;
+    }
+  });
+  // An opened study keeps its points and way ids, not the route's line: draw it again from OSM, once
+  // per reach (#318).
+  let restoring = $state(false);
+  let restoredFor = "";
+  async function restore() {
+    restoring = true;
+    await act(() => api.reachRestore());
+    restoring = false;
+  }
+  $effect(() => {
+    if (!view?.restore || working) return;
+    const k = JSON.stringify(docReach);
+    if (k === restoredFor) return;
+    restoredFor = k;
+    restore();
   });
   $effect(() => {
     if (view?.river) lengths.set(view.river.osm_id, view.river.length_m);
@@ -223,7 +262,7 @@
     }
     working = true;
     // With a river chosen, the reach is cut out of it; otherwise the route is planned as before.
-    await act(() => (chosen && view?.river ? api.reachCut(start, end, via) : api.reachRoute(river, start, end, via)));
+    await act(() => (holding ? api.reachCut(start, end, via) : api.reachRoute(river, start, end, via)));
     working = false;
   }
 
@@ -328,7 +367,7 @@
     let dragging: "start" | "end" | null = null;
     const down = (e: maplibregl.MapLayerMouseEvent) => {
       const role = e.features?.[0]?.properties?.role;
-      if (!chosen || !view?.river || (role !== "start" && role !== "end")) return;
+      if (!holding || (role !== "start" && role !== "end")) return;
       e.preventDefault();
       dragging = role;
       m.getCanvas().style.cursor = "grabbing";
@@ -356,7 +395,7 @@
       m.getCanvas().style.cursor = "";
       route();
     };
-    const over = () => chosen && view?.river && (m.getCanvas().style.cursor = "grab");
+    const over = () => holding && (m.getCanvas().style.cursor = "grab");
     const out = () => !dragging && (m.getCanvas().style.cursor = "");
     m.on("mousedown", "reach-points", down);
     m.on("mouseenter", "reach-points", over);
@@ -425,15 +464,17 @@
     <label>End <input data-testid="reach-end" bind:value={endText} placeholder="lon, lat" /><button class:on={picking === "end"} data-testid="reach-pick-end" onclick={() => pick("end")}>Pick on map</button></label>
     <label>Via <input data-testid="reach-via" bind:value={viaText} placeholder="lon, lat; lon, lat" /><button class:on={picking === "via"} data-testid="reach-pick-via" onclick={() => pick("via")}>Add on map</button></label>
     {#if picking}<p class="help" role="status">Click the map to place the {picking} point.</p>{/if}
-    {#if chosen && view?.river}<p class="help" data-testid="reach-river-help">Start is the mouth and End the upstream end of the {view.river.name ?? "river"} ({km(view.river.length_m)}). Drag either on the map, or pick one, to cut a reach.</p>{/if}
+    {#if holding && view?.river}<p class="help" data-testid="reach-river-help">Start is the mouth and End the upstream end of the {view.river.name ?? "river"} ({km(view.river.length_m)}). Drag either on the map, or pick one, to cut a reach.</p>{/if}
     <button class="primary" data-testid="reach-route" disabled={working} onclick={route}>Find the route</button>
+    {#if restoring}<p class="help" role="status" data-testid="reach-restoring">Drawing the route again from OpenStreetMap…</p>{/if}
+    {#if view?.restore && !restoring}<button data-testid="reach-restore" onclick={restore}>Draw the route again</button>{/if}
     {#if view?.route}
       <p data-testid="reach-length">Route: {((view.length_m ?? 0) / 1000).toFixed(1)} km{view.as_drawn ? `, ${view.as_drawn} stretch(es) kept as drawn (check them)` : ""}</p>
       {#if view.route_notes?.length}<p class="help" data-testid="reach-route-notes">Overpass: {view.route_notes.join("; ")}.</p>{/if}
     {/if}
   </section>
 
-  {#if view?.route}
+  {#if view && (view.route || docReach)}
     <section aria-label="Make the inputs">
       <h3>2. Make the inputs</h3>
       <p class="help">The JRC water mask tiles this reach needs{isWeb ? " (download them, then give them here: the host does not let a web page read them)" : " (given here, or read from the network)"}:</p>

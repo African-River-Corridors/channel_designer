@@ -317,6 +317,7 @@ describe("OWD web smoke tests", () => {
     await (await tid(b, "reach-end")).setValue("-6.07, 4.983");
     await (await tid(b, "reach-route")).click();
     await until(b, "the route", async () => (await exists(b, "reach-length")) && /km/.test(await text(b, "reach-length")));
+    const km = await text(b, "reach-length");
     assert.equal(await (await tid(b, "mark-route")).getAttribute("data-mark"), "default");
     // The JRC tile has no CORS: it is listed as a link, downloaded, and given back.
     const tile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "owd-jrc-")), "occurrence_10W_10Nv1_4_2021.tif");
@@ -357,6 +358,19 @@ describe("OWD web smoke tests", () => {
       fs.mkdirSync(SHOTS, { recursive: true });
       await b.saveScreenshot(path.join(SHOTS, "web-start-from-river.png"));
     }
+
+    // Open the saved study again: the panel draws its route again and keeps its inputs and steps (#318).
+    const study = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "owd-study-")), "reach-study.owd");
+    fs.writeFileSync(study, JSON.stringify(await pageDoc(b)));
+    await b.execute(() => {
+      window.confirm = () => true; // discard the unsaved design
+    });
+    await pick(b, async () => (await openButton(b)).click(), study);
+    const view = await tid(b, "start-from-river");
+    if ((await view.getAttribute("aria-pressed")) !== "true") await view.click();
+    await until(b, "the route drawn again", async () => (await exists(b, "reach-length")) && (await text(b, "reach-length")) === km);
+    assert.match(await (await tid(b, "reach-input-left_bank")).getText(), /sentinel2-l2a/);
+    assert.ok(await exists(b, "reach-load-dem"), "step 3 is shown after Open");
   });
 
   it("names no server of ours: every host in the web bundle is a public source", () => {

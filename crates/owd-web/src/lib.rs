@@ -291,6 +291,17 @@ impl Session {
         self.edit(|s| s.reach_cut(start, end, &via, &date))
     }
 
+    /// Draw the reach of an opened study again (#318). The document is not changed.
+    pub fn reach_restore(&mut self, at: &str, fetch: js_sys::Function) -> Js<String> {
+        if !self.state.reach_needs_restore() {
+            return Ok(self.snapshot());
+        }
+        let at = ok(endpoints(at))?;
+        let doc = self.state.snapshot()["document"].clone();
+        let restored = ok(owd_shell::reach::plan_restore(&JsFetch(fetch), &at, &doc))?;
+        self.edit(|s| s.restore_reach(restored))
+    }
+
     /// True while the study holds nothing but its reach.
     pub fn reach_route_only(&self) -> bool {
         self.state.reach_route_only()
