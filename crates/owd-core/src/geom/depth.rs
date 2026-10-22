@@ -78,6 +78,73 @@ fn crossing(a: Pt, b: Pt, c: i32, m: Pt) -> i32 {
     }
 }
 
+/// The pieces grouped by horizontal strips: each piece is listed in every strip its y range meets.
+/// [`crossing`] is zero for a piece unless `min y <= m[1] < max y`, and such a piece is listed in the
+/// strip of `m[1]` (the strip of a y is monotone in y), so summing over that strip's pieces gives the
+/// same integer as summing over all of them.
+struct Strips {
+    y0: f64,
+    h: f64,
+    strips: Vec<Vec<usize>>,
+}
+
+impl Strips {
+    fn new(set: &[(Pt, Pt, i32)]) -> Strips {
+        let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+        for &(a, b, _) in set {
+            lo = lo.min(a[1].min(b[1]));
+            hi = hi.max(a[1].max(b[1]));
+        }
+        // About one strip a piece; fewer if long pieces would list each in many strips.
+        let mut n = set.len().max(1);
+        loop {
+            let h = if hi > lo { (hi - lo) / n as f64 } else { 1.0 };
+            let mut out = Strips {
+                y0: lo,
+                h,
+                strips: vec![Vec::new(); n],
+            };
+            let spans: Vec<(usize, usize)> = set
+                .iter()
+                .map(|&(a, b, _)| (out.strip(a[1].min(b[1])), out.strip(a[1].max(b[1]))))
+                .collect();
+            let entries: usize = spans.iter().map(|(k0, k1)| k1 - k0 + 1).sum();
+            if n > 1 && entries > 16 * set.len() {
+                n /= 2;
+                continue;
+            }
+            for (j, &(k0, k1)) in spans.iter().enumerate() {
+                for k in k0..=k1 {
+                    out.strips[k].push(j);
+                }
+            }
+            return out;
+        }
+    }
+
+    /// The strip of `y`, clamped to the strips there are.
+    fn strip(&self, y: f64) -> usize {
+        let k = ((y - self.y0) / self.h).floor();
+        if k.is_nan() || k < 0.0 {
+            0
+        } else {
+            (k as usize).min(self.strips.len().max(1) - 1)
+        }
+    }
+
+    /// The winding number at `m` of every piece of `set` but piece `skip`, as the full sum gives it.
+    fn winding(&self, set: &[(Pt, Pt, i32)], m: Pt, skip: usize) -> i32 {
+        self.strips[self.strip(m[1])]
+            .iter()
+            .filter(|&&j| j != skip)
+            .map(|&j| {
+                let (p, q, k) = set[j];
+                crossing(p, q, k, m)
+            })
+            .sum()
+    }
+}
+
 /// A quarter turn clockwise, `(x, y) -> (y, -x)`: exact, and it keeps orientation.
 fn turn(p: Pt) -> Pt {
     [p[1], -p[0]]
@@ -115,21 +182,19 @@ pub fn region(curves: &[Curve]) -> Vec<Polygon> {
         .iter()
         .map(|&(a, b, c)| (turn(a), turn(b), c))
         .collect();
+    // The ray counts read only the pieces whose y range holds the ray (see `Strips`); a scan of
+    // every piece for every piece was quadratic, most of an alignment's time on a long river.
+    let (strips, turned_strips) = (Strips::new(&pieces), Strips::new(&turned));
     let mut boundary: Vec<[Pt; 2]> = Vec::new();
     for (i, &(a, b, c)) in pieces.iter().enumerate() {
         // A horizontal piece is counted in the turned frame, where it is vertical.
-        let (set, a, b) = if a[1] == b[1] {
-            (&turned, turn(a), turn(b))
+        let (set, index, a, b) = if a[1] == b[1] {
+            (&turned, &turned_strips, turn(a), turn(b))
         } else {
-            (&pieces, a, b)
+            (&pieces, &strips, a, b)
         };
         let m = [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0];
-        let w: i32 = set
-            .iter()
-            .enumerate()
-            .filter(|(j, _)| *j != i)
-            .map(|(_, &(p, q, k))| crossing(p, q, k, m))
-            .sum();
+        let w: i32 = index.winding(set, m, i);
         // `w` is the depth just to the +x side of the piece. Going up, that is its right side.
         let (left, right) = if a[1] < b[1] { (w + c, w) } else { (w, w - c) };
         let (lo, hi) = (pieces[i].0, pieces[i].1);
@@ -146,6 +211,48 @@ pub fn region(curves: &[Curve]) -> Vec<Polygon> {
 mod tests {
     //! Label: sourced - hand calculation (areas of unit squares and triangles)
     use super::*;
+
+    #[test]
+    fn the_strips_count_the_ray_as_the_full_scan_does() {
+        // Random pieces on a coarse grid (so ends share y values and some pieces are horizontal),
+        // queried at their own midpoints and at grid points; the sums must be equal.
+        let mut seed = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed % 41) as f64 * 0.5 - 10.0
+        };
+        let mut queries = 0;
+        for round in 0..40 {
+            let n = 5 + round * 7;
+            let set: Vec<(Pt, Pt, i32)> = (0..n)
+                .map(|k| {
+                    (
+                        [next(), next()],
+                        [next(), next()],
+                        if k % 3 == 0 { -1 } else { 1 },
+                    )
+                })
+                .collect();
+            let strips = Strips::new(&set);
+            let full = |m: Pt, skip: usize| -> i32 {
+                set.iter()
+                    .enumerate()
+                    .filter(|(j, _)| *j != skip)
+                    .map(|(_, &(p, q, k))| crossing(p, q, k, m))
+                    .sum()
+            };
+            for (i, &(a, b, _)) in set.iter().enumerate() {
+                let m = [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0];
+                assert_eq!(strips.winding(&set, m, i), full(m, i), "{m:?}");
+                let g = [next(), next()];
+                assert_eq!(strips.winding(&set, g, usize::MAX), full(g, usize::MAX));
+                queries += 2;
+            }
+        }
+        assert!(queries > 5000, "{queries}");
+    }
     use crate::geom::overlay::polygon_area;
 
     fn area(ps: &[Polygon]) -> f64 {

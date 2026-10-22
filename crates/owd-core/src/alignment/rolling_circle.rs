@@ -255,17 +255,36 @@ pub fn find_tangent_entry(
     radius: f64,
     side: &str,
 ) -> Option<TangentEntry> {
+    if line.len() < 2 {
+        return None;
+    }
+    tangent_entry_on(
+        line,
+        &cumulative_chainages(line),
+        sample_distance,
+        radius,
+        side,
+    )
+}
+
+/// [`find_tangent_entry`] with the line's running chainages (`cumulative_chainages(line)`).
+fn tangent_entry_on(
+    line: &[Pt],
+    chainages: &[f64],
+    sample_distance: f64,
+    radius: f64,
+    side: &str,
+) -> Option<TangentEntry> {
     if line.len() < 2 || radius.is_nan() || radius <= 0.0 || !sample_distance.is_finite() {
         return None;
     }
-    let chainages = cumulative_chainages(line);
     // T: the last vertex at or before the sample.
-    let t = searchsorted_right(&chainages, sample_distance + SPLICE_TOL_M).checked_sub(1)?;
+    let t = searchsorted_right(chainages, sample_distance + SPLICE_TOL_M).checked_sub(1)?;
     let tangent_point = line[t];
     let tangent_distance = chainages[t];
     // P: the last vertex the splice keeps before T (`replace_segment_with_arc`), so P to T is the
     // segment into T on the spliced line.
-    let p = searchsorted_left(&chainages, tangent_distance - SPLICE_TOL_M).checked_sub(1)?;
+    let p = searchsorted_left(chainages, tangent_distance - SPLICE_TOL_M).checked_sub(1)?;
     let (dx, dy) = (tangent_point[0] - line[p][0], tangent_point[1] - line[p][1]);
     let norm = (dx * dx + dy * dy).sqrt();
     if norm.is_nan() || norm == 0.0 {
@@ -426,14 +445,17 @@ pub fn replace_segment_with_arc(
         prefix.push(start_point);
     }
 
+    // The vertices past the end, read from the line's end back, then put in order. (Inserting each
+    // at the front was quadratic in the suffix's length: on a long river most of the run's time.)
     let mut suffix: Vec<Pt> = Vec::new();
     for idx in (0..chainages.len()).rev() {
         if chainages[idx] > end_distance + tol {
-            suffix.insert(0, line[idx]);
+            suffix.push(line[idx]);
         } else {
             break;
         }
     }
+    suffix.reverse();
     if suffix.is_empty() {
         suffix.push(line[line.len() - 1]);
     }
@@ -465,8 +487,16 @@ pub fn replace_segment_with_arc(
 }
 
 /// Where a ring meets a line: every isolated point, and the two ends of every shared stretch.
-fn gather_intersection_points(ring: &[Pt], line: &[Pt]) -> Vec<Pt> {
-    let (points, stretches) = linear::line_intersection(ring, line);
+/// With `index` (of `line`), the line's segments are found through its grid: the same answer.
+fn gather_intersection_points(
+    ring: &[Pt],
+    line: &[Pt],
+    index: Option<&linear::ProjectIndex>,
+) -> Vec<Pt> {
+    let (points, stretches) = match index {
+        Some(index) => linear::line_intersection_indexed(ring, index),
+        None => linear::line_intersection(ring, line),
+    };
     let mut out = points;
     for s in stretches {
         if let (Some(&a), Some(&b)) = (s.first(), s.last()) {
@@ -494,12 +524,35 @@ pub fn find_forward_circle_contact(
     if min_chainage_gap <= 0.0 {
         return Err(PyError::value("min_chainage_gap must be positive."));
     }
-    let Some(circle) = buffer_point(centre, radius, 128) else {
-        return Ok(None);
-    };
+    Ok(forward_contact(
+        centreline,
+        None,
+        tangent_point,
+        tangent_chainage,
+        centre,
+        radius,
+        min_chainage_gap,
+    ))
+}
+
+/// [`find_forward_circle_contact`] with its checks done. With `index` (of `centreline`), the
+/// meetings and their chainages are found through its grid: the same answer as without.
+fn forward_contact(
+    centreline: &[Pt],
+    index: Option<&linear::ProjectIndex>,
+    tangent_point: Pt,
+    tangent_chainage: f64,
+    centre: Pt,
+    radius: f64,
+    min_chainage_gap: f64,
+) -> Option<Contact> {
+    let circle = buffer_point(centre, radius, 128)?;
     let mut best: Option<(f64, Pt)> = None;
-    for p in gather_intersection_points(&circle.exterior, centreline) {
-        let chainage = linear::project(centreline, p);
+    for p in gather_intersection_points(&circle.exterior, centreline, index) {
+        let chainage = match index {
+            Some(index) => index.project(p),
+            None => linear::project(centreline, p),
+        };
         if chainage - tangent_chainage > min_chainage_gap {
             // Python `max(..., key=chainage)`: the first of equal chainages.
             if best.is_none_or(|(c, _)| chainage > c) {
@@ -507,12 +560,12 @@ pub fn find_forward_circle_contact(
             }
         }
     }
-    Ok(best.map(|(contact_chainage, contact_point)| Contact {
+    best.map(|(contact_chainage, contact_point)| Contact {
         contact_point,
         centre,
         tangent_point,
         contact_chainage,
-    }))
+    })
 }
 
 /// A tangent exit: the arc ends at `exit_point` (E, on the circle) and a straight runs from there to
@@ -545,19 +598,41 @@ pub fn find_tangent_exit(
     side: &str,
     contact_chainage: f64,
 ) -> Option<TangentExit> {
+    if line.len() < 2 {
+        return None;
+    }
+    let chainages = cumulative_chainages(line);
+    tangent_exit_on(line, &chainages, centre, radius, side, contact_chainage)
+}
+
+/// [`find_tangent_exit`] with the line's running chainages (`cumulative_chainages(line)`).
+fn tangent_exit_on(
+    line: &[Pt],
+    chainages: &[f64],
+    centre: Pt,
+    radius: f64,
+    side: &str,
+    contact_chainage: f64,
+) -> Option<TangentExit> {
     if line.len() < 2 || radius.is_nan() || radius <= 0.0 || !contact_chainage.is_finite() {
         return None;
     }
     // +1: the arc turns left (anticlockwise); -1: right.
     let sigma = if side == "right" { -1.0 } else { 1.0 };
     let half_pi = core::f64::consts::FRAC_PI_2;
-    let chainages = cumulative_chainages(line);
     let heading = |a: Pt, b: Pt| libm::atan2(b[1] - a[1], b[0] - a[0]);
     // The error is read signed by the arc's turn, so it is positive at the touch. `best` is the
     // vertex of least error so far, with that error.
     let mut best: Option<(f64, TangentExit)> = None;
     let mut first = true;
-    for j in 1..line.len() - 1 {
+    // The vertices past the contact. The chainages rise, so they start where a binary search puts
+    // the contact, as the scan from the start that skipped every earlier vertex found them.
+    let from = if chainages.iter().all(|c| c.is_finite()) {
+        chainages.partition_point(|&c| c <= contact_chainage).max(1)
+    } else {
+        1
+    };
+    for j in from..line.len() - 1 {
         if chainages[j] <= contact_chainage {
             continue;
         }
@@ -641,6 +716,7 @@ pub fn rolling_circle(
         let ch = cumulative_chainages(&pts);
         Ok((pts, ch))
     };
+
     let start_index = |ch: &[f64]| -> usize {
         let mut idx = searchsorted_left(ch, step).max(1);
         if idx + 1 >= ch.len() {
@@ -652,36 +728,44 @@ pub fn rolling_circle(
     for pass_index in 0..passes.max(0) {
         for side in sides {
             let (mut samples, mut chainages) = resampled(&line)?;
+            // Every chainage on the line is read through a grid of its segments, the same answer
+            // as `linear::project` to the last bit; it is rebuilt each time the line changes.
+            let mut index = linear::ProjectIndex::new(&line);
+            let mut line_ch = cumulative_chainages(&line);
             if side != "left" && side != "right" {
                 // `place_circle_at_point` refuses any other side, so no circle is placed.
                 continue;
             }
             let mut idx = start_index(&chainages);
             while idx + 1 < samples.len() {
-                let sample_distance = linear::project(&line, samples[idx]);
+                let sample_distance = index.project(samples[idx]);
                 let Some(TangentEntry {
                     tangent_point,
                     tangent_distance,
                     centre,
-                }) = find_tangent_entry(&line, sample_distance, min_radius, side)
+                }) = tangent_entry_on(&line, &line_ch, sample_distance, min_radius, side)
                 else {
                     idx += 1;
                     continue;
                 };
-                let Some(contact) = find_forward_circle_contact(
+                if gap <= 0.0 {
+                    return Err(PyError::value("min_chainage_gap must be positive."));
+                }
+                let Some(contact) = forward_contact(
                     &line,
+                    Some(&index),
                     tangent_point,
                     tangent_distance,
                     centre,
                     min_radius,
                     gap,
-                )?
-                else {
+                ) else {
                     idx += 1;
                     continue;
                 };
-                let exit = find_tangent_exit(
+                let exit = tangent_exit_on(
                     &line,
+                    &line_ch,
                     contact.centre,
                     min_radius,
                     side,
@@ -731,7 +815,9 @@ pub fn rolling_circle(
                 // gets its straight (E to Q) as the splice's last segment.
                 line = replace_segment_with_arc(&line, tangent_distance, join_chainage, &arc)?;
                 (samples, chainages) = resampled(&line)?;
-                let updated = linear::project(&line, join_point);
+                index = linear::ProjectIndex::new(&line);
+                line_ch = cumulative_chainages(&line);
+                let updated = index.project(join_point);
                 idx = searchsorted_left(&chainages, updated);
                 idx = (idx + 1).min(samples.len() - 1);
             }
@@ -1000,5 +1086,49 @@ mod tests {
             res.centreline[res.centreline.len() - 1],
             line[line.len() - 1]
         );
+    }
+
+    #[test]
+    fn a_splice_near_the_start_of_a_long_line_takes_linear_time() {
+        // Issue #302: the splice built the part of the line after the arc by inserting each vertex
+        // at the front, which is quadratic in its length. On 400,000 vertices that is about 1.3e12
+        // bytes moved (over a minute); read in order it is a few milliseconds, even in a debug build.
+        // A line back and forth across 1 km, 2 m apart, a vertex every metre: small coordinates,
+        // so no two vertices are close under `allclose`'s relative tolerance.
+        let n: u32 = 400_000;
+        let at = |i: u32| {
+            let (row, col) = (i / 1000, f64::from(i % 1000));
+            let x = if row % 2 == 0 { col } else { 999.0 - col };
+            [x, 2.0 * f64::from(row)]
+        };
+        let line: Vec<Pt> = (0..n).map(at).collect();
+        let arc = [[10.0, 0.0], [15.0, 1.0], [20.0, 0.0]];
+        let t = std::time::Instant::now();
+        let out = replace_segment_with_arc(&line, 10.0, 20.0, &arc).unwrap();
+        let took = t.elapsed();
+        assert_eq!(out.len(), n as usize - 21 + 3 + 10);
+        assert_eq!(out[10..13], arc);
+        assert_eq!(out[13..], line[21..]);
+        assert!(took.as_secs_f64() < 5.0, "the splice took {took:?}");
+    }
+
+    #[test]
+    fn a_long_reach_rolls_in_seconds() {
+        // Issue #302: a timing check on a long synthetic reach, so a slow splice or a scan of the
+        // whole line per sample shows up. 20 km of 13 meanders with a vertex every 2 m (10,000
+        // vertices, as dense as a fitted real river); two passes, both sides. On the machine #302
+        // was fixed on, a debug build took 1.8 s here; the code before the fix took 26.7 s.
+        let river = synthetic_river(RiverParams {
+            length_m: 20_000.0,
+            ..RiverParams::default()
+        })
+        .unwrap();
+        let dense = resample_line(&river.centreline, 2.0).unwrap();
+        let g = Geometry::LineString(dense);
+        let t = std::time::Instant::now();
+        let res = rolling_circle(&g, 255.0, 10.0, 2, &sides(), None, None).unwrap();
+        let took = t.elapsed();
+        assert!(!res.circles.is_empty());
+        assert!(took.as_secs_f64() < 10.0, "the roll took {took:?}");
     }
 }
