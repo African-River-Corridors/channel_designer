@@ -126,14 +126,18 @@ def test_property_route_does_not_relax_rmin_to_a_tight_baseline():
                                station_step=50.0)
     assert res.measured_min_radius_m < 300.0
     assert not res.radius_ok
-    # it tried for R_min (every smoothing pass), rather than stopping at the baseline's radius
-    assert res.smooth_passes == 600
+    # it tried for R_min (every smoothing pass), rather than stopping at the baseline's radius:
+    # the 600 passes on the offsets, then the passes on the line itself (#381), which the 40 m
+    # corridor does not leave room for
+    assert res.smooth_passes >= 600
 
 
 
-def test_property_route_prefers_a_compliant_corridor():
-    """A wider corridor that saves more but fails R_min must not beat one that holds it.
-    Straight baseline, so the baseline is not the cause: the 200 m corridor's excursion is."""
+def test_property_route_picks_the_saving_among_corridors_that_hold_r_min():
+    """Straight baseline. Before #381 the 200 m corridor's excursion turned tighter than R_min at
+    the stations, and the narrower corridor won. The passes on the line itself now open that
+    excursion too: both corridors hold R_min at the stations, and the sweep picks the one that
+    saves more (the first on a tie)."""
     line = LineString([(0.0, 0.0), (4000.0, 0.0)])
     river = line.buffer(20.0, cap_style="flat")
     grid = route.build_cost_grid(line, _hill, river, 0.0, bottom_width=30.0, depth=3.0,
@@ -146,11 +150,11 @@ def test_property_route_prefers_a_compliant_corridor():
     from owd.alignment.radius_check import min_radius_on_vertices
     def stations_ok(r):
         return min_radius_on_vertices(np.asarray(r.line.coords), 1) >= 0.98 * 900.0
-    assert stations_ok(narrow) and not stations_ok(wide)
+    assert stations_ok(narrow) and stations_ok(wide)
     assert narrow.radius_ok and wide.radius_ok
-    assert wide.approx_saving_pct > narrow.approx_saving_pct
+    best = 200.0 if wide.approx_saving_pct > narrow.approx_saving_pct else 120.0
     res = route.optimise_route(line, _hill, river, 0.0, corridor_sweep=(120.0, 200.0), **kw)
-    assert res.radius_ok and res.corridor_half_m == 120.0
+    assert res.radius_ok and stations_ok(res) and res.corridor_half_m == best
 
 
 def test_property_unmeasured_result_is_not_ok():
