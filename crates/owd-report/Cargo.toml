@@ -1,0 +1,19 @@
+[package]
+name = "owd-report"
+description = "Reports of a channel design (spec 0014): the screening report, quantity schedule, section pack and run report, through the Open Report Designer."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+# Pure: no file, clock or network (ADR 0012).
+[dependencies]
+owd-format.workspace = true
+ord.workspace = true
+serde_json.workspace = true
+
+# A second reader for the tests (the PDF read back), not the code under test.
+[dev-dependencies]
+lopdf = "0.46.0"

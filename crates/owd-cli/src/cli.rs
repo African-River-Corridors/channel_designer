@@ -447,6 +447,50 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Make the reports of a design (spec 0014): the screening report, as PDF, HTML and Word, through
+    /// the Open Report Designer. Each report has document control, the screening notice on every page
+    /// and a "Data and limits" box. Files are named after the document number, in lower case.
+    Report {
+        /// The channel design. `-` is stdin.
+        doc: String,
+        /// The kind of report: `screening`, or `all`.
+        #[arg(long, value_name = "KIND", default_value = "screening")]
+        kind: String,
+        /// The format: `pdf`, `html`, `docx` or `all`.
+        #[arg(long, value_name = "FORMAT", default_value = "pdf")]
+        format: String,
+        /// The design line option, by id or name (default: the first).
+        #[arg(long, value_name = "NAME")]
+        option: Option<String>,
+        /// Write the reports into this folder (default: beside the design).
+        #[arg(short = 'o', long = "out", value_name = "DIR")]
+        out: Option<String>,
+        /// The revision (default A).
+        #[arg(long, value_name = "REV")]
+        revision: Option<String>,
+        /// The date, YYYY-MM-DD (default: today).
+        #[arg(long, value_name = "DATE")]
+        date: Option<String>,
+        /// The status: draft (the default), for-checking, for-approval, approved, issued or
+        /// superseded. A status needs its sign-offs.
+        #[arg(long, value_name = "STATUS")]
+        status: Option<String>,
+        /// Who prepared the report (a name or a role).
+        #[arg(long, value_name = "NAME")]
+        prepared: Option<String>,
+        /// Who checked it.
+        #[arg(long, value_name = "NAME")]
+        checked: Option<String>,
+        /// Who approved it.
+        #[arg(long, value_name = "NAME")]
+        approved: Option<String>,
+        /// The organisation on the cover and in the footer.
+        #[arg(long, value_name = "NAME")]
+        organisation: Option<String>,
+        /// Print a machine-readable result as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Give the depth of a river that has no survey: one depth, or a table of depths along the
     /// river centreline. Inside the water the volumes then read the bed as the water level less the
     /// depth, shaped as a parabola across the water. The depth is assumed, not measured, and every
@@ -696,6 +740,35 @@ pub fn main() -> ExitCode {
             dem_datum,
             output: out.output,
             json: out.json,
+        }),
+        Command::Report {
+            doc,
+            kind,
+            format,
+            option,
+            out,
+            revision,
+            date,
+            status,
+            prepared,
+            checked,
+            approved,
+            organisation,
+            json,
+        } => crate::report::report(crate::report::ReportFlags {
+            doc,
+            kind,
+            format,
+            option,
+            out,
+            revision,
+            date,
+            status,
+            prepared,
+            checked,
+            approved,
+            organisation,
+            json,
         }),
         Command::CheckBanks { doc, json } => crate::check_banks::check_banks(&doc, json),
         Command::QaOverlay {

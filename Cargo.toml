@@ -1,10 +1,10 @@
 [workspace]
 resolver = "3"
-members = ["crates/owd-core", "crates/owd-format", "crates/owd-cli", "crates/owd-py", "crates/owd-shell", "crates/owd-reach", "crates/owd-web", "app/src-tauri", "xtask"]
+members = ["crates/owd-core", "crates/owd-format", "crates/owd-cli", "crates/owd-py", "crates/owd-shell", "crates/owd-reach", "crates/owd-report", "crates/owd-web", "app/src-tauri", "xtask"]
 # owd-py (PyO3 bindings, ticket 35) is left out so `cargo build` and `cargo test` need no Python.
 # owd-web (the wasm session, spec 0011) is left out so a plain build needs no wasm toolchain.
 # app/src-tauri (the desktop app, spec 0003) is left out so they need no Node and no Tauri system libraries.
-default-members = ["crates/owd-core", "crates/owd-format", "crates/owd-cli", "crates/owd-shell", "crates/owd-reach", "xtask"]
+default-members = ["crates/owd-core", "crates/owd-format", "crates/owd-cli", "crates/owd-shell", "crates/owd-reach", "crates/owd-report", "xtask"]
 
 [workspace.package]
 version = "0.2.0"
@@ -18,6 +18,7 @@ owd-core = { path = "crates/owd-core" }
 owd-format = { path = "crates/owd-format" }
 owd-shell = { path = "crates/owd-shell" }
 owd-reach = { path = "crates/owd-reach" }
+owd-report = { path = "crates/owd-report" }
 # The Drawing Format Standard in Rust lives in its own repository (open-technical-drawer, spec 0004, ADR 0009).
 # Pinned by git tag, as arc-rules is pinned in the sister project. Never a path or a branch.
 # The shared rules engine (spec 0007, ADR 0008), from the sister project open-vessel-concept-drawings.
@@ -26,6 +27,9 @@ arc-rules = { git = "https://github.com/African-River-Corridors/open-vessel-conc
 otd = { git = "https://github.com/African-River-Corridors/open-technical-drawer", tag = "v0.4.0" }
 # Fetched imagery for plan backdrops (EOxCloudless 2016), from the same tag. It holds the network, so
 # owd-format takes it only with its `imagery` feature, which the command line turns on.
+# The report engine (spec 0014, ADR 0012): a typed report document to PDF, HTML and Word. Pinned by git tag,
+# never a path or a branch.
+ord = { git = "https://github.com/African-River-Corridors/open-report-designer", tag = "v0.1.0" }
 otd-imagery = { git = "https://github.com/African-River-Corridors/open-technical-drawer", tag = "v0.4.0" }
 # float_roundtrip, arbitrary_precision: read every number exactly as written, big ints too.
 # preserve_order: a JSON object keeps its key order, as a Python dict does.

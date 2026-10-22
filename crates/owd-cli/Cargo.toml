@@ -19,6 +19,7 @@ path = "src/main.rs"
 owd-format = { workspace = true, features = ["imagery"] }
 owd-reach.workspace = true
 owd-core.workspace = true
+owd-report.workspace = true
 arc-rules.workspace = true
 # `otd::Files`: `owd draw run` reads a document's images from its folder.
 otd.workspace = true

@@ -10,3 +10,4 @@ pub mod fits;
 pub mod level;
 pub mod qa_overlay;
 pub mod reach_fetch;
+pub mod report;
