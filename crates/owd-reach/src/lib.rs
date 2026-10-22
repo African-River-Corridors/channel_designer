@@ -19,6 +19,7 @@ pub mod provenance;
 pub mod reach;
 pub mod river;
 pub mod route;
+pub mod sanity;
 pub mod search;
 pub mod seed;
 pub mod sentinel2;

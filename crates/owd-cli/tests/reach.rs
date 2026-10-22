@@ -281,10 +281,14 @@ fn banks_from_the_jrc_mask_go_into_the_document_with_the_notice_and_the_flags() 
     assert_eq!(
         o.status.code(),
         Some(0),
-        "{}",
-        String::from_utf8_lossy(&o.stderr)
+        "{} {}",
+        String::from_utf8_lossy(&o.stderr),
+        String::from_utf8_lossy(&o.stdout)
     );
     let result: Value = serde_json::from_slice(&o.stdout).unwrap();
+    // Issue #360: banks that follow the route pass the reach checks.
+    assert_eq!(result["ok"], true, "{}", result["warnings"]);
+    assert_eq!(result["warnings"], serde_json::json!([]));
     assert_eq!(result["banks"]["mask_threshold_pct"], 75.0);
     assert_eq!(result["banks"]["low_confidence_stretches"], 3);
     let d = doc(&file);
