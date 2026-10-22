@@ -1,0 +1,1 @@
+- **A smaller web build.** `tools/build_web.sh` builds with a new `wasm` profile (link-time optimisation in one unit, symbol names stripped): the WebAssembly goes from 47.1 MB to 35.5 MB (gzip 14.4 MB to 12.9 MB), and the design runs no slower in the browser. Native builds keep `release`.

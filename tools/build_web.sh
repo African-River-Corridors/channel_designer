@@ -17,7 +17,7 @@ cli="$(wasm-bindgen --version | awk '{print $2}')"
 [ "$cli" = "$pinned" ] \
   || { echo "build_web: wasm-bindgen CLI is $cli but the crate is pinned to $pinned" >&2; exit 1; }
 
-cargo build --target wasm32-unknown-unknown --release -p owd-web
+cargo build --target wasm32-unknown-unknown --profile wasm -p owd-web
 rm -rf "$OUT"
-wasm-bindgen --target web --out-dir "$OUT" "${CARGO_TARGET_DIR:-target}/wasm32-unknown-unknown/release/owd_web.wasm"
+wasm-bindgen --target web --out-dir "$OUT" "${CARGO_TARGET_DIR:-target}/wasm32-unknown-unknown/wasm/owd_web.wasm"
 echo "build_web: wrote $OUT (wasm-bindgen $cli)"
