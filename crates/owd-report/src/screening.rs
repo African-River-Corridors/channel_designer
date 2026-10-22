@@ -19,6 +19,7 @@ pub fn body(ctx: &Context, assets: &mut Vec<(String, Vec<u8>)>) -> (Vec<Value>, 
         reach(ctx, assets),
         sources(ctx),
         what_fits(ctx),
+        largest_vessel(ctx, assets),
         stretches(ctx),
         design_basis(ctx),
         quantities(ctx),
@@ -216,6 +217,82 @@ fn kind_counts(list: &[Value]) -> String {
         s.push_str(&format!(" (+{inf} infeasible)"));
     }
     s
+}
+
+/// "Largest vessel" (spec 0016 T3): the size sweep the study holds (`owd envelope`).
+fn largest_vessel(ctx: &Context, assets: &mut Vec<(String, Vec<u8>)>) -> Value {
+    let Some(e) = ctx.session.envelope_result() else {
+        return section(
+            "largest-vessel",
+            "Largest vessel",
+            vec![prose(
+                "The largest vessel the river allows is not in the design yet (`owd envelope`).",
+            )],
+        );
+    };
+    let words = |v: &Value| match (v["loa_m"].as_f64(), v["beam_m"].as_f64()) {
+        (Some(l), Some(b)) => format!("{} x {} m", num(l, 0), num(b, 0)),
+        _ => "none".to_string(),
+    };
+    let mut body = vec![prose(format!(
+        "The largest vessel the river allows, from the size sweep: {} (rule set {}, draught {} m, \
+         read on the {} line). Each size has its own fairway fit in the water, seeded from the \
+         reference line. The largest size that passes the whole reach: {}.",
+        md(text(&e["label"], "no label")),
+        md(text(&e["rule_set"], "?")),
+        num(e["draught_m"].as_f64().unwrap_or(f64::NAN), 1).trim_end_matches(".0"),
+        md(text(&e["plan_line"], "reference")),
+        words(&e["largest"]),
+    ))];
+    if ctx.session.envelope_status() == owd_format::design::StageStatus::Stale {
+        body.push(prose(
+            "This sweep is stale: the banks, the reference line or the settings changed since it \
+             ran. Run `owd envelope` to replace it.",
+        ));
+    }
+    let rows: Vec<Vec<String>> = e["sizes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|s| {
+            vec![
+                text(&s["label"], "?").to_string(),
+                num(s["r_min_m"].as_f64().unwrap_or(f64::NAN), 0),
+                num(s["bottom_width_straight_m"].as_f64().unwrap_or(f64::NAN), 1),
+                if s["passes"] == true { "yes" } else { "no" }.to_string(),
+                s["stretch_count"].as_u64().unwrap_or(0).to_string(),
+            ]
+        })
+        .collect();
+    body.push(table(
+        "envelope-sizes-table",
+        "The sizes of the sweep",
+        &[
+            ("Size", "left", Some("m")),
+            ("R_min", "right", Some("m")),
+            ("Bottom width", "right", Some("m")),
+            ("Passes", "left", None),
+            ("Stretches", "right", None),
+        ],
+        rows,
+    ));
+    body.extend(figures::envelope(e, assets));
+    let within: Vec<String> = e["marks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|m| m["within"] == true)
+        .map(|m| md(text(&m["id"], "?")))
+        .collect();
+    body.push(prose(format!(
+        "Catalogue classes no longer and no wider than the largest size (marked, not refitted): {}.",
+        if within.is_empty() {
+            "none".to_string()
+        } else {
+            within.join(", ")
+        }
+    )));
+    section("largest-vessel", "Largest vessel", body)
 }
 
 fn what_fits(ctx: &Context) -> Value {

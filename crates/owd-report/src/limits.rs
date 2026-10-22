@@ -45,6 +45,23 @@ pub fn items(ctx: &Context) -> Vec<(String, String)> {
         ("Rule Sets".into(), rule_sets(d)),
         ("Stale stages".into(), stale(ctx)),
     ];
+    // The size sweep (spec 0016 T3): the banks can set its limit.
+    if let Some(e) = ctx.session.envelope_result() {
+        let low = d["inputs"]["reference_line"]["low_confidence"]
+            .as_array()
+            .map_or(0, Vec::len);
+        let mut v = text(&e["bank_caveat"], "").to_string();
+        if low > 0 {
+            v.push_str(&format!(
+                "; {low} low-confidence stretches of bank lie along the reference line"
+            ));
+        }
+        let at = out
+            .iter()
+            .position(|(k, _)| k == "Plan line")
+            .map_or(out.len(), |i| i + 1);
+        out.insert(at, ("Largest vessel".into(), v));
+    }
     // A custom vessel (spec 0015 T1): what its figures are, and any warning on them.
     if let Some(c) = ctx.session.custom_vessel() {
         let mut v = format!(
