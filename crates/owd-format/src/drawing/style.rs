@@ -280,7 +280,7 @@ impl Style {
                 Some(e) => Exaggeration::Factor(u32::try_from(e).unwrap_or(u32::MAX)),
                 None => Exaggeration::Auto,
             },
-            auto_min_fill: num(&l["auto_min_fill"]),
+            auto_max_fill: num(&l["auto_max_fill"]),
             below_invert_m: num(&l["below_invert_m"]),
             above_ground_m: num(&l["above_ground_m"]),
             band_left_mm: num(&bands["left"]),

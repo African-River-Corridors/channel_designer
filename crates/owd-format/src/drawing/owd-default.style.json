@@ -137,9 +137,9 @@
       100000
     ],
     "vertical_exaggeration": "auto",
-    "auto_min_fill": 0.5,
-    "below_invert_m": 4,
-    "above_ground_m": 3,
+    "auto_max_fill": 0.8,
+    "below_invert_m": 0.5,
+    "above_ground_m": 0.5,
     "chainage_pitch_mm": 25,
     "level_pitch_mm": 10,
     "bands_mm": {

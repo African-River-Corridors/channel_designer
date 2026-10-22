@@ -504,7 +504,7 @@
       "required": [
         "scales",
         "vertical_exaggeration",
-        "auto_min_fill",
+        "auto_max_fill",
         "below_invert_m",
         "above_ground_m",
         "chainage_pitch_mm",
@@ -548,7 +548,7 @@
           }
         },
         "vertical_exaggeration": {
-          "description": "How many times the levels are drawn larger than the chainage. \"auto\": the smallest factor of 2 or more whose levels fill at least auto_min_fill of the plot height, with a vertical scale that is a ratio of the standard; none when the levels already fill it. A whole number of 2 or more: that factor, at the first scale where the horizontal scale divided by it is a ratio of the standard (clause 7.3.6.2).",
+          "description": "How many times the levels are drawn larger than the chainage. \"auto\": the largest factor of 2 or more whose level axis fits within auto_max_fill of the plot height, with a vertical scale that is a ratio of the standard; none when no such factor fits. A whole number of 2 or more: that factor, at the first scale where the horizontal scale divided by it is a ratio of the standard (clause 7.3.6.2).",
           "oneOf": [
             {
               "const": "auto"
@@ -559,8 +559,8 @@
             }
           ]
         },
-        "auto_min_fill": {
-          "description": "With vertical_exaggeration auto: the least share of the plot height that the levels must fill.",
+        "auto_max_fill": {
+          "description": "With vertical_exaggeration auto: the most of the plot height that the level axis may fill.",
           "type": "number",
           "minimum": 0.05,
           "maximum": 1
