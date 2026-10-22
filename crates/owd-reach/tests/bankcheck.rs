@@ -215,3 +215,82 @@ t! {
         assert!(ratio < 1.1, "the centreline is {ratio} times the seed");
     }
 }
+
+mod merged_stretches {
+    //! #361: the stretches from two sources (the mask or the edge fit, and the bank checks) are
+    //! merged into disjoint stretches, so there are never more stretches than stations.
+    //!
+    //! Label: property
+    use owd_reach::bankcheck::{Checks, merge};
+    use owd_reach::banks::{Stretch, StretchKind};
+
+    /// The stretch of the stations `a..=b`, 10 m apart, each covering half a step either side.
+    fn st(a: usize, b: usize, kind: StretchKind) -> Stretch {
+        Stretch {
+            from_m: (a as f64 * 10.0 - 5.0).max(0.0),
+            to_m: b as f64 * 10.0 + 5.0,
+            kind,
+            min_width_m: 20.0 + a as f64,
+        }
+    }
+
+    fn jump() -> StretchKind {
+        StretchKind::Repaired(Checks {
+            jump: true,
+            ..Checks::default()
+        })
+    }
+
+    #[test]
+    fn overlapping_stretches_merge_and_never_outnumber_the_stations() {
+        // Every station flagged several times over by the two sources.
+        let stations = 50;
+        let a: Vec<Stretch> = (0..stations)
+            .map(|i| st(i, i, StretchKind::Narrow))
+            .collect();
+        let b: Vec<Stretch> = (0..stations)
+            .step_by(2)
+            .map(|i| st(i, (i + 3).min(stations - 1), jump()))
+            .collect();
+        let m = merge(a, b);
+        assert!(
+            m.len() <= stations,
+            "{} stretches for {stations} stations",
+            m.len()
+        );
+        for w in m.windows(2) {
+            assert!(w[0].to_m < w[1].from_m, "{:?} overlaps {:?}", w[0], w[1]);
+        }
+    }
+
+    #[test]
+    fn a_merged_stretch_keeps_the_most_serious_kind_and_the_narrowest_width() {
+        let m = merge(
+            vec![
+                st(0, 4, StretchKind::Narrow),
+                st(20, 22, StretchKind::Narrow),
+            ],
+            vec![st(3, 8, StretchKind::NoEdge)],
+        );
+        assert_eq!(m.len(), 2, "{m:?}");
+        assert_eq!(m[0].kind, StretchKind::NoEdge);
+        assert_eq!((m[0].from_m, m[0].to_m), (0.0, 85.0));
+        assert_eq!(m[0].min_width_m, 20.0);
+        assert_eq!(m[1].kind, StretchKind::Narrow);
+        // Two repairs merge their checks.
+        let width = StretchKind::Repaired(Checks {
+            width_wide: true,
+            ..Checks::default()
+        });
+        let m = merge(vec![st(0, 2, jump())], vec![st(2, 5, width)]);
+        assert_eq!(m.len(), 1);
+        assert_eq!(
+            m[0].kind,
+            StretchKind::Repaired(Checks {
+                jump: true,
+                width_wide: true,
+                ..Checks::default()
+            })
+        );
+    }
+}

@@ -540,3 +540,30 @@ mod recorded_tiles {
     }
     }
 }
+
+t! {
+fn a_river_too_narrow_for_the_scene_is_not_fitted_and_says_why() {
+    // #361: on a river about 40 m wide (four 10 m pixels) the fit made the banks worse. Below the
+    // width it handles, it is not run: the mask banks are kept, and the reason says the width.
+    use owd_reach::ReplayFetch;
+    use owd_reach::edgefit::{MIN_EDGE_FIT_WIDTH_M, SceneQuery, edge_fit_skip_reason, fit_to_scene};
+    let mut narrow = mask_banks();
+    narrow.widths = vec![40.0; narrow.widths.len()];
+    let why = edge_fit_skip_reason(&narrow).expect("a reason");
+    assert!(why.contains("40 m") && why.contains(&format!("{MIN_EDGE_FIT_WIDTH_M} m")), "{why}");
+    assert!(why.contains("mask banks are kept"), "{why}");
+    assert!(edge_fit_skip_reason(&mask_banks()).is_none());
+    // `fit_to_scene` refuses it with the same words, before any request.
+    let f = ReplayFetch::new();
+    let q = SceneQuery {
+        endpoint: owd_reach::sentinel2::SEARCH_ENDPOINT.to_string(),
+        from: "2023-12-01".into(),
+        to: "2024-03-01".into(),
+        months: vec![12, 1, 2],
+        max_cloud_pct: 10.0,
+    };
+    let e = fit_to_scene(&f, &narrow, &FitParams::default(), &q).unwrap_err();
+    assert!(e.to_string().contains(&why), "{e}");
+    assert!(f.requests().is_empty());
+}
+}

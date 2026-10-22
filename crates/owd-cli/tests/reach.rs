@@ -290,7 +290,9 @@ fn banks_from_the_jrc_mask_go_into_the_document_with_the_notice_and_the_flags() 
     assert_eq!(result["ok"], true, "{}", result["warnings"]);
     assert_eq!(result["warnings"], serde_json::json!([]));
     assert_eq!(result["banks"]["mask_threshold_pct"], 75.0);
-    assert_eq!(result["banks"]["low_confidence_stretches"], 3);
+    // The window's three flags fall at one place, the end of the checked centreline: one stretch
+    // (#361).
+    assert_eq!(result["banks"]["low_confidence_stretches"], 1);
     let d = doc(&file);
     for input in ["left_bank", "right_bank", "centreline", "river_polygon"] {
         assert_eq!(d["provenance"][input]["source"], "jrc-gsw");
@@ -302,7 +304,7 @@ fn banks_from_the_jrc_mask_go_into_the_document_with_the_notice_and_the_flags() 
             .as_array()
             .unwrap()
             .len(),
-        3
+        1
     );
     assert_eq!(d["project"]["crs"]["epsg"], 32629);
     let v = run(&["validate", file.to_str().unwrap()]);

@@ -1111,16 +1111,49 @@ fn chainage_on(line: &[P2], s: &[f64], p: P2) -> f64 {
     best.1
 }
 
+/// The narrowest river the edge fit is run on, by its median mask width (m): 6 pixels of 10 m.
+/// Label: provisional (#361). On a river about 40 m wide (4 pixels) the fit made the banks worse:
+/// a pixel at the edge is a mix of water and land on both banks, and few pixels lie well inside the
+/// water to learn its colour from.
+pub const MIN_EDGE_FIT_WIDTH_M: f64 = 60.0;
+
+/// Why the edge fit is not run on `banks`, if it is not: the river is narrower (by its median mask
+/// width) than [`MIN_EDGE_FIT_WIDTH_M`].
+pub fn edge_fit_skip_reason(banks: &MaskBanks) -> Option<String> {
+    let mut w: Vec<f64> = banks
+        .widths
+        .iter()
+        .copied()
+        .filter(|w| w.is_finite() && *w > 0.0)
+        .collect();
+    if w.is_empty() {
+        return None;
+    }
+    w.sort_by(f64::total_cmp);
+    let median = w[w.len() / 2];
+    (median < MIN_EDGE_FIT_WIDTH_M).then(|| {
+        format!(
+            "the edge fit is not run: the river is about {median:.0} m wide, under the \
+             {MIN_EDGE_FIT_WIDTH_M} m it handles on 10 m Sentinel-2 pixels, so the mask banks are kept"
+        )
+    })
+}
+
 /// Find a dry-season, low-cloud scene over the banks, read its window and fit the banks to it. A
 /// reach longer than `FitParams::part_m` is fitted in overlapping parts, each on the clearest scene
 /// that covers it (a Sentinel-2 tile is about 110 km across): the shifts are blended across each
 /// overlap, and the slope limit then holds along the whole bank.
+/// A river narrower than [`MIN_EDGE_FIT_WIDTH_M`] is refused with [`edge_fit_skip_reason`].
 pub fn fit_to_scene(
     fetch: &dyn crate::fetch::Fetch,
     banks: &MaskBanks,
     params: &FitParams,
     q: &SceneQuery,
 ) -> Result<Fitted, ReachError> {
+    // Too narrow to fit (#361): say so, and keep the mask banks.
+    if let Some(why) = edge_fit_skip_reason(banks) {
+        return Err(ReachError::Input(why));
+    }
     use crate::sentinel2::{Scene, parse_scenes, pick_scene, read_imagery, search_url};
     let none = |q: &SceneQuery, what: &str| {
         format!(
