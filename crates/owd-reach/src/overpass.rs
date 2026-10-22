@@ -119,6 +119,11 @@ impl<'a> Overpass<'a> {
         parse_candidates(&body)
     }
 
+    /// The raw answer to a query.
+    pub fn get(&self, query: &str) -> Result<Vec<u8>, ReachError> {
+        Ok(self.fetch.get(&self.url(query))?)
+    }
+
     /// Every waterway in a bounding box.
     pub fn waterways(&self, bbox: [f64; 4]) -> Result<Vec<Way>, ReachError> {
         let body = self.fetch.get(&self.url(&Self::waterways_query(bbox)))?;

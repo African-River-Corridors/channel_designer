@@ -17,6 +17,7 @@ pub mod overlay;
 pub mod overpass;
 pub mod provenance;
 pub mod reach;
+pub mod river;
 pub mod route;
 pub mod search;
 pub mod sentinel2;

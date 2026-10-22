@@ -395,6 +395,7 @@ fn edge_fit_moves_the_mask_banks_onto_a_recorded_scene_and_records_the_scene() {
         stac: None,
         file: file.to_str().unwrap().to_string(),
         river: None,
+        osm_id: None,
         start: Some("-6.0715,4.966".into()),
         end: Some("-6.07,4.983".into()),
         via: Vec::new(),
@@ -540,4 +541,119 @@ fn a_search_server_error_exits_2_with_a_plain_message() {
     assert_eq!(o.status.code(), Some(2));
     let err = String::from_utf8_lossy(&o.stderr);
     assert!(err.contains("cannot fetch"), "{err}");
+}
+
+/// Serve the recorded Ankobra relation (`examples/reach/overpass_ankobra.json`, recorded from
+/// overpass-api.de on 2026-10-22) to the relation query, and nothing else.
+fn serve_ankobra() -> String {
+    const ANKOBRA: &str = include_str!("../../../examples/reach/overpass_ankobra.json");
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/api/interpreter", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut s) = stream else { continue };
+            let mut buf = [0u8; 8192];
+            let n = s.read(&mut buf).unwrap_or(0);
+            let req = String::from_utf8_lossy(&buf[..n]);
+            let first = req.lines().next().unwrap_or("").to_string();
+            let resp = if first.contains("rel%283328713%29") {
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{ANKOBRA}",
+                    ANKOBRA.len()
+                )
+            } else {
+                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    .to_string()
+            };
+            let _ = s.write_all(resp.as_bytes());
+        }
+    });
+    url
+}
+
+#[test]
+fn an_osm_id_makes_a_study_of_the_whole_river_from_its_mouth_to_its_upstream_end() {
+    let server = serve_ankobra();
+    let dir = work_dir("osm-id");
+    let file = dir.join("ankobra.owd");
+    let o = run(&[
+        "reach",
+        file.to_str().unwrap(),
+        "--osm-id",
+        "relation/3328713",
+        "--overpass",
+        &server,
+        "--date",
+        "2026-10-22",
+        "--json",
+    ]);
+    assert_eq!(
+        o.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let r: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!(r["osm_id"], "relation/3328713");
+    assert_eq!(r["ways"].as_array().unwrap().len(), 12);
+    let d = doc(&file);
+    assert_eq!(d["project"]["title"], "Ankobra River");
+    // The mouth at the coast, the upstream end at the far end of the relation.
+    assert_eq!(
+        d["reach"]["start"],
+        serde_json::json!([-2.2688538, 4.8983929])
+    );
+    assert_eq!(
+        d["reach"]["end"],
+        serde_json::json!([-2.1349229, 5.7294889])
+    );
+    assert_eq!(
+        d["provenance"]["route"]["settings"]["osm_id"],
+        "relation/3328713"
+    );
+    let v = run(&["validate", file.to_str().unwrap()]);
+    assert_eq!(
+        v.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&v.stderr)
+    );
+
+    // A start and an end cut a shorter reach out of the same river.
+    let cut = dir.join("cut.owd");
+    let o = run(&[
+        "reach",
+        cut.to_str().unwrap(),
+        "--osm-id",
+        "r3328713",
+        "--start=-2.2688538,4.8983929",
+        "--end=-2.1533567,5.3025015",
+        "--overpass",
+        &server,
+        "--json",
+    ]);
+    assert_eq!(
+        o.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let c: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert!(c["length_m"].as_f64().unwrap() < r["length_m"].as_f64().unwrap());
+    assert_eq!(
+        doc(&cut)["reach"]["end"],
+        serde_json::json!([-2.1533567, 5.3025015])
+    );
+
+    // A bad id is a plain message.
+    let bad = run(&[
+        "reach",
+        cut.to_str().unwrap(),
+        "--osm-id",
+        "node/1",
+        "--overpass",
+        &server,
+    ]);
+    assert_eq!(bad.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&bad.stderr).contains("not an OSM waterway"));
 }
