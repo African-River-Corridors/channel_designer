@@ -82,7 +82,7 @@ impl AlignMethod {
     }
 }
 
-fn pts_of(line: &Value) -> Option<Vec<Pt>> {
+pub(super) fn pts_of(line: &Value) -> Option<Vec<Pt>> {
     (line["type"] == "LineString").then(|| all_positions(line))
 }
 

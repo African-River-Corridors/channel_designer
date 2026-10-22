@@ -168,6 +168,28 @@
           "type": "array",
           "items": { "$ref": "#/$defs/line" }
         },
+        "reference_line": {
+          "description": "Spec 0016: the reference line, one smooth line in the water that belongs to no vessel: the smoothed mid-line of the banks, refitted in the water. Made from the banks and the river polygon, and stale when they change (`depends_on`). Chainage is along `line`, in metres from its start. Optional.",
+          "type": "object",
+          "required": ["line", "parameters", "depends_on"],
+          "additionalProperties": false,
+          "properties": {
+            "line": { "$ref": "#/$defs/line" },
+            "parameters": { "type": "object" },
+            "depends_on": { "type": "string" },
+            "low_confidence": {
+              "description": "The banks' low-confidence stretches (`low_confidence_width`), carried onto the line by position.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/line_stretch" }
+            },
+            "outside_water": {
+              "description": "Stretches where the water is too narrow to hold the line.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/line_stretch" }
+            },
+            "notes": { "type": "array", "items": { "type": "string" } }
+          }
+        },
         "fixed": {
           "description": "Spec 0005: pieces the joined line must hold exactly. A pose is a point and a heading in degrees counter-clockwise from the project CRS's +x (east) axis. Optional.",
           "type": "object",
@@ -318,6 +340,17 @@
       }
     },
     "line_or_null": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/line" }] },
+    "line_stretch": {
+      "description": "A stretch of a line by chainage (m), with its kind when it has one.",
+      "type": "object",
+      "required": ["from_m", "to_m"],
+      "additionalProperties": false,
+      "properties": {
+        "from_m": { "type": "number" },
+        "to_m": { "type": "number" },
+        "kind": { "type": "string" }
+      }
+    },
     "polygon": {
       "type": "object",
       "required": ["type", "coordinates"],

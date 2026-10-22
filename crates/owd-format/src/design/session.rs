@@ -409,6 +409,10 @@ impl Session {
             {
                 inputs.remove("bed_model");
             }
+            // No stage reads the reference line (spec 0016): storing it leaves them fresh.
+            if let Some(inputs) = dep["inputs"].as_object_mut() {
+                inputs.remove("reference_line");
+            }
         }
         if matches!(stage, Stage::Optimise | Stage::Volumes) {
             dep["options"] = self.doc["options"].clone();

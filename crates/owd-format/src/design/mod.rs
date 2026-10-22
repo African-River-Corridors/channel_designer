@@ -16,6 +16,7 @@ pub mod midline;
 pub mod optimise;
 pub mod provenance;
 pub mod reach;
+pub mod reference_line;
 pub mod rule_sets;
 pub mod schema;
 pub mod screening;
