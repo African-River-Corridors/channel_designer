@@ -696,7 +696,13 @@ fn local_width(spans: &[(f64, f64)]) -> f64 {
     spans
         .iter()
         .min_by(|x, y| {
-            let d = |&(a, c): &(f64, f64)| if a <= 0.0 && 0.0 <= c { 0.0 } else { a.abs().min(c.abs()) };
+            let d = |&(a, c): &(f64, f64)| {
+                if a <= 0.0 && 0.0 <= c {
+                    0.0
+                } else {
+                    a.abs().min(c.abs())
+                }
+            };
             d(x).total_cmp(&d(y))
         })
         .map_or(0.0, |(a, c)| c - a)
