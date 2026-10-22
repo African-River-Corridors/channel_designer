@@ -397,8 +397,12 @@ export interface OptionRow {
   tallest_face_m: number | null;
   min_radius_m: number | null;
   r_min_m: number | null;
+  /** The design line's own minimum radius against R_min (the `R_min` check), not the river's. */
   radius_ok: boolean | null;
   failed_checks: string[];
+  /** The screening verdict after the volumes, and why, in words (#312). */
+  verdict?: Verdict | null;
+  verdict_reason?: string | null;
 }
 export interface CheckRow {
   option_id: string;
