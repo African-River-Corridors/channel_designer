@@ -1,4 +1,4 @@
-//! The `eval` seam the Python package calls (`owd._core`), and the `.owd` document (`.cdesign` before the rename, the same contents).
+//! The `eval` seam the Python package calls (`owd._core`), and the `.owd` document.
 
 pub mod design;
 pub mod drawing;

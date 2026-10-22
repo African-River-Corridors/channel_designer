@@ -553,8 +553,7 @@ enum Command {
     Schema,
 }
 
-/// Parse the arguments, run the command and give the exit code. The `owd` binary and the old
-/// `cdesign` alias binary both call this.
+/// Parse the arguments, run the command and give the exit code. The `owd` binary calls this.
 pub fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {

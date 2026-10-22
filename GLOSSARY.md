@@ -18,10 +18,7 @@ The names of the parts match the product: repo `open-waterway-designer`, Python 
 `owd`, file extension `.owd`.
 
 **Former names**:
-Before 2026-10-21 the tool was `channel_designer`: import `channel_designer`, command `cdesign`, file
-extension `.cdesign`, crates `cd-core`, `cd-format`, `cd-cli`, `cd-py` and `cd-app`, and the app "Channel
-Designer". For one release the import, the command and the extension still work (the import warns). The
-crate names were never published and have no alias.
+Formerly `channel_designer`, until 2026-10-21. The old names no longer work.
 _Avoid_: using a former name in new text
 
 ### The design

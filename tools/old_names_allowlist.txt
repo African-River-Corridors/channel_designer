@@ -2,7 +2,8 @@
 #   glob | reason          the file may name `channel_designer`, `cdesign`, `cd-*` crates or "Channel Designer"
 #   url: glob | reason     the file may link the old repo URL (these go when the URLs are updated)
 # `*` matches across folders. An entry that matches no file fails the check. Remove an entry when its
-# reason ends: the shim entries go with the shims, in the release after the rename.
+# reason ends. The shims went in spec 0006 T10; what is left is history, the conversion error for an
+# old `.cdesign` file, and code another lane owns.
 
 # --- history: what was true when it was written
 CHANGELOG.md | past entries and the migration note name the old names
@@ -10,29 +11,21 @@ docs/adr/* | accepted decisions are history
 docs/specs/* | specs are history; spec 0006 is about the rename
 docs/design/* | design notes are history
 
-# --- the migration table and the glossary entry for former names
-README.md | the "Renamed from channel_designer" table
+# --- the one historical line each: "formerly channel_designer"
+README.md | one line: the tool was called channel_designer
 GLOSSARY.md | the "Former names" entry
 
-# --- the shims, for one release
-src/channel_designer/* | the import shim, `import channel_designer` warns and gives owd
-tests/test_old_name_shim.py | tests the import shim
+# --- the conversion error: a `.cdesign` file is refused with a message to rename it to `.owd`
+crates/owd-format/src/design/session.rs | the conversion error and its test
+crates/owd-cli/tests/owd.rs | tests that the CLI gives the conversion error
+app/e2e/smoke.test.mjs | tests that the app gives the conversion error
+
+# --- the wheel smoke test: it asserts the old import name is gone
+.github/workflows/wheels.yml | asserts that `import channel_designer` no longer works
+
+# --- the rules lane's old entry-point group (not part of the shims removed in T10)
 src/owd/rules/methods.py | still reads the old entry-point group `channel_designer.width_methods`
 tests/rules/test_methods.py | tests the old entry-point group
-pyproject.toml | `python-packages` ships the import shim in the wheel
-.github/workflows/wheels.yml | the wheel smoke test imports the old name
-crates/owd-cli/Cargo.toml | the `cdesign` alias binary
-crates/owd-cli/src/bin/cdesign.rs | the `cdesign` alias binary
-crates/owd-cli/src/cli.rs | doc comment: the alias binary calls this
-crates/owd-cli/src/commands.rs | `owd new` warns on a `.cdesign` file name
-crates/owd-cli/tests/owd.rs | tests the alias and the old extension
-crates/owd-format/src/lib.rs | doc comment: `.cdesign` is the old extension of the same document
-crates/owd-format/src/design/session.rs | doc comment: `.cdesign` files have the same contents
-crates/owd-format/tests/water_aware.rs | opens the legacy `.cdesign` fixture
-crates/owd-format/tests/data/pre-0005.cdesign | the legacy fixture: a `.cdesign` file must still open
-app/src-tauri/src/lib.rs | the open dialog still offers `.cdesign`; a test holds the old name and identifier out of the bundle config
-app/e2e/smoke.test.mjs | one end-to-end case opens a `.cdesign` file
-app/src/lib/platform/web.ts | the browser open picker still offers `.cdesign`, as the desktop open dialog does
 
 # --- this check
 tools/old_names.py | holds the patterns it searches for

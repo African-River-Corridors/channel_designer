@@ -34,8 +34,6 @@ build-backend = "maturin"
 [tool.maturin]
 python-source = "src"
 module-name = "owd._core"
-# The old import name, for one release: a shim that warns and aliases owd (spec 0006).
-python-packages = ["channel_designer"]
 manifest-path = "crates/owd-py/Cargo.toml"
 features = ["extension-module"]
 

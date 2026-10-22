@@ -1,6 +1,6 @@
 //! The `owd` design commands (spec 0002, ticket 60), on the synthetic river given as GeoJSON in
 //! UTM: the chain `new -> import -> size`, `status`, `validate`, `schema`, `--json`, `-o`, stdin
-//! and stdout, and the three exit codes. The old `cdesign` name is an alias (spec 0006).
+//! and stdout, and the three exit codes. The old command name and file extension are gone (spec 0006, T10).
 //!
 //! Label: property
 
@@ -615,16 +615,16 @@ fn the_worked_example_file_is_what_the_commands_produce() {
     assert_eq!(code(&run(&["validate", example.to_str().unwrap()], "")), 0);
 }
 
-/// A `.cdesign` file is a `.owd` file under its old name (spec 0006): the same commands give the
-/// same answers on both.
+/// A `.cdesign` file (the old name of the design file, spec 0006) is no longer read: every command
+/// that opens a design refuses it with a message to rename it to `.owd`, and leaves the file alone.
+/// Renamed, the same file opens.
 #[test]
-fn a_cdesign_file_opens_and_gives_the_same_results_as_the_owd_file() {
+fn a_cdesign_file_is_refused_with_a_message_to_rename_it_to_owd() {
     let dir = work_dir("old-extension");
     let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/synthetic-river.owd");
-    let new_doc = dir.join("river.owd");
     let old_doc = dir.join("river.cdesign");
-    std::fs::copy(&example, &new_doc).unwrap();
     std::fs::copy(&example, &old_doc).unwrap();
+    let before = std::fs::read_to_string(&old_doc).unwrap();
     for args in [
         &["status"][..],
         &["validate"],
@@ -636,26 +636,24 @@ fn a_cdesign_file_opens_and_gives_the_same_results_as_the_owd_file() {
             a.push(doc.to_str().unwrap());
             run(&a, "")
         };
-        let (n, o) = (with(&new_doc), with(&old_doc));
-        assert_eq!(code(&o), code(&n), "exit code of `{args:?}`");
-        assert_eq!(code(&n), 0, "{}", err(&n));
-        // Output that names the file differs only by the file name.
-        let norm = |t: String, name: &str| t.replace(name, "FILE");
-        assert_eq!(
-            norm(out(&o), "river.cdesign"),
-            norm(out(&n), "river.owd"),
-            "stdout of `{args:?}`"
+        let o = with(&old_doc);
+        assert_eq!(code(&o), 2, "exit code of `{args:?}`");
+        assert_eq!(out(&o), "", "stdout of `{args:?}`");
+        assert!(
+            err(&o).contains("rename it to `.owd`"),
+            "stderr of `{args:?}`: {}",
+            err(&o)
         );
+        assert_eq!(std::fs::read_to_string(&old_doc).unwrap(), before);
     }
-    // The document is not rewritten on the way through.
-    assert_eq!(
-        std::fs::read_to_string(&old_doc).unwrap(),
-        std::fs::read_to_string(&new_doc).unwrap()
-    );
+    let new_doc = dir.join("river.owd");
+    std::fs::rename(&old_doc, &new_doc).unwrap();
+    let o = run(&["status", new_doc.to_str().unwrap()], "");
+    assert_eq!(code(&o), 0, "{}", err(&o));
 }
 
 #[test]
-fn new_warns_on_the_old_extension_and_is_quiet_on_the_new_one() {
+fn new_refuses_the_old_extension_and_writes_the_new_one() {
     let dir = work_dir("new-extension");
     let mk = |name: &str| {
         let f = dir.join(name);
@@ -671,8 +669,13 @@ fn new_warns_on_the_old_extension_and_is_quiet_on_the_new_one() {
             "",
         )
     };
-    assert!(err(&mk("a.cdesign")).contains("old extension"));
-    assert!(!err(&mk("a.owd")).contains("old extension"));
+    let old = mk("a.cdesign");
+    assert_eq!(code(&old), 2);
+    assert!(err(&old).contains("rename it to `.owd`"), "{}", err(&old));
+    assert!(!dir.join("a.cdesign").exists(), "nothing is written");
+    let new = mk("a.owd");
+    assert_eq!(code(&new), 0, "{}", err(&new));
+    assert_eq!(err(&new), "");
 }
 
 // --- the alignment stage (ticket 61) -------------------------------------------------------
@@ -779,41 +782,25 @@ fn a_failed_fits_in_water_check_is_in_status_the_csv_and_the_geojson_and_exits_1
     assert_eq!(props["notes"], "width only, no depth data");
 }
 
-/// Run the old-name binary.
-fn run_old(args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_cdesign"))
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .expect("cdesign runs")
-}
-
+/// The package builds one binary, `owd`: the old alias binary is gone (spec 0006, T10).
 #[test]
-fn the_old_cdesign_name_is_an_alias_that_says_so_on_stderr_only() {
-    for args in [&["schema"][..], &["--version"][..], &["--help"][..]] {
-        let new = run(args, "");
-        let old = run_old(args);
-        assert_eq!(
-            out(&old),
-            out(&new),
-            "stdout of `cdesign {args:?}` equals `owd`"
-        );
-        assert_eq!(code(&old), code(&new));
-        assert!(
-            err(&old).contains("cdesign is now owd"),
-            "alias note on stderr: {}",
-            err(&old)
-        );
-        assert!(!err(&new).contains("cdesign is now owd"), "owd stays quiet");
+fn the_only_binary_is_owd() {
+    let manifest =
+        std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")).unwrap();
+    let mut bins = Vec::new();
+    let mut in_bin = false;
+    for line in manifest.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_bin = line == "[[bin]]";
+        } else if in_bin && let Some(name) = line.strip_prefix("name = ") {
+            bins.push(name.trim_matches('"').to_string());
+        }
     }
-    // A failing command keeps its exit code under the alias.
-    assert_eq!(code(&run_old(&["status", "/no/such/file.cdesign"])), 2);
+    assert_eq!(bins, ["owd"]);
 }
 
 #[test]
-fn messages_name_the_owd_command_not_cdesign() {
-    let o = run(&["status", "/no/such/file.cdesign"], "");
+fn messages_name_the_owd_command() {
+    let o = run(&["status", "/no/such/file.owd"], "");
     assert!(err(&o).starts_with("owd: "), "{}", err(&o));
 }

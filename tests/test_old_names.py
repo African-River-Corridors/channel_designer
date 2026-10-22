@@ -76,3 +76,11 @@ def test_a_stale_entry_and_an_entry_without_a_reason_fail(tmp_path):
     problems = old_names.check(root, allow)
     assert any("matches no file" in p for p in problems)
     assert any("with a reason" in p for p in problems)
+
+
+def test_the_old_import_name_is_gone():
+    """The `channel_designer` import shim was removed (spec 0006, T10): the old import fails."""
+    r = subprocess.run([sys.executable, "-c", "import channel_designer"], capture_output=True, text=True,
+                       cwd=ROOT)
+    assert r.returncode != 0
+    assert "ModuleNotFoundError: No module named 'channel_designer'" in r.stderr, r.stderr

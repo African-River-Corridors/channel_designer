@@ -129,7 +129,7 @@ export async function createWebPlatform(): Promise<Platform> {
   }
   const change = async <T extends { dirty: boolean; title: string; file_name: string }>(method: string, ...args: unknown[]) => follow(await json<T>(method, ...args));
 
-  const fileName = (snap: { file_name: string }) => (/\.(owd|cdesign)$/.test(snap.file_name) ? snap.file_name : DEFAULT_NAME);
+  const fileName = (snap: { file_name: string }) => (/\.owd$/.test(snap.file_name) ? snap.file_name : DEFAULT_NAME);
   const confirmDiscard = () => !dirty || window.confirm(DISCARD);
 
   async function saveNamed(name: string) {
@@ -229,7 +229,7 @@ export async function createWebPlatform(): Promise<Platform> {
     },
     open_file: async () => {
       if (!confirmDiscard()) return null;
-      const file = await pickFile(".owd,.cdesign");
+      const file = await pickFile(".owd");
       if (!file) return null;
       const text = await file.text();
       dem = null;
@@ -287,7 +287,7 @@ export async function createWebPlatform(): Promise<Platform> {
       const kind = a.kind as string;
       if (kind !== "geojson" && kind !== "csv") throw `\`${kind}\` is not an export: use geojson or csv`;
       const snap = await json<{ file_name: string }>("snapshot");
-      const base = fileName(snap).replace(/\.(owd|cdesign)$/, "");
+      const base = fileName(snap).replace(/\.owd$/, "");
       const text = await host.rpc<string>(kind === "geojson" ? "export_geojson" : "export_csv");
       const name = `${base}.${kind}`;
       download(name, text, kind === "geojson" ? "application/geo+json" : "text/csv");
