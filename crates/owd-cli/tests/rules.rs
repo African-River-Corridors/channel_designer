@@ -39,7 +39,13 @@ fn rules_lists_the_built_in_sets_shows_one_and_lists_the_measures() {
     assert_eq!(show["version"], "0.3.0");
     for r in show["rules"].as_array().unwrap() {
         assert_eq!(r["status"], "unverified", "{r}");
-        assert_eq!(r["origin"], "national-practice", "{r}");
+        // GB 50139-2014 gives no bend widening formula: that Rule is WG 141's summary, a guideline.
+        let origin = if r["id"] == "gb50139/A.3.3/bend-widening" {
+            "guideline"
+        } else {
+            "national-practice"
+        };
+        assert_eq!(r["origin"], origin, "{r}");
     }
     let text = String::from_utf8(run(&["rules", "show", "pianc-wg141"]).stdout).unwrap();
     assert!(
@@ -131,7 +137,7 @@ fn size_takes_rule_sets_set_inputs_and_a_set_file_loaded_at_run_time() {
 }
 
 #[test]
-fn waterway_marks_lists_and_removes_reaches_and_the_claim_sizes_the_canal() {
+fn waterway_marks_lists_and_removes_reaches_and_gb50139_takes_no_reduced_radius() {
     let dir = work_dir("waterway");
     let doc = dir.join("d.owd");
     let doc = doc.to_str().unwrap();
@@ -163,8 +169,10 @@ fn waterway_marks_lists_and_removes_reaches_and_the_claim_sizes_the_canal() {
         "CN_III_motor",
         "--json",
     ]));
+    // GB 50139-2014 has no reduced radius (3.0.5 and its explanation): the claimed canal takes
+    // the 4 L of a cargo ship, as a river does.
     let loa = sized["sizing"]["loa_m"].as_f64().unwrap();
-    assert_eq!(sized["sizing"]["min_bend_radius_m"], 3.0 * loa);
+    assert_eq!(sized["sizing"]["min_bend_radius_m"], 4.0 * loa);
     let list = json(&run(&["waterway", "list", doc, "--json"]));
     assert_eq!(list["waterway_reaches"].as_array().unwrap().len(), 1);
     // A claim off a canal is refused.

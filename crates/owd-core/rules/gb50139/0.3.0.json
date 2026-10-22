@@ -2,94 +2,983 @@
   "$schema": "../rule-set.schema.json",
   "id": "gb50139",
   "family": "gb50139",
-  "title": "GB 50139 as summarised in WG 141 Appendix A.3: single-lane river channel",
+  "title": "GB 50139-2014: single-line channel in a natural or canalised river",
   "version": "0.3.0",
   "edition": {
-    "document": "GB 50139 Navigation standard of inland waterway, as summarised in PIANC InCom WG 141 (2019) Appendix A.3",
-    "edition": "read in WG 141 Appendix A.3; GB 50139 itself not held",
-    "note": "National practice known through a guideline's summary. No Rule can be verified from the summary alone."
+    "document": "GB 50139-2014 Navigation standard of inland waterway",
+    "edition": "2014 edition, China Planning Press, first printing November 2014; replaces the 2004 edition",
+    "note": "Read in the standard itself (chapter 3, Appendix A and the explanation of provisions). Every Rule is unverified until a second reader checks it."
   },
   "sources": [],
   "status": "draft",
   "applies_when": {},
   "includes": [],
   "known_conflicts": [],
-  "tables": [],
+  "tables": [
+    {
+      "id": "gb50139/Table3.0.2-1/single-line-width",
+      "source": {
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "Table 3.0.2-1",
+        "page": "3-4",
+        "access": "paywalled"
+      },
+      "input": {
+        "name": "vessel.gb-typical",
+        "unit": ""
+      },
+      "unit": "m",
+      "rows": [
+        {
+          "when": {
+            "in": [
+              "I 406.0x64.8"
+            ]
+          },
+          "shape": "const",
+          "a": 125.0
+        },
+        {
+          "when": {
+            "in": [
+              "I 316.0x48.6"
+            ]
+          },
+          "shape": "const",
+          "a": 100.0
+        },
+        {
+          "when": {
+            "in": [
+              "I 223.0x32.4"
+            ]
+          },
+          "shape": "const",
+          "a": 70.0
+        },
+        {
+          "when": {
+            "in": [
+              "II 270.0x48.6"
+            ]
+          },
+          "shape": "const",
+          "a": 100.0
+        },
+        {
+          "when": {
+            "in": [
+              "II 186.0x32.4"
+            ]
+          },
+          "shape": "const",
+          "a": 70.0
+        },
+        {
+          "when": {
+            "in": [
+              "II 182.0x16.2"
+            ]
+          },
+          "shape": "const",
+          "a": 40.0
+        },
+        {
+          "when": {
+            "in": [
+              "III 238.0x21.6"
+            ]
+          },
+          "shape": "const",
+          "a": 55.0
+        },
+        {
+          "when": {
+            "in": [
+              "III 167.0x21.6"
+            ]
+          },
+          "shape": "const",
+          "a": 45.0
+        },
+        {
+          "when": {
+            "in": [
+              "III 160.0x10.8"
+            ]
+          },
+          "shape": "const",
+          "a": 30.0
+        },
+        {
+          "when": {
+            "in": [
+              "IV 167.0x21.6"
+            ]
+          },
+          "shape": "const",
+          "a": 45.0
+        },
+        {
+          "when": {
+            "in": [
+              "IV 112.0x21.6"
+            ]
+          },
+          "shape": "const",
+          "a": 40.0
+        },
+        {
+          "when": {
+            "in": [
+              "IV 111.0x10.8"
+            ]
+          },
+          "shape": "const",
+          "a": 30.0
+        },
+        {
+          "when": {
+            "in": [
+              "IV 67.5x10.8"
+            ]
+          },
+          "shape": "const",
+          "a": 30.0
+        },
+        {
+          "when": {
+            "in": [
+              "V 94.0x18.4"
+            ]
+          },
+          "shape": "const",
+          "a": 35.0
+        },
+        {
+          "when": {
+            "in": [
+              "V 91.0x9.2"
+            ]
+          },
+          "shape": "const",
+          "a": 22.0
+        },
+        {
+          "when": {
+            "in": [
+              "V 55.0x8.6"
+            ]
+          },
+          "shape": "const",
+          "a": 22.0
+        },
+        {
+          "when": {
+            "in": [
+              "VI 188.0x7.0"
+            ]
+          },
+          "shape": "const",
+          "a": 15.0
+        },
+        {
+          "when": {
+            "in": [
+              "VI 45.0x5.5"
+            ]
+          },
+          "shape": "const",
+          "a": 15.0
+        },
+        {
+          "when": {
+            "in": [
+              "VII 145.0x5.5"
+            ]
+          },
+          "shape": "const",
+          "a": 12.0
+        },
+        {
+          "when": {
+            "in": [
+              "VII 32.5x5.5"
+            ]
+          },
+          "shape": "const",
+          "a": 12.0
+        }
+      ]
+    },
+    {
+      "id": "gb50139/Table3.0.2-1/bend-radius",
+      "source": {
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "Table 3.0.2-1",
+        "page": "3-4",
+        "access": "paywalled"
+      },
+      "input": {
+        "name": "vessel.gb-typical",
+        "unit": ""
+      },
+      "unit": "m",
+      "rows": [
+        {
+          "when": {
+            "in": [
+              "I 406.0x64.8"
+            ]
+          },
+          "shape": "const",
+          "a": 1200.0
+        },
+        {
+          "when": {
+            "in": [
+              "I 316.0x48.6"
+            ]
+          },
+          "shape": "const",
+          "a": 950.0
+        },
+        {
+          "when": {
+            "in": [
+              "I 223.0x32.4"
+            ]
+          },
+          "shape": "const",
+          "a": 670.0
+        },
+        {
+          "when": {
+            "in": [
+              "II 270.0x48.6"
+            ]
+          },
+          "shape": "const",
+          "a": 810.0
+        },
+        {
+          "when": {
+            "in": [
+              "II 186.0x32.4"
+            ]
+          },
+          "shape": "const",
+          "a": 560.0
+        },
+        {
+          "when": {
+            "in": [
+              "II 182.0x16.2"
+            ]
+          },
+          "shape": "const",
+          "a": 550.0
+        },
+        {
+          "when": {
+            "in": [
+              "III 238.0x21.6"
+            ]
+          },
+          "shape": "const",
+          "a": 720.0
+        },
+        {
+          "when": {
+            "in": [
+              "III 167.0x21.6"
+            ]
+          },
+          "shape": "const",
+          "a": 500.0
+        },
+        {
+          "when": {
+            "in": [
+              "III 160.0x10.8"
+            ]
+          },
+          "shape": "const",
+          "a": 480.0
+        },
+        {
+          "when": {
+            "in": [
+              "IV 167.0x21.6"
+            ]
+          },
+          "shape": "const",
+          "a": 500.0
+        },
+        {
+          "when": {
+            "in": [
+              "IV 112.0x21.6"
+            ]
+          },
+          "shape": "const",
+          "a": 340.0
+        },
+        {
+          "when": {
+            "in": [
+              "IV 111.0x10.8"
+            ]
+          },
+          "shape": "const",
+          "a": 330.0
+        },
+        {
+          "when": {
+            "in": [
+              "IV 67.5x10.8"
+            ]
+          },
+          "shape": "const",
+          "a": 330.0
+        },
+        {
+          "when": {
+            "in": [
+              "V 94.0x18.4"
+            ]
+          },
+          "shape": "const",
+          "a": 280.0
+        },
+        {
+          "when": {
+            "in": [
+              "V 91.0x9.2"
+            ]
+          },
+          "shape": "const",
+          "a": 270.0
+        },
+        {
+          "when": {
+            "in": [
+              "V 55.0x8.6"
+            ]
+          },
+          "shape": "const",
+          "a": 270.0
+        },
+        {
+          "when": {
+            "in": [
+              "VI 188.0x7.0"
+            ]
+          },
+          "shape": "const",
+          "a": 180.0
+        },
+        {
+          "when": {
+            "in": [
+              "VI 45.0x5.5"
+            ]
+          },
+          "shape": "const",
+          "a": 180.0
+        },
+        {
+          "when": {
+            "in": [
+              "VII 145.0x5.5"
+            ]
+          },
+          "shape": "const",
+          "a": 130.0
+        },
+        {
+          "when": {
+            "in": [
+              "VII 32.5x5.5"
+            ]
+          },
+          "shape": "const",
+          "a": 130.0
+        }
+      ]
+    }
+  ],
   "rules": [
     {
-      "id": "gb50139/TableA.2/bottom-width",
-      "title": "Bottom width on a straight: the Table A.2 width for a matching vessel, else 2.3 x beam (WG 141 Table 5.1, China River)",
+      "id": "gb50139/Table3.0.2-1/single-line-width",
+      "title": "Bottom width on a straight, typical vessel: the single-line width of its Table 3.0.2-1 row (a mandatory minimum)",
       "origin": "national-practice",
       "source": {
-        "document": "GB 50139 Navigation standard of inland waterway, as summarised in PIANC InCom WG 141 Appendix A.3",
-        "edition": "read in WG 141 Appendix A.3 (PIANC Report 141, 2019); GB 50139 itself not held",
-        "locator": "Table A.2",
-        "page": "163",
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "Table 3.0.2-1",
+        "page": "3-4",
         "access": "paywalled",
         "also": [
-          "Table 5.1, p88",
-          "A.3.3, p164"
+          "3.0.2, p3",
+          "3.0.7, p8"
         ]
       },
       "codified": {
         "by": "agent",
-        "date": "2026-10-21",
-        "review": "#160"
+        "date": "2026-10-22",
+        "review": "#250"
       },
       "verified": false,
-      "applies_when": {},
+      "applies_when": {
+        "gb_vessel": [
+          "typical"
+        ]
+      },
+      "kind": "table",
+      "measure": {
+        "id": "channel.bottom-width"
+      },
+      "compare": "ge",
+      "limit": {
+        "table": "gb50139/Table3.0.2-1/single-line-width",
+        "at": "vessel.gb-typical",
+        "unit": "m"
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": true,
+      "evaluated": true,
+      "finding": "#250",
+      "since": "0.3.0"
+    },
+    {
+      "id": "gb50139/A.0.2/single-line-width-convoy-i-v-permissive",
+      "title": "Bottom width on a straight, special design vessel (convoy, classes I to V): (B + L sin 3 deg) x (1 + 2 x 0.25), the permissive end of d = 0.25-0.3 x the swept path. Also a class I-III cargo ship, which has no row in Table 3.0.2-1",
+      "origin": "national-practice",
+      "source": {
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "A.0.2",
+        "page": "26-27",
+        "access": "paywalled",
+        "also": [
+          "3.0.7, p8",
+          "Table 3.0.2-1, pp3-4"
+        ]
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-22",
+        "review": "#250"
+      },
+      "verified": false,
+      "applies_when": {
+        "gb_vessel": [
+          "special"
+        ],
+        "gb_class": [
+          "I",
+          "II",
+          "III",
+          "IV",
+          "V"
+        ],
+        "formation": [
+          "pushed_convoy"
+        ],
+        "range_end": [
+          "permissive"
+        ]
+      },
       "kind": "formula",
       "measure": {
         "id": "channel.bottom-width"
       },
       "compare": "ge",
       "limit": {
-        "shape": "gb-straight-width",
+        "shape": "gb-swept-width",
         "unit": "m",
-        "loa": "vessel.loa",
         "beam": "vessel.beam",
-        "ratio": 2.3,
-        "match": 0.2,
-        "a1_loa": 223.0,
-        "a1_beam": 32.4,
-        "a1_width": 70.0,
-        "a2_loa": 186.0,
-        "a2_beam": 32.4,
-        "a2_width": 70.0,
-        "a3_loa": 167.0,
-        "a3_beam": 21.6,
-        "a3_width": 45.0
+        "loa": "vessel.loa",
+        "beta_deg": 3.0,
+        "s": 0.25
       },
       "tolerance": 0,
       "consequence": "block",
       "sizes": true,
       "evaluated": true,
-      "finding": null,
+      "finding": "#250",
       "since": "0.3.0"
     },
     {
-      "id": "gb50139/A.3.2/min-bend-radius-convoy",
+      "id": "gb50139/A.0.2/single-line-width-convoy-i-v-strict",
+      "title": "Bottom width on a straight, special design vessel (convoy, classes I to V): (B + L sin 3 deg) x (1 + 2 x 0.3), the strict end of d = 0.25-0.3 x the swept path. Also a class I-III cargo ship, which has no row in Table 3.0.2-1",
+      "origin": "national-practice",
+      "source": {
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "A.0.2",
+        "page": "26-27",
+        "access": "paywalled",
+        "also": [
+          "3.0.7, p8",
+          "Table 3.0.2-1, pp3-4"
+        ]
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-22",
+        "review": "#250"
+      },
+      "verified": false,
+      "applies_when": {
+        "gb_vessel": [
+          "special"
+        ],
+        "gb_class": [
+          "I",
+          "II",
+          "III",
+          "IV",
+          "V"
+        ],
+        "formation": [
+          "pushed_convoy"
+        ],
+        "range_end": [
+          "strict"
+        ]
+      },
+      "kind": "formula",
+      "measure": {
+        "id": "channel.bottom-width"
+      },
+      "compare": "ge",
+      "limit": {
+        "shape": "gb-swept-width",
+        "unit": "m",
+        "beam": "vessel.beam",
+        "loa": "vessel.loa",
+        "beta_deg": 3.0,
+        "s": 0.3
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": true,
+      "evaluated": true,
+      "finding": "#250",
+      "since": "0.3.0"
+    },
+    {
+      "id": "gb50139/A.0.2/single-line-width-motor-i-v-permissive",
+      "title": "Bottom width on a straight, special design vessel (motor, classes I to V): (B + L sin 3 deg) x (1 + 2 x 0.34), the permissive end of d = 0.34-0.4 x the swept path. Also a class I-III cargo ship, which has no row in Table 3.0.2-1",
+      "origin": "national-practice",
+      "source": {
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "A.0.2",
+        "page": "26-27",
+        "access": "paywalled",
+        "also": [
+          "3.0.7, p8",
+          "Table 3.0.2-1, pp3-4"
+        ]
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-22",
+        "review": "#250"
+      },
+      "verified": false,
+      "applies_when": {
+        "gb_vessel": [
+          "special"
+        ],
+        "gb_class": [
+          "I",
+          "II",
+          "III",
+          "IV",
+          "V"
+        ],
+        "formation": [
+          "motor_vessel"
+        ],
+        "range_end": [
+          "permissive"
+        ]
+      },
+      "kind": "formula",
+      "measure": {
+        "id": "channel.bottom-width"
+      },
+      "compare": "ge",
+      "limit": {
+        "shape": "gb-swept-width",
+        "unit": "m",
+        "beam": "vessel.beam",
+        "loa": "vessel.loa",
+        "beta_deg": 3.0,
+        "s": 0.34
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": true,
+      "evaluated": true,
+      "finding": "#250",
+      "since": "0.3.0"
+    },
+    {
+      "id": "gb50139/A.0.2/single-line-width-motor-i-v-strict",
+      "title": "Bottom width on a straight, special design vessel (motor, classes I to V): (B + L sin 3 deg) x (1 + 2 x 0.4), the strict end of d = 0.34-0.4 x the swept path. Also a class I-III cargo ship, which has no row in Table 3.0.2-1",
+      "origin": "national-practice",
+      "source": {
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "A.0.2",
+        "page": "26-27",
+        "access": "paywalled",
+        "also": [
+          "3.0.7, p8",
+          "Table 3.0.2-1, pp3-4"
+        ]
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-22",
+        "review": "#250"
+      },
+      "verified": false,
+      "applies_when": {
+        "gb_vessel": [
+          "special"
+        ],
+        "gb_class": [
+          "I",
+          "II",
+          "III",
+          "IV",
+          "V"
+        ],
+        "formation": [
+          "motor_vessel"
+        ],
+        "range_end": [
+          "strict"
+        ]
+      },
+      "kind": "formula",
+      "measure": {
+        "id": "channel.bottom-width"
+      },
+      "compare": "ge",
+      "limit": {
+        "shape": "gb-swept-width",
+        "unit": "m",
+        "beam": "vessel.beam",
+        "loa": "vessel.loa",
+        "beta_deg": 3.0,
+        "s": 0.4
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": true,
+      "evaluated": true,
+      "finding": "#250",
+      "since": "0.3.0"
+    },
+    {
+      "id": "gb50139/A.0.2/single-line-width-convoy-vi-vii-permissive",
+      "title": "Bottom width on a straight, special design vessel (convoy, classes VI and VII): (B + L sin 2 deg) x (1 + 2 x 0.25), the permissive end of d = 0.25-0.3 x the swept path. Also a class I-III cargo ship, which has no row in Table 3.0.2-1",
+      "origin": "national-practice",
+      "source": {
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "A.0.2",
+        "page": "26-27",
+        "access": "paywalled",
+        "also": [
+          "3.0.7, p8",
+          "Table 3.0.2-1, pp3-4"
+        ]
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-22",
+        "review": "#250"
+      },
+      "verified": false,
+      "applies_when": {
+        "gb_vessel": [
+          "special"
+        ],
+        "gb_class": [
+          "VI",
+          "VII"
+        ],
+        "formation": [
+          "pushed_convoy"
+        ],
+        "range_end": [
+          "permissive"
+        ]
+      },
+      "kind": "formula",
+      "measure": {
+        "id": "channel.bottom-width"
+      },
+      "compare": "ge",
+      "limit": {
+        "shape": "gb-swept-width",
+        "unit": "m",
+        "beam": "vessel.beam",
+        "loa": "vessel.loa",
+        "beta_deg": 2.0,
+        "s": 0.25
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": true,
+      "evaluated": true,
+      "finding": "#250",
+      "since": "0.3.0"
+    },
+    {
+      "id": "gb50139/A.0.2/single-line-width-convoy-vi-vii-strict",
+      "title": "Bottom width on a straight, special design vessel (convoy, classes VI and VII): (B + L sin 2 deg) x (1 + 2 x 0.3), the strict end of d = 0.25-0.3 x the swept path. Also a class I-III cargo ship, which has no row in Table 3.0.2-1",
+      "origin": "national-practice",
+      "source": {
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "A.0.2",
+        "page": "26-27",
+        "access": "paywalled",
+        "also": [
+          "3.0.7, p8",
+          "Table 3.0.2-1, pp3-4"
+        ]
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-22",
+        "review": "#250"
+      },
+      "verified": false,
+      "applies_when": {
+        "gb_vessel": [
+          "special"
+        ],
+        "gb_class": [
+          "VI",
+          "VII"
+        ],
+        "formation": [
+          "pushed_convoy"
+        ],
+        "range_end": [
+          "strict"
+        ]
+      },
+      "kind": "formula",
+      "measure": {
+        "id": "channel.bottom-width"
+      },
+      "compare": "ge",
+      "limit": {
+        "shape": "gb-swept-width",
+        "unit": "m",
+        "beam": "vessel.beam",
+        "loa": "vessel.loa",
+        "beta_deg": 2.0,
+        "s": 0.3
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": true,
+      "evaluated": true,
+      "finding": "#250",
+      "since": "0.3.0"
+    },
+    {
+      "id": "gb50139/A.0.2/single-line-width-motor-vi-vii-permissive",
+      "title": "Bottom width on a straight, special design vessel (motor, classes VI and VII): (B + L sin 2 deg) x (1 + 2 x 0.34), the permissive end of d = 0.34-0.4 x the swept path. Also a class I-III cargo ship, which has no row in Table 3.0.2-1",
+      "origin": "national-practice",
+      "source": {
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "A.0.2",
+        "page": "26-27",
+        "access": "paywalled",
+        "also": [
+          "3.0.7, p8",
+          "Table 3.0.2-1, pp3-4"
+        ]
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-22",
+        "review": "#250"
+      },
+      "verified": false,
+      "applies_when": {
+        "gb_vessel": [
+          "special"
+        ],
+        "gb_class": [
+          "VI",
+          "VII"
+        ],
+        "formation": [
+          "motor_vessel"
+        ],
+        "range_end": [
+          "permissive"
+        ]
+      },
+      "kind": "formula",
+      "measure": {
+        "id": "channel.bottom-width"
+      },
+      "compare": "ge",
+      "limit": {
+        "shape": "gb-swept-width",
+        "unit": "m",
+        "beam": "vessel.beam",
+        "loa": "vessel.loa",
+        "beta_deg": 2.0,
+        "s": 0.34
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": true,
+      "evaluated": true,
+      "finding": "#250",
+      "since": "0.3.0"
+    },
+    {
+      "id": "gb50139/A.0.2/single-line-width-motor-vi-vii-strict",
+      "title": "Bottom width on a straight, special design vessel (motor, classes VI and VII): (B + L sin 2 deg) x (1 + 2 x 0.4), the strict end of d = 0.34-0.4 x the swept path. Also a class I-III cargo ship, which has no row in Table 3.0.2-1",
+      "origin": "national-practice",
+      "source": {
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "A.0.2",
+        "page": "26-27",
+        "access": "paywalled",
+        "also": [
+          "3.0.7, p8",
+          "Table 3.0.2-1, pp3-4"
+        ]
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-22",
+        "review": "#250"
+      },
+      "verified": false,
+      "applies_when": {
+        "gb_vessel": [
+          "special"
+        ],
+        "gb_class": [
+          "VI",
+          "VII"
+        ],
+        "formation": [
+          "motor_vessel"
+        ],
+        "range_end": [
+          "strict"
+        ]
+      },
+      "kind": "formula",
+      "measure": {
+        "id": "channel.bottom-width"
+      },
+      "compare": "ge",
+      "limit": {
+        "shape": "gb-swept-width",
+        "unit": "m",
+        "beam": "vessel.beam",
+        "loa": "vessel.loa",
+        "beta_deg": 2.0,
+        "s": 0.4
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": true,
+      "evaluated": true,
+      "finding": "#250",
+      "since": "0.3.0"
+    },
+    {
+      "id": "gb50139/3.0.1/single-line-width-needs-class",
+      "title": "Bottom width on a straight: not evaluated, as the vessel has no GB 50139 channel class",
+      "origin": "national-practice",
+      "source": {
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "3.0.1",
+        "page": "3",
+        "access": "paywalled",
+        "also": [
+          "Table 3.0.1, p3",
+          "Table 3.0.2-1, pp3-4",
+          "A.0.2, pp26-27"
+        ]
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-22",
+        "review": "#250"
+      },
+      "verified": false,
+      "applies_when": {
+        "gb_class": [
+          "unknown"
+        ]
+      },
+      "kind": "table",
+      "measure": {
+        "id": "channel.bottom-width"
+      },
+      "compare": "ge",
+      "limit": {
+        "table": "gb50139/Table3.0.2-1/single-line-width",
+        "at": "vessel.gb-typical",
+        "unit": "m"
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": true,
+      "evaluated": false,
+      "gap": "the vessel has no GB 50139 class and no tonnage to find one by: Table 3.0.2-1 and the A.0.2 drift angle go by channel class (Table 3.0.1); type it with --set-input gb_class=<I..VII>",
+      "finding": "#250",
+      "since": "0.3.0"
+    },
+    {
+      "id": "gb50139/3.0.5(4)/min-bend-radius-convoy",
       "title": "Minimum bend radius, pushed convoy: at least 3 x L",
       "origin": "national-practice",
       "source": {
-        "document": "GB 50139 Navigation standard of inland waterway, as summarised in PIANC InCom WG 141 Appendix A.3",
-        "edition": "read in WG 141 Appendix A.3 (PIANC Report 141, 2019); GB 50139 itself not held",
-        "locator": "A.3.2",
-        "page": "164",
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "3.0.5(4)",
+        "page": "8",
         "access": "paywalled"
       },
       "codified": {
         "by": "agent",
-        "date": "2026-10-21",
-        "review": "#160"
+        "date": "2026-10-22",
+        "review": "#250"
       },
       "verified": false,
       "applies_when": {
         "formation": [
           "pushed_convoy"
-        ],
-        "reduced_radius_claim": [
-          "no"
         ]
       },
       "kind": "formula",
@@ -111,74 +1000,25 @@
       "since": "0.3.0"
     },
     {
-      "id": "gb50139/A.3.2/min-bend-radius-reduced-convoy",
-      "title": "Minimum bend radius, pushed convoy, reduced on a canal reach where the user claims it: at least 2 x L",
+      "id": "gb50139/3.0.5(4)/min-bend-radius-motor",
+      "title": "Minimum bend radius, cargo ship: at least 4 x L",
       "origin": "national-practice",
       "source": {
-        "document": "GB 50139 Navigation standard of inland waterway, as summarised in PIANC InCom WG 141 Appendix A.3",
-        "edition": "read in WG 141 Appendix A.3 (PIANC Report 141, 2019); GB 50139 itself not held",
-        "locator": "A.3.2",
-        "page": "164",
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "3.0.5(4)",
+        "page": "8",
         "access": "paywalled"
       },
       "codified": {
         "by": "agent",
-        "date": "2026-10-21",
-        "review": "#162"
-      },
-      "verified": false,
-      "applies_when": {
-        "formation": [
-          "pushed_convoy"
-        ],
-        "reduced_radius_claim": [
-          "yes"
-        ],
-        "waterway": [
-          "canal"
-        ]
-      },
-      "kind": "formula",
-      "measure": {
-        "id": "station.radius"
-      },
-      "compare": "ge",
-      "limit": {
-        "shape": "multiple",
-        "unit": "m",
-        "k": 2.0,
-        "x": "vessel.loa"
-      },
-      "tolerance": 0,
-      "consequence": "block",
-      "sizes": true,
-      "evaluated": true,
-      "finding": null,
-      "since": "0.3.0"
-    },
-    {
-      "id": "gb50139/A.3.2/min-bend-radius-motor",
-      "title": "Minimum bend radius, motor vessel: at least 4 x L",
-      "origin": "national-practice",
-      "source": {
-        "document": "GB 50139 Navigation standard of inland waterway, as summarised in PIANC InCom WG 141 Appendix A.3",
-        "edition": "read in WG 141 Appendix A.3 (PIANC Report 141, 2019); GB 50139 itself not held",
-        "locator": "A.3.2",
-        "page": "164",
-        "access": "paywalled"
-      },
-      "codified": {
-        "by": "agent",
-        "date": "2026-10-21",
-        "review": "#160"
+        "date": "2026-10-22",
+        "review": "#250"
       },
       "verified": false,
       "applies_when": {
         "formation": [
           "motor_vessel"
-        ],
-        "reduced_radius_claim": [
-          "no"
         ]
       },
       "kind": "formula",
@@ -200,112 +1040,75 @@
       "since": "0.3.0"
     },
     {
-      "id": "gb50139/A.3.2/min-bend-radius-reduced-motor",
-      "title": "Minimum bend radius, motor vessel, reduced on a canal reach where the user claims it: at least 3 x L",
+      "id": "gb50139/Table3.0.2-1/bend-radius",
+      "title": "Minimum bend radius, typical vessel: the bend radius of its Table 3.0.2-1 row (a mandatory minimum, read with 3.0.5)",
       "origin": "national-practice",
       "source": {
-        "document": "GB 50139 Navigation standard of inland waterway, as summarised in PIANC InCom WG 141 Appendix A.3",
-        "edition": "read in WG 141 Appendix A.3 (PIANC Report 141, 2019); GB 50139 itself not held",
-        "locator": "A.3.2",
-        "page": "164",
-        "access": "paywalled"
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "Table 3.0.2-1",
+        "page": "3-4",
+        "access": "paywalled",
+        "also": [
+          "3.0.2, p3",
+          "3.0.5(4), p8"
+        ]
       },
       "codified": {
         "by": "agent",
-        "date": "2026-10-21",
-        "review": "#162"
+        "date": "2026-10-22",
+        "review": "#250"
       },
       "verified": false,
       "applies_when": {
-        "formation": [
-          "motor_vessel"
-        ],
-        "reduced_radius_claim": [
-          "yes"
-        ],
-        "waterway": [
-          "canal"
+        "gb_vessel": [
+          "typical"
         ]
       },
-      "kind": "formula",
+      "kind": "table",
       "measure": {
         "id": "station.radius"
       },
       "compare": "ge",
       "limit": {
-        "shape": "multiple",
-        "unit": "m",
-        "k": 3.0,
-        "x": "vessel.loa"
+        "table": "gb50139/Table3.0.2-1/bend-radius",
+        "at": "vessel.gb-typical",
+        "unit": "m"
       },
       "tolerance": 0,
       "consequence": "block",
       "sizes": true,
       "evaluated": true,
-      "finding": null,
+      "finding": "#250",
       "since": "0.3.0"
     },
     {
-      "id": "gb50139/A.3.2/design-depth-class-i",
-      "title": "Design depth, class I: draught plus 0.5 m, the strict end of the 0.4-0.5 m range",
+      "id": "gb50139/A.0.1/design-depth-class-i-permissive",
+      "title": "Design depth, class I: draught plus 0.4 m, the permissive end of the Table A.0.1 clearance 0.4-0.5 m",
       "origin": "national-practice",
       "source": {
-        "document": "GB 50139 Navigation standard of inland waterway, as summarised in PIANC InCom WG 141 Appendix A.3",
-        "edition": "read in WG 141 Appendix A.3 (PIANC Report 141, 2019); GB 50139 itself not held",
-        "locator": "A.3.2",
-        "page": "162",
-        "access": "paywalled"
-      },
-      "codified": {
-        "by": "agent",
-        "date": "2026-10-21",
-        "review": "#160"
-      },
-      "verified": false,
-      "applies_when": {
-        "vessel_class": [
-          "I"
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "A.0.1",
+        "page": "26",
+        "access": "paywalled",
+        "also": [
+          "Table A.0.1, p26",
+          "3.0.5(1), pp7-8"
         ]
       },
-      "kind": "formula",
-      "measure": {
-        "id": "channel.design-depth"
-      },
-      "compare": "ge",
-      "limit": {
-        "shape": "plus-clearance",
-        "unit": "m",
-        "clearance": 0.5,
-        "x": "vessel.draught"
-      },
-      "tolerance": 0,
-      "consequence": "block",
-      "sizes": true,
-      "evaluated": true,
-      "finding": null,
-      "since": "0.3.0"
-    },
-    {
-      "id": "gb50139/A.3.2/design-depth-class-ii-iii",
-      "title": "Design depth, classes II and III: draught plus 0.4 m, the strict end of the 0.3-0.4 m range",
-      "origin": "national-practice",
-      "source": {
-        "document": "GB 50139 Navigation standard of inland waterway, as summarised in PIANC InCom WG 141 Appendix A.3",
-        "edition": "read in WG 141 Appendix A.3 (PIANC Report 141, 2019); GB 50139 itself not held",
-        "locator": "A.3.2",
-        "page": "162",
-        "access": "paywalled"
-      },
       "codified": {
         "by": "agent",
-        "date": "2026-10-21",
-        "review": "#160"
+        "date": "2026-10-22",
+        "review": "#250"
       },
       "verified": false,
       "applies_when": {
-        "vessel_class": [
-          "II",
-          "III"
+        "gb_class": [
+          "I"
+        ],
+        "range_end": [
+          "permissive"
         ]
       },
       "kind": "formula",
@@ -323,84 +1126,33 @@
       "consequence": "block",
       "sizes": true,
       "evaluated": true,
-      "finding": null,
-      "since": "0.3.0"
-    },
-    {
-      "id": "gb50139/A.3.2/design-depth-class-iv-up-permissive",
-      "title": "Design depth, class IV and up: draught plus 0.3 m, a fallback; A.3.2 covers classes I to III only",
-      "origin": "national-practice",
-      "source": {
-        "document": "GB 50139 Navigation standard of inland waterway, as summarised in PIANC InCom WG 141 Appendix A.3",
-        "edition": "read in WG 141 Appendix A.3 (PIANC Report 141, 2019); GB 50139 itself not held",
-        "locator": "A.3.2",
-        "page": "162",
-        "access": "paywalled"
-      },
-      "codified": {
-        "by": "agent",
-        "date": "2026-10-21",
-        "review": "#160"
-      },
-      "verified": false,
-      "applies_when": {
-        "vessel_class": [
-          "IV",
-          "Va",
-          "Vb",
-          "VIa",
-          "VIb",
-          "VIc",
-          "VII"
-        ],
-        "range_end": [
-          "permissive"
-        ]
-      },
-      "kind": "formula",
-      "measure": {
-        "id": "channel.design-depth"
-      },
-      "compare": "ge",
-      "limit": {
-        "shape": "plus-clearance",
-        "unit": "m",
-        "clearance": 0.3,
-        "x": "vessel.draught"
-      },
-      "tolerance": 0,
-      "consequence": "block",
-      "sizes": true,
-      "evaluated": true,
       "finding": "#250",
       "since": "0.3.0"
     },
     {
-      "id": "gb50139/A.3.2/design-depth-class-iv-up-strict",
-      "title": "Design depth, class IV and up: draught plus 0.5 m, a fallback; A.3.2 covers classes I to III only",
+      "id": "gb50139/A.0.1/design-depth-class-i-strict",
+      "title": "Design depth, class I: draught plus 0.5 m, the strict end of the Table A.0.1 clearance 0.4-0.5 m",
       "origin": "national-practice",
       "source": {
-        "document": "GB 50139 Navigation standard of inland waterway, as summarised in PIANC InCom WG 141 Appendix A.3",
-        "edition": "read in WG 141 Appendix A.3 (PIANC Report 141, 2019); GB 50139 itself not held",
-        "locator": "A.3.2",
-        "page": "162",
-        "access": "paywalled"
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "A.0.1",
+        "page": "26",
+        "access": "paywalled",
+        "also": [
+          "Table A.0.1, p26",
+          "3.0.5(1), pp7-8"
+        ]
       },
       "codified": {
         "by": "agent",
-        "date": "2026-10-21",
-        "review": "#160"
+        "date": "2026-10-22",
+        "review": "#250"
       },
       "verified": false,
       "applies_when": {
-        "vessel_class": [
-          "IV",
-          "Va",
-          "Vb",
-          "VIa",
-          "VIb",
-          "VIc",
-          "VII"
+        "gb_class": [
+          "I"
         ],
         "range_end": [
           "strict"
@@ -425,20 +1177,305 @@
       "since": "0.3.0"
     },
     {
-      "id": "gb50139/A.3.3/bend-widening",
-      "title": "Bend widening: L^2 / (2R + B)",
+      "id": "gb50139/A.0.1/design-depth-class-ii-iii-permissive",
+      "title": "Design depth, class II and III: draught plus 0.3 m, the permissive end of the Table A.0.1 clearance 0.3-0.4 m",
       "origin": "national-practice",
       "source": {
-        "document": "GB 50139 Navigation standard of inland waterway, as summarised in PIANC InCom WG 141 Appendix A.3",
-        "edition": "read in WG 141 Appendix A.3 (PIANC Report 141, 2019); GB 50139 itself not held",
-        "locator": "A.3.3",
-        "page": "164",
-        "access": "paywalled"
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "A.0.1",
+        "page": "26",
+        "access": "paywalled",
+        "also": [
+          "Table A.0.1, p26",
+          "3.0.5(1), pp7-8"
+        ]
       },
       "codified": {
         "by": "agent",
-        "date": "2026-10-21",
-        "review": "#160"
+        "date": "2026-10-22",
+        "review": "#250"
+      },
+      "verified": false,
+      "applies_when": {
+        "gb_class": [
+          "II",
+          "III"
+        ],
+        "range_end": [
+          "permissive"
+        ]
+      },
+      "kind": "formula",
+      "measure": {
+        "id": "channel.design-depth"
+      },
+      "compare": "ge",
+      "limit": {
+        "shape": "plus-clearance",
+        "unit": "m",
+        "clearance": 0.3,
+        "x": "vessel.draught"
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": true,
+      "evaluated": true,
+      "finding": "#250",
+      "since": "0.3.0"
+    },
+    {
+      "id": "gb50139/A.0.1/design-depth-class-ii-iii-strict",
+      "title": "Design depth, class II and III: draught plus 0.4 m, the strict end of the Table A.0.1 clearance 0.3-0.4 m",
+      "origin": "national-practice",
+      "source": {
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "A.0.1",
+        "page": "26",
+        "access": "paywalled",
+        "also": [
+          "Table A.0.1, p26",
+          "3.0.5(1), pp7-8"
+        ]
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-22",
+        "review": "#250"
+      },
+      "verified": false,
+      "applies_when": {
+        "gb_class": [
+          "II",
+          "III"
+        ],
+        "range_end": [
+          "strict"
+        ]
+      },
+      "kind": "formula",
+      "measure": {
+        "id": "channel.design-depth"
+      },
+      "compare": "ge",
+      "limit": {
+        "shape": "plus-clearance",
+        "unit": "m",
+        "clearance": 0.4,
+        "x": "vessel.draught"
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": true,
+      "evaluated": true,
+      "finding": "#250",
+      "since": "0.3.0"
+    },
+    {
+      "id": "gb50139/A.0.1/design-depth-class-iv-v-permissive",
+      "title": "Design depth, class IV and V: draught plus 0.2 m, the permissive end of the Table A.0.1 clearance 0.2-0.3 m",
+      "origin": "national-practice",
+      "source": {
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "A.0.1",
+        "page": "26",
+        "access": "paywalled",
+        "also": [
+          "Table A.0.1, p26",
+          "3.0.5(1), pp7-8"
+        ]
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-22",
+        "review": "#250"
+      },
+      "verified": false,
+      "applies_when": {
+        "gb_class": [
+          "IV",
+          "V"
+        ],
+        "range_end": [
+          "permissive"
+        ]
+      },
+      "kind": "formula",
+      "measure": {
+        "id": "channel.design-depth"
+      },
+      "compare": "ge",
+      "limit": {
+        "shape": "plus-clearance",
+        "unit": "m",
+        "clearance": 0.2,
+        "x": "vessel.draught"
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": true,
+      "evaluated": true,
+      "finding": "#250",
+      "since": "0.3.0"
+    },
+    {
+      "id": "gb50139/A.0.1/design-depth-class-iv-v-strict",
+      "title": "Design depth, class IV and V: draught plus 0.3 m, the strict end of the Table A.0.1 clearance 0.2-0.3 m",
+      "origin": "national-practice",
+      "source": {
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "A.0.1",
+        "page": "26",
+        "access": "paywalled",
+        "also": [
+          "Table A.0.1, p26",
+          "3.0.5(1), pp7-8"
+        ]
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-22",
+        "review": "#250"
+      },
+      "verified": false,
+      "applies_when": {
+        "gb_class": [
+          "IV",
+          "V"
+        ],
+        "range_end": [
+          "strict"
+        ]
+      },
+      "kind": "formula",
+      "measure": {
+        "id": "channel.design-depth"
+      },
+      "compare": "ge",
+      "limit": {
+        "shape": "plus-clearance",
+        "unit": "m",
+        "clearance": 0.3,
+        "x": "vessel.draught"
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": true,
+      "evaluated": true,
+      "finding": "#250",
+      "since": "0.3.0"
+    },
+    {
+      "id": "gb50139/A.0.1/design-depth-class-vi-vii",
+      "title": "Design depth, class VI and VII: draught plus 0.2 m, the Table A.0.1 clearance (no range)",
+      "origin": "national-practice",
+      "source": {
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "A.0.1",
+        "page": "26",
+        "access": "paywalled",
+        "also": [
+          "Table A.0.1, p26",
+          "3.0.5(1), pp7-8"
+        ]
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-22",
+        "review": "#250"
+      },
+      "verified": false,
+      "applies_when": {
+        "gb_class": [
+          "VI",
+          "VII"
+        ]
+      },
+      "kind": "formula",
+      "measure": {
+        "id": "channel.design-depth"
+      },
+      "compare": "ge",
+      "limit": {
+        "shape": "plus-clearance",
+        "unit": "m",
+        "clearance": 0.2,
+        "x": "vessel.draught"
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": true,
+      "evaluated": true,
+      "finding": "#250",
+      "since": "0.3.0"
+    },
+    {
+      "id": "gb50139/3.0.1/design-depth-needs-class",
+      "title": "Design depth: not evaluated, as the vessel has no GB 50139 channel class (0.2 m is the least clearance Table A.0.1 gives)",
+      "origin": "national-practice",
+      "source": {
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "3.0.1",
+        "page": "3",
+        "access": "paywalled",
+        "also": [
+          "Table 3.0.1, p3",
+          "A.0.1, p26"
+        ]
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-22",
+        "review": "#250"
+      },
+      "verified": false,
+      "applies_when": {
+        "gb_class": [
+          "unknown"
+        ]
+      },
+      "kind": "formula",
+      "measure": {
+        "id": "channel.design-depth"
+      },
+      "compare": "ge",
+      "limit": {
+        "shape": "plus-clearance",
+        "unit": "m",
+        "clearance": 0.2,
+        "x": "vessel.draught"
+      },
+      "tolerance": 0,
+      "consequence": "block",
+      "sizes": true,
+      "evaluated": false,
+      "gap": "the vessel has no GB 50139 class and no tonnage to find one by: the Table A.0.1 clearance goes by channel class (Table 3.0.1); type it with --set-input gb_class=<I..VII>",
+      "finding": "#250",
+      "since": "0.3.0"
+    },
+    {
+      "id": "gb50139/A.3.3/bend-widening",
+      "title": "Bend widening: L^2 / (2R + B), from WG 141's summary of the 2004 edition. GB 50139-2014 3.0.5(3) gives no formula and leaves the value to analysis or tests",
+      "origin": "guideline",
+      "source": {
+        "document": "PIANC InCom WG 141 (2019), Appendix A.3, summarising GB 50139-2004",
+        "edition": "PIANC Report 141, 2019",
+        "locator": "A.3.3",
+        "page": "164",
+        "access": "paywalled",
+        "also": [
+          "GB 50139-2014 3.0.5(3), p8"
+        ]
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-22",
+        "review": "#250"
       },
       "verified": false,
       "applies_when": {},
@@ -458,33 +1495,65 @@
       "consequence": "block",
       "sizes": true,
       "evaluated": true,
-      "finding": null,
+      "finding": "#250",
       "since": "0.3.0"
     },
     {
-      "id": "gb50139/A.3.2/swept-path",
-      "title": "Swept path with bank increment, (B + L sin beta) x (1 + bank), shown beside the width used",
+      "id": "gb50139/3.0.1/channel-class",
+      "title": "GB 50139 channel class: from a Chinese vessel, by tonnage (the smallest class of Table 3.0.1 covering the top of a CEMT class's range; above 3000 t class I, a special design vessel), or typed",
       "origin": "national-practice",
       "source": {
-        "document": "GB 50139 Navigation standard of inland waterway, as summarised in PIANC InCom WG 141 Appendix A.3",
-        "edition": "read in WG 141 Appendix A.3 (PIANC Report 141, 2019); GB 50139 itself not held",
-        "locator": "A.3.2",
-        "page": "164",
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "3.0.1",
+        "page": "3",
         "access": "paywalled",
         "also": [
-          "A.3.3, p164"
+          "Table 3.0.1 and its note 2, p3",
+          "3.0.7 and its explanation, pp8, 44"
         ]
       },
       "codified": {
         "by": "agent",
-        "date": "2026-10-21",
-        "review": "#160"
+        "date": "2026-10-22",
+        "review": "#250"
       },
       "verified": false,
       "applies_when": {},
       "kind": "note",
       "measure": {
-        "id": "channel.gb-swept-path"
+        "id": "vessel.gb-class"
+      },
+      "consequence": "note",
+      "sizes": false,
+      "evaluated": true,
+      "finding": null,
+      "since": "0.3.0"
+    },
+    {
+      "id": "gb50139/3.0.5(2)/double-line",
+      "title": "GB 50139 expects a double-line channel; single-line only on especially hard reaches. This width is single-line",
+      "origin": "national-practice",
+      "source": {
+        "document": "GB 50139-2014 Navigation standard of inland waterway",
+        "edition": "2014 edition, China Planning Press, first printing November 2014",
+        "locator": "3.0.5(2)",
+        "page": "8",
+        "access": "paywalled",
+        "also": [
+          "A.0.2, p27"
+        ]
+      },
+      "codified": {
+        "by": "agent",
+        "date": "2026-10-22",
+        "review": "#250"
+      },
+      "verified": false,
+      "applies_when": {},
+      "kind": "note",
+      "measure": {
+        "id": "channel.bottom-width"
       },
       "consequence": "note",
       "sizes": false,

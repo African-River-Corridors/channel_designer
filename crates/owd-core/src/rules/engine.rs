@@ -44,8 +44,12 @@ pub const LOA: &str = "vessel.loa";
 pub const BEAM: &str = "vessel.beam";
 /// The design draught (m).
 pub const DRAUGHT: &str = "vessel.draught";
-/// The GB 50139 swept path with its bank increment, WG 141 A.3.2 (m): shown beside the width used.
-pub const GB_SWEPT_PATH: &str = "channel.gb-swept-path";
+/// The GB 50139 channel class and how it was found (text), such as `II, by tonnage: CEMT IV up to
+/// 1500 t`. A `note` Rule shows it in the trace.
+pub const GB_CLASS_FOUND: &str = "vessel.gb-class";
+/// The vessel as GB 50139-2014 Table 3.0.2-1 lists a typical vessel: its channel class, LOA and beam
+/// to the 0.1 m the table prints, such as `IV 67.5x10.8` (text). The table rows are keyed by it.
+pub const GB_TYPICAL: &str = "vessel.gb-typical";
 
 /// The Measures, in listing order: id, what it is, and whether a Rule sizes it.
 pub const MEASURES: &[(&str, &str)] = &[
@@ -64,8 +68,12 @@ pub const MEASURES: &[(&str, &str)] = &[
     (BEAM, "vessel beam"),
     (DRAUGHT, "design draught"),
     (
-        GB_SWEPT_PATH,
-        "GB 50139 swept path (B + L sin beta) x (1 + bank increment), WG 141 A.3.2",
+        GB_TYPICAL,
+        "the vessel as a GB 50139 Table 3.0.2-1 key: channel class, LOA x beam (text)",
+    ),
+    (
+        GB_CLASS_FOUND,
+        "the GB 50139 channel class and how it was found (text)",
     ),
 ];
 
@@ -77,12 +85,23 @@ pub const RANGE_END: &str = "range_end";
 pub const FORMATION: &str = "formation";
 /// The vessel's class (`I` to `VII`, as the vessel classes name it). From the vessel.
 pub const VESSEL_CLASS: &str = "vessel_class";
+/// The GB 50139-2014 channel class (Table 3.0.1, by tonnage). Typed, it overrides the class found
+/// from the vessel (see [`gb_class_found`]). CEMT and Chinese classes share names, so a CEMT class
+/// never stands in for it by name.
+pub const GB_CLASS: &str = "gb_class";
+/// Whether the vessel is a typical vessel of GB 50139-2014 Table 3.0.2-1 (`typical`: its key has
+/// a row in a selected set's table) or a special design vessel (`special`, 3.0.7). From the vessel
+/// and the selected sets; never typed.
+pub const GB_VESSEL: &str = "gb_vessel";
+/// The `gb_class` of a vessel that has none.
+pub const GB_CLASS_UNKNOWN: &str = "unknown";
 
 /// The kind of waterway a reach is: `canal`, `impounded-river` or `free-flowing-river`. One value
 /// per station, from its reach.
 pub const WATERWAY: &str = "waterway";
-/// Whether the user claims the reduced GB 50139 radius on a reach (`yes` or `no`). One value per
-/// station, from its reach.
+/// Whether the user claims a reduced radius on a reach (`yes` or `no`). One value per station, from
+/// its reach. GB 50139-2014 removed the 2004 edition's reduced radius (3.0.5 and its explanation), so
+/// no built-in Rule reads it; a user's Rule Set may.
 pub const REDUCED_RADIUS_CLAIM: &str = "reduced_radius_claim";
 
 /// The inputs a Rule may apply on, with their values. `waterway` and `reduced_radius_claim` have one
@@ -97,6 +116,11 @@ pub const INPUTS: &[(&str, &[&str])] = &[
             "I", "II", "III", "IV", "Va", "Vb", "VIa", "VIb", "VIc", "VII",
         ],
     ),
+    (
+        GB_CLASS,
+        &["I", "II", "III", "IV", "V", "VI", "VII", GB_CLASS_UNKNOWN],
+    ),
+    (GB_VESSEL, &["typical", "special"]),
     (
         WATERWAY,
         &["canal", "impounded-river", "free-flowing-river"],
@@ -161,47 +185,17 @@ fn gb_widening(
     Ok(l * l / (2.0 * r + b))
 }
 
-/// The GB 50139 straight width: the width of the nearest WG 141 Table A.2 entry when the vessel
-/// matches it (the relative LOA and beam differences add up to at most `match`; the first of two
-/// equal entries wins), else `ratio × B` (WG 141 Table 5.1, China River).
-fn gb_straight_width(
+/// The GB 50139-2014 single-line width of a special design vessel (A.0.2): the swept path
+/// `BF = B + L sin beta` plus a clearance `d = s x BF` on each side, `BF + 2d`.
+fn gb_swept_width(
     shape: &str,
     c: &[(String, f64)],
     op: &mut dyn FnMut(&str) -> Result<f64, String>,
 ) -> Result<f64, String> {
     let (loa, beam) = (op("loa")?, op("beam")?);
-    match gb_table_match(shape, c, loa, beam)? {
-        Some(w) => Ok(w),
-        None => Ok(coefficient(shape, c, "ratio")? * beam),
-    }
-}
-
-/// The width of the Table A.2 entry a vessel matches, by the coefficients of a `gb-straight-width`
-/// limit; `None` when it matches none.
-pub fn gb_table_match(
-    shape: &str,
-    c: &[(String, f64)],
-    loa: f64,
-    beam: f64,
-) -> Result<Option<f64>, String> {
-    let k = |name: &str| coefficient(shape, c, name);
-    let mut best: Option<(f64, f64)> = None; // (width, distance)
-    for n in 1..=3 {
-        let (l, b, w) = (
-            k(&format!("a{n}_loa"))?,
-            k(&format!("a{n}_beam"))?,
-            k(&format!("a{n}_width"))?,
-        );
-        let d = (l - loa).abs() / py_max(l, 1.0) + (b - beam).abs() / py_max(b, 1.0);
-        match best {
-            Some((_, bd)) if !matches!(d.partial_cmp(&bd), Some(core::cmp::Ordering::Less)) => {}
-            _ => best = Some((w, d)),
-        }
-    }
-    match best {
-        Some((w, d)) if d <= k("match")? => Ok(Some(w)),
-        _ => Ok(None),
-    }
+    let beta = coefficient(shape, c, "beta_deg")? * (core::f64::consts::PI / 180.0);
+    let swept = beam + loa * libm::sin(beta);
+    Ok(swept + 2.0 * (coefficient(shape, c, "s")? * swept))
 }
 
 /// The formula shapes OWD registers. Each keeps the order of operations of the code it replaced,
@@ -243,14 +237,11 @@ pub const SHAPES: &[FormulaShape] = &[
         value: gb_widening,
     },
     FormulaShape {
-        id: "gb-straight-width",
+        id: "gb-swept-width",
         operands: &["beam", "loa"],
-        coefficients: &[
-            "a1_beam", "a1_loa", "a1_width", "a2_beam", "a2_loa", "a2_width", "a3_beam", "a3_loa",
-            "a3_width", "match", "ratio",
-        ],
+        coefficients: &["beta_deg", "s"],
         free_unit_operands: &[],
-        value: gb_straight_width,
+        value: gb_swept_width,
     },
 ];
 
@@ -268,7 +259,11 @@ impl Domain for ChannelDomain {
                 CHANNEL
             }
             .into(),
-            value: ValueKind::Number,
+            value: if id == GB_TYPICAL || id == GB_CLASS_FOUND {
+                ValueKind::Text
+            } else {
+                ValueKind::Number
+            },
             args: Vec::new(),
             method_status: MethodStatus::Unverified,
         })
@@ -343,41 +338,16 @@ pub struct Vessel {
     pub formation: String,
     /// The class, such as `IV` or `VIa`.
     pub class_name: String,
+    /// The family of vessel classes the class belongs to, such as `CEMT` or `CN`.
+    pub family: String,
 }
 
-/// The drift angle of the GB 50139 swept path (WG 141 A.3.2): 3 degrees for classes I to V, 2 degrees
-/// for VI and VII, told apart by a beam of 22.8 m.
-const GB_DRIFT_DEG_LARGE_BEAM: f64 = 2.0;
-const GB_DRIFT_DEG_SMALL_BEAM: f64 = 3.0;
-const GB_LARGE_BEAM_M: f64 = 22.8;
+/// The family of the Chinese vessel classes, whose class is the GB 50139 channel class.
+pub const CN_FAMILY: &str = "CN";
 
-/// The GB 50139 bank increment, a fraction of the swept path (WG 141 A.3.2): 0.25 to 0.30 for a
-/// convoy, 0.34 to 0.40 for a motor vessel; `range_end` picks the end.
-fn gb_bank_increment(motor: bool, strict: bool) -> f64 {
-    match (motor, strict) {
-        (false, false) => 0.25,
-        (false, true) => 0.30,
-        (true, false) => 0.34,
-        (true, true) => 0.40,
-    }
-}
-
-/// The GB 50139 swept path with its bank increment, `(B + L sin beta) × (1 + bank)`.
-fn gb_swept_path(vessel: &Vessel, range_end: Option<&str>) -> Result<f64, String> {
-    let strict = match range_end {
-        Some("strict") => true,
-        Some("permissive") => false,
-        _ => return Err(format!("the swept path needs the `{RANGE_END}` input")),
-    };
-    let deg = if vessel.beam_m >= GB_LARGE_BEAM_M {
-        GB_DRIFT_DEG_LARGE_BEAM
-    } else {
-        GB_DRIFT_DEG_SMALL_BEAM
-    };
-    let beta = deg * (core::f64::consts::PI / 180.0);
-    let swept = vessel.beam_m + vessel.loa_m * libm::sin(beta);
-    let bank = gb_bank_increment(vessel.formation == "motor_vessel", strict);
-    Ok(swept * (1.0 + bank))
+/// The GB 50139-2014 Table 3.0.2-1 key of a vessel of channel class `class`.
+pub fn gb_typical_key(class: &str, vessel: &Vessel) -> String {
+    format!("{class} {:.1}x{:.1}", vessel.loa_m, vessel.beam_m)
 }
 
 /// A reach of the river as the rules read it: its waterway kind and the reduced-radius claim.
@@ -418,6 +388,8 @@ pub struct Station {
 /// limit).
 struct Channel<'a> {
     vessel: &'a Vessel,
+    /// The selected sets: their GB 50139 tables tell a typical vessel from a special one.
+    sets: &'a [Arc<RuleSet>],
     inputs: &'a [(String, String)],
     reaches: &'a [WaterwayReach],
     /// The stations. While sizing there is one per reach, as no line exists yet.
@@ -458,7 +430,17 @@ impl MeasureSource for Channel<'_> {
             BEAM => self.vessel.beam_m,
             DRAUGHT => self.vessel.draught_m,
             BEND_RADIUS => self.radius_m,
-            GB_SWEPT_PATH => gb_swept_path(self.vessel, self.input(RANGE_END).as_deref())?,
+            GB_CLASS_FOUND => {
+                let found = gb_class_found(self.vessel, self.inputs);
+                return Ok(MeasureValue::Text(format!(
+                    "{}, {}",
+                    found.class, found.how
+                )));
+            }
+            GB_TYPICAL => {
+                let class = self.gb_class();
+                return Ok(MeasureValue::Text(gb_typical_key(&class, self.vessel)));
+            }
             BOTTOM_WIDTH => self.sized.map_or(0.0, |s| s.bottom_width_straight_m),
             MIN_BEND_RADIUS => match self.sized {
                 None => 0.0,
@@ -475,12 +457,133 @@ impl MeasureSource for Channel<'_> {
         match name {
             FORMATION => Some(self.vessel.formation.clone()),
             VESSEL_CLASS => Some(self.vessel.class_name.clone()),
+            GB_CLASS => Some(self.gb_class()),
+            GB_VESSEL => Some(self.gb_vessel().into()),
             _ => self
                 .inputs
                 .iter()
                 .find(|(k, _)| k == name)
                 .map(|(_, v)| v.clone()),
         }
+    }
+}
+
+/// The GB 50139-2014 design tonnage of each channel class (Table 3.0.1, p3), smallest first. A
+/// waterway for ships above 3000 t is class I (note 2).
+pub const GB_CLASS_TONNAGE_T: [(&str, f64); 7] = [
+    ("VII", 50.0),
+    ("VI", 100.0),
+    ("V", 300.0),
+    ("IV", 500.0),
+    ("III", 1000.0),
+    ("II", 2000.0),
+    ("I", 3000.0),
+];
+
+/// The top of each CEMT class's tonnage range (t), over its motor vessel, barge and pushed convoy
+/// rows: ECMT Resolution No. 92/2, *New classification of inland waterways* (1992), the table AGN
+/// Annex III repeats. Secondary copies print class Va as 1500-2400 t or up to 3000 t; the top,
+/// 3000 t, is used, and either gives GB class I.
+pub const CEMT_TONNAGE_TOP_T: [(&str, f64); 10] = [
+    ("I", 400.0),
+    ("II", 650.0),
+    ("III", 1200.0),
+    ("IV", 1500.0),
+    ("Va", 3000.0),
+    ("Vb", 6000.0),
+    ("VIa", 6000.0),
+    ("VIb", 12000.0),
+    ("VIc", 18000.0),
+    ("VII", 27000.0),
+];
+
+/// A vessel's GB 50139 channel class, and how it was found.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GbClass {
+    /// `I` to `VII`, or `unknown`.
+    pub class: String,
+    /// In words: from the vessel, by tonnage, typed, or why there is none.
+    pub how: String,
+    /// The vessel is above 3000 t: class I, sized as a special design vessel (3.0.7).
+    pub above_3000_t: bool,
+}
+
+/// A vessel's GB 50139 channel class. In order: the typed `gb_class`; a Chinese vessel's own class;
+/// for a CEMT vessel, the smallest class of Table 3.0.1 whose design tonnage covers the top of its
+/// CEMT class's range (above 3000 t: class I, a special design vessel); else `unknown`.
+pub fn gb_class_found(vessel: &Vessel, inputs: &[(String, String)]) -> GbClass {
+    let found = |class: &str, how: String, above_3000_t| GbClass {
+        class: class.into(),
+        how,
+        above_3000_t,
+    };
+    if let Some((_, typed)) = inputs.iter().find(|(k, _)| k == GB_CLASS) {
+        return found(typed, "typed".into(), false);
+    }
+    if vessel.family == CN_FAMILY {
+        return found(
+            &vessel.class_name,
+            "from the vessel (a Chinese class)".into(),
+            false,
+        );
+    }
+    let cemt = vessel.family.starts_with("CEMT");
+    let top = CEMT_TONNAGE_TOP_T
+        .iter()
+        .find(|(c, _)| cemt && *c == vessel.class_name)
+        .map(|(_, t)| *t);
+    let Some(t) = top else {
+        return found(
+            GB_CLASS_UNKNOWN,
+            format!(
+                "no GB 50139 class and no tonnage for a {} {} vessel",
+                vessel.family, vessel.class_name
+            ),
+            false,
+        );
+    };
+    let by = format!(
+        "by tonnage: CEMT {} up to {} t (ECMT Resolution 92/2)",
+        vessel.class_name, t
+    );
+    match GB_CLASS_TONNAGE_T.iter().find(|(_, cap)| *cap >= t) {
+        Some((class, cap)) => found(
+            class,
+            format!("{by}, within class {class}'s {cap} t"),
+            false,
+        ),
+        None => found(
+            "I",
+            format!("{by}, above 3000 t: class I, a special design vessel (3.0.7)"),
+            true,
+        ),
+    }
+}
+
+/// A vessel's GB 50139 channel class (see [`gb_class_found`]).
+pub fn gb_class(vessel: &Vessel, inputs: &[(String, String)]) -> String {
+    gb_class_found(vessel, inputs).class
+}
+
+impl Channel<'_> {
+    fn gb_class(&self) -> String {
+        gb_class(self.vessel, self.inputs)
+    }
+
+    /// `typical` when a table of a selected set keyed by [`GB_TYPICAL`] has a row for the vessel,
+    /// else `special`; always `special` above 3000 t.
+    fn gb_vessel(&self) -> &'static str {
+        if gb_class_found(self.vessel, self.inputs).above_3000_t {
+            return "special";
+        }
+        let key = gb_typical_key(&self.gb_class(), self.vessel);
+        let typical = self.sets.iter().flat_map(|s| s.tables.iter()).any(|t| {
+            t.input == GB_TYPICAL
+                && t.rows.iter().any(
+                    |r| matches!(&r.when, arc_rules::model::RowWhen::OneOf(v) if v.contains(&key)),
+                )
+        });
+        if typical { "typical" } else { "special" }
     }
 }
 
@@ -550,6 +653,7 @@ impl Selection {
     pub fn narrowed_to(&self, measure: &str, vessel: &Vessel) -> Self {
         let source = Channel {
             vessel,
+            sets: &self.sets,
             inputs: &self.inputs,
             reaches: &self.reaches,
             stations: &[],
@@ -621,6 +725,7 @@ impl Selection {
         let sets: Vec<&RuleSet> = self.sets.iter().map(|s| s.as_ref()).collect();
         let source = Channel {
             vessel,
+            sets: &self.sets,
             inputs: &self.inputs,
             reaches: &self.reaches,
             stations,
@@ -755,6 +860,7 @@ fn only_formula(
     let def = arc_rules::domain::shape(SHAPES, shape)?;
     let source = Channel {
         vessel,
+        sets: &selection.sets,
         inputs: &selection.inputs,
         reaches: &selection.reaches,
         stations: &[],
@@ -785,8 +891,9 @@ fn only_formula(
 
 /// The Rule Set and the one set input an old ruleset name maps to (spec 0007, "Rule Sets at
 /// 0.3.0"): PIANC-A, B and C are `pianc-wg141` at that quality; CN and CN-conservative are
-/// `gb50139` at the permissive or strict end. CN-reduced is `gb50139` strict too, and needs a canal
-/// reach with the reduced-radius claim besides (see [`selection_for_old_ruleset`]).
+/// `gb50139` at the permissive or strict end. CN-reduced is `gb50139` strict too, on a canal reach
+/// with the reduced-radius claim (see [`selection_for_old_ruleset`]); GB 50139-2014 has no reduced
+/// radius, so it gives the CN-conservative channel.
 pub fn old_name_choice(
     name: &str,
 ) -> Result<(&'static str, &'static str, &'static str), RuleError> {

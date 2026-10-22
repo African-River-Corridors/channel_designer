@@ -283,3 +283,40 @@ fn reaches_are_checked_and_removed() {
     assert!(s.document()["inputs"].get("waterway_reaches").is_none());
     assert!(s.remove_waterway_reach(5.0).is_err());
 }
+
+/// Issue #250: `gb50139` finds a CEMT vessel's GB 50139 channel class by tonnage, and a typed
+/// `gb_class` overrides it and is kept as a set input. The picker does not offer `gb_class`: the
+/// vessel gives it.
+#[test]
+fn gb50139_finds_a_cemt_class_by_tonnage_and_a_typed_gb_class_overrides_it() {
+    let mut s = Session::new("t", "2026-10-22");
+    s.set_rule_sets(&["gb50139"], &[("range_end", "strict")])
+        .unwrap();
+    s.set_vessel("CEMT_IV", Some(2.5)).unwrap();
+    s.run_stage(Stage::Sizing).unwrap();
+    let r = &s.document()["stages"]["sizing"]["results"];
+    assert_eq!(r["width_basis"], "appendix-a");
+    // Class II by tonnage: draught + 0.4 m at the strict end.
+    assert_eq!(r["design_depth_m"], json!(2.5 + 0.4));
+    s.set_rule_sets(&[], &[("gb_class", "IV")]).unwrap();
+    s.run_stage(Stage::Sizing).unwrap();
+    let r = &s.document()["stages"]["sizing"]["results"];
+    assert_eq!(r["design_depth_m"], json!(2.5 + 0.3));
+    assert!(
+        settings(&s)["set_inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|i| i["name"] == "gb_class" && i["value"] == "IV" && i["source"] == "typed")
+    );
+    assert!(s.set_rule_sets(&[], &[("gb_class", "VIII")]).is_err());
+    let (pick, _) = owd_format::design::rule_sets::rule_set_choices();
+    let gb = pick.iter().find(|p| p["id"] == "gb50139").unwrap();
+    let names: Vec<&str> = gb["inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["range_end"]);
+}

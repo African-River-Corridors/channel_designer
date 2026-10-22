@@ -120,7 +120,7 @@ class ChannelShape:
     design_depth_m: float
     bend_widening_at_rmin_m: float
     bottom_width_at_rmin_m: float
-    width_basis: str = ""          # "table" | "table-5.1-ratio" | "rule"
+    width_basis: str = ""          # "table" | "appendix-a" | "rule" (GB 50139-2014 Table 3.0.2-1, A.0.2)
     source: str = ""
     warnings: list = field(default_factory=list)
     selection: dict = field(default_factory=dict)   # what sized it, for the widening at a radius
@@ -144,7 +144,8 @@ def channel_shape(vessel_standard_id: str, draught_m: float = None, *,
     selected set applies and the strictest governs (spec 0007). ``set_inputs`` gives their inputs,
     such as ``{"se_quality": "B"}`` or ``{"range_end": "strict"}``; ``pianc-wg141`` takes quality C
     when none is given. ``reaches`` is a list of ``{"waterway", "reduced_radius_claim"}`` for a
-    line over one reach kind, such as a claimed canal for the reduced GB 50139 radius.
+    line over one reach kind, for a Rule that applies on one kind only (no built-in Rule does).
+    ``gb50139`` finds a vessel's GB channel class itself; ``{"gb_class": "IV"}`` overrides it.
     ``rule_set_files`` are Rule Set file texts loaded first. The ``owd`` checks are always selected.
 
     ``draught_m`` overrides the vessel class's nominal draught: a project's design draught is its

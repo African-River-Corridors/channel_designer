@@ -17,7 +17,10 @@ pub const DEFAULT_SETS: &[&str] = &["pianc-wg141"];
 pub const DEFAULT_INPUTS: &[(&str, &str)] = &[(engine::SE_QUALITY, "C")];
 
 /// The inputs a user types for a set. The vessel gives `formation` and `vessel_class`.
-const SET_INPUTS: &[&str] = &[engine::SE_QUALITY, engine::RANGE_END];
+const SET_INPUTS: &[&str] = &[engine::SE_QUALITY, engine::RANGE_END, engine::GB_CLASS];
+/// The set inputs a selected set may go without: `gb_class` comes from a Chinese vessel, and a
+/// vessel with none leaves the GB width and depth Rules not evaluated. Not offered in the picker.
+const OPTIONAL_INPUTS: &[&str] = &[engine::GB_CLASS];
 
 /// A set input's name, its words, and the words of each value.
 type InputWords = (
@@ -72,7 +75,7 @@ pub fn rule_set_choices() -> (Vec<Value>, Vec<Value>) {
         }
         let inputs: Vec<Value> = SET_INPUTS
             .iter()
-            .filter(|name| set_reads(set, name))
+            .filter(|name| !OPTIONAL_INPUTS.contains(name) && set_reads(set, name))
             .map(|name| {
                 let words = INPUT_WORDS.iter().find(|(n, _, _)| n == name);
                 let values = engine::INPUTS
@@ -271,7 +274,7 @@ impl Session {
 
     /// Each set input a selected set's Rules apply on has a value.
     fn check_inputs(&self, settings: &Value) -> Result<(), DesignError> {
-        for name in SET_INPUTS {
+        for name in SET_INPUTS.iter().filter(|n| !OPTIONAL_INPUTS.contains(n)) {
             if self.input_is_read(settings, Some(name))
                 && !settings["set_inputs"]
                     .as_array()

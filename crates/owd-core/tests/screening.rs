@@ -15,6 +15,7 @@ fn cemt_iv() -> Vessel {
         draught_m: 2.5,
         formation: "motor_vessel".into(),
         class_name: "IV".into(),
+        family: "CEMT".into(),
     }
 }
 
@@ -152,7 +153,11 @@ fn the_design_basis_names_the_governing_rule_of_each_quantity_per_reach_kind() {
     let v = cemt_iv();
     let s = Selection::built_in(
         &["pianc-wg141", "gb50139", "owd"],
-        &[(engine::SE_QUALITY, "C"), (engine::RANGE_END, "strict")],
+        &[
+            (engine::SE_QUALITY, "C"),
+            (engine::RANGE_END, "strict"),
+            (engine::GB_CLASS, "IV"),
+        ],
     )
     .unwrap()
     .with_reaches(vec![
@@ -177,17 +182,18 @@ fn the_design_basis_names_the_governing_rule_of_each_quantity_per_reach_kind() {
         rows,
         [
             ("bottom-width", None, "pianc-wg141/Table5.7/bottom-width-c"),
+            // GB 50139-2014 has no reduced radius: the claimed canal takes 4 L too.
             (
                 "min-bend-radius",
                 Some("canal"),
-                "gb50139/A.3.2/min-bend-radius-reduced-motor"
+                "gb50139/3.0.5(4)/min-bend-radius-motor"
             ),
             (
                 "min-bend-radius",
                 Some("free-flowing-river"),
-                "gb50139/A.3.2/min-bend-radius-motor"
+                "gb50139/3.0.5(4)/min-bend-radius-motor"
             ),
-            // 1.2 T and T + 0.5 m are equal at T = 2.5 m: the first selected set governs.
+            // 1.2 T = 3.0 m is above T + 0.3 m (class IV, strict).
             ("design-depth", None, "pianc-wg141/5.3.4.3/design-depth-c"),
             (
                 "widening-at-rmin",
@@ -204,9 +210,9 @@ fn the_design_basis_names_the_governing_rule_of_each_quantity_per_reach_kind() {
             assert!(*limit <= b.value, "{}: {limit} > {}", b.rule, b.value);
         }
     }
-    // The canal's reduced radius (3 L) sits with the PIANC quality C radius (2 L) in its row.
+    // The canal's radius (4 L) sits with the PIANC quality C radius (2 L) in its row.
     let canal = &basis[1];
-    assert_eq!(canal.value, 3.0 * 110.0);
+    assert_eq!(canal.value, 4.0 * 110.0);
     assert!(
         canal
             .others

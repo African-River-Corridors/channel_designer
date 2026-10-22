@@ -2,8 +2,9 @@
 //!
 //! Label: snapshot. `tests/data/old-ruleset-snapshot.json` is what the old ruleset code printed
 //! (at spec 0007 T5, before T8 removed it) for every old ruleset × every built-in vessel class ×
-//! five draughts. The engine path must give the same numbers bit for bit, and the same warnings.
-//! Never hand-edit it. The other tests here are `Label: property`.
+//! five draughts. The engine path must give the same numbers bit for bit, and the same warnings,
+//! for the PIANC rulesets. The CN rows are history: #250 moved `gb50139` to GB 50139-2014 itself
+//! (`gb50139_2014.rs`). Never hand-edit it. The other tests here are `Label: property`.
 
 use arc_rules::load::{content_hash, load};
 use owd_core::rules::engine::{self, BUILT_IN, ChannelDomain, selection_for_old_ruleset};
@@ -19,14 +20,19 @@ fn f(v: &Value) -> f64 {
     v.as_f64().unwrap()
 }
 
-/// Every old ruleset (CN-reduced: one claimed canal reach over the whole line) × every built-in
-/// vessel class × five draughts: the engine path gives the old numbers bit for bit, the same bend
-/// widening at five radii, the same width basis and the same warnings.
+/// Every old PIANC ruleset × every built-in vessel class × five draughts: the engine path gives the
+/// old numbers bit for bit, the same bend widening at five radii, the same width basis and the same
+/// warnings. The CN rows moved on purpose with #250 and are not read.
 #[test]
-fn the_engine_gives_the_old_rulesets_numbers_and_warnings_bit_for_bit() {
+fn the_engine_gives_the_old_pianc_rulesets_numbers_and_warnings_bit_for_bit() {
     let rows = snapshot();
     assert_eq!(rows.len(), 6 * 12 * 5);
-    for row in &rows {
+    let pianc: Vec<&Value> = rows
+        .iter()
+        .filter(|r| r["ruleset"].as_str().unwrap().starts_with("PIANC"))
+        .collect();
+    assert_eq!(pianc.len(), 3 * 12 * 5);
+    for row in pianc {
         let rs = row["ruleset"].as_str().unwrap();
         let vessel = row["vessel"].as_str().unwrap();
         let draught = row["draught_m"].as_f64();
@@ -170,6 +176,7 @@ fn the_quality_input_picks_the_governing_rule() {
             draught_m: 2.5,
             formation: "motor_vessel".into(),
             class_name: "IV".into(),
+            family: "CEMT".into(),
         };
         let trace = s.trace(&vessel, 300.0);
         let governing: Vec<&str> = trace
@@ -199,6 +206,7 @@ fn the_one_rule_widening_equals_the_engines_governing_limit() {
             draught_m: 3.5,
             formation: "pushed_convoy".into(),
             class_name: "Vb".into(),
+            family: "CEMT".into(),
         };
         let narrow = s.narrowed_to(engine::BEND_WIDENING, &vessel);
         assert_eq!(narrow.sets[0].rules.len(), 1);
@@ -211,80 +219,76 @@ fn the_one_rule_widening_equals_the_engines_governing_limit() {
     }
 }
 
-/// Every GB Rule has origin `national-practice` and says it was read in WG 141 Appendix A.3, is
-/// unverified, and the Rules the range end changes link the finding.
+/// Every GB Rule is national practice read in GB 50139-2014 itself, but the bend widening: the
+/// 2014 text gives no formula, so that Rule cites WG 141's summary of the 2004 edition, as a
+/// guideline. Every Rule is unverified.
 #[test]
-fn every_gb_rule_is_national_practice_read_in_wg141_appendix_a3() {
+fn every_gb_rule_cites_gb50139_2014_but_the_widening_which_cites_wg141() {
     let set = engine::built_in().lookup("gb50139").unwrap();
     assert_eq!(set.key(), "gb50139@0.3.0");
-    assert_eq!(set.rules.len(), 11);
+    assert_eq!(set.rules.len(), 24);
     for r in &set.rules {
-        assert_eq!(
-            r.origin,
-            arc_rules::model::Origin::NationalPractice,
-            "{}",
-            r.id
-        );
-        assert!(
-            r.source.edition.contains("read in WG 141 Appendix A.3"),
-            "{}",
-            r.id
-        );
         assert!(r.verified.is_none(), "{}", r.id);
-        let ranged = r
-            .applies_when
-            .conditions
-            .iter()
-            .any(|(k, _)| k == engine::RANGE_END);
-        if ranged || r.id.ends_with("/swept-path") {
-            assert_eq!(r.finding.as_deref(), Some("#250"), "{}", r.id);
+        if r.measure.id == engine::BEND_WIDENING {
+            assert_eq!(r.origin, arc_rules::model::Origin::Guideline, "{}", r.id);
+            assert!(r.source.document.contains("WG 141"), "{}", r.id);
+            assert!(
+                r.source
+                    .also
+                    .iter()
+                    .any(|a| a.contains("GB 50139-2014 3.0.5(3)"))
+            );
+        } else {
+            assert_eq!(
+                r.origin,
+                arc_rules::model::Origin::NationalPractice,
+                "{}",
+                r.id
+            );
+            assert!(r.source.document.starts_with("GB 50139-2014"), "{}", r.id);
+            assert!(!r.source.locator.is_empty(), "{}", r.id);
         }
     }
 }
 
-/// The range end changes only the class IV-and-up depth and the swept path note (finding #250):
-/// CN and CN-conservative give the same width, radius and widening, and for classes I to III the
-/// same depth.
+/// The range end changes the depth of every class with a Table A.0.1 range (I to V) and the width
+/// of a special design vessel, never a Table 3.0.2-1 width or a radius.
 #[test]
-fn the_range_end_changes_only_the_class_iv_and_up_depth() {
+fn the_range_end_changes_the_depth_and_the_special_vessels_width_only() {
     for (vessel, v) in vessel_catalogue() {
+        if v.family != "CN" {
+            continue;
+        }
         let shape = |rs| channel_shape_for(&selection_for_old_ruleset(rs).unwrap(), &vessel, None);
         let a = shape("CN").unwrap();
         let b = shape("CN-conservative").unwrap();
-        assert_eq!(
-            a.bottom_width_straight_m, b.bottom_width_straight_m,
-            "{vessel}"
-        );
         assert_eq!(a.min_bend_radius_m, b.min_bend_radius_m, "{vessel}");
         assert_eq!(
             a.bend_widening_at_rmin_m, b.bend_widening_at_rmin_m,
             "{vessel}"
         );
-        let low = ["I", "II", "III"].contains(&v.class_name.as_str());
-        assert_eq!(a.design_depth_m == b.design_depth_m, low, "{vessel}");
-    }
-}
-
-/// The swept path note shows its value in the trace, with no test, at both range ends.
-#[test]
-fn the_swept_path_is_a_note_with_a_value() {
-    for end in ["permissive", "strict"] {
-        let s = engine::Selection::built_in(&["gb50139"], &[(engine::RANGE_END, end)]).unwrap();
-        let vessel = engine::Vessel {
-            loa_m: 110.0,
-            beam_m: 11.4,
-            draught_m: 2.5,
-            formation: "motor_vessel".into(),
-            class_name: "IV".into(),
-        };
-        let trace = s.trace(&vessel, 400.0);
-        let row = trace
-            .rows
-            .iter()
-            .find(|r| r.rule.as_deref() == Some("gb50139/A.3.2/swept-path"))
-            .unwrap();
-        assert_eq!(row.outcome, arc_rules::eval::Outcome::Note);
-        assert!(matches!(row.value, Some(arc_rules::eval::MeasureValue::Number(x)) if x > 11.4));
+        assert!(a.design_depth_m < b.design_depth_m, "{vessel}");
+        let table = a.width_basis == "table";
+        assert_eq!(
+            a.bottom_width_straight_m == b.bottom_width_straight_m,
+            table,
+            "{vessel}"
+        );
+        // GB 50139-2014 has no reduced radius: CN-reduced is CN-conservative.
+        let c = shape("CN-reduced").unwrap();
+        assert_eq!(
+            (
+                c.bottom_width_straight_m,
+                c.min_bend_radius_m,
+                c.design_depth_m
+            ),
+            (
+                b.bottom_width_straight_m,
+                b.min_bend_radius_m,
+                b.design_depth_m
+            ),
+            "{vessel}"
+        );
     }
 }
 
@@ -306,7 +310,8 @@ fn two_sets_size_each_quantity_to_the_larger_single_set_value() {
         beam_m: 14.2,
         draught_m: 3.1,
         formation: "pushed_convoy".into(),
-        class_name: "Vb".into(),
+        class_name: "III".into(),
+        family: engine::CN_FAMILY.into(),
     };
     let one = |ids: &[&str]| {
         let s = engine::Selection::built_in(
@@ -359,6 +364,7 @@ fn one_set_selected_twice_changes_nothing() {
         draught_m: 2.5,
         formation: "motor_vessel".into(),
         class_name: "IV".into(),
+        family: "CEMT".into(),
     };
     let i = [(engine::SE_QUALITY, "C")];
     let once = engine::Selection::built_in(&["pianc-wg141", "owd"], &i).unwrap();
@@ -369,9 +375,35 @@ fn one_set_selected_twice_changes_nothing() {
     );
 }
 
+/// A user's Rule Set with a reduced radius on claimed canal reaches only (the 2004 edition of GB
+/// 50139 had one; 2014 removed it, so no built-in Rule reads the claim).
+const CANAL_SET: &str = r##"{
+  "id": "canal-test", "family": "canal-test", "title": "A reduced radius on claimed canal reaches",
+  "version": "0.1.0", "edition": {"document": "test", "edition": "test"}, "sources": [],
+  "status": "draft", "applies_when": {}, "includes": [], "known_conflicts": [], "tables": [],
+  "rules": [
+    {"id": "canal-test/1/min-bend-radius-motor", "title": "4 x L", "origin": "guideline",
+     "source": {"document": "test", "edition": "test", "locator": "1", "page": "1", "access": "free"},
+     "codified": {"by": "agent", "date": "2026-10-22", "review": "#250"}, "verified": false,
+     "applies_when": {"formation": ["motor_vessel"], "reduced_radius_claim": ["no"]},
+     "kind": "formula", "measure": {"id": "station.radius"}, "compare": "ge",
+     "limit": {"shape": "multiple", "unit": "m", "k": 4.0, "x": "vessel.loa"},
+     "tolerance": 0, "consequence": "block", "sizes": true, "evaluated": true, "since": "0.1.0"},
+    {"id": "canal-test/1/min-bend-radius-reduced-motor", "title": "3 x L on a claimed canal",
+     "origin": "guideline",
+     "source": {"document": "test", "edition": "test", "locator": "1", "page": "1", "access": "free"},
+     "codified": {"by": "agent", "date": "2026-10-22", "review": "#250"}, "verified": false,
+     "applies_when": {"formation": ["motor_vessel"], "reduced_radius_claim": ["yes"], "waterway": ["canal"]},
+     "kind": "formula", "measure": {"id": "station.radius"}, "compare": "ge",
+     "limit": {"shape": "multiple", "unit": "m", "k": 3.0, "x": "vessel.loa"},
+     "tolerance": 0, "consequence": "block", "sizes": true, "evaluated": true, "since": "0.1.0"}
+  ]
+}"##;
+
 /// A line with one canal reach (claim made) and one river reach sizes its alignment to the river
 /// reach's R_min. At the line's stations the reduced Rule is `not applicable` on river stations and
-/// tested on canal ones; the claim shows in the trace as a typed input.
+/// tested on canal ones; the claim shows in the trace as a typed input. The reduced Rule comes from
+/// a user's set.
 #[test]
 fn a_canal_and_a_river_reach_size_to_the_river_rmin_and_the_reduced_rule_applies_on_canal_only() {
     let vessel = engine::Vessel {
@@ -380,24 +412,27 @@ fn a_canal_and_a_river_reach_size_to_the_river_rmin_and_the_reduced_rule_applies
         draught_m: 2.5,
         formation: "motor_vessel".into(),
         class_name: "IV".into(),
+        family: "CEMT".into(),
     };
     let river = engine::WaterwayReach {
         label: "2000 m to the end".into(),
         ..engine::WaterwayReach::whole_river()
     };
-    let gb = |reaches| {
-        engine::Selection::built_in(&["gb50139", "owd"], &[(engine::RANGE_END, "strict")])
-            .unwrap()
-            .with_reaches(reaches)
+    let set = std::sync::Arc::new(load(CANAL_SET, &ChannelDomain).unwrap().set);
+    let pianc = std::sync::Arc::new(engine::built_in().lookup("pianc-wg141").unwrap().clone());
+    let sel = |reaches| engine::Selection {
+        sets: vec![pianc.clone(), set.clone()],
+        inputs: vec![(engine::SE_QUALITY.into(), "C".into())],
+        reaches,
     };
-    let both = gb(vec![canal(true), river.clone()]);
+    let both = sel(vec![canal(true), river.clone()]);
     let sized = engine::size(&both, &vessel).unwrap();
     // Motor vessel: 4L on the river, 3L (reduced) on the claimed canal. The line takes 4L.
     assert_eq!(sized.min_bend_radius_m, 4.0 * 110.0);
-    let only_canal = engine::size(&gb(vec![canal(true)]), &vessel).unwrap();
+    let only_canal = engine::size(&sel(vec![canal(true)]), &vessel).unwrap();
     assert_eq!(only_canal.min_bend_radius_m, 3.0 * 110.0);
     // Without the claim the canal takes the normal rule.
-    let unclaimed = engine::size(&gb(vec![canal(false)]), &vessel).unwrap();
+    let unclaimed = engine::size(&sel(vec![canal(false)]), &vessel).unwrap();
     assert_eq!(unclaimed.min_bend_radius_m, 4.0 * 110.0);
     // Stations of a line: two on the canal, two on the river.
     let stations: Vec<engine::Station> = [(0, 330.0), (0, 500.0), (1, 450.0), (1, 900.0)]
@@ -413,7 +448,7 @@ fn a_canal_and_a_river_reach_size_to_the_river_rmin_and_the_reduced_rule_applies
     let reduced: Vec<(&str, &str)> = trace
         .rows
         .iter()
-        .filter(|r| r.rule.as_deref() == Some("gb50139/A.3.2/min-bend-radius-reduced-motor"))
+        .filter(|r| r.rule.as_deref() == Some("canal-test/1/min-bend-radius-reduced-motor"))
         .map(|r| (r.object.as_deref().unwrap(), r.outcome.key()))
         .collect();
     assert_eq!(
@@ -429,14 +464,14 @@ fn a_canal_and_a_river_reach_size_to_the_river_rmin_and_the_reduced_rule_applies
     let normal: Vec<&str> = trace
         .rows
         .iter()
-        .filter(|r| r.rule.as_deref() == Some("gb50139/A.3.2/min-bend-radius-motor"))
+        .filter(|r| r.rule.as_deref() == Some("canal-test/1/min-bend-radius-motor"))
         .map(|r| r.outcome.key())
         .collect();
     assert_eq!(normal, ["not applicable", "not applicable", "pass", "pass"]);
     // The sizing trace names each reach with its claim, marked typed.
     let sizing = both.check(&vessel, &sized);
     assert!(sizing.rows.iter().any(|r| {
-        r.rule.as_deref() == Some("gb50139/A.3.2/min-bend-radius-reduced-motor")
+        r.rule.as_deref() == Some("canal-test/1/min-bend-radius-reduced-motor")
             && r.object
                 .as_deref()
                 .is_some_and(|o| o.contains("canal, reduced_radius_claim yes typed"))
