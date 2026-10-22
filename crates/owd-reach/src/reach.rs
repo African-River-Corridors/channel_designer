@@ -29,6 +29,10 @@ pub struct Planned {
     pub route: Route,
     /// What the name search found; empty with no river name.
     pub candidates: Vec<Candidate>,
+    /// The Overpass server that answered, for the provenance.
+    pub server: Option<String>,
+    /// Which server failed and which answered, when the first did not (#319); else empty.
+    pub notes: Vec<String>,
 }
 
 /// Pad a bounding box so a click near the edge still finds its waterway: 10 % of the larger span,
@@ -79,6 +83,8 @@ pub fn plan_points(
         },
         route,
         candidates,
+        server: ov.answered_by(),
+        notes: ov.notes(),
     })
 }
 
@@ -110,6 +116,8 @@ pub fn plan_trace(
         },
         route,
         candidates,
+        server: ov.answered_by(),
+        notes: ov.notes(),
     })
 }
 
@@ -141,6 +149,16 @@ pub fn reach_value(spec: &ReachSpec, route: &Route) -> Value {
     })
 }
 
+/// The route's provenance record: Overpass, its date and notice, and the server that answered.
+pub fn route_record(planned: &Planned, date: &str) -> Result<Value, ReachError> {
+    let mut rec =
+        provenance_record("osm-overpass", date, Mark::Default, false).map_err(ReachError::Input)?;
+    if let Some(s) = &planned.server {
+        rec["settings"] = json!({"server": crate::overpass::host(s)});
+    }
+    Ok(rec)
+}
+
 /// Record a planned reach in a document, with the OSM notice in its provenance (`date` is
 /// `YYYY-MM-DD`, given by the caller: this crate has no clock).
 pub fn record_reach(
@@ -148,8 +166,7 @@ pub fn record_reach(
     planned: &Planned,
     date: &str,
 ) -> Result<(), ReachError> {
-    let rec =
-        provenance_record("osm-overpass", date, Mark::Default, false).map_err(ReachError::Input)?;
+    let rec = route_record(planned, date)?;
     session
         .set_reach(reach_value(&planned.spec, &planned.route))
         .map_err(|e| ReachError::Input(e.to_string()))?;

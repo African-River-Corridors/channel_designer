@@ -12,7 +12,7 @@ use owd_format::geotiff::Dem;
 use owd_reach::banks::{BankParams, MaskBanks, window_bbox};
 use owd_reach::edgefit::{FitParams, SceneQuery, default_range, fit_to_scene, record_edge_fit};
 use owd_reach::level::{Datum, LevelParams, SWOT_SCIENCE_START, level_from_sources, record_level};
-use owd_reach::overpass::{DEFAULT_ENDPOINT, Overpass};
+use owd_reach::overpass::{Overpass, default_endpoints};
 use owd_reach::reach::{Planned, plan_points, record_reach};
 use owd_reach::river::{WholeRiver, record_river_reach, whole_river};
 use owd_reach::search::{OsmRef, RiverHit, RiverSearch};
@@ -35,7 +35,7 @@ pub struct ReachEndpoints {
 impl Default for ReachEndpoints {
     fn default() -> Self {
         ReachEndpoints {
-            overpass: DEFAULT_ENDPOINT.to_string(),
+            overpass: default_endpoints(),
             photon: owd_reach::search::PHOTON_ENDPOINT.to_string(),
             nominatim: owd_reach::search::NOMINATIM_ENDPOINT.to_string(),
             stac: owd_reach::sentinel2::SEARCH_ENDPOINT.to_string(),
@@ -491,6 +491,8 @@ impl AppState {
             "fits_stretches": self.fits_stretches(),
             "route": line.iter().map(|p| json!([p[0], p[1]])).collect::<Vec<_>>(),
             "length_m": plan.route.length_m,
+            "route_server": plan.server.as_deref().map(owd_reach::overpass::host),
+            "route_notes": plan.notes,
             "as_drawn": plan.route.as_drawn_count(),
             "jrc_tiles": jrc,
             "dem_tiles": dem,

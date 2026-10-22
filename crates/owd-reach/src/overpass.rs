@@ -3,13 +3,34 @@
 //! route, and only way ids reach the document.
 
 use crate::error::ReachError;
-use crate::fetch::Fetch;
+use crate::fetch::{Fetch, FetchError};
 use crate::geo::LonLat;
 use serde_json::Value;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 /// The public Overpass interpreter.
 pub const DEFAULT_ENDPOINT: &str = "https://overpass-api.de/api/interpreter";
+
+/// Public mirrors, tried in order when the main server fails (#319).
+pub const MIRRORS: &[&str] = &[
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+];
+
+/// The main server then the mirrors, as one setting: endpoints separated by commas.
+pub fn default_endpoints() -> String {
+    std::iter::once(DEFAULT_ENDPOINT)
+        .chain(MIRRORS.iter().copied())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// The host of an endpoint, for messages and the provenance.
+pub fn host(endpoint: &str) -> &str {
+    let rest = endpoint.split_once("://").map_or(endpoint, |(_, r)| r);
+    rest.split('/').next().unwrap_or(rest)
+}
 
 /// The waterway kinds OWD routes on.
 const KINDS: &str = "^(river|stream|canal)$";
@@ -70,28 +91,108 @@ fn regex_escape(s: &str) -> String {
     out
 }
 
-/// Overpass queries over a `Fetch`.
+/// Overpass queries over a `Fetch`. A server that fails (an HTTP error, a timeout, or a busy page
+/// instead of JSON) is asked once more, then the next server in the list is asked.
 pub struct Overpass<'a> {
     fetch: &'a dyn Fetch,
-    endpoint: String,
+    endpoints: Vec<String>,
+    /// What happened, in order: which server failed and why, which answered.
+    log: RefCell<Vec<String>>,
+    answered: RefCell<Option<String>>,
+}
+
+/// Worth asking again or asking another server: the server failed, not the request.
+fn retryable(e: &FetchError) -> bool {
+    matches!(e, FetchError::Failed { .. })
 }
 
 impl<'a> Overpass<'a> {
+    /// The main server, then the public mirrors.
     pub fn new(fetch: &'a dyn Fetch) -> Self {
-        Self::with_endpoint(fetch, DEFAULT_ENDPOINT)
+        Self::with_endpoint(fetch, &default_endpoints())
     }
 
-    /// Use another Overpass server (there are public mirrors).
-    pub fn with_endpoint(fetch: &'a dyn Fetch, endpoint: &str) -> Self {
+    /// Other Overpass servers: one, or several separated by commas, tried in that order.
+    pub fn with_endpoint(fetch: &'a dyn Fetch, endpoints: &str) -> Self {
+        let mut list: Vec<String> = endpoints
+            .split(',')
+            .map(str::trim)
+            .filter(|e| !e.is_empty())
+            .map(str::to_string)
+            .collect();
+        if list.is_empty() {
+            list.push(DEFAULT_ENDPOINT.to_string());
+        }
         Overpass {
             fetch,
-            endpoint: endpoint.to_string(),
+            endpoints: list,
+            log: RefCell::new(Vec::new()),
+            answered: RefCell::new(None),
         }
     }
 
-    /// The request URL of a query.
+    /// The request URL of a query on the first server.
     pub fn url(&self, query: &str) -> String {
-        format!("{}?data={}", self.endpoint, urlencode(query))
+        Self::url_at(&self.endpoints[0], query)
+    }
+
+    fn url_at(endpoint: &str, query: &str) -> String {
+        format!("{endpoint}?data={}", urlencode(query))
+    }
+
+    /// The server that answered the last query.
+    pub fn answered_by(&self) -> Option<String> {
+        self.answered.borrow().clone()
+    }
+
+    /// What happened when a server failed, for the user: empty when the first server answered
+    /// every query.
+    pub fn notes(&self) -> Vec<String> {
+        self.log.borrow().clone()
+    }
+
+    /// Ask each server in turn, each twice at most.
+    fn ask(&self, query: &str) -> Result<Vec<u8>, ReachError> {
+        let mut last: Option<ReachError> = None;
+        for (i, endpoint) in self.endpoints.iter().enumerate() {
+            let url = Self::url_at(endpoint, query);
+            for _ in 0..2 {
+                match self.fetch.get(&url) {
+                    // Overpass answers JSON; a busy server can send an HTML page with status 200.
+                    Ok(body) if body.trim_ascii_start().first() == Some(&b'{') => {
+                        if i > 0 || last.is_some() {
+                            self.log
+                                .borrow_mut()
+                                .push(format!("{} answered", host(endpoint)));
+                        }
+                        *self.answered.borrow_mut() = Some(endpoint.clone());
+                        return Ok(body);
+                    }
+                    Ok(_) => {
+                        last = Some(ReachError::Parse(format!(
+                            "{} sent a page instead of JSON (busy)",
+                            host(endpoint)
+                        )));
+                    }
+                    Err(e) if retryable(&e) => last = Some(ReachError::Fetch(e)),
+                    Err(e) => return Err(e.into()),
+                }
+            }
+            if let Some(e) = &last {
+                self.log
+                    .borrow_mut()
+                    .push(format!("{} failed ({e})", host(endpoint)));
+            }
+        }
+        let tried: Vec<&str> = self.endpoints.iter().map(|e| host(e)).collect();
+        Err(match last {
+            Some(ReachError::Fetch(f)) => ReachError::Fetch(FetchError::Failed {
+                url: tried.join(", "),
+                reason: format!("no Overpass server answered ({f})"),
+            }),
+            Some(e) => e,
+            None => ReachError::Input("no Overpass server to ask".into()),
+        })
     }
 
     /// The query for rivers, streams and canals named `name` (any case).
@@ -115,18 +216,18 @@ impl<'a> Overpass<'a> {
         if name.trim().is_empty() {
             return Err(ReachError::Input("the river name is empty".into()));
         }
-        let body = self.fetch.get(&self.url(&Self::search_query(name)))?;
+        let body = self.ask(&Self::search_query(name))?;
         parse_candidates(&body)
     }
 
     /// The raw answer to a query.
     pub fn get(&self, query: &str) -> Result<Vec<u8>, ReachError> {
-        Ok(self.fetch.get(&self.url(query))?)
+        self.ask(query)
     }
 
     /// Every waterway in a bounding box.
     pub fn waterways(&self, bbox: [f64; 4]) -> Result<Vec<Way>, ReachError> {
-        let body = self.fetch.get(&self.url(&Self::waterways_query(bbox)))?;
+        let body = self.ask(&Self::waterways_query(bbox))?;
         parse_ways(&body)
     }
 }
@@ -256,6 +357,100 @@ mod tests {
         let f2 = ReplayFetch::new()
             .with_response(&ov.url(&Overpass::search_query("Sassandra")), body.to_vec());
         assert_eq!(Overpass::new(&f2).search_rivers("Sassandra").unwrap(), c);
+    }
+
+    /// A server that fails with an HTTP status, then (for the other hosts) replays.
+    struct Down<'a> {
+        host: &'a str,
+        status: &'a str,
+        then: ReplayFetch,
+    }
+    impl Fetch for Down<'_> {
+        fn get(&self, url: &str) -> Result<Vec<u8>, FetchError> {
+            if url.contains(self.host) {
+                return Err(FetchError::Failed {
+                    url: url.into(),
+                    reason: format!("http status: {}", self.status),
+                });
+            }
+            self.then.get(url)
+        }
+        fn get_range(&self, url: &str, s: u64, l: u64) -> Result<Vec<u8>, FetchError> {
+            self.then.get_range(url, s, l)
+        }
+    }
+
+    const NET: &[u8] = br#"{"elements":[{"type":"way","id":1,"nodes":[10,11],"geometry":[{"lat":5,"lon":-6},{"lat":5,"lon":-5.99}],"tags":{"waterway":"river"}}]}"#;
+
+    #[test]
+    fn a_failing_server_is_asked_once_more_then_the_mirror_answers_and_says_so() {
+        let f = Down {
+            host: "overpass-api.de",
+            status: "502",
+            then: ReplayFetch::new()
+                .with_response_containing("overpass.kumi.systems", NET.to_vec()),
+        };
+        let ov = Overpass::new(&f);
+        let ways = ov.waterways([-6.1, 4.9, -5.9, 5.1]).unwrap();
+        assert_eq!(ways.len(), 1);
+        assert_eq!(ov.answered_by().as_deref(), Some(MIRRORS[0]));
+        let notes = ov.notes();
+        assert_eq!(notes.len(), 2, "{notes:?}");
+        assert!(
+            notes[0].starts_with("overpass-api.de failed") && notes[0].contains("502"),
+            "{notes:?}"
+        );
+        assert_eq!(notes[1], "overpass.kumi.systems answered");
+    }
+
+    #[test]
+    fn a_busy_page_counts_as_a_failure_and_when_all_fail_every_server_is_named() {
+        let f = ReplayFetch::new()
+            .with_response_containing("a.example", b"<html>too busy</html>".to_vec())
+            .with_response_containing("b.example", NET.to_vec());
+        let ov = Overpass::with_endpoint(
+            &f,
+            "https://a.example/api/interpreter, https://b.example/api/interpreter",
+        );
+        ov.waterways([-6.1, 4.9, -5.9, 5.1]).unwrap();
+        assert_eq!(f.requests().len(), 3, "a twice, then b");
+        assert_eq!(
+            ov.answered_by().as_deref(),
+            Some("https://b.example/api/interpreter")
+        );
+        let down = Down {
+            host: "example",
+            status: "504",
+            then: ReplayFetch::new(),
+        };
+        let e = Overpass::with_endpoint(&down, "https://a.example/x,https://b.example/x")
+            .waterways([0.0, 0.0, 1.0, 1.0])
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains("a.example, b.example") && e.contains("no Overpass server answered"),
+            "{e}"
+        );
+        // A request the server rejects for good is not sent to the mirrors.
+        let gone = ReplayFetch::new();
+        let ov = Overpass::new(&gone);
+        assert!(ov.waterways([0.0, 0.0, 1.0, 1.0]).is_err());
+        assert_eq!(gone.requests().len(), 1);
+    }
+
+    #[test]
+    fn the_setting_takes_one_server_or_a_list_and_names_hosts() {
+        assert_eq!(default_endpoints().split(',').count(), 1 + MIRRORS.len());
+        assert_eq!(
+            host("https://overpass-api.de/api/interpreter"),
+            "overpass-api.de"
+        );
+        let f = ReplayFetch::new();
+        assert!(
+            Overpass::with_endpoint(&f, "")
+                .url("x")
+                .starts_with(DEFAULT_ENDPOINT)
+        );
     }
 
     #[test]

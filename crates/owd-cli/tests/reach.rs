@@ -707,3 +707,94 @@ fn an_osm_id_makes_a_study_of_the_whole_river_from_its_mouth_to_its_upstream_end
     assert_eq!(bad.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&bad.stderr).contains("not an OSM waterway"));
 }
+
+/// A server that answers every request with 502 Bad Gateway, counting them.
+fn serve_502() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = count.clone();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/api/interpreter", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut s) = stream else { continue };
+            let mut buf = [0u8; 8192];
+            let _ = s.read(&mut buf);
+            seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let _ = s.write_all(
+                b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            );
+        }
+    });
+    (url, count)
+}
+
+#[test]
+fn when_the_first_overpass_server_fails_a_mirror_answers_and_the_study_says_which() {
+    let (down, asked) = serve_502();
+    let up = serve();
+    let dir = work_dir("mirror");
+    let file = dir.join("reach.owd");
+    let servers = format!("{down},{up}");
+    let o = run(&[
+        "reach",
+        file.to_str().unwrap(),
+        "--start",
+        "-6.0,5.0",
+        "--end",
+        "-5.94,5.0",
+        "--overpass",
+        &servers,
+        "--json",
+    ]);
+    assert_eq!(
+        o.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let r: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!(
+        r["ways"],
+        serde_json::json!([101, 103, 104]),
+        "the route is found"
+    );
+    let down_host = down.split('/').nth(2).unwrap();
+    let up_host = up.split('/').nth(2).unwrap();
+    assert_eq!(r["overpass"]["server"], up_host);
+    let notes = r["overpass"]["notes"].as_array().unwrap();
+    assert!(
+        notes[0]
+            .as_str()
+            .unwrap()
+            .starts_with(&format!("{down_host} failed")),
+        "{notes:?}"
+    );
+    assert!(notes[0].as_str().unwrap().contains("502"), "{notes:?}");
+    assert_eq!(notes[1], format!("{up_host} answered"));
+    assert_eq!(
+        asked.load(std::sync::atomic::Ordering::SeqCst),
+        2,
+        "asked once more, then the mirror"
+    );
+    assert_eq!(
+        doc(&file)["provenance"]["route"]["settings"]["server"],
+        up_host
+    );
+    // The plain message names both.
+    let h = run(&[
+        "reach",
+        file.to_str().unwrap(),
+        "--start",
+        "-6.0,5.0",
+        "--end",
+        "-5.94,5.0",
+        "--overpass",
+        &servers,
+    ]);
+    let out = String::from_utf8_lossy(&h.stdout);
+    assert!(
+        out.contains(&format!("Overpass: {down_host} failed"))
+            && out.contains(&format!("{up_host} answered")),
+        "{out}"
+    );
+}
