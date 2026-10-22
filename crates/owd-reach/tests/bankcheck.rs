@@ -182,3 +182,36 @@ fn a_repair_keeps_to_the_step_limit_and_flags_what_it_took_in() {
     assert!(steep, "the case must need the limit");
 }
 }
+
+fn length(line: &[P]) -> f64 {
+    line.windows(2)
+        .map(|w| ((w[1][0] - w[0][0]).powi(2) + (w[1][1] - w[0][1]).powi(2)).sqrt())
+        .sum()
+}
+
+t! {
+    /// Issue #373, offline, on the whole-river Sentinel-2 banks of a run of 2026-10-22 (every 4th
+    /// vertex), whose centreline came out 178.7 km for a 144 km route: an 11 km bank gap across a
+    /// bend, and mid-line loops at bends and junctions. Without the gap rule and the loop cut these
+    /// banks give a 215 km centreline for a 134 km seed; with them, about the seed's length.
+    fn the_recorded_whole_river_gives_a_centreline_about_as_long_as_its_seed() {
+        let fx: serde_json::Value =
+            serde_json::from_str(include_str!("data/midline-tangle.json")).unwrap();
+        let pts = |k: &str| -> Vec<P> {
+            fx[k]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|p| [p[0].as_f64().unwrap(), p[1].as_f64().unwrap()])
+                .collect()
+        };
+        let (left, right, seed) = (pts("left"), pts("right"), pts("seed"));
+        let p = CheckParams {
+            max_step_m: Some(1.5),
+            ..CheckParams::at_step(5.0)
+        };
+        let c = check_and_repair(&left, &right, &seed, &p).unwrap();
+        let ratio = length(&c.centreline) / length(&seed);
+        assert!(ratio < 1.1, "the centreline is {ratio} times the seed");
+    }
+}

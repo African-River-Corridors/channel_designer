@@ -1,7 +1,7 @@
 # Slow tests: nightly, not per pull request
 
 Issue #151 (build-speed fix 3). The `test` job runs `tools/gates.sh`, which runs the Rust tests with
-`cargo nextest run --profile pr`. That profile leaves out the 26 slowest tests (20 s or more each in
+`cargo nextest run --profile pr`. That profile leaves out the 27 slowest tests (20 s or more each in
 a debug build, about 920 s of test time together). `.github/workflows/nightly.yml` runs **every** test with
 `--profile nightly`, daily and on demand (`workflow_dispatch`). The list lives in `.config/nextest.toml`.
 
@@ -42,6 +42,7 @@ To move a test, edit the filter in `.config/nextest.toml` and the table below. T
 | owd-format::volumes: `volumes_needs_a_water_level_and_a_fresh_alignment` | 22 s | Long run on the full river or DEM in a debug build. |
 | owd-format::volumes: `volumes_refuses_without_a_dem_and_names_the_dem_it_cannot_read` | 21 s | Long run on the full river or DEM in a debug build. |
 | owd-format::alignment: `two_methods_give_two_options_and_a_rerun_replaces_only_its_own` | 20 s | Long run on the full river or DEM in a debug build. |
+| owd-reach::bankcheck: `the_recorded_whole_river_gives_a_centreline_about_as_long_as_its_seed` | 30 s | The bank checks on 144 km of recorded banks (issue #373); the gap rule's fast guard is `midline::tests::a_gap_in_a_bank_does_not_tangle_the_mid_line`. |
 
 Times are from one local nextest run (10 cores, tests in parallel, so inflated); CI times are in the pull request.
 Python tests (about 33 s in total) all still run in the pull-request job.

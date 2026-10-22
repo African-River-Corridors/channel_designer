@@ -347,6 +347,10 @@ fn seg_cross(a: P2, b: P2, c: P2, d: P2) -> bool {
         && ((d3 > 0.0 && d4 < 0.0) || (d3 < 0.0 && d4 > 0.0))
 }
 
+/// The longest loop cut from a centreline, in stations: 2000, 10 km at the 5 m step. The worst
+/// tangle of the whole Sassandra run was 6.7 km (issue #373).
+pub const CENTRELINE_LOOP_STATIONS: usize = 2000;
+
 /// Cut the loops out of a line: where segment `i` crosses a later segment `j`, the vertices between
 /// them go and the crossing point joins the two. Only crossings within `window` segments are sought
 /// (an offset line loops locally, at a bend tighter than its offset).
@@ -768,7 +772,12 @@ fn check_once(
     let left2 = rebuild(left, &lo, &lf, &bad_l);
     let right2 = rebuild(right, &ro, &rf, &bad_r);
     let crossed = lines_cross(&left2, &right2).is_some();
-    let centreline = midline(&left2, &right2, &reference, p.station_m);
+    // Where the normals of a tight bend cross, or the banks are poor, the mid-line can loop back on
+    // itself; a loop is no part of the river (issue #373).
+    let centreline = cut_loops(
+        &midline(&left2, &right2, &reference, p.station_m),
+        CENTRELINE_LOOP_STATIONS,
+    );
     let widths: Vec<f64> = bank_offsets(&centreline, &left2, &right2)
         .iter()
         .map(|o| match o {

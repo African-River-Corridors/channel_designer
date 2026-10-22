@@ -113,8 +113,39 @@ pub struct SegIndex<'a> {
     cells: Vec<Vec<u32>>,
 }
 
+/// A bank segment longer than this many times the bank's median segment is a gap (issue #373)...
+pub const GAP_FACTOR: f64 = 20.0;
+/// ...and at least this long (m). Provisional. The gaps of the whole Sassandra run were 1.75 to
+/// 11 km; a fault the checks repair (a bank that spikes out or dives across a river up to 500 m
+/// wide) has edges up to about 1.4 km, and stays a bank. A bank drawn by hand with even long
+/// segments has no gap at all (the median rule).
+pub const GAP_MIN_M: f64 = 1500.0;
+
+/// The length over which a segment of `line` is a gap: two vertices far apart joined by a straight
+/// chord, which may cut across land and past the other bank.
+pub fn gap_length(line: &[Pt]) -> f64 {
+    let mut seg: Vec<f64> = line.windows(2).map(|w| dist(w[0], w[1])).collect();
+    if seg.is_empty() {
+        return f64::INFINITY;
+    }
+    seg.sort_by(f64::total_cmp);
+    (GAP_FACTOR * seg[seg.len() / 2]).max(GAP_MIN_M)
+}
+
+/// The index of a bank, without its gaps ([`gap_length`]), for the mid-line: a normal that meets
+/// only a gap meets no bank, so its station keeps its place. The checks read every segment: with
+/// a gap left out, a normal would read through it to the bank beyond.
+pub fn bank_index(line: &[Pt], cell: f64) -> SegIndex<'_> {
+    SegIndex::with_max_segment(line, cell, gap_length(line))
+}
+
 impl<'a> SegIndex<'a> {
     pub fn new(line: &'a [Pt], cell: f64) -> SegIndex<'a> {
+        Self::with_max_segment(line, cell, f64::INFINITY)
+    }
+
+    /// The index of the segments of `line` no longer than `max_segment`.
+    pub fn with_max_segment(line: &'a [Pt], cell: f64, max_segment: f64) -> SegIndex<'a> {
         let (mut lo, mut hi) = ([f64::MAX; 2], [f64::MIN; 2]);
         for p in line {
             for k in 0..2 {
@@ -134,6 +165,9 @@ impl<'a> SegIndex<'a> {
         for (i, w) in line.windows(2).enumerate() {
             let (a, b) = (w[0], w[1]);
             let len = dist(a, b);
+            if len > max_segment {
+                continue;
+            }
             let d = if len > 0.0 {
                 [(b[0] - a[0]) / len, (b[1] - a[1]) / len]
             } else {
@@ -297,7 +331,7 @@ fn side_hits(
 /// meets the bank on neither side within [`MAX_RAY_M`]).
 pub fn bank_offsets(centre: &[Pt], left: &[Pt], right: &[Pt]) -> Vec<(Option<f64>, Option<f64>)> {
     let cell = cell_for(left, right);
-    let (li, ri) = (SegIndex::new(left, cell), SegIndex::new(right, cell));
+    let (li, ri) = (bank_index(left, cell), bank_index(right, cell));
     let nrm = arc_normals(centre, tangent_half(centre, &li, &ri));
     let mut buf = Vec::new();
     centre
@@ -334,7 +368,7 @@ pub fn midline(left: &[Pt], right: &[Pt], seed: &[Pt], station_m: f64) -> Vec<Pt
         return seed.to_vec();
     }
     let cell = cell_for(left, right);
-    let (li, ri) = (SegIndex::new(left, cell), SegIndex::new(right, cell));
+    let (li, ri) = (bank_index(left, cell), bank_index(right, cell));
     let mut line = resample(seed, station_m);
     let mut buf = Vec::new();
     // Normals over half the river's width at least, so a wide river does not swing them.
@@ -365,7 +399,7 @@ pub fn midline(left: &[Pt], right: &[Pt], seed: &[Pt], station_m: f64) -> Vec<Pt
 /// The median width across a line's stations, by the first crossings either side (`None` with none).
 pub fn median_width(line: &[Pt], left: &[Pt], right: &[Pt]) -> Option<f64> {
     let cell = cell_for(left, right);
-    let (li, ri) = (SegIndex::new(left, cell), SegIndex::new(right, cell));
+    let (li, ri) = (bank_index(left, cell), bank_index(right, cell));
     median_width_on(line, &li, &ri)
 }
 
@@ -483,6 +517,62 @@ mod tests {
         fn flatten_pairs(self) -> Vec<(f64, f64)> {
             self.filter_map(|(a, b)| Some((a?, b?))).collect()
         }
+    }
+
+    /// Issue #373: a bank with a gap (two vertices far apart, a straight chord across land) is not
+    /// a bank. On the whole Sassandra run the right bank had an 11 km gap across a bend, the
+    /// mid-line moved its stations halfway to the chord, and 6.7 km of centreline tangled in a
+    /// 600 m box (93 self-crossings). A station whose normal meets only a gap keeps its place.
+    #[test]
+    fn a_gap_in_a_bank_does_not_tangle_the_mid_line() {
+        // A meander 80 m wide (amplitude 600 m, wavelength 2.5 km) over 6 km, a vertex every 10 m.
+        let bank = |off: f64| -> Vec<Pt> {
+            (0..=600)
+                .map(|i| {
+                    let x = i as f64 * 10.0;
+                    [x, off + 600.0 * libm::sin(x / 400.0)]
+                })
+                .collect()
+        };
+        let (left, full_right, centre) = (bank(40.0), bank(-40.0), bank(0.0));
+        // The right bank loses x = 2 to 4 km: one straight segment across the bend.
+        let right: Vec<Pt> = full_right
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i <= 200 || *i >= 400)
+            .map(|(_, p)| *p)
+            .collect();
+        let m = midline(&left, &right, &centre, 10.0);
+        let ratio = arc(&m).last().unwrap() / arc(&centre).last().unwrap();
+        assert!(ratio < 1.05, "the mid-line is {ratio} times the river");
+        // Every station stays within half the river's width of its middle.
+        let worst = m
+            .iter()
+            .map(|p| {
+                centre
+                    .iter()
+                    .map(|q| dist(*p, *q))
+                    .fold(f64::INFINITY, f64::min)
+            })
+            .fold(0.0, f64::max);
+        assert!(
+            worst < 40.0,
+            "a station is {worst} m off the river's middle"
+        );
+    }
+
+    #[test]
+    fn a_bank_with_even_long_segments_has_no_gap() {
+        // A user's bank drawn with a vertex every 300 m: its segments are all alike, so none is a gap.
+        let left: Vec<Pt> = (0..=10).map(|i| [i as f64 * 300.0, 50.0]).collect();
+        let right: Vec<Pt> = (0..=10).map(|i| [i as f64 * 300.0, 0.0]).collect();
+        let seed: Vec<Pt> = vec![[0.0, 10.0], [3000.0, 10.0]];
+        let m = midline(&left, &right, &seed, 20.0);
+        assert!(
+            (m[m.len() / 2][1] - 25.0).abs() < 1e-6,
+            "{:?}",
+            m[m.len() / 2]
+        );
     }
 
     #[test]
