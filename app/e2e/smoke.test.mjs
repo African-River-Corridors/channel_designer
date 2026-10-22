@@ -571,11 +571,12 @@ describe("Open Waterway Designer app smoke test", () => {
       assert.deepEqual(searches.slice(before), ["Ank"], "one request per pause, none under 3 letters");
       await (await browser.$(`${ankobra} button`)).click();
       await until("the whole river", async () => /km/.test((await text("reach-length").catch(() => "")) ?? ""), 60000);
-      // Saved at once in its own folder, with no dialog (#322).
-      const today = new Date().toISOString().slice(0, 10);
+      // Saved at once in its own folder, named for the minute it started and its river, with no
+      // dialog (#322).
       const studies = () => (fs.existsSync(PROJECTS) ? fs.readdirSync(PROJECTS).filter((d) => d.includes("Ankobra River")) : []);
       await until("the study's folder", async () => studies().length === 1);
-      assert.deepEqual(studies(), [`${today} Ankobra River km 0-166`]);
+      assert.match(studies()[0], /^\d{4}-\d{2}-\d{2} \d{4} Ankobra River$/);
+      const first = studies()[0];
       assert.ok(fs.existsSync(path.join(PROJECTS, studies()[0], `${studies()[0]}.owd`)));
       assert.doesNotMatch(await fileLabel(), /\(unsaved\)/);
       assert.equal(await (await browser.$("[data-testid=reach-start]")).getValue(), "-2.26885, 4.89839");
@@ -586,14 +587,16 @@ describe("Open Waterway Designer app smoke test", () => {
       await (await browser.$("[data-testid=reach-route]")).click();
       await until("the shorter reach", async () => Number((await text("reach-length")).match(/([\d.]+) km/)[1]) < whole);
       assert.equal(searches.length, asked);
-      // The study held only its reach: its folder follows the new kilometres, and no other is left.
-      await until("the folder renamed", async () => studies().length === 1 && !studies()[0].endsWith("km 0-166"));
-      assert.match(studies()[0], /^\d{4}-\d{2}-\d{2} Ankobra River km 0-\d+$/);
+      // The study held only its reach: the new cut keeps its folder, and no other is made.
+      assert.deepEqual(studies(), [first]);
+      assert.ok(fs.existsSync(path.join(PROJECTS, first, `${first}.owd`)));
       // A reach inside one DEM tile: Fetch DEM saves into the study's folder and never asks first.
+      const lower = await text("reach-length");
       await (await browser.$("[data-testid=reach-start]")).setValue("-2.1533567, 5.3025015");
       await (await browser.$("[data-testid=reach-end]")).setValue("-2.1349229, 5.7294889");
       await (await browser.$("[data-testid=reach-route]")).click();
-      await until("the upper reach", async () => /km \d+-166$/.test(studies()[0] ?? ""), 30000);
+      await until("the upper reach", async () => (await text("reach-length").catch(() => lower)) !== lower, 30000);
+      assert.deepEqual(studies(), [first]);
       answer("dem-mirror.txt", path.resolve(here, "../../crates/owd-cli/tests/fixtures/mirror"));
       await (await browser.$("[data-testid=reach-fetch-dem]")).click();
       const study = () => path.join(PROJECTS, studies()[0], `${studies()[0]}.owd`);

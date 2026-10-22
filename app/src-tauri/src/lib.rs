@@ -741,8 +741,9 @@ fn projects_dir() -> Result<PathBuf, String> {
     Ok(PathBuf::from(home).join(owd_shell::projects::DEFAULT_PROJECTS))
 }
 
-/// The file of the study about to be replaced, when it may hand its folder to the new one: a study
-/// saved in the projects folder that holds nothing but its reach, alone in its folder.
+/// The file of the study about to be replaced, when the new one may take its folder: a study saved
+/// in the projects folder that holds nothing but its reach, alone in its folder. A reach cut again
+/// out of the same river keeps its folder and name.
 fn handed_over(guard: &AppState) -> Option<PathBuf> {
     let file = guard.path()?;
     let dir = file.parent()?;
@@ -763,37 +764,49 @@ fn autosave(guard: &mut AppState) -> Result<(), String> {
     Ok(())
 }
 
-/// Save a new study at once, in its own folder in the projects folder, named for its date, river
-/// and kilometres (#322). A study that held only its reach hands its folder over.
+/// Save a new study at once, in its own folder in the projects folder, named for the minute it
+/// started (local time) and its river: `2026-10-22 1435 Rhine`, with a suffix when the name is
+/// taken (#322). A study of the same river that held only its reach hands its folder over.
 fn autosave_new(guard: &mut AppState, previous: Option<PathBuf>) -> Result<(), String> {
-    let date = today();
-    let name = guard.study_folder_name(&date).unwrap_or_else(|| {
-        let title = guard.snapshot()["document"]["project"]["title"]
-            .as_str()
-            .unwrap_or("Study")
-            .to_string();
-        owd_shell::projects::safe_name(&format!("{date} {title}"))
-    });
+    let river = guard.study_river();
     let projects = projects_dir()?;
     std::fs::create_dir_all(&projects)
         .map_err(|e| format!("cannot create {}: {e}", projects.display()))?;
-    let mut folder = projects.join(&name);
-    if let Some(old) = previous.as_deref() {
-        let old_dir = old.parent().unwrap_or(&projects).to_path_buf();
-        if old_dir == folder || !folder.exists() {
-            std::fs::rename(&old_dir, &folder)
-                .map_err(|e| format!("cannot rename {}: {e}", old_dir.display()))?;
-            let _ = std::fs::remove_file(folder.join(old.file_name().unwrap_or_default()));
+    let same_river = |dir: &Path| {
+        dir.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .is_some_and(|n| {
+                let n = n.split(" (").next().unwrap_or(&n).to_string();
+                n.ends_with(&format!(" {}", owd_shell::projects::safe_name(&river)))
+            })
+    };
+    let reused = previous.as_deref().and_then(|old| {
+        let dir = old.parent()?;
+        same_river(dir).then(|| {
+            let _ = std::fs::remove_file(old);
+            dir.to_path_buf()
+        })
+    });
+    let folder = match reused {
+        Some(dir) => dir,
+        None => {
+            let started = chrono::Local::now().format("%Y-%m-%d %H%M").to_string();
+            let name = owd_shell::projects::study_folder_name(&started, &river);
+            let mut folder = projects.join(&name);
+            let mut n = 2;
+            while folder.exists() {
+                folder = projects.join(format!("{name} ({n})"));
+                n += 1;
+            }
+            folder
         }
-    }
-    let mut n = 2;
-    while folder.exists() && std::fs::read_dir(&folder).map_or(true, |mut d| d.next().is_some()) {
-        folder = projects.join(format!("{name} ({n})"));
-        n += 1;
-    }
+    };
     std::fs::create_dir_all(&folder)
         .map_err(|e| format!("cannot create {}: {e}", folder.display()))?;
-    let path = folder.join(format!("{name}.{SAVE_EXTENSION}"));
+    let stem = folder
+        .file_name()
+        .map_or_else(|| "study".to_string(), |n| n.to_string_lossy().into_owned());
+    let path = folder.join(format!("{stem}.{SAVE_EXTENSION}"));
     let text = guard.save_text_for(&path);
     write_file(&path, &text)?;
     guard.saved(&path);

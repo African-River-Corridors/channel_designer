@@ -1,9 +1,9 @@
 //! Where a study from a river is saved (#322): its own folder in the projects folder, named
-//! `<YYYY-MM-DD> <River> km <start>-<end>`, holding the document and every download. The names are
-//! made here; the desktop shell does the file work.
+//! `<YYYY-MM-DD HHMM> <River>` by the minute the study started (the reach's chainage can change),
+//! holding the document and every download. The names are made here; the desktop shell does the
+//! file work and reads the clock.
 
 use crate::state::AppState;
-use owd_reach::geo::haversine_m;
 
 /// The default projects folder, under the user's home: `~/Documents/Open Waterway Designer`.
 pub const DEFAULT_PROJECTS: &str = "Documents/Open Waterway Designer";
@@ -39,59 +39,24 @@ pub fn safe_name(s: &str) -> String {
     }
 }
 
-/// `2026-10-22 Rhine km 0-1006`: the date, the river and the reach's kilometres, rounded.
-pub fn study_folder_name(date: &str, river: &str, from_km: f64, to_km: f64) -> String {
-    let (a, b) = if from_km <= to_km {
-        (from_km, to_km)
-    } else {
-        (to_km, from_km)
-    };
-    safe_name(&format!(
-        "{date} {river} km {:.0}-{:.0}",
-        a.max(0.0),
-        b.max(0.0)
-    ))
-}
-
-/// The distance along `line` from its first point to the vertex nearest `p`, in kilometres.
-fn km_along(line: &[[f64; 2]], p: [f64; 2]) -> f64 {
-    let mut run = 0.0;
-    let mut best = (f64::INFINITY, 0.0);
-    for (i, q) in line.iter().enumerate() {
-        if i > 0 {
-            run += haversine_m(line[i - 1], *q);
-        }
-        let d = haversine_m(*q, p);
-        if d < best.0 {
-            best = (d, run);
-        }
-    }
-    best.1 / 1000.0
+/// `2026-10-22 1435 Rhine`: the minute the study started (`YYYY-MM-DD HHMM`, local time) and the
+/// river.
+pub fn study_folder_name(started: &str, river: &str) -> String {
+    safe_name(&format!("{started} {river}"))
 }
 
 impl AppState {
-    /// The folder name of the study this session holds, for its date: the river and the reach's
-    /// kilometres from the river's mouth when it was chosen from the search, else from the route's
-    /// start. `None` with no reach planned.
-    pub fn study_folder_name(&self, date: &str) -> Option<String> {
+    /// The river of the study this session holds, for its folder name: the river chosen from the
+    /// search, else the river the reach names, else the study's title.
+    pub fn study_river(&self) -> String {
         let view = self.reach_view();
-        let route: Vec<[f64; 2]> = serde_json::from_value(view["route"].clone()).ok()?;
-        let length_km = view["length_m"].as_f64().unwrap_or(0.0) / 1000.0;
         let doc = self.session().document();
-        let river = view["river"]["name"]
+        view["river"]["name"]
             .as_str()
             .or(doc["reach"]["river"].as_str())
             .or(doc["project"]["title"].as_str())
             .unwrap_or("Study")
-            .to_string();
-        let (a, b) = match serde_json::from_value::<Vec<[f64; 2]>>(view["river"]["line"].clone()) {
-            Ok(line) if !line.is_empty() && !route.is_empty() => (
-                km_along(&line, route[0]),
-                km_along(&line, route[route.len() - 1]),
-            ),
-            _ => (0.0, length_km),
-        };
-        Some(study_folder_name(date, &river, a, b))
+            .to_string()
     }
 }
 
@@ -103,12 +68,16 @@ mod tests {
     #[test]
     fn names_follow_the_pattern_and_drop_unsafe_characters() {
         assert_eq!(
-            study_folder_name("2026-10-22", "Rhine", 0.0, 1005.8),
-            "2026-10-22 Rhine km 0-1006"
+            study_folder_name("2026-10-22 1435", "Rhine"),
+            "2026-10-22 1435 Rhine"
         );
         assert_eq!(
-            study_folder_name("2026-10-22", "Ankobra River", 120.4, 18.0),
-            "2026-10-22 Ankobra River km 18-120"
+            study_folder_name("2026-10-22 0905", "Ankobra River"),
+            "2026-10-22 0905 Ankobra River"
+        );
+        assert_eq!(
+            study_folder_name("2026-10-22 1435", "a/b\\c:d*e?f\"g<h>i|j"),
+            "2026-10-22 1435 a b c d e f g h i j"
         );
         assert_eq!(
             safe_name(" a/b\\c:d*e?f\"g<h>i|j\u{7}k. "),
@@ -120,14 +89,5 @@ mod tests {
             safe_name("Côte d'Ivoire  —  Sassandra"),
             "Côte d'Ivoire — Sassandra"
         );
-    }
-
-    #[test]
-    fn kilometres_count_from_the_start_of_the_river_line() {
-        // About 1.1 km between points along the equator.
-        let line = [[0.0, 0.0], [0.01, 0.0], [0.02, 0.0], [0.03, 0.0]];
-        assert!(km_along(&line, [0.0, 0.0]).abs() < 1e-9);
-        let k = km_along(&line, [0.0201, 0.0001]);
-        assert!((k - 2.224).abs() < 0.01, "{k}");
     }
 }
