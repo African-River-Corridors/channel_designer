@@ -114,42 +114,56 @@ fn a_bad_kind_or_format_is_refused() {
 }
 
 #[test]
-fn kind_all_writes_every_kind() {
+fn kind_all_and_format_all_write_twelve_files_for_both_examples() {
     let d = work_dir("kinds");
-    let doc = d.join("river-example.owd");
-    let o = run(&[
-        "report",
-        doc.to_str().unwrap(),
-        "--kind",
-        "all",
-        "--date",
-        "2026-10-22",
-        "-o",
-        d.to_str().unwrap(),
-        "--json",
-    ]);
-    assert_eq!(
-        o.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&o.stderr)
-    );
-    let v: Value = serde_json::from_slice(&o.stdout).unwrap();
-    let kinds: Vec<&str> = v["reports"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|r| r["kind"].as_str().unwrap())
-        .collect();
-    assert_eq!(
-        kinds,
-        owd_report::Kind::ALL
+    let ex = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+    std::fs::copy(
+        ex.join("synthetic-river.owd"),
+        d.join("synthetic-river.owd"),
+    )
+    .unwrap();
+    for (doc, out) in [
+        ("river-example.owd", "web"),
+        ("synthetic-river.owd", "synthetic"),
+    ] {
+        let doc = d.join(doc);
+        let out = d.join(out);
+        let o = run(&[
+            "report",
+            doc.to_str().unwrap(),
+            "--kind",
+            "all",
+            "--format",
+            "all",
+            "--date",
+            "2026-10-22",
+            "-o",
+            out.to_str().unwrap(),
+            "--json",
+        ]);
+        assert_eq!(
+            o.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&o.stderr)
+        );
+        let v: Value = serde_json::from_slice(&o.stdout).unwrap();
+        let kinds: Vec<&str> = v["reports"]
+            .as_array()
+            .unwrap()
             .iter()
-            .map(|k| k.word())
-            .collect::<Vec<_>>()
-    );
-    for r in v["reports"].as_array().unwrap() {
-        let stem = r["number"].as_str().unwrap().to_lowercase();
-        assert!(d.join(format!("{stem}.pdf")).is_file(), "{stem}");
+            .map(|r| r["kind"].as_str().unwrap())
+            .collect();
+        assert_eq!(kinds, ["screening", "quantities", "sections", "run"]);
+        let mut files = 0;
+        for r in v["reports"].as_array().unwrap() {
+            let stem = r["number"].as_str().unwrap().to_lowercase();
+            for ext in ["pdf", "html", "docx"] {
+                assert!(out.join(format!("{stem}.{ext}")).is_file(), "{stem}.{ext}");
+                files += 1;
+            }
+        }
+        assert_eq!(files, 12);
+        assert_eq!(std::fs::read_dir(&out).unwrap().count(), 12);
     }
 }

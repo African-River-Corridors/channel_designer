@@ -453,7 +453,7 @@ enum Command {
     Report {
         /// The channel design. `-` is stdin.
         doc: String,
-        /// The kind of report: `screening`, `quantities`, `sections`, or `all`.
+        /// The kind of report: `screening`, `quantities`, `sections`, `run`, or `all`.
         #[arg(long, value_name = "KIND", default_value = "screening")]
         kind: String,
         /// The format: `pdf`, `html`, `docx` or `all`.

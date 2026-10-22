@@ -39,6 +39,7 @@ pub fn request(control: Control) -> Request {
         kind: Kind::Screening,
         option: None,
         control,
+        requested_by: None,
     }
 }
 

@@ -74,6 +74,12 @@ pub fn report(flags: ReportFlags) -> Result {
             kind,
             option: flags.option.clone(),
             control: control.clone(),
+            requested_by: Some(
+                std::iter::once("owd".to_string())
+                    .chain(std::env::args().skip(1))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            ),
         };
         let report = owd_report::build(&text, dem.as_deref(), &req)
             .map_err(|e| input_error(e.to_string()))?;
