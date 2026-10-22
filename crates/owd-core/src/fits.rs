@@ -214,7 +214,7 @@ pub fn plan_only_fits_with(
 }
 
 /// One row: `who` is the vessel's class name, family and formation.
-fn class_fit(
+pub(crate) fn class_fit(
     c: &Chained,
     water: &[Polygon],
     shape: &ChannelShape,
