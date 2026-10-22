@@ -9,8 +9,9 @@ use crate::eval::{
     EvalError, arg, bad, f64_arg, f64_or, float_json, floats_json, list, ok, opt_f64, read_float,
 };
 use owd_core::rules::design::{self as ds, Centreline, ChannelDesignInputs, ChannelDesignParams};
+use owd_core::rules::engine::{self, ChannelDomain, Selection};
 use owd_core::rules::methods::{BreakdownFn, MethodRegistry, OptValue, Options, WidthMethod};
-use owd_core::rules::rulesets::{self as rs, ChannelRuleInputs, Ruleset, RulesetRegistry};
+use owd_core::rules::rulesets::{self as rs, ChannelRuleInputs};
 use owd_core::rules::simple::{self, PiancInputs};
 use owd_core::rules::width_profile::{self as wp, WidthFn};
 use owd_core::rules::{Check, RuleError};
@@ -149,17 +150,77 @@ fn host_method(spec: &Value) -> Result<WidthMethod, EvalError> {
     })
 }
 
-/// The built-in rulesets, plus the host's own (`host_rulesets`: every ruleset the host registry
-/// holds, as data; a built-in one the host edited replaces ours).
-pub(crate) fn ruleset_registry(args: &Value) -> Result<RulesetRegistry, EvalError> {
-    let mut reg = RulesetRegistry::new();
-    if let Some(list) = args.get("host_rulesets").and_then(Value::as_array) {
-        for spec in list {
-            reg.register(read_ruleset(spec)?, true)
-                .map_err(|e| bad(e.to_string()))?;
+/// The selection a call names (spec 0007): `rule_sets`, Rule Set ids or `id@version` (default
+/// `pianc-wg141`); `set_inputs`, a map such as `{"se_quality": "B"}` (`pianc-wg141` takes quality C
+/// when none is given); `reaches`, a list of `{"waterway", "reduced_radius_claim"}` for one reach
+/// over the whole line; and `rule_set_files`, Rule Set file texts loaded first. The `owd` checks are
+/// always selected.
+pub(crate) fn selection_from_args(args: &Value) -> Result<Selection, RuleError> {
+    let mut lib = engine::built_in().clone();
+    for (i, f) in args
+        .get("rule_set_files")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
+        let text = f.as_str().ok_or_else(|| {
+            RuleError::Value(format!("rule_set_files[{i}] must be the file's text"))
+        })?;
+        lib.add_text(text, &ChannelDomain)
+            .map_err(|e| RuleError::Value(format!("rule_set_files[{i}]: {e}")))?;
+    }
+    let ids: Vec<String> = match args.get("rule_sets") {
+        None | Some(Value::Null) => vec!["pianc-wg141".into()],
+        Some(v) => v
+            .as_array()
+            .ok_or_else(|| RuleError::Value("`rule_sets` must be a list of Rule Set ids".into()))?
+            .iter()
+            .map(|x| x.as_str().map(str::to_string))
+            .collect::<Option<Vec<_>>>()
+            .ok_or_else(|| RuleError::Value("`rule_sets` must be a list of Rule Set ids".into()))?,
+    };
+    let mut chosen: Vec<(String, String)> = Vec::new();
+    for id in ids.iter().map(String::as_str).chain([engine::OWD_SET]) {
+        let set = lib
+            .lookup(id)
+            .ok_or_else(|| RuleError::Value(format!("unknown Rule Set `{id}`")))?;
+        chosen.push((set.id.clone(), set.version.clone()));
+    }
+    let mut inputs: Vec<(String, String)> = Vec::new();
+    if let Some(m) = args.get("set_inputs").and_then(Value::as_object) {
+        for (k, v) in m {
+            let v = v
+                .as_str()
+                .ok_or_else(|| RuleError::Value(format!("set input `{k}` must be text")))?;
+            inputs.push((k.clone(), v.to_string()));
         }
     }
-    Ok(reg)
+    if chosen.iter().any(|(id, _)| id == "pianc-wg141")
+        && !inputs.iter().any(|(k, _)| k == engine::SE_QUALITY)
+    {
+        inputs.push((engine::SE_QUALITY.into(), "C".into()));
+    }
+    let refs: Vec<(&str, &str)> = chosen
+        .iter()
+        .map(|(a, b)| (a.as_str(), b.as_str()))
+        .collect();
+    let mut selection = Selection::from_library(&lib, &refs, inputs)?;
+    if let Some(list) = args.get("reaches").and_then(Value::as_array) {
+        let mut reaches = Vec::new();
+        for (i, r) in list.iter().enumerate() {
+            let text = |k: &str, d: &str| r.get(k).and_then(Value::as_str).unwrap_or(d).to_string();
+            let claim = text("reduced_radius_claim", "no");
+            reaches.push(engine::WaterwayReach {
+                label: format!("reach {i}"),
+                waterway: text("waterway", "free-flowing-river"),
+                claim_typed: claim == "yes",
+                claim,
+            });
+        }
+        selection = selection.with_reaches(reaches);
+    }
+    Ok(selection)
 }
 
 // --- reading --------------------------------------------------------------------------------
@@ -220,27 +281,6 @@ fn float_list(args: &Value, name: &str) -> Result<Vec<f64>, EvalError> {
         .enumerate()
         .map(|(i, v)| read_float(v, &format!("args.{name}[{i}]")))
         .collect()
-}
-
-fn read_ruleset(spec: &Value) -> Result<Ruleset, EvalError> {
-    let mut r = Ruleset::new(
-        &str_field(spec, "ruleset_id")?,
-        &str_field(spec, "family")?,
-        &str_field(spec, "label")?,
-        &str_field(spec, "source")?,
-        f64_arg(spec, "r_mult_convoy")?,
-        f64_arg(spec, "r_mult_motor")?,
-    );
-    r.width_mult = f64_or(spec, "width_mult", 0.0)?;
-    r.c_c = f64_or(spec, "c_c", 0.0)?;
-    r.depth_mult = f64_or(spec, "depth_mult", 0.0)?;
-    r.bank_mult_convoy = f64_or(spec, "bank_mult_convoy", 0.0)?;
-    r.bank_mult_motor = f64_or(spec, "bank_mult_motor", 0.0)?;
-    r.depth_add_m = f64_or(spec, "depth_add_m", 0.0)?;
-    if let Some(n) = spec.get("notes").and_then(Value::as_str) {
-        r.notes = n.to_string();
-    }
-    Ok(r)
 }
 
 /// `ChannelRuleInputs(**d)`. `default_water_level` stands in when `min_water_level_m` is absent
@@ -329,27 +369,9 @@ fn checks_json(cs: &[Check]) -> Value {
     Value::Array(cs.iter().map(check_json).collect())
 }
 
-fn ruleset_json(r: &Ruleset) -> Value {
-    json!({
-        "ruleset_id": r.ruleset_id,
-        "family": r.family,
-        "label": r.label,
-        "source": r.source,
-        "r_mult_convoy": float_json(r.r_mult_convoy),
-        "r_mult_motor": float_json(r.r_mult_motor),
-        "width_mult": float_json(r.width_mult),
-        "c_c": float_json(r.c_c),
-        "depth_mult": float_json(r.depth_mult),
-        "bank_mult_convoy": float_json(r.bank_mult_convoy),
-        "bank_mult_motor": float_json(r.bank_mult_motor),
-        "depth_add_m": float_json(r.depth_add_m),
-        "notes": r.notes,
-    })
-}
-
 fn shape_json(s: &rs::ChannelShape) -> Value {
     json!({
-        "ruleset_id": s.ruleset_id,
+        "rule_sets": s.rule_sets,
         "vessel_standard_id": s.vessel_standard_id,
         "loa_m": float_json(s.loa_m),
         "beam_m": float_json(s.beam_m),
@@ -414,32 +436,12 @@ fn rule_result_json(r: &rs::ChannelRuleResult) -> Value {
 // --- rulesets -------------------------------------------------------------------------------
 
 fn rulesets(methods: &MethodRegistry, function: &str, args: &Value) -> Result<Value, EvalError> {
-    let reg = ruleset_registry(args)?;
     match function {
         "rule_sets" => ok(json!(methods.names())),
-        "rulesets_table" => {
-            let table: Vec<Value> = rs::CN_TABLE_A2
-                .iter()
-                .map(|(l, b, w)| json!([float_json(*l), float_json(*b), float_json(*w)]))
-                .collect();
-            let mut clearance = Map::new();
-            for (class, (a, b)) in rs::CN_DEPTH_CLEARANCE_M {
-                clearance.insert(class.into(), json!([float_json(a), float_json(b)]));
-            }
-            let mut sets = Map::new();
-            for r in reg.iter() {
-                sets.insert(r.ruleset_id.clone(), ruleset_json(r));
-            }
-            ok(json!({
-                "rulesets": Value::Object(sets),
-                "cn_table_a2": table,
-                "cn_table_5_1_width_mult": float_json(rs::CN_TABLE_5_1_WIDTH_MULT),
-                "cn_depth_clearance_m": Value::Object(clearance),
-                "cn_depth_clearance_end": rs::CN_DEPTH_CLEARANCE_END.as_str(),
-                "bank_cut_fraction": float_json(rs::BANK_CUT_FRACTION),
-                "reference_deflection_deg": float_json(rs::REFERENCE_DEFLECTION_DEG),
-            }))
-        }
+        "rule_set_constants" => ok(json!({
+            "bank_cut_fraction": float_json(rs::BANK_CUT_FRACTION),
+            "reference_deflection_deg": float_json(rs::REFERENCE_DEFLECTION_DEG),
+        })),
         "lateral_room_m" => ok(float_json(rs::lateral_room_m(
             f64_arg(args, "wetted_width_m")?,
             f64_arg(args, "top_width_m")?,
@@ -451,22 +453,23 @@ fn rulesets(methods: &MethodRegistry, function: &str, args: &Value) -> Result<Va
             f64_arg(args, "room_m")?,
             f64_or(args, "tol_m", 1e-9)?,
         ))),
-        "get_ruleset" => rule(reg.get(&str_field(args, "ruleset_id")?), ruleset_json),
-        "channel_shape" => rule(
-            rs::channel_shape(
-                &reg,
-                &str_field(args, "ruleset_id")?,
+        "channel_shape" => {
+            let selection = tri!(selection_from_args(args));
+            rule(
+                rs::channel_shape_for(
+                    &selection,
+                    &str_field(args, "vessel_standard_id")?,
+                    opt_f64(args, "draught_m")?,
+                ),
+                |s| shape_json(&s),
+            )
+        }
+        "channel_shape_widths" => {
+            let selection = tri!(selection_from_args(args));
+            let shape = tri!(rs::channel_shape_for(
+                &selection,
                 &str_field(args, "vessel_standard_id")?,
                 opt_f64(args, "draught_m")?,
-            ),
-            |s| shape_json(&s),
-        ),
-        "channel_shape_widths" => {
-            let shape = tri!(rs::channel_shape(
-                &reg,
-                &str_field(args, "ruleset_id")?,
-                &str_field(args, "vessel_standard_id")?,
-                None,
             ));
             let rows: Vec<Value> = float_list(args, "radii")?
                 .into_iter()
@@ -480,19 +483,33 @@ fn rulesets(methods: &MethodRegistry, function: &str, args: &Value) -> Result<Va
                 .collect();
             ok(Value::Array(rows))
         }
-        "register_ruleset_then_channel_shape" => {
-            let new = read_ruleset(arg(args, "ruleset")?)?;
-            let replace = match args.get("replace") {
-                None | Some(Value::Null) => false,
-                Some(v) => read_bool(v, "args.replace")?,
-            };
-            let id = new.ruleset_id.clone();
-            let mut local = reg.clone();
-            tri!(local.register(new, replace));
-            rule(
-                rs::channel_shape(&local, &id, &str_field(args, "vessel_standard_id")?, None),
-                |s| shape_json(&s),
-            )
+        "design_basis" => {
+            let selection = tri!(selection_from_args(args));
+            let vessel = tri!(rs::vessel_for(
+                &str_field(args, "vessel_standard_id")?,
+                opt_f64(args, "draught_m")?,
+            ));
+            let sized = tri!(engine::size(&selection, &vessel));
+            let rows = tri!(owd_core::rules::screening::design_basis(
+                &selection, &vessel, &sized
+            ));
+            ok(Value::Array(
+                rows.iter()
+                    .map(|b| {
+                        json!({
+                            "quantity": b.quantity,
+                            "waterway": b.waterway,
+                            "value": float_json(b.value),
+                            "unit": b.unit,
+                            "rule": b.rule,
+                            "rule_sets": b.rule_sets,
+                            "citation": b.citation,
+                            "origin": b.origin,
+                            "status": b.status,
+                        })
+                    })
+                    .collect(),
+            ))
         }
         "size_channel" => {
             let inp = read_rule_inputs(arg(args, "inputs")?, None)?;

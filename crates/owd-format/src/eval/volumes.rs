@@ -9,7 +9,7 @@ use super::{
 use owd_core::cut_model::{self as cm, CUT_MODEL};
 use owd_core::geom::{Geometry, Polygon, Pt, linear};
 use owd_core::pyrepr::repr_str;
-use owd_core::rules::rulesets::channel_shape;
+use owd_core::rules::rulesets::channel_shape_for;
 use owd_core::volumes::cut_model_grid::{self as grid, HalfWidths, Mask, Matrix};
 use owd_core::volumes::sections::{self as sec, HalfWidth, Level};
 use serde_json::{Map, Value, json};
@@ -163,11 +163,11 @@ pub(super) fn cut_model_extras(function: &str, args: &Value) -> Result<Value, Ev
         "widened_hb_from_shape" => {
             let xy = xy_list(args, "xy")?;
             let rmax = f64_or(args, "rmax", cm::WIDEN_RMAX)?;
-            match channel_shape(
-                &crate::eval_rules::ruleset_registry(args)?,
-                &str_arg(args, "ruleset_id")?,
+            match channel_shape_for(
+                &crate::eval_rules::selection_from_args(&args["selection"])
+                    .map_err(|e| crate::eval::bad(e.raw_message().into()))?,
                 &str_arg(args, "vessel_standard_id")?,
-                None,
+                args["draught_m"].as_f64(),
             ) {
                 Ok(shape) => ok(floats_json(&cm::widened_hb_from_shape(&xy, &shape, rmax))),
                 Err(e) => Ok(json!({ "error": {
@@ -348,11 +348,11 @@ fn section_volumes(args: &Value) -> Result<Value, EvalError> {
     };
     let shape = match hb_spec {
         Value::Object(_) if hb_host.is_none() => {
-            match channel_shape(
-                &crate::eval_rules::ruleset_registry(args)?,
-                &str_arg(hb_spec, "ruleset_id")?,
+            match channel_shape_for(
+                &crate::eval_rules::selection_from_args(&hb_spec["selection"])
+                    .map_err(|e| crate::eval::bad(e.raw_message().into()))?,
                 &str_arg(hb_spec, "vessel_standard_id")?,
-                None,
+                hb_spec["draught_m"].as_f64(),
             ) {
                 Ok(s) => Some(s),
                 Err(e) => {

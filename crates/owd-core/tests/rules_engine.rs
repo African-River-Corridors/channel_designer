@@ -1,88 +1,81 @@
-//! Spec 0007 T1 and T2: PIANC WG 141 and GB 50139 sizing go through the shared rules engine
-//! (`arc-rules`).
+//! Spec 0007: PIANC WG 141 and GB 50139 sizing on the shared rules engine (`arc-rules`).
 //!
-//! Label: property. The parity test compares the engine path with the old `Ruleset` code (kept for
-//! this check only) bit for bit; no fixed number is pinned here.
+//! Label: snapshot. `tests/data/old-ruleset-snapshot.json` is what the old `Ruleset` code printed
+//! (at spec 0007 T5, before T8 removed it) for every old ruleset × every built-in vessel class ×
+//! five draughts. The engine path must give the same numbers bit for bit, and the same warnings.
+//! Never hand-edit it. The other tests here are `Label: property`.
 
 use arc_rules::load::{content_hash, load};
-use owd_core::rules::engine::{self, BUILT_IN, ChannelDomain};
-use owd_core::rules::rulesets::{RulesetRegistry, channel_shape, channel_shape_legacy};
+use owd_core::rules::engine::{self, BUILT_IN, ChannelDomain, selection_for_old_ruleset};
+use owd_core::rules::rulesets::channel_shape_for;
 use owd_core::rules::vessel_catalogue;
+use serde_json::Value;
 
-const ENGINE: [&str; 6] = [
-    "PIANC-A",
-    "PIANC-B",
-    "PIANC-C",
-    "CN",
-    "CN-conservative",
-    "CN-reduced",
-];
+fn snapshot() -> Vec<Value> {
+    serde_json::from_str(include_str!("data/old-ruleset-snapshot.json")).unwrap()
+}
 
-/// Every PIANC and GB ruleset (CN-reduced: one claimed canal reach over the whole line) × every built-in vessel class × a spread of draughts (the nominal one and
-/// four overrides from shallow to deep): the engine path gives the old shape bit for bit, and the
-/// same bend widening at every radius the water checks read, a straight included.
+fn f(v: &Value) -> f64 {
+    v.as_f64().unwrap()
+}
+
+/// Every old ruleset (CN-reduced: one claimed canal reach over the whole line) × every built-in
+/// vessel class × five draughts: the engine path gives the old numbers bit for bit, the same bend
+/// widening at five radii, the same width basis and the same warnings.
 #[test]
-fn the_engine_gives_the_old_channel_shape_bit_for_bit() {
-    let reg = RulesetRegistry::new();
-    let radii = [
-        -1.0,
-        0.0,
-        1e-9,
-        1.0,
-        37.5,
-        150.0,
-        333.3,
-        1000.0,
-        12345.678,
-        f64::INFINITY,
-    ];
-    let mut n = 0;
-    for ruleset in ENGINE {
-        for (vessel, _) in vessel_catalogue() {
-            for draught in [None, Some(0.8), Some(1.9), Some(2.5), Some(4.75)] {
-                let new = channel_shape(&reg, ruleset, &vessel, draught).unwrap();
-                let old = channel_shape_legacy(&reg, ruleset, &vessel, draught).unwrap();
-                let bits = |s: &owd_core::rules::rulesets::ChannelShape| {
-                    [
-                        s.loa_m,
-                        s.beam_m,
-                        s.draught_m,
-                        s.bottom_width_straight_m,
-                        s.min_bend_radius_m,
-                        s.design_depth_m,
-                        s.bend_widening_at_rmin_m,
-                        s.bottom_width_at_rmin_m,
-                    ]
-                    .map(f64::to_bits)
-                };
-                let case = format!("{ruleset} {vessel} {draught:?}");
-                assert_eq!(bits(&new), bits(&old), "{case}");
-                assert_eq!(new.width_basis, old.width_basis, "{case}");
-                assert_eq!(new.source, old.source, "{case}");
-                assert_eq!(new.warnings, old.warnings, "{case}");
-                for r in radii.into_iter().chain([new.min_bend_radius_m]) {
-                    assert_eq!(
-                        new.bend_widening_m(r).to_bits(),
-                        old.bend_widening_m(r).to_bits(),
-                        "{case} at R {r}"
-                    );
-                    assert_eq!(
-                        new.bottom_width_at_m(r).to_bits(),
-                        old.bottom_width_at_m(r).to_bits(),
-                        "{case} at R {r}"
-                    );
-                }
-                assert!(new.bend_widening_m(f64::NAN).is_nan());
-                n += 1;
-            }
+fn the_engine_gives_the_old_rulesets_numbers_and_warnings_bit_for_bit() {
+    let rows = snapshot();
+    assert_eq!(rows.len(), 6 * 12 * 5);
+    for row in &rows {
+        let rs = row["ruleset"].as_str().unwrap();
+        let vessel = row["vessel"].as_str().unwrap();
+        let draught = row["draught_m"].as_f64();
+        let s =
+            channel_shape_for(&selection_for_old_ruleset(rs).unwrap(), vessel, draught).unwrap();
+        let case = format!("{rs} {vessel} {draught:?}");
+        for (k, v) in [
+            ("bottom_width_straight_m", s.bottom_width_straight_m),
+            ("min_bend_radius_m", s.min_bend_radius_m),
+            ("design_depth_m", s.design_depth_m),
+            ("bend_widening_at_rmin_m", s.bend_widening_at_rmin_m),
+            ("bottom_width_at_rmin_m", s.bottom_width_at_rmin_m),
+        ] {
+            assert_eq!(v.to_bits(), f(&row[k]).to_bits(), "{case} {k}");
         }
+        for (r, w) in row["radii"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .zip(row["widening_at"].as_array().unwrap())
+        {
+            assert_eq!(
+                s.bend_widening_m(f(r)).to_bits(),
+                f(w).to_bits(),
+                "{case} at R {r}"
+            );
+        }
+        assert_eq!(
+            s.width_basis,
+            row["width_basis"].as_str().unwrap(),
+            "{case}"
+        );
+        let warnings: Vec<&str> = row["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|w| w.as_str().unwrap())
+            .collect();
+        assert_eq!(s.warnings, warnings, "{case}");
+        // A straight and a radius that is not a number, as the water checks may read them.
+        assert_eq!(s.bend_widening_m(f64::INFINITY), 0.0);
+        assert_eq!(s.bend_widening_m(0.0), 0.0);
+        assert!(s.bend_widening_m(f64::NAN).is_nan());
     }
-    assert!(n >= 6 * 5 * 10, "only {n} cases");
 }
 
 /// The check above can fail: a set whose quality B width is one bit off is caught.
 #[test]
-fn the_parity_check_catches_a_one_bit_change() {
+fn the_snapshot_check_catches_a_one_bit_change() {
     let (_, text) = BUILT_IN[0];
     let moved = text.replace("\"k\": 3.2,", "\"k\": 3.2000000000000006,");
     assert_ne!(moved, text);
@@ -92,20 +85,31 @@ fn the_parity_check_catches_a_one_bit_change() {
         inputs: vec![(engine::SE_QUALITY.into(), "B".into())],
         reaches: vec![engine::WaterwayReach::whole_river()],
     };
-    let reg = RulesetRegistry::new();
-    let old = channel_shape_legacy(&reg, "PIANC-B", "CEMT_IV", None).unwrap();
-    let vessel = engine::Vessel {
-        loa_m: old.loa_m,
-        beam_m: old.beam_m,
-        draught_m: old.draught_m,
-        formation: old.formation.clone(),
-        class_name: "IV".into(),
-    };
+    let row = snapshot()
+        .into_iter()
+        .find(|r| r["ruleset"] == "PIANC-B" && r["vessel"] == "CEMT_IV" && r["draught_m"].is_null())
+        .unwrap();
+    let vessel = owd_core::rules::rulesets::vessel_for("CEMT_IV", None).unwrap();
     let sized = engine::size(&selection, &vessel).unwrap();
     assert_ne!(
         sized.bottom_width_straight_m.to_bits(),
-        old.bottom_width_straight_m.to_bits()
+        f(&row["bottom_width_straight_m"]).to_bits()
     );
+}
+
+/// A selection with no bend-widening Rule cannot size a channel: the water checks need one.
+#[test]
+fn a_selection_with_no_widening_rule_is_refused() {
+    let (_, text) = BUILT_IN[0];
+    let mut set = load(text, &ChannelDomain).unwrap().set;
+    set.rules.retain(|r| r.measure.id != engine::BEND_WIDENING);
+    let selection = engine::Selection {
+        sets: vec![std::sync::Arc::new(set)],
+        inputs: vec![(engine::SE_QUALITY.into(), "B".into())],
+        reaches: vec![engine::WaterwayReach::whole_river()],
+    };
+    let e = channel_shape_for(&selection, "CEMT_IV", None).unwrap_err();
+    assert!(e.raw_message().contains(engine::BEND_WIDENING), "{e:?}");
 }
 
 /// The built-in set loads through the loader a user's file takes, and its content hash is the one
@@ -243,10 +247,10 @@ fn every_gb_rule_is_national_practice_read_in_wg141_appendix_a3() {
 /// same depth.
 #[test]
 fn the_range_end_changes_only_the_class_iv_and_up_depth() {
-    let reg = RulesetRegistry::new();
     for (vessel, v) in vessel_catalogue() {
-        let a = channel_shape(&reg, "CN", &vessel, None).unwrap();
-        let b = channel_shape(&reg, "CN-conservative", &vessel, None).unwrap();
+        let shape = |rs| channel_shape_for(&selection_for_old_ruleset(rs).unwrap(), &vessel, None);
+        let a = shape("CN").unwrap();
+        let b = shape("CN-conservative").unwrap();
         assert_eq!(
             a.bottom_width_straight_m, b.bottom_width_straight_m,
             "{vessel}"
@@ -284,23 +288,6 @@ fn the_swept_path_is_a_note_with_a_value() {
     }
 }
 
-/// The selection an old ruleset maps to, with the `owd` checks (spec 0007, "Rule Sets at 0.3.0").
-fn mapped(ruleset: &str) -> engine::Selection {
-    let (set, input, value) = match ruleset {
-        "PIANC-A" => ("pianc-wg141", engine::SE_QUALITY, "A"),
-        "PIANC-B" => ("pianc-wg141", engine::SE_QUALITY, "B"),
-        "PIANC-C" => ("pianc-wg141", engine::SE_QUALITY, "C"),
-        "CN" => ("gb50139", engine::RANGE_END, "permissive"),
-        _ => ("gb50139", engine::RANGE_END, "strict"),
-    };
-    let s = engine::Selection::built_in(&[set, engine::OWD_SET], &[(input, value)]).unwrap();
-    if ruleset == "CN-reduced" {
-        s.with_reaches(vec![canal(true)])
-    } else {
-        s
-    }
-}
-
 fn canal(claim: bool) -> engine::WaterwayReach {
     engine::WaterwayReach {
         label: "0 to 2000 m".into(),
@@ -308,42 +295,6 @@ fn canal(claim: bool) -> engine::WaterwayReach {
         claim: if claim { "yes" } else { "no" }.into(),
         claim_typed: claim,
     }
-}
-
-/// A shape sized from a selection (with the `owd` checks) equals the old ruleset's, numbers,
-/// width basis and warnings: the warnings now come from the Rule Trace of the sized channel.
-#[test]
-fn a_selection_gives_the_old_shape_and_its_warnings() {
-    let reg = RulesetRegistry::new();
-    let mut warned = 0;
-    for ruleset in ENGINE {
-        for (vessel, _) in vessel_catalogue() {
-            for draught in [None, Some(0.8), Some(1.9), Some(2.5), Some(4.75)] {
-                let new = owd_core::rules::rulesets::channel_shape_for(
-                    &mapped(ruleset),
-                    &vessel,
-                    draught,
-                )
-                .unwrap();
-                let old = channel_shape_legacy(&reg, ruleset, &vessel, draught).unwrap();
-                let case = format!("{ruleset} {vessel} {draught:?}");
-                for (a, b) in [
-                    (new.bottom_width_straight_m, old.bottom_width_straight_m),
-                    (new.min_bend_radius_m, old.min_bend_radius_m),
-                    (new.design_depth_m, old.design_depth_m),
-                    (new.bend_widening_at_rmin_m, old.bend_widening_at_rmin_m),
-                    (new.bottom_width_at_rmin_m, old.bottom_width_at_rmin_m),
-                    (new.bend_widening_m(250.0), old.bend_widening_m(250.0)),
-                ] {
-                    assert_eq!(a.to_bits(), b.to_bits(), "{case}");
-                }
-                assert_eq!(new.width_basis, old.width_basis, "{case}");
-                assert_eq!(new.warnings, old.warnings, "{case}");
-                warned += new.warnings.len();
-            }
-        }
-    }
-    assert!(warned > 100, "the warnings were exercised: {warned}");
 }
 
 /// Two sets at once: every Rule applies and the governing limit of each Requirement sizes the

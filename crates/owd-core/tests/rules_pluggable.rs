@@ -1,21 +1,18 @@
-//! A ruleset and a width method registered from OUTSIDE the crate (this file is an integration
-//! test, so it sees only the public API) are used by `channel_shape`, `size_channel`,
-//! `width_at_radius`, `design::compute` and the width profile.
+//! A width method registered from OUTSIDE the crate (this file is an integration test, so it sees
+//! only the public API) is used by `size_channel`, `width_at_radius`, `design::compute` and the
+//! width profile. (A Rule Set is added as a file at run time; see `rules_engine.rs`.)
 //!
 //! Label: property. The hand checks below are worked out from the formulas in the rules, not
 //! printed by code.
 
+use owd_core::rules::Check;
 use owd_core::rules::design::{ChannelDesignInputs, ChannelDesignParams, compute};
 use owd_core::rules::methods::{
     MethodRegistry, OptValue, Options, WidthMethod, global_methods, register_width_method,
 };
-use owd_core::rules::rulesets::{
-    ChannelRuleInputs, Ruleset, RulesetRegistry, channel_shape, global_rulesets, size_channel,
-    width_at_radius,
-};
+use owd_core::rules::rulesets::{ChannelRuleInputs, size_channel, width_at_radius};
 use owd_core::rules::simple::{PiancInputs, size_channel as simple_size};
 use owd_core::rules::width_profile::make_width_fn;
-use owd_core::rules::{Check, RuleError};
 use std::sync::Arc;
 
 /// A consultant's method: 2.5 x beam, LOA^2/(4R) bend widening, R_min = 4 x LOA. It reads one
@@ -42,58 +39,6 @@ fn inputs() -> ChannelRuleInputs {
     let mut inp = ChannelRuleInputs::new(10.0, 100.0, 2.0, 5.0);
     inp.rule_set = "consultant".into();
     inp
-}
-
-#[test]
-fn a_ruleset_registered_from_outside_is_used_by_channel_shape() {
-    let mut reg = RulesetRegistry::new();
-    let mut mine = Ruleset::new("MINE", "pianc", "my standard", "my source", 2.5, 2.5);
-    mine.width_mult = 3.1;
-    mine.c_c = 0.55;
-    mine.depth_mult = 1.25;
-    reg.register(mine, false).unwrap();
-
-    // CEMT_Va: LOA 95..110 (long end 110), beam 11.4, nominal draught 3.5.
-    let shape = channel_shape(&reg, "MINE", "CEMT_Va", None).unwrap();
-    assert_eq!(shape.ruleset_id, "MINE");
-    assert!((shape.bottom_width_straight_m - 3.1 * 11.4).abs() < 1e-12);
-    assert!((shape.min_bend_radius_m - 2.5 * 110.0).abs() < 1e-12);
-    assert!((shape.design_depth_m - 1.25 * 3.5).abs() < 1e-12);
-    // dF_C = c_C x L^2 / R at R_min
-    let widening = 0.55 * 110.0 * 110.0 / 275.0;
-    assert!((shape.bend_widening_at_rmin_m - widening).abs() < 1e-12);
-    assert!(shape.source.starts_with("my source; vessel "));
-
-    // The built-in registry does not know it: registration is per registry.
-    let builtin = RulesetRegistry::new();
-    assert!(matches!(
-        channel_shape(&builtin, "MINE", "CEMT_Va", None),
-        Err(RuleError::Key(_))
-    ));
-}
-
-#[test]
-fn a_ruleset_can_be_registered_on_the_process_wide_registry() {
-    let mine = Ruleset::new("GLOBAL-ONE", "china", "g", "g source", 3.0, 3.0);
-    global_rulesets()
-        .lock()
-        .unwrap()
-        .register(mine, false)
-        .unwrap();
-    let reg = global_rulesets().lock().unwrap();
-    let shape = channel_shape(&reg, "GLOBAL-ONE", "CN_IV_motor", None).unwrap();
-    assert_eq!(shape.ruleset_id, "GLOBAL-ONE");
-}
-
-#[test]
-fn a_family_other_than_pianc_or_china_is_refused() {
-    let mut reg = RulesetRegistry::new();
-    let bad = Ruleset::new("X", "martian", "x", "x", 1.0, 1.0);
-    let err = reg.register(bad, false).unwrap_err();
-    assert_eq!(
-        err.raw_message(),
-        "ruleset family must be 'pianc' or 'china'; got 'martian'"
-    );
 }
 
 #[test]

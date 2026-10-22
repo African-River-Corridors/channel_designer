@@ -239,7 +239,6 @@ pub fn water_width_on(line: &[Pt], s: f64, water: &[Polygon]) -> f64 {
 /// reading tolerance), else it passes. Runs of failing stations become stretches; each end is
 /// found to `EDGE_TOL_M` between the last passing and the first failing station.
 ///
-/// The shape's ruleset must give a bend-widened width (`Ruleset::validate`).
 pub fn width_check(
     line: &[Pt],
     water: &[Polygon],
@@ -247,9 +246,6 @@ pub fn width_check(
     r_min: f64,
     chord_m: f64,
 ) -> Result<Vec<Stretch>, PyError> {
-    shape
-        .validate()
-        .map_err(|e| PyError::value(e.raw_message().to_string()))?;
     if !(chord_m.is_finite() && chord_m > 0.0) {
         return Err(PyError::value("chord_m must be finite and positive."));
     }
@@ -343,11 +339,15 @@ mod tests {
     //! Label: sourced - hand calculation (fixture answers in `synthetic::fixtures`; PIANC-B with
     //! CEMT IV gives R_min 255 m and a 30.4 m straight bottom width, spec 0005 worked example)
     use super::*;
-    use crate::rules::rulesets::{Ruleset, RulesetRegistry, channel_shape};
     use crate::synthetic::{RiverParams, narrowing_reach, synthetic_river};
 
     fn shape() -> ChannelShape {
-        channel_shape(&RulesetRegistry::new(), "PIANC-B", "CEMT_IV", Some(2.5)).unwrap()
+        crate::rules::rulesets::channel_shape_for(
+            &crate::rules::engine::selection_for_old_ruleset("PIANC-B").unwrap(),
+            "CEMT_IV",
+            Some(2.5),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -467,25 +467,6 @@ mod tests {
                 "apex at x = {x} (chainage {at}) not too narrow: {out:?}"
             );
         }
-    }
-
-    #[test]
-    fn a_ruleset_with_no_bend_widened_width_is_refused() {
-        let mut reg = RulesetRegistry::new();
-        for r in reg.iter() {
-            assert_eq!(r.validate(), Ok(()), "{}", r.ruleset_id);
-        }
-        let mut flat = Ruleset::new("FLAT", "pianc", "no widening", "test", 3.0, 3.0);
-        flat.width_mult = 3.2;
-        flat.depth_mult = 1.3;
-        let e = flat.validate().unwrap_err();
-        assert!(e.raw_message().contains("no bend-widened width"), "{e:?}");
-        reg.register(flat, false).unwrap();
-        let s = channel_shape(&reg, "FLAT", "CEMT_IV", Some(2.5)).unwrap();
-        let f = narrowing_reach(60.0, 20.0);
-        let e =
-            width_check(&f.legs[0], core::slice::from_ref(&f.water), &s, 255.0, 85.0).unwrap_err();
-        assert!(e.message.contains("no bend-widened width"), "{e:?}");
     }
 
     #[test]

@@ -5,7 +5,7 @@
 
 `run` runs a fixed set of scenarios through the installed `owd` and writes every number
 they produce to one JSON file. The scenarios use synthetic geometry built in code (the two worked
-examples, a grid of rulesets and vessel classes, a footprint and a Model A section run), so they need
+examples, a grid of Rule Set selections and vessel classes, a footprint and a Model A section run), so they need
 no data files.
 
 `compare` reads the results of the base branch and of the pull request and says what moved. A number
@@ -87,14 +87,26 @@ def scenario_optimise_pools() -> dict:
     }
 
 
+# The six channel standards of OWD 0.2 by their old names, as Rule Set selections (spec 0007): the
+# keys of this scenario stay the same, so a base branch from before the Rule Sets compares with it.
+_OLD_NAMES = {
+    "PIANC-A": dict(rule_sets=["pianc-wg141"], set_inputs={"se_quality": "A"}),
+    "PIANC-B": dict(rule_sets=["pianc-wg141"], set_inputs={"se_quality": "B"}),
+    "PIANC-C": dict(rule_sets=["pianc-wg141"], set_inputs={"se_quality": "C"}),
+    "CN": dict(rule_sets=["gb50139"], set_inputs={"range_end": "permissive"}),
+    "CN-conservative": dict(rule_sets=["gb50139"], set_inputs={"range_end": "strict"}),
+    "CN-reduced": dict(rule_sets=["gb50139"], set_inputs={"range_end": "strict"},
+                       reaches=[{"waterway": "canal", "reduced_radius_claim": "yes"}]),
+}
+
+
 def scenario_rulesets() -> dict:
     from owd.rules import channel_shape
-    from owd.rules.rulesets import RULESETS
     from vessel_designer.core.vessel_standards import VESSEL_STANDARDS
     out = {}
-    for rid in sorted(RULESETS):
+    for rid in sorted(_OLD_NAMES):
         for vid in sorted(VESSEL_STANDARDS):
-            s = channel_shape(rid, vid)
+            s = channel_shape(vid, **_OLD_NAMES[rid])
             out[f"{rid}/{vid}"] = {
                 "bottom_width_straight_m": s.bottom_width_straight_m, "min_bend_radius_m": s.min_bend_radius_m,
                 "design_depth_m": s.design_depth_m, "bend_widening_at_rmin_m": s.bend_widening_at_rmin_m,

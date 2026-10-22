@@ -76,8 +76,8 @@ def widened_hb(xy, loa, beam, radius_multiple, width_mult, c_c, rmax=WIDEN_RMAX)
     """Per-station channel bottom HALF-width including WG 141 bend widening.
 
     base = width_mult*beam/2; dF_C = c_c*LOA^2 / max(R, R_min), capped at <= LOA (WG 141
-    5.3.3, p101); half of dF_C is added per side. ``width_mult`` and ``c_c`` come from a
-    ruleset (``rules.rulesets.RULESETS[...]``) — there is no default here on purpose.
+    5.3.3, p101); half of dF_C is added per side. ``width_mult`` and ``c_c`` are the caller's
+    (the ``pianc-wg141`` Rule Set holds WG 141's) — there is no default here on purpose.
     """
     return _rust.call("cut_model", "widened_hb", np.ndarray, xy=xy, loa=loa, beam=beam,
                       radius_multiple=radius_multiple, width_mult=width_mult, c_c=c_c, rmax=rmax)
@@ -85,10 +85,9 @@ def widened_hb(xy, loa, beam, radius_multiple, width_mult, c_c, rmax=WIDEN_RMAX)
 
 def widened_hb_from_shape(xy, shape, rmax=WIDEN_RMAX):
     """Per-station bottom half-width from a :class:`rules.rulesets.ChannelShape`."""
-    from ..rules.rulesets import RULESETS
     return _rust.call("cut_model_extras", "widened_hb_from_shape", np.ndarray, xy=xy,
-                      ruleset_id=shape.ruleset_id, vessel_standard_id=shape.vessel_standard_id, rmax=rmax,
-                      host_rulesets=[_rust.enc(r) for r in RULESETS.values()])
+                      selection=shape.selection, vessel_standard_id=shape.vessel_standard_id,
+                      draught_m=shape.draught_m, rmax=rmax)
 
 
 def cut_model_a_face(o, side_bench, hb, grade, wl, depth, wet_slope=WET_SLOPE_H_PER_V):

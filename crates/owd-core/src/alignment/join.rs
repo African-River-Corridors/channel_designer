@@ -103,9 +103,6 @@ pub fn join_legs(
     if legs.is_empty() || legs.iter().any(|l| l.len() < 2) {
         return Err(PyError::value("each seed leg needs at least two points."));
     }
-    shape
-        .validate()
-        .map_err(|e| PyError::value(e.raw_message().to_string()))?;
     let mut seed: Vec<Pt> = Vec::new();
     let mut at: Vec<Pt> = Vec::new();
     for (k, leg) in legs.iter().enumerate() {
@@ -415,13 +412,17 @@ mod tests {
     //! pool tangency).
     use super::*;
     use crate::alignment::fillet::fillet_between;
-    use crate::rules::rulesets::{RulesetRegistry, channel_shape};
     use crate::synthetic::{fixed_tail, open_basin_90};
 
     const R_MIN: f64 = 255.0;
 
     fn shape() -> ChannelShape {
-        channel_shape(&RulesetRegistry::new(), "PIANC-B", "CEMT_IV", Some(2.5)).unwrap()
+        crate::rules::rulesets::channel_shape_for(
+            &crate::rules::engine::selection_for_old_ruleset("PIANC-B").unwrap(),
+            "CEMT_IV",
+            Some(2.5),
+        )
+        .unwrap()
     }
 
     /// The open basin's largest fillet when the shrink is half the bottom width widened for the

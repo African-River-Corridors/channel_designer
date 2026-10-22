@@ -5,6 +5,25 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **The old `Ruleset` path is gone (spec 0007, T8 part 1).** Channel sizing goes through the Rule Sets only. Removed
+  from Rust: `Ruleset`, `RulesetRegistry`, `global_rulesets`, `channel_shape(registry, ruleset_id, …)` and the
+  parity-only code; the engine path's numbers are now pinned by a snapshot the old code wrote
+  (`crates/owd-core/tests/data/old-ruleset-snapshot.json`, 360 cases, bit for bit). Removed from Python:
+  `Ruleset`, `RULESETS`, `register_ruleset`, `get_ruleset` and `CN_TABLE_A2`. **Python API change:**
+  `owd.rules.channel_shape(vessel_standard_id, draught_m=None, *, rule_sets=("pianc-wg141",), set_inputs=None,
+  reaches=None, rule_set_files=())`; for example `channel_shape("CEMT_IV", 2.5, rule_sets=["pianc-wg141"],
+  set_inputs={"se_quality": "B"})` gives the old `channel_shape("PIANC-B", "CEMT_IV", 2.5)`. `ChannelShape.ruleset_id`
+  is now `rule_sets`. New: `owd.rules.design_basis(...)`. `owd fits` sizes each old name through its Rule Set
+  selection; its output is unchanged. The width methods, the `pianc` method with its Report 121 build-up and
+  `ChannelDesignParams` are now documented as design assumptions, not verified rules. GLOSSARY: Rule Set, Rule,
+  Measure, Requirement, Governing Rule, Rule Trace, Reach, Design basis, Constraint stretch, Verdict; "Ruleset"
+  goes. Kept until the app's Rule Set picker (T6): the old names in the app's list and `owd size --ruleset`.
+- **Version 1 and 2 files are refused (spec 0007).** OWD 0.3.0 reads document format 3 only and migrates nothing.
+  To rebuild a design: `owd new FILE`, `owd import FILE` with its bank lines, centreline, river polygon and DEM,
+  `owd size FILE --rule-set ID --set-input NAME=VALUE --vessel CLASS` (for an old PIANC-B design:
+  `--rule-set pianc-wg141 --set-input se_quality=B`; for CN-reduced, first `owd waterway add FILE --from 0
+  --waterway canal --claim-reduced-radius`, then `--rule-set gb50139 --set-input range_end=strict`), then
+  `owd run FILE`.
 - **Orthophoto and EOxCloudless imagery on plan sheets (spec 0004, T6).** Plan sheets can now be drawn over
   other backdrops.
   - `owd draw --orthophoto FILE` draws them over the user's orthophoto: an 8 bit RGB GeoTIFF in WGS84 or the

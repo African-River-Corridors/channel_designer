@@ -1,14 +1,16 @@
-"""Channel-sizing rules: named rulesets (``channel_shape``) and width methods (``size_channel``).
+"""Channel sizing: Rule Sets (``channel_shape``) and width methods (``size_channel``).
 
 Two front doors:
 
-- ``channel_shape(ruleset_id, vessel_standard_id)`` — a named standard (PIANC WG 141
-  qualities A/B/C, the Chinese GB 50139 family) plus a vessel class gives the channel shape.
-  Rulesets are coefficients as data; add your own with :func:`register_ruleset`.
+- ``channel_shape(vessel_standard_id, rule_sets=[...], set_inputs={...})`` — the selected Rule
+  Sets (``pianc-wg141``, ``gb50139``, or a file of your own) plus a vessel class give the channel
+  shape, sized by the shared rules engine (spec 0007): the strictest Rule governs.
 - ``size_channel(ChannelRuleInputs(...))`` — one-lane channel *geometry* (straight width, min
   turn radius, bend width, required depth, bed level against the pool's minimum water level)
   from a *width method*. The package ships ``"pianc"``; another package can register more —
-  see :mod:`owd.rules.methods`.
+  see :mod:`owd.rules.methods`. The width methods, the ``"pianc"`` method with its Report 121
+  build-up and ``ChannelDesignParams`` are design assumptions, not verified rules (Report 121 is a
+  maritime approach-channel guideline).
 
 ``"pianc"`` is the PIANC concept-design path: straight width = ``k_w x beam`` (or the Report
 121 build-up W = W_BM + sum(W_i) + W_Br + W_Bg), min radius = ``k_r x LOA``, bend widening
@@ -37,161 +39,10 @@ from .methods import PIANC_MANEUVER as _PIANC_MANEUVER, _core_methods, width_met
 
 def rule_sets() -> tuple:
     """Width methods ``size_channel`` accepts (``ChannelRuleInputs.rule_set``): the built-in
-    ``"pianc"`` plus any a package has registered. The Chinese standard is reached through the
-    named-ruleset front door, ``channel_shape(ruleset_id="CN", ...)``."""
+    ``"pianc"`` plus any a package has registered. The width methods are design assumptions, not
+    verified rules. The Chinese standard is reached through the Rule Sets:
+    ``channel_shape(..., rule_sets=["gb50139"], set_inputs={"range_end": ...})``."""
     return width_methods()
-
-
-# =====================================================================================
-# RULESETS — a channel design standard, named. Ruleset x vessel class -> channel shape.
-# =====================================================================================
-# ONE axis, not two: PIANC's Safety & Ease qualities are part of
-# the PIANC ruleset, because the concept does not travel — the Chinese standard has no
-# A/B/C tiers at all. Collapsing them into named rulesets avoids inventing a mapping the
-# Chinese standard does not contain.
-#
-# The VESSEL CLASS (see vessel_standards) supplies LOA, beam, draught and formation, so a
-# ruleset never needs to ask whether it is sizing for a convoy or a motor vessel — it looks
-# that up. Together the two choices fully determine the channel shape. Nothing is typed.
-#
-# WHERE THE TWO FAMILIES DISAGREE, which is why both are carried:
-#   width  PIANC charges for BEAM only (k_w x B). China charges for beam AND LENGTH, via a
-#          drift angle: swept = B + L*sin(beta), plus a bank increment. Long convoys cost
-#          more under China; short wide ones cost less.
-#   bend   PIANC dF_C = c_C*L^2/R, capped <= L. China dB = L^2/(2R + B) which for R >> B is
-#          ~0.5*L^2/R, i.e. PIANC's c_C = 0.5. Two independent traditions on the same
-#          coefficient — strong evidence c_C ~ 0.5 is the floor, and that the LOA^2/(8R)
-#          this module used (c_C = 0.125) never was.
-#   depth  PIANC sets a RATIO (1.3 x T). China sets draught PLUS A FIXED CLEARANCE. They
-#          diverge with draught: at T = 4.5 m China is ~16% shallower.
-
-
-@dataclass(frozen=True)
-class Ruleset:
-    """One named channel-design standard."""
-
-    ruleset_id: str
-    family: str                   # "pianc" | "china"
-    label: str
-    source: str
-    r_mult_convoy: float          # R_min = mult x LOA, pushed convoy
-    r_mult_motor: float           # R_min = mult x LOA, self-propelled
-    width_mult: float = 0.0       # pianc: bottom width = width_mult x beam
-    c_c: float = 0.0              # pianc: bend coefficient
-    depth_mult: float = 0.0       # pianc: depth = depth_mult x draught
-    bank_mult_convoy: float = 0.0  # china: bank increment, fraction of swept path
-    bank_mult_motor: float = 0.0
-    depth_add_m: float = 0.0      # china: depth = draught + this
-    notes: str = ""
-
-
-# PIANC WG 141 (2019), free-flowing river, single-lane.
-#   width  Table 5.7 (p109). Table 5.7 prints 2.8*B for quality C but carries a 3.0*B
-#          minimum "for security reasons" spanning C and B, so C is 3.0, not 2.8.
-#   c_c    Table 5.7 fn.3 + Table E.5 (p261). A is read from Table E.5 by VESSEL CLASS;
-#          0.6 is Class VIa loaded downstream (short, wide convoys). B follows from A
-#          by the bow-thruster reduction in the Table E.5 remarks. C is the field-data
-#          floor and the Figure 5.5 single-lane gradient.
-#   depth  5.3.4.3 (p108): 1.3 x draught, never below 1.2.
-#   R_min  Table 5.7 (p109): 2L / 3L / 4L.
-# Chinese GB 50139, as summarised by WG 141 Appendix A.3 (p162-164).
-#   width  A.3.2/A.3.3: swept = B + L*sin(beta); bank increment 0.25-0.30 of swept for
-#          convoys, 0.34-0.40 for motor vessels. CN uses the permissive end, CN-conservative
-#          the strict end — the standard states a range and does not tier it.
-#   depth  A.3.2: draught + 0.4-0.5 m (class I) or 0.3-0.4 m (classes II-III).
-#   R_min  A.3.2: 3L pushed fleet / 4L cargo vessel, reducible to 2L / 3L where the extra
-#          width and driving visibility allow. CN-reduced is that reduction.
-RULESETS: dict = {
-    "PIANC-A": Ruleset("PIANC-A", "pianc", "PIANC WG 141 — Safety & Ease quality A",
-                       "WG 141 Table 5.7 (p109), Table E.5 (p261)",
-                       r_mult_convoy=4.0, r_mult_motor=4.0,
-                       width_mult=3.4, c_c=0.6, depth_mult=1.3,
-                       notes="Highest ease. c_C from Table E.5 for Class VIa laden downstream."),
-    "PIANC-B": Ruleset("PIANC-B", "pianc", "PIANC WG 141 — Safety & Ease quality B",
-                       "WG 141 Table 5.7 (p109)",
-                       r_mult_convoy=3.0, r_mult_motor=3.0,
-                       width_mult=3.2, c_c=0.5, depth_mult=1.3,
-                       notes="c_C reduced from A by the Table E.5 bow-thruster allowance."),
-    "PIANC-C": Ruleset("PIANC-C", "pianc", "PIANC WG 141 — Safety & Ease quality C",
-                       "WG 141 Table 5.7 (p109) incl. the 3.0*B security minimum",
-                       r_mult_convoy=2.0, r_mult_motor=2.0,
-                       width_mult=3.0, c_c=0.5, depth_mult=1.2,
-                       notes="Lowest ease. Restricted driving; skilled pilots assumed."),
-    "CN": Ruleset("CN", "china", "Chinese GB 50139 — standard",
-                  "WG 141 Appendix A.3 (p162-164)",
-                  r_mult_convoy=3.0, r_mult_motor=4.0,
-                  bank_mult_convoy=0.25, bank_mult_motor=0.34, depth_add_m=0.3,
-                  notes="Permissive end of every stated range."),
-    "CN-conservative": Ruleset("CN-conservative", "china", "Chinese GB 50139 — conservative",
-                               "WG 141 Appendix A.3 (p162-164)",
-                               r_mult_convoy=3.0, r_mult_motor=4.0,
-                               bank_mult_convoy=0.30, bank_mult_motor=0.40, depth_add_m=0.5,
-                               notes="Strict end of every stated range."),
-    "CN-reduced": Ruleset("CN-reduced", "china", "Chinese GB 50139 — reduced radius",
-                          "WG 141 Appendix A.3 (p162-164)",
-                          r_mult_convoy=2.0, r_mult_motor=3.0,
-                          bank_mult_convoy=0.30, bank_mult_motor=0.40, depth_add_m=0.5,
-                          notes="A USER CHOICE built on GB 50139, not a named Chinese ruleset. "
-                                "A.3.2 (p164) permits the radius to drop to 2L convoy / 3L "
-                                "motor where the extra width and driving visibility allow; this "
-                                "ruleset pairs that with the STRICT end of the width and depth "
-                                "ranges. The clause is written for CANAL sections. On a "
-                                "canalised river only the cut-throughs are canal, so this "
-                                "ruleset may apply to PART of an alignment only. Do not quote a "
-                                "whole-river total under it without saying so."),
-}
-
-# PIANC (2019) Report No. 141, Design Guidelines for Inland Waterways, Table A.2 (p163): the
-# Chinese standard's own single-lane river widths, which include bank clearance and wind.
-# ONLY the entries the code reads are kept: those the vessel classes in vessel_designer match
-# (``_cn_table_width``; ``test_cn_table_a2_holds_only_what_is_read`` proves it). Key (LOA m,
-# beam m) -> width m. For any other vessel the width falls back to the Table 5.1 ratio below.
-CN_TABLE_A2 = {
-    (223.0, 32.4): 70.0,
-    (186.0, 32.4): 70.0,
-    (167.0, 21.6): 45.0,
-}
-
-# The A.3.2 swept-path formula under-predicts the Table A.2 widths (by roughly a third, measured
-# against the published table). A.3.3 says the formula carries bank and passing increments
-# only, so wind is not in it. That gap is why the width basis is a published wind-included
-# ratio, not the formula.
-#
-# The width basis is now WG 141 Table 5.1 (p88), row "China River", single-lane W_F/B = 2.3.
-# Why this and not the calibrated formula:
-#   * it is the STANDARD'S OWN published ratio, not a factor we derived;
-#   * Table 5.1's footnote states in WG 141's words that the "Chinese, German and US profile:
-#     wind included", which is exactly the gap A.3.3 leaves open (it lists curvature, bank
-#     interaction, cross-flow and passing distance — not wind);
-#   * it agrees closely with a formula-times-calibration estimate, so it is a change of BASIS,
-#     not of number.
-# CAUTIONS, both real, both to be quoted with the number:
-#   * Table 5.1 is captioned "Canal fairway dimension in existing guidelines"; the China River
-#     row is a river row inside a canal comparison. WG 141 prints it there; we did not move it.
-#   * W_F is defined (5.2.1, p87) as the net bank-to-bank distance measured AT DESIGN DRAUGHT
-#     DEPTH, not at the bed. We apply it as a BOTTOM width, which on a sloped section is the
-#     conservative reading (more excavation).
-CN_TABLE_5_1_WIDTH_MULT = 2.3
-
-# Chinese depth clearance, WG 141 A.3.2 (p162): depth = draught + a fixed clearance, given as a
-# RANGE per class (class I 0.4-0.5 m; classes II-III 0.3-0.4 m). Classes IV and up are NOT
-# covered by the clause; this module does not invent a clearance for them.
-CN_DEPTH_CLEARANCE_M = {           # class -> (permissive end, strict end)
-    "I":   (0.4, 0.5),
-    "II":  (0.3, 0.4),
-    "III": (0.3, 0.4),
-}
-
-# Which end of that range to take. Default: the STRICT end. GB 50139's clearance is an
-# ABSOLUTE add-on calibrated on a class II design draught of 2.6 m (Table A.2); at deeper
-# draughts a fixed add-on is a shrinking ratio, so the strict end keeps the design inside the
-# standard while acknowledging that. A user choice: set "permissive" to take the low end.
-CN_DEPTH_CLEARANCE_END = "strict"
-
-# A.3.2 drift angle building the Chinese swept path: 3 deg classes I-V, 2 deg VI-VII.
-_CN_DRIFT_DEG_LARGE_BEAM = 2.0
-_CN_DRIFT_DEG_SMALL_BEAM = 3.0
-_CN_LARGE_BEAM_M = 22.8
 
 
 # =====================================================================================
@@ -244,42 +95,21 @@ def classify_bend(e_m: float, room_m: float, tol_m: float = 1e-9) -> str:
     return _rust.call("rulesets", "classify_bend", str, e_m=e_m, room_m=room_m, tol_m=tol_m)
 
 
-def register_ruleset(ruleset: Ruleset, *, replace: bool = False) -> Ruleset:
-    """Add a named ruleset for ``channel_shape``.
-
-    A ruleset is coefficients as data. ``family`` must be ``"pianc"`` (width = width_mult x
-    beam, bend dF_C = c_c x L²/R, depth = depth_mult x draught) or ``"china"`` (swept path
-    plus bank increment, dB = L²/(2R + B), depth = draught + depth_add_m). A method that is
-    not coefficients belongs in :mod:`owd.rules.methods` instead.
-    """
-    if ruleset.family not in ("pianc", "china"):
-        raise ValueError(f"ruleset family must be 'pianc' or 'china'; got {ruleset.family!r}")
-    if ruleset.ruleset_id in RULESETS and not replace:
-        raise ValueError(f"ruleset {ruleset.ruleset_id!r} is already registered; "
-                         "pass replace=True to override it")
-    RULESETS[ruleset.ruleset_id] = ruleset
-    return ruleset
-
-
-def get_ruleset(ruleset_id: str) -> Ruleset:
-    try:
-        return RULESETS[ruleset_id]
-    except KeyError:
-        raise KeyError(f"unknown ruleset {ruleset_id!r}; known: {', '.join(sorted(RULESETS))}")
-
-def _core_args(call, method: Optional[str] = None) -> dict:
-    """The registries as the Rust core needs them for one call: every width method and every
-    ruleset this process knows (the core reads them as data and as callbacks)."""
-    out = _core_methods(call, method)
-    out["host_rulesets"] = [_rust.enc(r) for r in RULESETS.values()]
-    return out
+def _selection(rule_sets, set_inputs, reaches, rule_set_files) -> dict:
+    """The selection a call names (spec 0007), as the Rust core reads it."""
+    sel = {"rule_sets": list(rule_sets), "set_inputs": dict(set_inputs or {})}
+    if reaches:
+        sel["reaches"] = [dict(r) for r in reaches]
+    if rule_set_files:
+        sel["rule_set_files"] = list(rule_set_files)
+    return sel
 
 
 @dataclass
 class ChannelShape:
-    """The channel a (ruleset, vessel class) pair requires. Everything here is derived."""
+    """The channel a selection of Rule Sets and a vessel class require. Everything here is derived."""
 
-    ruleset_id: str
+    rule_sets: str                 # the selected sets, ``id@version`` joined with `` + ``
     vessel_standard_id: str
     loa_m: float
     beam_m: float
@@ -290,50 +120,56 @@ class ChannelShape:
     design_depth_m: float
     bend_widening_at_rmin_m: float
     bottom_width_at_rmin_m: float
-    width_basis: str = ""          # "table" | "formula+calibration" | "rule"
+    width_basis: str = ""          # "table" | "table-5.1-ratio" | "rule"
     source: str = ""
     warnings: list = field(default_factory=list)
+    selection: dict = field(default_factory=dict)   # what sized it, for the widening at a radius
 
     def bend_widening_m(self, radius_m: float) -> float:
-        return _bend_widening(get_ruleset(self.ruleset_id), self.loa_m, self.beam_m, radius_m)
+        rows = _rust.call("rulesets", "channel_shape_widths", list, radii=[radius_m],
+                          vessel_standard_id=self.vessel_standard_id, draught_m=self.draught_m,
+                          **self.selection)
+        return _rust.plain(rows[0]["bend_widening_m"])
 
     def bottom_width_at_m(self, radius_m: float) -> float:
         return self.bottom_width_straight_m + self.bend_widening_m(radius_m)
 
 
-def _bend_widening(rs: Ruleset, loa_m: float, beam_m: float, radius_m: float) -> float:
-    import math as _m
-    if radius_m <= 0 or _m.isinf(radius_m):
-        return 0.0
-    if rs.family == "china":
-        return loa_m * loa_m / (2.0 * radius_m + beam_m)      # A.3.3 (p164)
-    return min(rs.c_c * loa_m * loa_m / radius_m, loa_m)      # 5.3.3 (p101), cap dF_C <= L
+def channel_shape(vessel_standard_id: str, draught_m: float = None, *,
+                  rule_sets=("pianc-wg141",), set_inputs: Optional[dict] = None,
+                  reaches=None, rule_set_files=()) -> ChannelShape:
+    """THE FRONT DOOR: the selected Rule Sets plus a vessel class fully determine the channel.
 
+    ``rule_sets`` are Rule Set ids or ``id@version`` (``owd rules`` lists them): every Rule of every
+    selected set applies and the strictest governs (spec 0007). ``set_inputs`` gives their inputs,
+    such as ``{"se_quality": "B"}`` or ``{"range_end": "strict"}``; ``pianc-wg141`` takes quality C
+    when none is given. ``reaches`` is a list of ``{"waterway", "reduced_radius_claim"}`` for a
+    line over one reach kind, such as a claimed canal for the reduced GB 50139 radius.
+    ``rule_set_files`` are Rule Set file texts loaded first. The ``owd`` checks are always selected.
 
-def _cn_table_width(loa_m: float, beam_m: float):
-    """Nearest Table A.2 entry, if the vessel plausibly matches one. Else None."""
-    best, best_d = None, None
-    for (L, B), w in CN_TABLE_A2.items():
-        d = abs(L - loa_m) / max(L, 1.0) + abs(B - beam_m) / max(B, 1.0)
-        if best_d is None or d < best_d:
-            best, best_d = w, d
-    # only trust it as a direct read when both dimensions are within 10%
-    return best if (best_d is not None and best_d <= 0.20) else None
-
-
-def channel_shape(ruleset_id: str, vessel_standard_id: str,
-                  draught_m: float = None) -> ChannelShape:
-    """THE FRONT DOOR: a ruleset plus a vessel class fully determine the channel.
-
-    ``draught_m`` overrides the vessel class's nominal draught — a project's design draught
-    is its own decision, so it stays injectable.
+    ``draught_m`` overrides the vessel class's nominal draught: a project's design draught is its
+    own decision, so it stays injectable.
     """
-    c = _rust.Call()
-    args = _core_args(c)
+    sel = _selection(rule_sets, set_inputs, reaches, rule_set_files)
+    args = {"vessel_standard_id": vessel_standard_id, **sel}
     if draught_m is not None:
         args["draught_m"] = draught_m
-    return _rust.call("rulesets", "channel_shape", ChannelShape, _call=c, ruleset_id=ruleset_id,
-                      vessel_standard_id=vessel_standard_id, **args)
+    shape = _rust.call("rulesets", "channel_shape", ChannelShape, **args)
+    shape.selection = sel
+    return shape
+
+
+def design_basis(vessel_standard_id: str, draught_m: float = None, *,
+                 rule_sets=("pianc-wg141",), set_inputs: Optional[dict] = None,
+                 reaches=None, rule_set_files=()) -> list:
+    """The design basis of the channel ``channel_shape`` sizes (spec 0007): one row per quantity,
+    each with the Rule that governs it, its sets, citation, origin and verification status. Every
+    Rule is unverified until a second reader checks it against its source."""
+    args = {"vessel_standard_id": vessel_standard_id,
+            **_selection(rule_sets, set_inputs, reaches, rule_set_files)}
+    if draught_m is not None:
+        args["draught_m"] = draught_m
+    return _rust.plain(_rust.call("rulesets", "design_basis", list, **args))
 
 
 @dataclass
@@ -359,7 +195,7 @@ class ChannelRuleInputs:
     # --- built-in "pianc" method parameters ---
     # Default path: one-lane fairway = 2.8 × beam + bend widening LOA²/(8R), R_min = 3 × LOA.
     # NOTE this LOA²/(8R) widening (c_C = 0.125) is BELOW WG 141's own floor of c_C ≈ 0.5 — see
-    # the RULESETS block above. Prefer ``channel_shape`` with a named ruleset for new work.
+    # the Rule Sets (spec 0007). Prefer ``channel_shape`` with a Rule Set for new work.
     # The Report-121 concept-design build-up (W_BM + ΣWᵢ + bank clearances) is retained behind
     # ``pianc_use_buildup=True`` for later coefficient confirmation against the source PDFs.
     pianc_width_multiple: float = 2.8            # one-lane fairway = k_w × beam (default path)
@@ -382,8 +218,8 @@ class ChannelRuleInputs:
         if self.rule_set == "china":
             raise ValueError(
                 "rule_set='china' is not implemented on the size_channel path (it used to run "
-                "the PIANC path silently). Use channel_shape(ruleset_id='CN' | "
-                "'CN-conservative' | 'CN-reduced', vessel_standard_id=...) instead.")
+                "the PIANC path silently). Use channel_shape(vessel_standard_id=..., "
+                "rule_sets=['gb50139'], set_inputs={'range_end': ...}) instead.")
         known = rule_sets()
         if self.rule_set not in known:
             raise ValueError(f"rule_set must be one of {known} (register more with "
@@ -448,13 +284,13 @@ def width_at_radius(inp: ChannelRuleInputs, radius_m: float) -> float:
     """
     c = _rust.Call()
     return _rust.call("rulesets", "width_at_radius", _call=c, inputs=inp, radii=[radius_m],
-                      **_core_args(c, inp.rule_set))[0]
+                      **_core_methods(c, inp.rule_set))[0]
 
 
 def size_channel(inp: ChannelRuleInputs) -> ChannelRuleResult:
     """One-lane channel geometry under the selected width method (``inp.rule_set``)."""
     c = _rust.Call()
-    r = _rust.call("rulesets", "size_channel", _call=c, inputs=inp, **_core_args(c, inp.rule_set))
+    r = _rust.call("rulesets", "size_channel", _call=c, inputs=inp, **_core_methods(c, inp.rule_set))
     res = _rust.plain(r["result"])
     res["checks"] = [Check(**ck) for ck in res["checks"]]
     return ChannelRuleResult(**res)

@@ -1,9 +1,10 @@
-"""Channel sizing rules: a named standard plus a vessel class gives the channel shape.
+"""Channel sizing rules: the selected Rule Sets plus a vessel class give the channel shape.
 
-- :mod:`.rulesets` — named rulesets (PIANC-A/B/C, CN family), ``channel_shape``, and the
-  ``size_channel`` path.
+- :mod:`.rulesets` — ``channel_shape`` and ``design_basis`` by Rule Set selection (spec 0007),
+  and the ``size_channel`` path.
 - :mod:`.methods` — the pluggable width-method registry behind ``size_channel`` and
-  ``design.compute`` (built-in ``"pianc"``; add your own with ``register_width_method``).
+  ``design.compute`` (built-in ``"pianc"``; add your own with ``register_width_method``). The width
+  methods are design assumptions, not verified rules.
 - :mod:`.design` — per-chainage sizing driven by centreline curvature.
 - :mod:`.simple` — one-call straight + single-bend sizing.
 - :mod:`.width_profile` — ``width(radius)`` callable for the alignment solver.
@@ -17,16 +18,13 @@ from .methods import (  # noqa: F401
     width_methods,
 )
 from .rulesets import (  # noqa: F401
-    RULESETS,
     ChannelRuleInputs,
     ChannelRuleResult,
     ChannelShape,
-    Ruleset,
     channel_shape,
     classify_bend,
-    get_ruleset,
+    design_basis,
     lateral_room_m,
-    register_ruleset,
     rule_sets,
     size_channel,
     width_at_radius,

@@ -6,7 +6,8 @@
 
 use owd_core::cut_model::{WIDEN_RMAX, widened_hb_from_shape};
 use owd_core::geom::{Polygon, Pt};
-use owd_core::rules::rulesets::{RulesetRegistry, channel_shape};
+use owd_core::rules::engine::selection_for_old_ruleset;
+use owd_core::rules::rulesets::channel_shape_for;
 use owd_core::synthetic::{RiverParams, synthetic_river};
 use owd_core::volumes::sections::{HalfWidth, Level, section_volumes};
 use serde_json::{Value, json};
@@ -196,7 +197,12 @@ fn volumes_equal_the_core_called_directly_on_the_same_dem() {
         .collect();
     let dem = owd_format::geotiff::read_file(&dem).unwrap();
     let terrain = |xs: &[f64], ys: &[f64]| dem.sample_many(xs, ys);
-    let shape = channel_shape(&RulesetRegistry::new(), "PIANC-B", "CEMT_IV", Some(2.5)).unwrap();
+    let shape = channel_shape_for(
+        &selection_for_old_ruleset("PIANC-B").unwrap(),
+        "CEMT_IV",
+        Some(2.5),
+    )
+    .unwrap();
     let ring: Vec<Pt> = synthetic_river(RiverParams::default())
         .unwrap()
         .polygon

@@ -20,8 +20,9 @@ def main():
     river = synthetic_river()
 
     # 2. Rules: a named standard plus a vessel class give the channel shape.
-    shape = channel_shape("PIANC-B", "CEMT_IV", draught_m=2.5)
-    print(f"{shape.ruleset_id} x {shape.vessel_standard_id}: bottom "
+    shape = channel_shape("CEMT_IV", draught_m=2.5, rule_sets=["pianc-wg141"],
+                          set_inputs={"se_quality": "B"})
+    print(f"{shape.rule_sets} x {shape.vessel_standard_id}: bottom "
           f"{shape.bottom_width_straight_m:.1f} m, R_min {shape.min_bend_radius_m:.0f} m, "
           f"depth {shape.design_depth_m:.2f} m")
 
@@ -37,7 +38,7 @@ def main():
         bottom_width=shape.bottom_width_straight_m, depth=shape.design_depth_m,
         side_slope=3.0, r_min=shape.min_bend_radius_m, corridor_sweep=(40, 80, 120))
 
-    # 5. Volumes: Cut Model B along both lines, with bend widening from the ruleset.
+    # 5. Volumes: Cut Model B along both lines, with bend widening from the Rule Set.
     def hb(xy):
         return widened_hb_from_shape(xy, shape)
 

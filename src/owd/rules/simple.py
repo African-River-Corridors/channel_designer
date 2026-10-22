@@ -3,7 +3,7 @@
 A thin layer over a width method (:mod:`.methods`, default ``"pianc"``) and
 :mod:`.design` (depth/UKC). For curvature-driven
 widening along a real centreline use :func:`owd.rules.design.compute`; for a
-named standard and vessel class use :func:`owd.rules.rulesets.channel_shape`.
+Rule Set and vessel class use :func:`owd.rules.rulesets.channel_shape`.
 """
 from __future__ import annotations
 
