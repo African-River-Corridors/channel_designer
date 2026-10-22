@@ -282,8 +282,12 @@ enum Command {
         #[arg(long, value_name = "URL", requires = "search")]
         search_endpoint: Option<String>,
         /// The river's name, searched in OSM. The route may leave this river.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "osm_id")]
         river: Option<String>,
+        /// A whole river from OSM, as --search lists it (for example relation/3328713): the route
+        /// runs from its mouth to its upstream end. --start, --end and --via cut a reach out of it.
+        #[arg(long, value_name = "OSM_ID", conflicts_with = "trace")]
+        osm_id: Option<String>,
         /// The start of the reach, as `lon,lat`.
         #[arg(
             long,
@@ -861,6 +865,7 @@ pub fn main() -> ExitCode {
         Command::Reach {
             file,
             river,
+            osm_id,
             start,
             end,
             via,
@@ -885,6 +890,7 @@ pub fn main() -> ExitCode {
             stac,
             file: file.unwrap_or_default(),
             river,
+            osm_id,
             start,
             end,
             via,

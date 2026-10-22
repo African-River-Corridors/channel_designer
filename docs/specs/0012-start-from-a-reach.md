@@ -178,8 +178,9 @@ An engineer wants a route that leaves one river, follows a creek and joins anoth
   in the direction of flow: the **mouth** is the downstream end, and the **upstream end** is the
   source reached by the longest route from the mouth. Start is set to the mouth and End to the
   upstream end; the user drags either, or clicks, to cut a reach. Via points work as before.
-- The document records the chosen OSM id with the reach, and the search source with its date in the
-  provenance, beside Overpass.
+- The document records the chosen OSM id and the search source with its date in the route's
+  provenance settings, beside Overpass. The mouth and upstream end are two OSM node positions, kept as
+  the reach's start and end like a click: an insubstantial extract. The route itself stays way ids.
 - CLI: `owd reach --search TEXT [--country CC]` lists the entries with their OSM ids; `owd reach FILE
   --osm-id relation/N` makes the study from the whole river, and `--start`, `--end` and `--via` cut it.
 

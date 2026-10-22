@@ -1639,6 +1639,7 @@ pub struct ReachFlags {
     pub stac: Option<String>,
     pub file: String,
     pub river: Option<String>,
+    pub osm_id: Option<String>,
     pub start: Option<String>,
     pub end: Option<String>,
     pub via: Vec<String>,
@@ -1749,7 +1750,7 @@ pub fn reach_search_with(
     for h in &hits {
         human.push_str(&format!("{:<18} {}\n", h.osm.to_string(), h.label()));
     }
-    human.push_str("\n\u{a9} OpenStreetMap contributors (ODbL); search by Photon");
+    human.push_str("\nMake a study of one with `owd reach FILE --osm-id ID`.\n\u{a9} OpenStreetMap contributors (ODbL); search by Photon");
     let list: Vec<Value> = hits
         .iter()
         .map(|h| {
@@ -1778,14 +1779,34 @@ pub fn reach_with(
     use owd_reach::overpass::{DEFAULT_ENDPOINT, Overpass};
     use owd_reach::reach::{plan_points, plan_trace, record_reach};
     let date = flags.date.clone().unwrap_or_else(today);
-    if flags.start.is_none() && flags.trace.is_none() {
+    if flags.start.is_none() && flags.trace.is_none() && flags.osm_id.is_none() {
         return Err(input_error(
-            "give --start and --end (and --river), or --trace FILE",
+            "give --start and --end (and --river), --osm-id (from --search), or --trace FILE",
         ));
     }
     let ov = Overpass::with_endpoint(fetch, flags.overpass.as_deref().unwrap_or(DEFAULT_ENDPOINT));
     let river = flags.river.as_deref();
-    let planned = if let Some(path) = &flags.trace {
+    let osm: Option<owd_reach::search::OsmRef> = flags
+        .osm_id
+        .as_deref()
+        .map(str::parse)
+        .transpose()
+        .map_err(|e: owd_reach::ReachError| input_error(e.to_string()))?;
+    let planned = if let Some(o) = osm {
+        let whole =
+            owd_reach::river::whole_river(&ov, o, &[]).map_err(|e| input_error(e.to_string()))?;
+        match (&flags.start, &flags.end) {
+            (Some(s), Some(e)) => {
+                let via = flags
+                    .via
+                    .iter()
+                    .map(|v| lon_lat(v))
+                    .collect::<core::result::Result<Vec<_>, _>>()?;
+                whole.cut(lon_lat(s)?, lon_lat(e)?, &via)
+            }
+            _ => Ok(whole.planned()),
+        }
+    } else if let Some(path) = &flags.trace {
         let line = trace_line(&read(path)?, path)?;
         plan_trace(&ov, river, &line)
     } else {
@@ -1803,12 +1824,17 @@ pub fn reach_with(
         .title
         .clone()
         .or_else(|| flags.river.clone())
+        .or_else(|| planned.spec.river.clone())
         .unwrap_or_else(|| "Reach study".to_string());
     if title.trim().is_empty() {
         return Err(input_error("the title must not be empty"));
     }
     let mut session = Session::new(&title, &date);
-    record_reach(&mut session, &planned, &date).map_err(|e| input_error(e.to_string()))?;
+    match osm {
+        Some(o) => owd_reach::river::record_river_reach(&mut session, &planned, o, false, &date),
+        None => record_reach(&mut session, &planned, &date),
+    }
+    .map_err(|e| input_error(e.to_string()))?;
     let banks = if flags.banks {
         use owd_reach::banks::{BankParams, banks_from_jrc, record_banks};
         let params = BankParams {
@@ -1883,6 +1909,25 @@ pub fn reach_with(
         flags.file,
         route.length_m / 1000.0
     );
+    if osm.is_some() {
+        human.push_str(&format!(
+            "\nstart {:.5},{:.5}{}; end {:.5},{:.5}{}",
+            planned.spec.start[0],
+            planned.spec.start[1],
+            if flags.start.is_none() {
+                " (the mouth)"
+            } else {
+                ""
+            },
+            planned.spec.end[0],
+            planned.spec.end[1],
+            if flags.start.is_none() {
+                " (the upstream end)"
+            } else {
+                ""
+            },
+        ));
+    }
     if drawn > 0 {
         human.push_str(&format!(
             "; {drawn} stretch(es) kept as drawn, with no waterway near (check them)"
@@ -1923,6 +1968,8 @@ pub fn reach_with(
         json!({
             "ok": true, "file": flags.file, "length_m": route.length_m,
             "ways": route.way_ids(), "as_drawn_stretches": drawn,
+            "osm_id": osm.map(|o| o.to_string()),
+            "start": planned.spec.start, "end": planned.spec.end,
             "river_search": found,
             "banks": banks.as_ref().map(|b| json!({
                 "mask_threshold_pct": b.params.threshold_pct,
