@@ -367,7 +367,7 @@ impl AppState {
                 Crs::Utm(u) => Some(u),
                 Crs::Wgs84 => None,
             });
-        let (Some(utm), Some(rulesets)) = (utm, doc["fits"]["results"]["rulesets"].as_array())
+        let (Some(utm), Some(rulesets)) = (utm, doc["fits"]["results"]["rule_sets"].as_array())
         else {
             return json!({});
         };
@@ -393,7 +393,7 @@ impl AppState {
                 );
             }
             out.insert(
-                rs["ruleset_id"].as_str().unwrap_or("").to_string(),
+                rs["rule_set"].as_str().unwrap_or("").to_string(),
                 Value::Object(classes),
             );
         }

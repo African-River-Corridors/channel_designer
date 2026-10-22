@@ -2,8 +2,8 @@
 //!
 //! Label: property. No fixed number; the sizing numbers are compared with the old path.
 
-use owd_core::rules::engine::selection_for_old_ruleset;
 use owd_core::rules::engine::{self, BUILT_IN};
+use owd_core::rules::engine::{old_name_choice, selection_for_old_ruleset};
 use owd_core::rules::rulesets::channel_shape_for;
 use owd_format::design::{DesignError, Session, Stage, StageStatus};
 use serde_json::{Value, json};
@@ -56,7 +56,7 @@ fn a_new_design_opens_with_pianc_wg141_quality_c_all_marked_default() {
         r["bottom_width_straight_m"],
         json!(old.bottom_width_straight_m)
     );
-    assert_eq!(r["ruleset_id"], "pianc-wg141@0.3.0 (se_quality C)");
+    assert_eq!(r["rule_sets"], "pianc-wg141@0.3.0 (se_quality C)");
 }
 
 #[test]
@@ -102,7 +102,9 @@ fn every_old_ruleset_maps_to_its_selection_with_the_same_numbers_and_warnings() 
         ("CN-conservative", "CN_I_convoy_2ab"),
     ] {
         let mut s = Session::new("t", "2026-10-21");
-        s.set_sizing(old, vessel, Some(2.6)).unwrap();
+        let (set, input, value) = old_name_choice(old).unwrap();
+        s.set_rule_sets(&[set], &[(input, value)]).unwrap();
+        s.set_vessel(vessel, Some(2.6)).unwrap();
         s.run_stage(Stage::Sizing).unwrap();
         let r = &s.document()["stages"]["sizing"]["results"];
         let o =
@@ -182,7 +184,9 @@ fn a_set_loaded_at_run_time_can_be_selected_and_a_change_to_it_marks_every_later
 #[test]
 fn changing_the_selection_marks_sizing_and_every_later_stage_stale() {
     let mut s = Session::new("t", "2026-10-21");
-    s.set_sizing("PIANC-B", "CEMT_IV", Some(2.5)).unwrap();
+    s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+        .unwrap();
+    s.set_vessel("CEMT_IV", Some(2.5)).unwrap();
     s.run_stage(Stage::Sizing).unwrap();
     assert_eq!(s.stage_status(Stage::Sizing), StageStatus::Fresh);
     s.set_rule_sets(&["pianc-wg141", "gb50139"], &[("range_end", "strict")])
@@ -191,7 +195,7 @@ fn changing_the_selection_marks_sizing_and_every_later_stage_stale() {
     s.run_stage(Stage::Sizing).unwrap();
     let r = &s.document()["stages"]["sizing"]["results"];
     assert_eq!(
-        r["ruleset_id"],
+        r["rule_sets"],
         "pianc-wg141@0.3.0 + gb50139@0.3.0 (se_quality B, range_end strict)"
     );
 }

@@ -14292,7 +14292,7 @@
         "draught_m": 2.5
       },
       "results": {
-        "ruleset_id": "pianc-wg141@0.3.0 (se_quality B)",
+        "rule_sets": "pianc-wg141@0.3.0 (se_quality B)",
         "vessel_standard_id": "CEMT_IV",
         "loa_m": 85.0,
         "beam_m": 9.5,

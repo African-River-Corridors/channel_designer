@@ -83,7 +83,7 @@ fn size_takes_rule_sets_set_inputs_and_a_set_file_loaded_at_run_time() {
         "--json",
     ]));
     assert_eq!(
-        two["sizing"]["ruleset_id"],
+        two["sizing"]["rule_sets"],
         "pianc-wg141@0.3.0 + gb50139@0.3.0 (se_quality B, range_end strict)"
     );
     // A set of my own, loaded at run time: PIANC quality B with a wider bottom.

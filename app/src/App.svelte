@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import * as api from "./lib/api";
-  import type { Choices, CrossSection as CrossSectionData, Hillshade, InputRole, LongSection as LongSectionData, MapGeometry, OptionTable, RunMethod, Snapshot, StageName } from "./lib/api";
+  import type { Choices, CrossSection as CrossSectionData, FitsSelection, Hillshade, InputRole, LongSection as LongSectionData, MapGeometry, OptionTable, RunMethod, Snapshot, StageName, StretchCollection } from "./lib/api";
   import CrossSection from "./lib/CrossSection.svelte";
   import LongSection from "./lib/LongSection.svelte";
   import BottomPanel from "./lib/BottomPanel.svelte";
@@ -47,6 +47,22 @@
       (g) => (geometry = g),
       () => (geometry = null),
     );
+  });
+
+  // The constraint stretches, as the session exports them in WGS84, for the map and the table.
+  let stretches = $state<StretchCollection | null>(null);
+  /** The stretch picked in the table: its option and its place in that option's list. */
+  let selectedStretch = $state<{ option: string; index: number } | null>(null);
+  $effect(() => {
+    void snap?.document;
+    api.stretchesGeojson().then(
+      (fc) => (stretches = fc),
+      () => (stretches = null),
+    );
+  });
+  // A stretch belongs to its option: another option, or a new design, drops the pick.
+  $effect(() => {
+    if (selectedStretch && selectedStretch.option !== selectedId) selectedStretch = null;
   });
 
   // A stage running on a worker: which, and how many DEM points it has read so far.
@@ -140,10 +156,15 @@
     if (next) snap = next;
   }
 
-  function onSizing(ruleset: string, vessel: string, draught: string) {
-    queued = () => api.setSizing(ruleset, vessel, draught);
+  function onVessel(vessel: string, draught: string) {
+    queued = () => api.setVessel(vessel, draught);
     clearTimeout(pending);
     pending = setTimeout(() => flush(), PAUSE_MS);
+  }
+
+  /** A Rule Set or set input is a single pick, not typing: send it at once, after any queued edit. */
+  async function onRuleSets(ids: string[], inputs: Record<string, string>) {
+    await fileAction(() => api.setRuleSets(ids, inputs));
   }
 
   async function fileAction(action: () => Promise<Snapshot | null>) {
@@ -325,14 +346,20 @@
     };
   }
 
-  /** "Use this vessel": size the channel for the class, then back to today's flow (alignment, then volumes). */
-  async function useVessel(rulesetId: string, vesselStandardId: string) {
+  /** "Use this vessel": choose the answer's Rule Set and size the channel for the class, then back to today's flow (alignment, then volumes). */
+  async function useVessel(choice: string, selection: FitsSelection | null, vesselStandardId: string) {
     await flush();
-    const next = await guard(() => api.setSizing(rulesetId, vesselStandardId, ""));
+    if (selection) {
+      const inputs = Object.fromEntries(selection.set_inputs.map((i) => [i.name, i.value]));
+      const chosen = await guard(() => api.setRuleSets(selection.rule_sets, inputs));
+      if (!chosen) return;
+      snap = chosen;
+    }
+    const next = await guard(() => api.setVessel(vesselStandardId, ""));
     if (!next) return;
     snap = next;
     reachView = false;
-    notice = `Vessel set: ${vesselStandardId} under ${rulesetId}. Next: run the alignment, then the volumes.`;
+    notice = `Vessel set: ${vesselStandardId} under ${choice}. Next: run the alignment, then the volumes.`;
   }
 
   let theme = $state<ThemeChoice>(currentTheme());
@@ -394,13 +421,13 @@
       {#if reachView}
         <StartFromRiver {map} {snap} onSnap={(next) => openDocDone(next)} onError={(m) => (error = m)} onUseVessel={useVessel} bind:picker={reachPicker} />
       {:else}
-        <LeftPanel {snap} {choices} {onSizing} {busy} {samples} {dropTarget} onRun={run} onCancel={cancel} onLoad={(r) => load(r)} onFetch={fetchDem} onWater={water} />
+        <LeftPanel {snap} {choices} {onRuleSets} {onVessel} {busy} {samples} {dropTarget} onRun={run} onCancel={cancel} onLoad={(r) => load(r)} onFetch={fetchDem} onWater={water} />
       {/if}
     </section>
     <div class="handle v" role="separator" aria-orientation="vertical" onpointerdown={drag("x")}></div>
     <section class="main">
       <div class="mapbox">
-        {#if tiles}<MapPanel {geometry} {selectedId} {hillshade} {tiles} stationPosition={crossSection?.position ?? null} onPick={editingBanks ? undefined : reachView && reachPicker ? reachPicker : pickPoint} onReady={(m) => (map = m)} bind:offline />{/if}
+        {#if tiles}<MapPanel {geometry} {selectedId} {stretches} {selectedStretch} {hillshade} {tiles} stationPosition={crossSection?.position ?? null} onPick={editingBanks ? undefined : reachView && reachPicker ? reachPicker : pickPoint} onReady={(m) => (map = m)} bind:offline />{/if}
         <BankEditor {map} {geometry} {snap} onSnap={(next) => (snap = next)} bind:active={editingBanks} />
         {#if snap?.notices?.length}
           <ul class="notices" data-testid="map-notices" aria-label="Data notices">
@@ -437,7 +464,7 @@
     </section>
     <div class="handle h" role="separator" aria-orientation="horizontal" onpointerdown={drag("y")}></div>
     <section class="bottom">
-      <BottomPanel {table} {indexOf} {selectedId} onSelect={(id) => (selectedId = id)} />
+      <BottomPanel {table} {snap} {stretches} {indexOf} {selectedId} {selectedStretch} onSelect={(id) => (selectedId = id)} onSelectStretch={(s) => (selectedStretch = s)} />
     </section>
   </div>
 

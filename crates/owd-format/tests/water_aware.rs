@@ -51,7 +51,9 @@ fn tail_design() -> Session {
     let mut s = Session::new("Fixed tail", "2026-10-16");
     s.import(&[(Role::Centreline, &line), (Role::RiverPolygon, &polygon)])
         .unwrap();
-    s.set_sizing("PIANC-B", "CEMT_IV", Some(2.5)).unwrap();
+    s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+        .unwrap();
+    s.set_vessel("CEMT_IV", Some(2.5)).unwrap();
     s.run_stage(Stage::Sizing).unwrap();
     let mut doc: Value = serde_json::from_str(&s.to_text()).unwrap();
     let ls = |p: Vec<Pt>| json!({"type": "LineString", "coordinates": p});

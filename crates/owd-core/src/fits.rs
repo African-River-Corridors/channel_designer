@@ -1,6 +1,7 @@
 //! "What fits": the plan-only answer over every vessel class (spec 0012, ticket T8).
 //!
-//! For each vessel class of the pinned `ovcd-core` catalogue, in size order, and each ruleset, the
+//! For each vessel class of the pinned `ovcd-core` catalogue, in size order, and each Rule Set choice (an old
+//! ruleset name, such as PIANC-B), the
 //! river centreline is checked as it is: the water against the bend-widened bottom width at the
 //! local radius (the width check of spec 0005, which also fails a station that is not in the
 //! water), and the local radius against R_min. Every class stays in the answer. A class that does
@@ -55,7 +56,7 @@ pub struct FitStretch {
     pub deficit_m: f64,
 }
 
-/// One row of the answer: a vessel class under a ruleset.
+/// One row of the answer: a vessel class under a Rule Set choice.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClassFit {
     pub vessel_standard_id: String,
@@ -64,7 +65,7 @@ pub struct ClassFit {
     pub formation: String,
     pub loa_m: f64,
     pub beam_m: f64,
-    /// R_min of the class under the ruleset (m).
+    /// R_min of the class under the Rule Set choice (m).
     pub r_min_m: f64,
     /// The bottom width of a straight channel (m).
     pub bottom_width_straight_m: f64,
@@ -75,14 +76,17 @@ pub struct ClassFit {
     /// The largest radius shortfall over the stretches (m); 0 when there is none.
     pub worst_radius_deficit_m: f64,
     pub stretches: Vec<FitStretch>,
-    /// What the ruleset says about the class (for example a clause that does not cover it).
+    /// What the Rule Sets say about the class (for example a clause that does not cover it).
     pub warnings: Vec<String>,
 }
 
-/// The answer under one ruleset.
+/// The answer under one Rule Set choice.
 #[derive(Debug, Clone, PartialEq)]
-pub struct RulesetFits {
-    pub ruleset_id: String,
+pub struct RuleSetFits {
+    /// The choice, by its old name (such as PIANC-B): see [`old_name_choice`].
+    ///
+    /// [`old_name_choice`]: crate::rules::engine::old_name_choice
+    pub rule_set: String,
     /// One row per class, in size order.
     pub rows: Vec<ClassFit>,
     /// The largest class that fits as it is; `None` when no class does.
@@ -95,11 +99,11 @@ pub struct Fits {
     /// Always [`PLAN_ONLY_LABEL`].
     pub label: &'static str,
     pub length_m: f64,
-    pub rulesets: Vec<RulesetFits>,
+    pub rule_sets: Vec<RuleSetFits>,
 }
 
 /// The vessel class ids in size order: by beam, then overall length, then id. The same order for
-/// every ruleset, so "a larger class" means one thing.
+/// every Rule Set choice, so "a larger class" means one thing.
 pub fn classes_in_size_order() -> Vec<String> {
     let mut all = vessel_catalogue();
     all.sort_by(|(ka, a), (kb, b)| {
@@ -111,11 +115,12 @@ pub fn classes_in_size_order() -> Vec<String> {
     all.into_iter().map(|(k, _)| k).collect()
 }
 
-/// The answer for `centreline` in `water`, under each of `ruleset_ids`, for every class.
+/// The answer for `centreline` in `water`, under each of `choices` (old ruleset names), for every
+/// class.
 pub fn plan_only_fits(
     centreline: &[Pt],
     water: &[Polygon],
-    ruleset_ids: &[&str],
+    choices: &[&str],
 ) -> Result<Fits, PyError> {
     if centreline.len() < 2 {
         return Err(PyError::value(
@@ -124,8 +129,8 @@ pub fn plan_only_fits(
     }
     let chained = Chained::new(centreline);
     let classes = classes_in_size_order();
-    let mut rulesets = Vec::new();
-    for &rs in ruleset_ids {
+    let mut rule_sets = Vec::new();
+    for &rs in choices {
         // An old ruleset name, sized through its Rule Set selection (spec 0007).
         let selection = selection_for_old_ruleset(rs)
             .map_err(|e| PyError::value(e.raw_message().to_string()))?;
@@ -140,8 +145,8 @@ pub fn plan_only_fits(
             .rev()
             .find(|r| r.fits)
             .map(|r| r.vessel_standard_id.clone());
-        rulesets.push(RulesetFits {
-            ruleset_id: rs.to_string(),
+        rule_sets.push(RuleSetFits {
+            rule_set: rs.to_string(),
             rows,
             largest_fitting,
         });
@@ -149,7 +154,7 @@ pub fn plan_only_fits(
     Ok(Fits {
         label: PLAN_ONLY_LABEL,
         length_m: chained.length(),
-        rulesets,
+        rule_sets,
     })
 }
 
@@ -287,11 +292,11 @@ mod tests {
         )
     }
 
-    fn answer(rs: &str) -> RulesetFits {
+    fn answer(rs: &str) -> RuleSetFits {
         let (line, water) = fixture();
         plan_only_fits(&line, &water, &[rs])
             .unwrap()
-            .rulesets
+            .rule_sets
             .remove(0)
     }
 
@@ -300,13 +305,13 @@ mod tests {
         let (line, water) = fixture();
         let f = plan_only_fits(&line, &water, &["PIANC-B"]).unwrap();
         assert_eq!(f.label, "width and radius only, no depth");
-        let ids: Vec<&str> = f.rulesets[0]
+        let ids: Vec<&str> = f.rule_sets[0]
             .rows
             .iter()
             .map(|r| r.vessel_standard_id.as_str())
             .collect();
         assert_eq!(ids.len(), vessel_catalogue().len());
-        let beams: Vec<f64> = f.rulesets[0].rows.iter().map(|r| r.beam_m).collect();
+        let beams: Vec<f64> = f.rule_sets[0].rows.iter().map(|r| r.beam_m).collect();
         assert!(beams.windows(2).all(|w| w[0] <= w[1]), "{beams:?}");
     }
 
@@ -441,14 +446,14 @@ mod tests {
         };
         let f = plan_only_fits(&line, &[wide], &["PIANC-B"]).unwrap();
         assert!(
-            f.rulesets[0]
+            f.rule_sets[0]
                 .rows
                 .iter()
                 .all(|r| r.fits && r.stretches.is_empty())
         );
         assert_eq!(
-            f.rulesets[0].largest_fitting.as_deref(),
-            f.rulesets[0]
+            f.rule_sets[0].largest_fitting.as_deref(),
+            f.rule_sets[0]
                 .rows
                 .last()
                 .map(|r| r.vessel_standard_id.as_str())

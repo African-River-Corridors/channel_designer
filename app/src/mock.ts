@@ -1,6 +1,6 @@
 // Dev only (`npm run dev`, then /mock.html?theme=light|dark): the real app on a fixed fake session, with
 // no Rust behind it. It exists to take screenshots of every view. Production builds do not include it.
-import type { CrossSection, Hillshade, LongSection, MapGeometry, OptionTable, Snapshot } from "./lib/api";
+import type { ChannelShape, ConstraintStretch, CrossSection, Hillshade, LongSection, MapGeometry, OptionTable, Snapshot, StretchCollection } from "./lib/api";
 
 const params = new URLSearchParams(location.search);
 const theme = params.get("theme");
@@ -79,11 +79,41 @@ const crossSection: CrossSection = {
   dredge_area_m2: 212, excav_area_m2: 0, max_face_h_m: 0, bench_left: false, bench_right: false,
 };
 
-const shape = {
-  ruleset_id: "pianc-b", vessel_standard_id: "cemt-iv", loa_m: 85, beam_m: 9.5, draught_m: 2.6, formation: "motor barge",
+const RULES_NOTICE = "Every Rule is unverified until a second reader checks it against its source.";
+const WG141 = "PIANC InCom WG 141, Design Guidelines for Inland Waterway Dimensions, PIANC Report 141, 2019, Table 5.7";
+const shape: ChannelShape = {
+  rule_sets: "pianc-wg141@0.3.0 (se_quality B)", vessel_standard_id: "cemt-iv", loa_m: 85, beam_m: 9.5, draught_m: 2.6, formation: "motor barge",
   bottom_width_straight_m: 88.5, min_bend_radius_m: 800, design_depth_m: 3.3, bend_widening_at_rmin_m: 6, bottom_width_at_rmin_m: 94.5,
-  width_basis: "PIANC WG 141, quality B", source: "PIANC WG 141", warnings: ["Draught is the vessel default (2.6 m). Type a value to use your own."],
+  width_basis: "rule", source: "Rule Sets pianc-wg141@0.3.0, owd@0.3.0", warnings: ["Draught is the vessel default (2.6 m). Type a value to use your own."],
+  rules_notice: RULES_NOTICE,
+  design_basis: [
+    ["bottom-width", null, 88.5, "pianc-wg141/Table5.7/bottom-width-b"],
+    ["min-bend-radius", "free-flowing-river", 800, "pianc-wg141/Table5.7/min-bend-radius-b"],
+    ["design-depth", null, 3.3, "pianc-wg141/5.3.4.3/design-depth-b"],
+  ].map(([quantity, waterway, value, rule]) => ({
+    quantity: quantity as string, waterway: waterway as string | null, value: value as number, unit: "m", rule: rule as string,
+    rule_sets: ["pianc-wg141@0.3.0"], citation: WG141, origin: "guideline", status: "unverified", other_rules: [],
+  })),
 };
+// The stretches of option 1, at chainages along its line.
+const stretchList: ConstraintStretch[] = [
+  { kind: "depth", start_chainage_m: 0, end_chainage_m: 3200, governing_rule: "pianc-wg141/5.3.4.3/design-depth-b", required: 3.3, river: 2.1, worst_chainage_m: 2400, deficit: 1.2, works: "dredge", dredge_m3: 182400, dry_cut_m3: 0 },
+  { kind: "radius", start_chainage_m: 4800, end_chainage_m: 5600, governing_rule: "pianc-wg141/Table5.7/min-bend-radius-b", required: 800, river: 610, worst_chainage_m: 5200, deficit: 190, works: "realign", dredge_m3: null, dry_cut_m3: null },
+  { kind: "width", start_chainage_m: 9000, end_chainage_m: 10400, governing_rule: "pianc-wg141/Table5.7/bottom-width-b", required: 88.5, river: 71.2, worst_chainage_m: 9800, deficit: 17.3, works: "bank-cut", dredge_m3: 41200, dry_cut_m3: 12400 },
+];
+const o1 = curve(1);
+const along = (c: number) => o1[Math.min(60, Math.round((c / 14200) * 60))];
+const stretches: StretchCollection = {
+  type: "FeatureCollection", screening: table.screening, rules_notice: RULES_NOTICE, volumes_status: "stale",
+  features: stretchList.map((c) => ({
+    type: "Feature" as const,
+    geometry: line(o1.slice(Math.round((c.start_chainage_m / 14200) * 60), Math.round((c.end_chainage_m / 14200) * 60) + 1).concat(c.start_chainage_m === c.end_chainage_m ? [along(c.end_chainage_m)] : [])),
+    properties: { ...c, option_id: "o1" },
+  })),
+};
+const screening = (verdict: "navigable-as-is" | "navigable-with-works" | "not-navigable", list: ConstraintStretch[]) => ({
+  verdict, notice: table.screening, rules_notice: RULES_NOTICE, blocking_not_evaluated: { count: 0, rules: [] }, constraint_stretches: list,
+});
 const snapshot: Snapshot = {
   engine_version: "0.6.0", file_name: "reach-a.owd", path: null, dirty: false, title: "Reach A, screening", warnings: ["Draught is the vessel default (2.6 m). Type a value to use your own."], running: null,
   stages: [
@@ -97,8 +127,23 @@ const snapshot: Snapshot = {
       river_polygon: { type: "Polygon", coordinates: [ring] }, dem: { path: "glo30-reach-a.tif" }, water_level: { points: [[0, 4], [20000, 3]] },
     },
     stages: {
-      sizing: { settings: { ruleset_id: "pianc-b", vessel_standard_id: "cemt-iv", draught_m: null }, results: shape },
-      alignment: { settings: null, results: null }, optimise: { settings: null, results: null }, volumes: { settings: null, results: null },
+      sizing: {
+        settings: {
+          rule_sets: [{ id: "pianc-wg141", version: "0.3.0", hash: "0a80", source: "typed" }, { id: "owd", version: "0.3.0", hash: "f6e4", source: "default" }],
+          set_inputs: [{ name: "se_quality", value: "B", source: "typed" }],
+          vessel_standard_id: "cemt-iv", draught_m: null,
+        },
+        results: shape,
+      },
+      alignment: { settings: null, results: null }, optimise: { settings: null, results: null },
+      volumes: {
+        settings: null,
+        results: { options: [
+          { id: "o1", name: opts[0].name, screening: screening("not-navigable", stretchList) },
+          { id: "o2", name: opts[1].name, screening: screening("navigable-with-works", []) },
+          { id: "o3", name: opts[2].name, screening: screening("navigable-as-is", []) },
+        ] },
+      },
     },
   },
 };
@@ -124,13 +169,17 @@ const blank = (): Snapshot => ({
   stages: snapshot.stages.map((x) => ({ ...x, status: "not_run" as const })),
   document: { ...snapshot.document, project: { ...snapshot.document.project, title: "Untitled", crs: null },
     inputs: { left_bank: null, right_bank: null, centreline: null, river_polygon: null, dem: null, water_level: null },
-    stages: { ...snapshot.document.stages, sizing: { settings: null, results: null } } },
+    stages: { ...snapshot.document.stages, sizing: { settings: null, results: null }, volumes: { settings: null, results: null } } },
 });
 const none = (why: string) => () => Promise.reject(why);
 
 const answer: Record<string, () => unknown> = {
-  snapshot: () => snapshot, set_sizing: () => snapshot, sizing_choices: () => ({
-    rulesets: [{ id: "pianc-b", label: "PIANC WG 141, quality B", family: "pianc" }, { id: "pianc-a", label: "PIANC WG 141, quality A", family: "pianc" }],
+  snapshot: () => snapshot, set_rule_sets: () => snapshot, set_vessel: () => snapshot, stretches_geojson: () => stretches, sizing_choices: () => ({
+    rule_sets: [
+      { id: "pianc-wg141", version: "0.3.0", title: "PIANC WG 141", label: "PIANC WG 141 (pianc-wg141@0.3.0)", inputs: [{ name: "se_quality", label: "Safety and ease quality", default: "C", values: [{ value: "A", label: "A: the most room" }, { value: "B", label: "B: between A and C" }, { value: "C", label: "C: the least room" }] }] },
+      { id: "gb50139", version: "0.3.0", title: "GB 50139", label: "GB 50139 (gb50139@0.3.0)", inputs: [{ name: "range_end", label: "End of each range the standard gives", default: null, values: [{ value: "permissive", label: "permissive: the less demanding end" }, { value: "strict", label: "strict: the more demanding end" }] }] },
+    ],
+    always: [{ id: "owd", version: "0.3.0", title: "OWD checks", label: "OWD checks (owd@0.3.0)" }],
     vessels: [{ id: "cemt-iv", label: "CEMT IV, motor barge", family: "cemt", formation: "motor barge", loa_m: [80, 85], beam_m: 9.5, draught_nominal_m: 2.6 }],
   }),
   map_geometry: () => geometry, option_table: () => table, long_section: () => longSection, cross_section: () => crossSection,
@@ -141,7 +190,7 @@ const answer: Record<string, () => unknown> = {
 
 if (empty) {
   Object.assign(answer, {
-    snapshot: blank, set_sizing: blank, map_geometry: none("nothing to draw"), hillshade: () => null,
+    snapshot: blank, set_rule_sets: blank, set_vessel: blank, stretches_geojson: none("nothing to export"), map_geometry: none("nothing to draw"), hillshade: () => null,
     option_table: () => ({ screening: table.screening, volumes_status: "not run", rows: [], checks: [] }),
     long_section: none("Run volumes to see the long section."), cross_section: none("Run volumes to see the cross-section."),
   });

@@ -127,8 +127,10 @@ fn build(name: &str) -> (PathBuf, String) {
     ok(&[
         "size",
         &doc,
-        "--ruleset",
-        "PIANC-B",
+        "--rule-set",
+        "pianc-wg141",
+        "--set-input",
+        "se_quality=B",
         "--vessel",
         "CEMT_IV",
         "--draught",

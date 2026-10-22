@@ -8,7 +8,7 @@ use super::alignment::Terrain;
 use super::crs::{Crs, Utm};
 use super::geojson::{self, Role};
 use super::hash::{hash_value, sha256_hex};
-use super::rule_sets::{default_settings, old_ruleset};
+use super::rule_sets::default_settings;
 use super::schema;
 use arc_rules::load::Library;
 use owd_core::rules::engine;
@@ -171,10 +171,11 @@ fn sizing_stage() -> Value {
     st
 }
 
-/// The sizing results of a channel shape. `label` names the selection.
+/// The sizing results of a channel shape. `label` names the selection, such as
+/// `pianc-wg141@0.3.0 (se_quality B)`.
 fn shape_value(s: &ChannelShape, label: &str) -> Value {
     json!({
-        "ruleset_id": label,
+        "rule_sets": label,
         "vessel_standard_id": s.vessel_standard_id,
         "loa_m": s.loa_m,
         "beam_m": s.beam_m,
@@ -388,15 +389,17 @@ impl Session {
 
     // --- sizing -------------------------------------------------------------------------
 
-    /// The channel shape for an old ruleset id (mapped to its Rule Set selection), vessel class and
-    /// draught, without touching the document. The app calls this on every edit.
+    /// The sizing results for a Rule Set selection (set ids, and set inputs as `(name, value)`),
+    /// a vessel class and a draught, without touching any document. `owd` is always selected.
     pub fn preview_sizing(
-        ruleset_id: &str,
+        rule_sets: &[&str],
+        set_inputs: &[(&str, &str)],
         vessel_standard_id: &str,
         draught_m: Option<f64>,
     ) -> Result<Value, DesignError> {
         let mut s = Session::new("", "");
-        s.set_sizing(ruleset_id, vessel_standard_id, draught_m)?;
+        s.set_rule_sets(rule_sets, set_inputs)?;
+        s.set_vessel(vessel_standard_id, draught_m)?;
         s.sizing_results()
     }
 
@@ -409,26 +412,6 @@ impl Session {
         results["design_basis"] = self.design_basis_value()?;
         results["rules_notice"] = json!(super::screening::UNVERIFIED_NOTICE);
         Ok(results)
-    }
-
-    /// Set the sizing choices by an old ruleset id, mapped to its Rule Set selection (spec 0007:
-    /// PIANC-B is `pianc-wg141` with `se_quality` B, CN-conservative is `gb50139` with `range_end`
-    /// strict), marked `typed`. Nothing runs: the sizing stage shows as stale, and so does every
-    /// stage after it that had results. The choices are checked first, so a typo is refused here.
-    pub fn set_sizing(
-        &mut self,
-        ruleset_id: &str,
-        vessel_standard_id: &str,
-        draught_m: Option<f64>,
-    ) -> Result<(), DesignError> {
-        let (set, input, value) = old_ruleset(ruleset_id)?;
-        let before = self.doc["stages"]["sizing"]["settings"].clone();
-        self.set_rule_sets(&[set], &[(input, value)])?;
-        if let Err(e) = self.set_vessel(vessel_standard_id, draught_m) {
-            self.doc["stages"]["sizing"]["settings"] = before;
-            return Err(e);
-        }
-        Ok(())
     }
 
     fn run_sizing(&mut self) -> Result<(), DesignError> {
@@ -496,38 +479,11 @@ impl Session {
         Ok(ran)
     }
 
-    /// The rulesets and vessel classes a user can choose for sizing, for the lists in the app and
-    /// for `--help`-style discovery: ids, display labels and the dimensions that matter.
+    /// The Rule Sets, their set inputs and the vessel classes a user can choose for sizing, for
+    /// the lists in the app: ids, display labels and the dimensions that matter. `owd` is listed
+    /// apart, as `always`: it is always selected.
     pub fn sizing_choices() -> Value {
-        // The old ruleset names the app's list offers until its Rule Set picker lands (spec 0007
-        // T6); each maps to its Rule Set and input. CN-reduced needs a canal reach, so it is not
-        // offered.
-        let rulesets: Vec<Value> = [
-            (
-                "PIANC-A",
-                "PIANC WG 141 \u{2014} Safety & Ease quality A",
-                "pianc",
-            ),
-            (
-                "PIANC-B",
-                "PIANC WG 141 \u{2014} Safety & Ease quality B",
-                "pianc",
-            ),
-            (
-                "PIANC-C",
-                "PIANC WG 141 \u{2014} Safety & Ease quality C",
-                "pianc",
-            ),
-            ("CN", "Chinese GB 50139 \u{2014} standard", "china"),
-            (
-                "CN-conservative",
-                "Chinese GB 50139 \u{2014} conservative",
-                "china",
-            ),
-        ]
-        .iter()
-        .map(|(id, label, family)| json!({"id": id, "label": label, "family": family}))
-        .collect();
+        let (rule_sets, always) = super::rule_sets::rule_set_choices();
         let vessels: Vec<Value> = vessel_catalogue()
             .into_iter()
             .map(|(id, v)| {
@@ -545,7 +501,7 @@ impl Session {
                 })
             })
             .collect();
-        json!({"rulesets": rulesets, "vessels": vessels})
+        json!({"rule_sets": rule_sets, "always": always, "vessels": vessels})
     }
 
     // --- inputs -------------------------------------------------------------------------
@@ -661,7 +617,9 @@ mod tests {
 
     fn with_sizing_fresh() -> Session {
         let mut s = Session::new("t", "2026-10-16");
-        s.set_sizing("PIANC-B", "CEMT_IV", None).unwrap();
+        s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+            .unwrap();
+        s.set_vessel("CEMT_IV", None).unwrap();
         s.run_stage(Stage::Sizing).unwrap();
         s
     }
@@ -693,7 +651,9 @@ mod tests {
         use StageStatus::*;
         assert_eq!(fresh(&s), [Fresh, Fresh, Fresh, NotRun]);
         // A new vessel: sizing and everything after it that has results is stale. Nothing reruns.
-        s.set_sizing("PIANC-B", "CEMT_Va", None).unwrap();
+        s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+            .unwrap();
+        s.set_vessel("CEMT_Va", None).unwrap();
         assert_eq!(fresh(&s), [Stale, Stale, Stale, NotRun]);
         // Running sizing again changes its results, so the later stages stay stale.
         s.run_stage(Stage::Sizing).unwrap();
@@ -720,7 +680,9 @@ mod tests {
     #[test]
     fn a_stage_whose_inputs_are_stale_refuses_to_run_and_names_the_stage_to_run_first() {
         let mut s = with_sizing_fresh();
-        s.set_sizing("PIANC-B", "CEMT_Va", None).unwrap();
+        s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+            .unwrap();
+        s.set_vessel("CEMT_Va", None).unwrap();
         let e = s.run_stage(Stage::Alignment).unwrap_err();
         assert_eq!(
             e,

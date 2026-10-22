@@ -138,7 +138,7 @@ fn snapshot(window: Window, state: State<Shared>) -> Reply {
     finish(&window, &guard)
 }
 
-/// The rulesets and vessel classes to choose from, for the two lists.
+/// The Rule Sets with their set inputs, and the vessel classes, to choose from.
 #[tauri::command]
 fn sizing_choices() -> serde_json::Value {
     Session::sizing_choices()
@@ -205,22 +205,42 @@ async fn save_as(app: AppHandle, window: Window, state: State<'_, Shared>) -> Re
     save_to(&app, &window, &state, true)
 }
 
-/// Choose ruleset, vessel class and draught; the channel is sized at once.
+/// Choose the Rule Sets and the set inputs (name to value); with a vessel class chosen, the
+/// channel is sized at once.
 #[tauri::command]
-fn set_sizing(
+fn set_rule_sets(
     window: Window,
     state: State<Shared>,
-    ruleset_id: String,
+    ids: Vec<String>,
+    inputs: std::collections::BTreeMap<String, String>,
+) -> Reply {
+    let ids: Vec<&str> = ids.iter().map(String::as_str).collect();
+    let inputs: Vec<(&str, &str)> = inputs
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    let mut guard = lock(&state)?;
+    guard.set_rule_sets(&ids, &inputs)?;
+    finish(&window, &guard)
+}
+
+/// Choose the vessel class and the draught (as typed); the channel is sized at once.
+#[tauri::command]
+fn set_vessel(
+    window: Window,
+    state: State<Shared>,
     vessel_standard_id: String,
     draught: String,
 ) -> Reply {
     let mut guard = lock(&state)?;
-    guard.set_sizing(
-        &ruleset_id,
-        &vessel_standard_id,
-        AppState::parse_draught(&draught)?,
-    )?;
+    guard.set_vessel(&vessel_standard_id, AppState::parse_draught(&draught)?)?;
     finish(&window, &guard)
+}
+
+/// The constraint stretches as GeoJSON lines in WGS84, for the map.
+#[tauri::command]
+fn stretches_geojson(state: State<Shared>) -> Reply {
+    lock(&state)?.stretches_geojson()
 }
 
 /// Make or fetch the station walk of an option off the main thread, and remember it.
@@ -674,7 +694,9 @@ pub fn run() {
             open_file,
             save,
             save_as,
-            set_sizing,
+            set_rule_sets,
+            set_vessel,
+            stretches_geojson,
             run_stale,
             map_geometry,
             option_table,

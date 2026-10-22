@@ -52,13 +52,14 @@ fn run_all<J: Sync, T: Send>(jobs: &[J], f: impl Fn(&J) -> T + Sync, parallel: b
 use super::hash::hash_value;
 use super::session::{DesignError, ENGINE_VERSION, Session, StageStatus};
 use owd_core::fits::{ClassFit, Fits, PLAN_ONLY_LABEL, plan_only_fits};
+use owd_core::rules::engine::old_name_choice;
 use serde_json::{Value, json};
 
 /// The label of a full answer: what it read, and what it assumed.
 pub const FULL_LABEL: &str = "width, radius and depth; depth assumed, not measured";
 
-/// The ruleset a run uses when none is named.
-pub const DEFAULT_FITS_RULESET: &str = "PIANC-B";
+/// The Rule Set choice (an old ruleset name) a run uses when none is named.
+pub const DEFAULT_FITS_CHOICE: &str = "PIANC-B";
 
 fn class_json(r: &ClassFit) -> Value {
     json!({
@@ -90,12 +91,25 @@ fn class_json(r: &ClassFit) -> Value {
     })
 }
 
+/// The Rule Set and set input an old name stands for, so a caller can size to it with
+/// `set_rule_sets`. CN-reduced needs a canal reach as well, which this does not say.
+fn selection_json(name: &str) -> Value {
+    match old_name_choice(name) {
+        Ok((set, input, value)) => json!({
+            "rule_sets": [set],
+            "set_inputs": [{"name": input, "value": value}],
+        }),
+        Err(_) => Value::Null,
+    }
+}
+
 fn fits_json(f: &Fits) -> Value {
     json!({
         "label": f.label,
         "length_m": f.length_m,
-        "rulesets": f.rulesets.iter().map(|rs| json!({
-            "ruleset_id": rs.ruleset_id,
+        "rule_sets": f.rule_sets.iter().map(|rs| json!({
+            "rule_set": rs.rule_set,
+            "selection": selection_json(&rs.rule_set),
             "largest_fitting": rs.largest_fitting,
             "classes": rs.rows.iter().map(class_json).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
@@ -147,9 +161,9 @@ impl Session {
         (!r.is_null()).then_some(r)
     }
 
-    /// The rulesets the last run (or the next one) uses.
-    pub fn fits_rulesets(&self) -> Vec<String> {
-        self.doc["fits"]["settings"]["rulesets"]
+    /// The Rule Set choices (old ruleset names) the last run (or the next one) uses.
+    pub fn fits_choices(&self) -> Vec<String> {
+        self.doc["fits"]["settings"]["rule_sets"]
             .as_array()
             .map(|a| {
                 a.iter()
@@ -157,14 +171,14 @@ impl Session {
                     .collect()
             })
             .filter(|v: &Vec<String>| !v.is_empty())
-            .unwrap_or_else(|| vec![DEFAULT_FITS_RULESET.to_string()])
+            .unwrap_or_else(|| vec![DEFAULT_FITS_CHOICE.to_string()])
     }
 
-    /// Run the plan-only answer over every vessel class, under each of `rulesets` (the ones the
+    /// Run the plan-only answer over every vessel class, under each of `choices` (the ones the
     /// document holds, else PIANC-B, when `None`). It reads the river polygon and the river
     /// centreline (or the line midway between the banks). Replaces the answer the document holds.
-    pub fn run_fits(&mut self, rulesets: Option<&[String]>) -> Result<(), DesignError> {
-        self.run_fits_with(rulesets, None)
+    pub fn run_fits(&mut self, choices: Option<&[String]>) -> Result<(), DesignError> {
+        self.run_fits_with(choices, None)
     }
 
     /// [`Session::run_fits`] with the DEM. With a bed model and a water level too, the answer is
@@ -172,12 +186,12 @@ impl Session {
     /// them, with the works and the dredge and dry cut of each), and says the depth is assumed.
     pub fn run_fits_with(
         &mut self,
-        rulesets: Option<&[String]>,
+        choices: Option<&[String]>,
         terrain: Option<SyncTerrain>,
     ) -> Result<(), DesignError> {
-        let ids: Vec<String> = match rulesets {
+        let ids: Vec<String> = match choices {
             Some(r) if !r.is_empty() => r.to_vec(),
-            _ => self.fits_rulesets(),
+            _ => self.fits_choices(),
         };
         let water = self.river_polygons().ok_or_else(|| {
             DesignError::Input(
@@ -196,7 +210,7 @@ impl Session {
             self.add_full(&mut results, &line, t, true)?;
         }
         self.doc["fits"] = json!({
-            "settings": {"rulesets": ids},
+            "settings": {"rule_sets": ids},
             "results": results,
             "depends_on": null,
             "engine_version": ENGINE_VERSION,
@@ -223,16 +237,16 @@ impl Session {
             "checks": {"radius_ok": true},
         });
         let note = self.depth_note().unwrap_or("");
-        // One job per class under each ruleset. Each runs on its own copy of the design, so the
+        // One job per class under each Rule Set choice. Each runs on its own copy of the design, so the
         // jobs share nothing but read-only inputs and can run at once; the answer is written back
         // in the same order whatever order they finish in.
-        let jobs: Vec<(usize, usize, String, String)> = results["rulesets"]
+        let jobs: Vec<(usize, usize, String, String)> = results["rule_sets"]
             .as_array()
             .into_iter()
             .flatten()
             .enumerate()
             .flat_map(|(i, rs)| {
-                let id = rs["ruleset_id"].as_str().unwrap_or_default().to_string();
+                let id = rs["rule_set"].as_str().unwrap_or_default().to_string();
                 rs["classes"]
                     .as_array()
                     .into_iter()
@@ -246,8 +260,19 @@ impl Session {
             })
             .collect();
         let screen = |id: &str, class: &str| -> Result<Value, DesignError> {
+            // The old name's selection, as the plan-only answer sizes it: the reaches of the
+            // document do not apply; CN-reduced is one claimed canal reach over the whole line.
+            let (set, input, value) =
+                old_name_choice(id).map_err(|e| DesignError::Input(e.raw_message().into()))?;
             let mut sized = self.clone();
-            sized.set_sizing(id, class, None)?;
+            if let Some(o) = sized.doc["inputs"].as_object_mut() {
+                o.remove("waterway_reaches");
+            }
+            if id == "CN-reduced" {
+                sized.add_waterway_reach(0.0, None, "canal", true)?;
+            }
+            sized.set_rule_sets(&[set], &[(input, value)])?;
+            sized.set_vessel(class, None)?;
             let plan = sized.section_plan(&json!({}))?;
             let walk = sized.option_sections(&plan, &option, terrain)?;
             sized.screening_value(&option, &walk, &plan.river, &plan.centre)
@@ -255,7 +280,7 @@ impl Session {
         let answers = run_all(&jobs, |(_, _, id, class)| screen(id, class), parallel);
         for ((i, j, _, _), screening) in jobs.iter().zip(answers) {
             let screening = screening?;
-            let c = &mut results["rulesets"][*i]["classes"][*j];
+            let c = &mut results["rule_sets"][*i]["classes"][*j];
             let as_is = screening["verdict"] == "navigable-as-is";
             c["fits"] = json!(as_is);
             c["verdict"] = screening["verdict"].clone();
@@ -265,7 +290,7 @@ impl Session {
             c["label"] = json!(FULL_LABEL);
             c["depth_basis"] = json!(note);
         }
-        for rs in results["rulesets"].as_array_mut().into_iter().flatten() {
+        for rs in results["rule_sets"].as_array_mut().into_iter().flatten() {
             let largest = rs["classes"]
                 .as_array()
                 .into_iter()

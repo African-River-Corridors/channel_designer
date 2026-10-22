@@ -48,7 +48,9 @@ fn quickstart(river: &SyntheticRiver, design_line_sampling: bool) -> Session {
     if design_line_sampling {
         s.sample_water_at_design_line_chainage();
     }
-    s.set_sizing("PIANC-B", "CEMT_IV", Some(2.5)).unwrap();
+    s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+        .unwrap();
+    s.set_vessel("CEMT_IV", Some(2.5)).unwrap();
     s.run_stage(Stage::Sizing).unwrap();
     // The example's water level as a profile: the river's own level at each vertex of its centreline.
     let profile: Vec<[f64; 2]> = (0..river.centreline.len())

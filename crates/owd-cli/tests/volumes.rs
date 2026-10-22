@@ -124,8 +124,10 @@ fn build(dir: &Path) -> (String, PathBuf) {
         &[
             "size",
             &doc,
-            "--ruleset",
-            "PIANC-B",
+            "--rule-set",
+            "pianc-wg141",
+            "--set-input",
+            "se_quality=B",
             "--vessel",
             "CEMT_IV",
             "--draught",
@@ -313,7 +315,16 @@ fn volumes_without_a_dem_says_to_import_one() {
     let doc = dir.join("r.owd").to_str().unwrap().to_string();
     run(&["new", &doc, "--title", "R", "--date", "2026-10-16"]);
     run(&["import", &doc, "--centreline", &c, "--polygon", &p]);
-    run(&["size", &doc, "--ruleset", "PIANC-B", "--vessel", "CEMT_IV"]);
+    run(&[
+        "size",
+        &doc,
+        "--rule-set",
+        "pianc-wg141",
+        "--set-input",
+        "se_quality=B",
+        "--vessel",
+        "CEMT_IV",
+    ]);
     run(&["align", &doc, "--method", "rolling-circle"]);
     let o = run(&["volumes", &doc]);
     assert_eq!(code(&o), 2);
@@ -370,8 +381,10 @@ fn optimise_adds_the_lattice_option_and_volumes_measure_it() {
         vec![
             "size",
             &doc,
-            "--ruleset",
-            "PIANC-B",
+            "--rule-set",
+            "pianc-wg141",
+            "--set-input",
+            "se_quality=B",
             "--vessel",
             "CEMT_IV",
             "--draught",
@@ -454,8 +467,10 @@ fn full_chain(dir: &Path) -> String {
         vec![
             "size",
             &doc,
-            "--ruleset",
-            "PIANC-B",
+            "--rule-set",
+            "pianc-wg141",
+            "--set-input",
+            "se_quality=B",
             "--vessel",
             "CEMT_IV",
             "--draught",

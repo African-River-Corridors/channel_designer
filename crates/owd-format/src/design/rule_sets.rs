@@ -19,30 +19,84 @@ pub const DEFAULT_INPUTS: &[(&str, &str)] = &[(engine::SE_QUALITY, "C")];
 /// The inputs a user types for a set. The vessel gives `formation` and `vessel_class`.
 const SET_INPUTS: &[&str] = &[engine::SE_QUALITY, engine::RANGE_END];
 
-/// The selection an old ruleset id maps to (spec 0007, "Rule Sets at 0.3.0"): a set and one input.
-pub fn old_ruleset(
-    ruleset_id: &str,
-) -> Result<(&'static str, &'static str, &'static str), DesignError> {
-    Ok(match ruleset_id {
-        "PIANC-A" => ("pianc-wg141", engine::SE_QUALITY, "A"),
-        "PIANC-B" => ("pianc-wg141", engine::SE_QUALITY, "B"),
-        "PIANC-C" => ("pianc-wg141", engine::SE_QUALITY, "C"),
-        "CN" => ("gb50139", engine::RANGE_END, "permissive"),
-        "CN-conservative" => ("gb50139", engine::RANGE_END, "strict"),
-        "CN-reduced" => {
-            return Err(DesignError::Input(
-                "CN-reduced is now gb50139 with range_end strict on a canal reach with the \
-                 reduced-radius claim: mark the reach with `owd waterway add --waterway canal \
-                 --claim-reduced-radius`, then size with --rule-set gb50139 --set-input range_end=strict"
-                    .into(),
-            ));
+/// A set input's name, its words, and the words of each value.
+type InputWords = (
+    &'static str,
+    &'static str,
+    &'static [(&'static str, &'static str)],
+);
+
+/// What each set input means, for a picker: its words, and the words of each value.
+const INPUT_WORDS: &[InputWords] = &[
+    (
+        engine::SE_QUALITY,
+        "Safety and ease quality",
+        &[
+            ("A", "A: the most room"),
+            ("B", "B: between A and C"),
+            ("C", "C: the least room"),
+        ],
+    ),
+    (
+        engine::RANGE_END,
+        "End of each range the standard gives",
+        &[
+            ("permissive", "permissive: the less demanding end"),
+            ("strict", "strict: the more demanding end"),
+        ],
+    ),
+];
+
+/// Whether a set has a Rule that applies on input `name`.
+fn set_reads(set: &arc_rules::model::RuleSet, name: &str) -> bool {
+    set.rules
+        .iter()
+        .any(|r| r.applies_when.conditions.iter().any(|(k, _)| k == name))
+}
+
+/// The built-in Rule Sets a user can pick, each with the set inputs its Rules apply on (values,
+/// words and the default, if there is one), and the sets that are always selected.
+pub fn rule_set_choices() -> (Vec<Value>, Vec<Value>) {
+    let lib = engine::built_in();
+    let (mut pick, mut always) = (Vec::new(), Vec::new());
+    for set in lib.sets() {
+        let mut entry = json!({
+            "id": set.id,
+            "version": set.version,
+            "title": set.title,
+            "label": format!("{} ({}@{})", set.title, set.id, set.version),
+        });
+        if set.id == engine::OWD_SET {
+            always.push(entry);
+            continue;
         }
-        other => {
-            return Err(DesignError::Input(format!(
-                "unknown ruleset `{other}`; choose a Rule Set with --rule-set (see `owd rules`)"
-            )));
-        }
-    })
+        let inputs: Vec<Value> = SET_INPUTS
+            .iter()
+            .filter(|name| set_reads(set, name))
+            .map(|name| {
+                let words = INPUT_WORDS.iter().find(|(n, _, _)| n == name);
+                let values = engine::INPUTS
+                    .iter()
+                    .find(|(n, _)| n == name)
+                    .map(|(_, v)| *v)
+                    .unwrap_or_default();
+                json!({
+                    "name": name,
+                    "label": words.map_or(*name, |w| w.1),
+                    "values": values.iter().map(|v| json!({
+                        "value": v,
+                        "label": words
+                            .and_then(|w| w.2.iter().find(|(x, _)| x == v))
+                            .map_or(*v, |(_, l)| l),
+                    })).collect::<Vec<_>>(),
+                    "default": DEFAULT_INPUTS.iter().find(|(n, _)| n == name).map(|(_, v)| *v),
+                })
+            })
+            .collect();
+        entry["inputs"] = json!(inputs);
+        pick.push(entry);
+    }
+    (pick, always)
 }
 
 fn set_entry(library: &Library, id: &str, source: &str) -> Result<Value, DesignError> {

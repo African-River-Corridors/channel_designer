@@ -451,12 +451,13 @@
             {
               "type": "object",
               "required": [
-                "ruleset_id", "vessel_standard_id", "loa_m", "beam_m", "draught_m", "formation",
+                "rule_sets", "vessel_standard_id", "loa_m", "beam_m", "draught_m", "formation",
                 "bottom_width_straight_m", "min_bend_radius_m", "design_depth_m",
                 "bend_widening_at_rmin_m", "bottom_width_at_rmin_m", "width_basis", "source",
                 "warnings"
               ],
               "properties": {
+                "rule_sets": { "type": "string", "description": "The Rule Set selection as words, such as `pianc-wg141@0.3.0 (se_quality B)`." },
                 "loa_m": { "type": "number" },
                 "beam_m": { "type": "number" },
                 "draught_m": { "type": "number" },

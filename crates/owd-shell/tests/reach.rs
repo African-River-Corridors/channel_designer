@@ -232,7 +232,7 @@ fn with_a_bed_model_a_level_and_the_dem_the_answer_is_full() {
     let r = &s.snapshot()["document"]["fits"]["results"];
     assert_eq!(r["mode"], "full");
     assert!(
-        r["rulesets"][0]["classes"]
+        r["rule_sets"][0]["classes"]
             .as_array()
             .unwrap()
             .iter()

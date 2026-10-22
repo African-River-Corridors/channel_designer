@@ -1,6 +1,6 @@
 //! Spec 0007: PIANC WG 141 and GB 50139 sizing on the shared rules engine (`arc-rules`).
 //!
-//! Label: snapshot. `tests/data/old-ruleset-snapshot.json` is what the old `Ruleset` code printed
+//! Label: snapshot. `tests/data/old-ruleset-snapshot.json` is what the old ruleset code printed
 //! (at spec 0007 T5, before T8 removed it) for every old ruleset × every built-in vessel class ×
 //! five draughts. The engine path must give the same numbers bit for bit, and the same warnings.
 //! Never hand-edit it. The other tests here are `Label: property`.

@@ -300,12 +300,12 @@ pub fn typical(sheets: &[Sheet], f: &super::typical::Facts) -> Vec<Finding> {
                 .iter()
                 .any(|n| n.starts_with(start) && n.contains(source))
         };
-        let rs = f.ruleset.to_ascii_uppercase();
+        let rs = f.rule_sets.to_ascii_uppercase();
         for start in ["BOTTOM WIDTH:", "DESIGN DEPTH:", "UNDER-KEEL CLEARANCE:"] {
-            if !has(start, &format!("RULESET {rs}")) {
+            if !has(start, &format!("RULE SETS {rs}")) {
                 note(
                     "typical-source",
-                    format!("no note `{start}` names ruleset {rs}"),
+                    format!("no note `{start}` names the Rule Sets {rs}"),
                 );
             }
         }

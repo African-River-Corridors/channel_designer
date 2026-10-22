@@ -273,7 +273,9 @@ fn a_tight_bend_adds_a_section_at_its_middle() {
     let grid = geotiff::read_bytes(&dem).unwrap();
     let t = dem_sampler(&grid, Some(32630)).unwrap();
     // A larger vessel class needs a larger radius than the river's bends give.
-    s.set_sizing("PIANC-B", "CEMT_Va", None).unwrap();
+    s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+        .unwrap();
+    s.set_vessel("CEMT_Va", None).unwrap();
     s.run_stage(Stage::Sizing).unwrap();
     s.align(AlignMethod::RollingCircle, &Value::Null, None)
         .unwrap();
@@ -431,7 +433,9 @@ fn the_gallery_reads_its_spacing_and_extra_sections_from_the_style() {
     let mut s = Session::open(&text).unwrap();
     let grid = geotiff::read_bytes(&dem).unwrap();
     let t = dem_sampler(&grid, Some(32630)).unwrap();
-    s.set_sizing("PIANC-B", "CEMT_Va", None).unwrap();
+    s.set_rule_sets(&["pianc-wg141"], &[("se_quality", "B")])
+        .unwrap();
+    s.set_vessel("CEMT_Va", None).unwrap();
     s.run_stage(Stage::Sizing).unwrap();
     s.align(AlignMethod::RollingCircle, &Value::Null, None)
         .unwrap();
@@ -620,11 +624,17 @@ fn each_value_has_a_note_that_names_its_source() {
         .map(|n| n.as_str().unwrap())
         .collect();
     for (start, source) in [
-        ("BOTTOM WIDTH:", "RULESET PIANC-WG141@0.3.0 (SE_QUALITY B)"),
-        ("DESIGN DEPTH:", "RULESET PIANC-WG141@0.3.0 (SE_QUALITY B)"),
+        (
+            "BOTTOM WIDTH:",
+            "RULE SETS PIANC-WG141@0.3.0 (SE_QUALITY B)",
+        ),
+        (
+            "DESIGN DEPTH:",
+            "RULE SETS PIANC-WG141@0.3.0 (SE_QUALITY B)",
+        ),
         (
             "UNDER-KEEL CLEARANCE:",
-            "RULESET PIANC-WG141@0.3.0 (SE_QUALITY B)",
+            "RULE SETS PIANC-WG141@0.3.0 (SE_QUALITY B)",
         ),
         ("SIDE SLOPE:", "VOLUMES"),
         ("DESIGN WATER LEVEL:", "WATER PROFILE"),

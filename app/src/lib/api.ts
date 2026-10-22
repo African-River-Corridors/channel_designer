@@ -7,9 +7,25 @@ const invoke = <T>(command: string, args?: Record<string, unknown>) => platform(
 export type StageName = "sizing" | "alignment" | "optimise" | "volumes";
 export type StageState = "not_run" | "fresh" | "stale";
 
+/** Who made a choice: `default` is the tool's, `typed` is the user's own. */
+export type ChoiceSource = "default" | "typed";
+/** One quantity of the design basis: its value and the Rule that governs it (spec 0007). */
+export interface DesignBasisRow {
+  quantity: string;
+  waterway: string | null;
+  value: number;
+  unit: string;
+  rule: string;
+  rule_sets: string[];
+  citation: string;
+  origin: string;
+  status: string;
+  other_rules: { rule: string; limit: number }[];
+}
 /** The channel shape the sizing stage gives (all SI). */
 export interface ChannelShape {
-  ruleset_id: string;
+  /** The Rule Set selection as words, such as `pianc-wg141@0.3.0 (se_quality B)`. */
+  rule_sets: string;
   vessel_standard_id: string;
   loa_m: number;
   beam_m: number;
@@ -23,11 +39,51 @@ export interface ChannelShape {
   width_basis: string;
   source: string;
   warnings: string[];
+  design_basis?: DesignBasisRow[];
+  rules_notice?: string;
 }
+/** The Rule Set selection and the vessel, as the document stores them. */
 export interface SizingSettings {
-  ruleset_id: string;
-  vessel_standard_id: string;
+  rule_sets: { id: string; version: string; hash: string; source: ChoiceSource }[];
+  set_inputs: { name: string; value: string; source: ChoiceSource }[];
+  vessel_standard_id: string | null;
   draught_m: number | null;
+}
+export type StretchKind = "width" | "depth" | "radius" | "infeasible";
+/** A stretch of a design line where the river falls short of a Rule, with the works it needs. */
+export interface ConstraintStretch {
+  kind: StretchKind;
+  start_chainage_m: number;
+  end_chainage_m: number;
+  governing_rule: string | null;
+  required: number | null;
+  river: number | null;
+  worst_chainage_m: number | null;
+  deficit: number | null;
+  works: string | null;
+  dredge_m3: number | null;
+  dry_cut_m3: number | null;
+  reason?: string;
+}
+export type Verdict = "navigable-as-is" | "navigable-with-works" | "not-navigable";
+/** The screening outputs of one option (spec 0007). */
+export interface Screening {
+  verdict: Verdict;
+  notice: string;
+  rules_notice: string;
+  blocking_not_evaluated: { count: number; rules: string[] };
+  constraint_stretches: ConstraintStretch[];
+}
+/** The parts of an option's volumes results the app reads. */
+export interface VolumesOption {
+  id: string;
+  name: string;
+  screening?: Screening;
+}
+interface StageRecord<S, R> {
+  settings: S | null;
+  results: R | null;
+  depends_on?: string | null;
 }
 export interface Line {
   type: "LineString";
@@ -64,7 +120,12 @@ export interface Snapshot {
       dem: { path: string; sha256?: string } | null;
       water_level: { points: number[][] } | null;
     };
-    stages: Record<StageName, { settings: SizingSettings | null; results: ChannelShape | null; depends_on?: string | null }>;
+    stages: {
+      sizing: StageRecord<SizingSettings, ChannelShape>;
+      alignment: StageRecord<unknown, unknown>;
+      optimise: StageRecord<unknown, unknown>;
+      volumes: StageRecord<unknown, { options: VolumesOption[] }>;
+    };
     /** Where each generated or loaded input came from (spec 0012). Absent for a design with none. */
     provenance?: Partial<Record<ProvenanceInput, Provenance>>;
   };
@@ -93,7 +154,7 @@ export interface ReachView {
   jrc_tiles: { name: string; url: string; given: boolean }[];
   dem_tiles: { name: string; url: string }[];
   has_mask_banks: boolean;
-  /** Constraint stretches of the answer, by ruleset then vessel class, with their ends in WGS84. */
+  /** Constraint stretches of the answer, by Rule Set choice then vessel class, with their ends in WGS84. */
   fits_stretches: Record<string, Record<string, { kind: string; from: LonLat | null; to: LonLat | null }[]>>;
 }
 /** One vessel class in the "what fits" answer. */
@@ -110,16 +171,37 @@ export interface FitsClass {
   warnings: string[];
   label: string;
 }
+/** The Rule Set and set input a "what fits" choice stands for. */
+export interface FitsSelection {
+  rule_sets: string[];
+  set_inputs: { name: string; value: string }[];
+}
 export interface FitsResult {
   label: string;
   length_m: number;
-  rulesets: { ruleset_id: string; largest_fitting: string | null; classes: FitsClass[] }[];
+  rule_sets: { rule_set: string; selection: FitsSelection | null; largest_fitting: string | null; classes: FitsClass[] }[];
 }
 /** A JSON part of the document the typed snapshot leaves open. */
 export const docPart = <T>(snap: Snapshot | null, ...path: string[]): T | undefined =>
   path.reduce<unknown>((v, k) => (v && typeof v === "object" ? (v as Record<string, unknown>)[k] : undefined), snap?.document) as T | undefined;
+/** One set input of a Rule Set: its values, with words, and the default (null: the user must choose). */
+export interface SetInputChoice {
+  name: string;
+  label: string;
+  values: { value: string; label: string }[];
+  default: string | null;
+}
+export interface RuleSetChoice {
+  id: string;
+  version: string;
+  title: string;
+  label: string;
+  inputs: SetInputChoice[];
+}
 export interface Choices {
-  rulesets: { id: string; label: string; family: string }[];
+  rule_sets: RuleSetChoice[];
+  /** Sets that are always selected (the `owd` checks). */
+  always: { id: string; version: string; title: string; label: string }[];
   vessels: {
     id: string;
     label: string;
@@ -138,9 +220,10 @@ export const newFile = () => invoke<Snapshot | null>("new_file");
 export const openFile = () => invoke<Snapshot | null>("open_file");
 export const save = () => invoke<Snapshot | null>("save");
 export const saveAs = () => invoke<Snapshot | null>("save_as");
-/** Choose ruleset, vessel class and draught (as typed; empty is the vessel class's own); the channel is sized at once. Rejects with the reason. */
-export const setSizing = (rulesetId: string, vesselStandardId: string, draught: string) =>
-  invoke<Snapshot>("set_sizing", { rulesetId, vesselStandardId, draught });
+/** Choose the Rule Sets (empty: keep them) and the set inputs; with a vessel class chosen the channel is sized at once. Rejects with the reason. */
+export const setRuleSets = (ids: string[], inputs: Record<string, string>) => invoke<Snapshot>("set_rule_sets", { ids, inputs });
+/** Choose the vessel class and draught (as typed; empty is the vessel class's own); the channel is sized at once. Rejects with the reason. */
+export const setVessel = (vesselStandardId: string, draught: string) => invoke<Snapshot>("set_vessel", { vesselStandardId, draught });
 export const runStale = () => invoke<Snapshot>("run_stale");
 
 export type LonLat = [number, number];
@@ -167,6 +250,21 @@ export interface MapGeometry {
 }
 /** Rejects with the reason when the design has nothing to draw yet. */
 export const mapGeometry = () => invoke<MapGeometry>("map_geometry");
+/** One constraint stretch on the map: the part of its option's design line between its ends, in WGS84. */
+export interface StretchFeature {
+  type: "Feature";
+  geometry: Line;
+  properties: ConstraintStretch & { option_id: string };
+}
+/** The constraint stretches of every option, as the session exports them (WGS84). */
+export interface StretchCollection {
+  type: "FeatureCollection";
+  screening: string;
+  rules_notice: string;
+  volumes_status: "not run" | "fresh" | "stale";
+  features: StretchFeature[];
+}
+export const stretchesGeojson = () => invoke<StretchCollection>("stretches_geojson");
 
 /** The DEM hillshade for the offline map: a PNG data URL and its corners (top-left, top-right, bottom-right, bottom-left), or null with no DEM. */
 export interface Hillshade {

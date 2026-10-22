@@ -42,7 +42,7 @@ const cases = [
   { file: "river-rolling-circle.owd", dem: "river-dem.tif" },
   { file: "river-reroute.owd", dem: "river-dem.tif" },
   // Fresh in the file; the edit makes every stage stale, as it does in the app.
-  { file: "river-example.owd", dem: "river-dem.tif", edit: { ruleset: "PIANC-B", vessel: "CEMT_IV", draught: "2.6" } },
+  { file: "river-example.owd", dem: "river-dem.tif", edit: { set: "pianc-wg141", input: ["se_quality", "B"], vessel: "CEMT_IV", draught: "2.6" } },
   // No DEM and nothing stale: both sides must leave it alone.
   { path: join(root, "examples", "synthetic-river.owd") },
 ];
@@ -61,7 +61,7 @@ for (const c of cases) {
   if (c.dem) copyFileSync(join(web, c.dem), join(dir, c.dem));
 
   // Native.
-  if (c.edit) owd(["size", doc, "--ruleset", c.edit.ruleset, "--vessel", c.edit.vessel, "--draught", c.edit.draught]);
+  if (c.edit) owd(["size", doc, "--rule-set", c.edit.set, "--set-input", c.edit.input.join("="), "--vessel", c.edit.vessel, "--draught", c.edit.draught]);
   const t0 = Date.now();
   const ran = JSON.parse(owd(["run", "--json", doc]).stdout).ran;
   const nativeMs = Date.now() - t0;
@@ -70,7 +70,10 @@ for (const c of cases) {
   // Wasm.
   const s = new Session();
   s.open_text(name, readFileSync(src, "utf8"), c.dem ? readFileSync(join(web, c.dem)) : undefined);
-  if (c.edit) s.set_sizing(c.edit.ruleset, c.edit.vessel, c.edit.draught);
+  if (c.edit) {
+    s.set_rule_sets(JSON.stringify([c.edit.set]), JSON.stringify({ [c.edit.input[0]]: c.edit.input[1] }));
+    s.set_vessel(c.edit.vessel, c.edit.draught);
+  }
   const t1 = Date.now();
   // As the app's "Run stale": each stale stage in order, on the DEM (the session's run_stale has no terrain).
   for (const st of JSON.parse(s.snapshot()).stages) {
