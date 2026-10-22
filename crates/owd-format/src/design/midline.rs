@@ -16,6 +16,9 @@ type Pt = [f64; 2];
 /// The passes of the mid-line.
 pub const MIDLINE_PASSES: usize = 3;
 
+/// The least a mid-line station may move in a pass, in metres (it may move one river width).
+pub const MIN_MOVE_M: f64 = 200.0;
+
 /// The farthest a station looks for a bank along its normal, each way, in metres (the bank search
 /// of the mask reaches 1.5 km).
 pub const MAX_RAY_M: f64 = 2_000.0;
@@ -336,13 +339,16 @@ pub fn midline(left: &[Pt], right: &[Pt], seed: &[Pt], station_m: f64) -> Vec<Pt
     let mut buf = Vec::new();
     // Normals over half the river's width at least, so a wide river does not swing them.
     let half = tangent_half(&line, &li, &ri);
+    // A station moves at most about one river width in a pass: a normal that meets a bank farther
+    // off has met a fault of the banks (a loop, a crossing), and the station keeps its place.
+    let max_move = (2.0 * half).max(MIN_MOVE_M);
     for pass in 0..MIDLINE_PASSES {
         let nrm = arc_normals(&line, half);
         line = line
             .iter()
             .zip(&nrm)
             .map(|(p, n)| match side_hits(&li, &ri, *p, *n, &mut buf) {
-                (Some(a), Some(b)) => {
+                (Some(a), Some(b)) if ((a + b) / 2.0).abs() <= max_move => {
                     let t = (a + b) / 2.0;
                     [p[0] + n[0] * t, p[1] + n[1] * t]
                 }

@@ -448,7 +448,8 @@ fn splice_runs(
     if from < orig.len() {
         out.extend_from_slice(&orig[from..]);
     }
-    cut_loops(&out, 64)
+    // A loop of an offset line at a tight bend can span a few hundred stations.
+    cut_loops(&out, 512)
 }
 
 /// The part of a bank that lies alongside the centreline: leading and trailing vertices that lie past
