@@ -13,7 +13,7 @@ use owd_reach::banks::{BankParams, MaskBanks, window_bbox};
 use owd_reach::edgefit::{FitParams, SceneQuery, default_range, fit_to_scene, record_edge_fit};
 use owd_reach::level::{Datum, LevelParams, SWOT_SCIENCE_START, level_from_sources, record_level};
 use owd_reach::overpass::{Overpass, default_endpoints};
-use owd_reach::reach::{Planned, plan_points, record_reach};
+use owd_reach::reach::{Planned, plan_points, plan_trace, record_reach};
 use owd_reach::river::{WholeRiver, record_river_reach, whole_river};
 use owd_reach::search::{OsmRef, RiverHit, RiverSearch};
 use owd_reach::seed::{SeedParams, banks_from_s2, record_s2_banks};
@@ -272,6 +272,53 @@ pub fn read_river(
     whole_river(&ov, osm, &also).map_err(err)
 }
 
+/// What the panel needs to draw a reach again after its study was opened: the document keeps only
+/// the user's points and OSM way ids, never the route's geometry.
+pub struct Restored {
+    plan: Planned,
+    river: Option<(WholeRiver, Option<String>)>,
+}
+
+fn lon_lat(v: &Value) -> Option<[f64; 2]> {
+    Some([v[0].as_f64()?, v[1].as_f64()?])
+}
+
+/// Plan the reach a document records once more (spec 0012, #318): from the whole river when the
+/// route's provenance names its OSM id, else from the user's points or trace. Network work only.
+pub fn plan_restore(
+    fetch: &dyn Fetch,
+    at: &ReachEndpoints,
+    doc: &Value,
+) -> Result<Restored, String> {
+    let reach = &doc["reach"];
+    let start = lon_lat(&reach["start"]).ok_or("the study has no reach to draw")?;
+    let end = lon_lat(&reach["end"]).ok_or("the study has no reach to draw")?;
+    let via: Vec<[f64; 2]> = reach["via"]
+        .as_array()
+        .map(|a| a.iter().filter_map(lon_lat).collect())
+        .unwrap_or_default();
+    let settings = &doc["provenance"]["route"]["settings"];
+    if let Some(osm) = settings["osm_id"].as_str() {
+        let river = read_river(fetch, at, osm, &[])?;
+        let plan = river.cut(start, end, &via).map_err(err)?;
+        let search = settings["river_search"]["source"]
+            .as_str()
+            .map(str::to_string);
+        return Ok(Restored {
+            plan,
+            river: Some((river, search)),
+        });
+    }
+    let ov = Overpass::with_endpoint(fetch, &at.overpass);
+    let name = reach["river"].as_str();
+    let plan = match reach["trace"].as_array() {
+        Some(t) => plan_trace(&ov, name, &t.iter().filter_map(lon_lat).collect::<Vec<_>>()),
+        None => plan_points(&ov, name, start, end, &via),
+    }
+    .map_err(err)?;
+    Ok(Restored { plan, river: None })
+}
+
 /// Plan a reach over Overpass: the route from a start, through via points, to an end. A river
 /// name, if given, is searched too. Network work only: it changes no state.
 pub fn plan_reach(
@@ -336,6 +383,32 @@ impl AppState {
             .ok_or("choose a river from the search first")?;
         let plan = river.0.cut(start, end, via).map_err(err)?;
         self.start_reach_with(plan, Some(river), date)
+    }
+
+    /// True when the document records a reach whose route this session has not drawn: an opened
+    /// study. [`plan_restore`] and [`AppState::restore_reach`] draw it again.
+    pub fn reach_needs_restore(&self) -> bool {
+        self.reach_memo().plan.is_none() && self.session().document()["reach"].is_object()
+    }
+
+    /// Keep a reach planned again for the open study. The document is not changed.
+    pub fn restore_reach(&mut self, restored: Restored) -> Result<(), String> {
+        if !self.reach_needs_restore() {
+            return Ok(());
+        }
+        let memo = self.reach_memo_mut();
+        memo.plan = Some(restored.plan);
+        memo.river = restored.river;
+        Ok(())
+    }
+
+    /// This study read again from its file (after a fetch wrote into it): keep what the panel
+    /// holds between steps, if the file records the same reach.
+    pub fn reopened(&mut self, mut opened: AppState) -> AppState {
+        if opened.session().document()["reach"] == self.session().document()["reach"] {
+            *opened.reach_memo_mut() = std::mem::take(self.reach_memo_mut());
+        }
+        opened
     }
 
     /// True while the study holds nothing but its reach: re-cutting it then loses no work, so the
@@ -471,7 +544,7 @@ impl AppState {
     pub fn reach_view(&self) -> Value {
         let memo = self.reach_memo();
         let Some(plan) = &memo.plan else {
-            return json!({"route": null, "jrc_tiles": [], "dem_tiles": [], "has_mask_banks": false, "fits_stretches": self.fits_stretches()});
+            return json!({"route": null, "restore": self.reach_needs_restore(), "jrc_tiles": [], "dem_tiles": [], "has_mask_banks": false, "fits_stretches": self.fits_stretches()});
         };
         let line = plan.route.line();
         let given: Vec<&str> = memo.tiles.iter().map(|(n, _)| n.as_str()).collect();

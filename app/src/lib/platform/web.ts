@@ -306,6 +306,7 @@ export async function createWebPlatform(): Promise<Platform> {
       carriedDirty = false;
       return change("reach_cut", JSON.stringify({ start: a.start, end: a.end, via: a.via ?? [] }));
     },
+    reach_restore: () => change("reach_restore", reachAt),
     reach_add_tile: async (a) => {
       const file = a.file instanceof File ? a.file : await pickFile(".tif,.tiff");
       if (!file) return null;

@@ -157,6 +157,8 @@ export interface ReachView {
   /** The Overpass server that answered, and what happened when the first did not (#319). */
   route_server?: string | null;
   route_notes?: string[];
+  /** The document records a reach this session has not drawn yet (an opened study). */
+  restore?: boolean;
   /** The reach's start and end as the session recorded them. */
   start?: LonLat;
   end?: LonLat;
@@ -418,6 +420,8 @@ export const reachSearch = (text: string, country: string, once = false) => invo
 export const reachRiver = (osmId: string, also: string[], search: string) => invoke<Snapshot | null>("reach_river", { osmId, also, search });
 /** Cut a reach out of the chosen river. null when the user keeps an unsaved design. */
 export const reachCut = (start: LonLat, end: LonLat, via: LonLat[]) => invoke<Snapshot | null>("reach_cut", { start, end, via });
+/** Draw the reach of an opened study again: its route is planned once more from OSM. */
+export const reachRestore = () => invoke<Snapshot>("reach_restore");
 export const reachAddTile = (file?: File) => invoke<Snapshot | null>("reach_add_tile", { file: file ?? null });
 export type ReachStepName = "banks" | "edge_fit" | "level";
 /** Run one step of the reach on the network. Rejects with the reason, or with `cancelled`. */

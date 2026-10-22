@@ -590,6 +590,7 @@ describe("Open Waterway Designer app smoke test", () => {
       await (await browser.$("[data-testid=reach-end]")).setValue("-6.07, 4.983");
       await (await browser.$("[data-testid=reach-route]")).click();
       await until("the route", async () => /km/.test((await text("reach-length").catch(() => "")) ?? ""), 60000);
+      const km = await text("reach-length");
       assert.equal(await (await browser.$("[data-testid=mark-route]")).getAttribute("data-mark"), "default");
       const tile = path.join(fs.mkdtempSync(path.join(WORK, "jrc-")), "occurrence_10W_10Nv1_4_2021.tif");
       fs.copyFileSync(path.resolve(here, "../../examples/reach/jrc_occurrence_sassandra_estuary.tif"), tile);
@@ -628,6 +629,19 @@ describe("Open Waterway Designer app smoke test", () => {
       await (await browser.$(`[data-testid=use-vessel-${vessel}]`)).click();
       await until("the vessel set", async () => (await vesselChoices()).current === vessel);
       assert.match(await text("notice"), /Vessel set/);
+
+      // Save, then open the study again: the panel keeps its route, inputs and steps (#318).
+      const study = path.join(WORK, "reach-study.owd");
+      answer("save.txt", study);
+      await click("Save as");
+      await until("the study saved", async () => fs.existsSync(study) && !(await fileLabel()).includes("(unsaved)"));
+      await openReachView();
+      assert.equal(await text("reach-length"), km, "the route is still drawn after Save");
+      assert.ok(await (await browser.$("[data-testid=reach-load-dem]")).isExisting(), "step 3 is still shown");
+      await open(study, "reach-study.owd");
+      await until("the route drawn again", async () => (await text("reach-length").catch(() => "")) === km, 60000);
+      assert.match(await text("reach-input-left_bank"), /sentinel2-l2a/);
+      assert.ok(await (await browser.$("[data-testid=reach-load-dem]")).isExisting(), "step 3 is shown after Open");
     } finally {
       reach.server.close();
     }

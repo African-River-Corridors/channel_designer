@@ -6,7 +6,7 @@
 //! Label: property
 
 use owd_reach::ReplayFetch;
-use owd_shell::reach::{ReachEndpoints, read_river, search_rivers};
+use owd_shell::reach::{ReachEndpoints, plan_restore, read_river, search_rivers};
 use owd_shell::state::AppState;
 use serde_json::{Value, json};
 use std::path::Path;
@@ -129,4 +129,80 @@ fn a_cut_with_no_river_chosen_says_what_to_do() {
         .reach_cut([0.0, 0.0], [0.1, 0.0], &[], "2026-10-22")
         .unwrap_err();
     assert!(e.contains("choose a river"), "{e}");
+}
+
+/// Save a study, open it again: the panel draws the same route (#318).
+fn reopen(s: &mut AppState) -> AppState {
+    let path = Path::new("/tmp/study.owd");
+    let text = s.save_text_for(path);
+    AppState::open(path, &text, None).unwrap()
+}
+
+#[test]
+fn an_opened_study_from_a_river_draws_its_route_again_and_keeps_its_document() {
+    let f = fetch();
+    let river = read_river(&f, &endpoints(), "relation/3328713", &[]).unwrap();
+    let mut s = AppState::new_design("t", "2026-10-22");
+    s.start_river(river, Some("osm-photon"), "2026-10-22")
+        .unwrap();
+    let line = s.snapshot()["reach_view"]["river"]["line"].clone();
+    let mid = &line[line.as_array().unwrap().len() / 2];
+    let mid = [mid[0].as_f64().unwrap(), mid[1].as_f64().unwrap()];
+    s.reach_cut([-2.2688538, 4.8983929], mid, &[], "2026-10-22")
+        .unwrap();
+    let before = s.snapshot();
+
+    let mut opened = reopen(&mut s);
+    let view = &opened.snapshot()["reach_view"];
+    assert_eq!(view["route"], Value::Null);
+    assert_eq!(view["restore"], true);
+    let doc = opened.snapshot()["document"].clone();
+    let restored = plan_restore(&f, &endpoints(), &doc).unwrap();
+    opened.restore_reach(restored).unwrap();
+    let after = opened.snapshot();
+    assert_eq!(after["reach_view"]["route"], before["reach_view"]["route"]);
+    assert_eq!(
+        after["reach_view"]["length_m"],
+        before["reach_view"]["length_m"]
+    );
+    assert_eq!(after["reach_view"]["river"]["osm_id"], "relation/3328713");
+    assert_eq!(after["reach_view"]["restore"], Value::Null);
+    assert_eq!(
+        after["document"], doc,
+        "drawing the route again changes nothing in the document"
+    );
+    assert!(!opened.is_dirty());
+}
+
+#[test]
+fn a_study_read_again_after_a_fetch_keeps_its_route_and_another_does_not() {
+    let f = fetch();
+    let river = read_river(&f, &endpoints(), "relation/3328713", &[]).unwrap();
+    let mut s = AppState::new_design("t", "2026-10-22");
+    s.start_river(river, Some("osm-photon"), "2026-10-22")
+        .unwrap();
+    let route = s.snapshot()["reach_view"]["route"].clone();
+    let opened = reopen(&mut s);
+    let next = s.reopened(opened);
+    assert_eq!(next.snapshot()["reach_view"]["route"], route);
+    // A different study read in its place starts with nothing held.
+    let next = s.reopened(AppState::new_design("t", "2026-10-22"));
+    assert_eq!(next.snapshot()["reach_view"]["route"], Value::Null);
+}
+
+#[test]
+fn an_opened_study_routed_from_points_is_planned_again_from_its_points() {
+    let net = ex("synthetic/network.json");
+    let f = ReplayFetch::new().with_response_containing("out%20geom", net);
+    let at = endpoints();
+    let mut s = AppState::new_design("t", "2026-10-22");
+    s.reach_route(&f, &at, None, [-6.0, 5.0], [-5.94, 5.0], &[], "2026-10-22")
+        .unwrap();
+    let before = s.snapshot()["reach_view"]["route"].clone();
+    let mut opened = reopen(&mut s);
+    let doc = opened.snapshot()["document"].clone();
+    opened
+        .restore_reach(plan_restore(&f, &at, &doc).unwrap())
+        .unwrap();
+    assert_eq!(opened.snapshot()["reach_view"]["route"], before);
 }
