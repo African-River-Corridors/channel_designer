@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { remote } from "webdriverio";
 import { serve } from "./web-server.mjs";
-import { endpoints, serveReach } from "./reach-server.mjs";
+import { endpoints, searches, serveReach } from "./reach-server.mjs";
 import { compare } from "../../tools/web_parity_compare.mjs";
 
 const here = import.meta.dirname;
@@ -97,6 +97,7 @@ after(async () => {
 /** The public hosts the web build may name: the open-data sources (spec 0012), the basemap, and links. */
 const PUBLIC_HOSTS = [
   "overpass-api.de",
+  "photon.komoot.io",
   "earth-search.aws.element84.com",
   "sentinel-cogs.s3.us-west-2.amazonaws.com",
   "zenodo.org",
@@ -239,6 +240,40 @@ describe("OWD web smoke tests", () => {
       fs.mkdirSync(SHOTS, { recursive: true });
       await b.saveScreenshot(path.join(SHOTS, "web-bank-editor.png"));
     }
+  });
+
+  it("finds a river as you type, draws it from its mouth to its upstream end, and cuts a reach out of it", async () => {
+    const b = await start({ args: ["--headless=new", "--no-sandbox", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--window-size=1500,950"] });
+    await b.url(`${origin}/owd/app`);
+    await loaded(b);
+    await b.execute(async (at) => window.__owdPlatform.call("set_reach_endpoints", { endpoints: at }), endpoints(reach.origin));
+    await (await tid(b, "start-from-river")).click();
+    const before = searches.length;
+    // Typed key by key: one request, after the pause, for "Ank" (none for "A" or "An").
+    await (await tid(b, "reach-river")).setValue("Ank");
+    const ankobra = '[data-testid="reach-hit"][data-osm="relation/3328713"]';
+    await until(b, "the list", async () => (await b.$(ankobra)).isExisting());
+    assert.match(await (await b.$(ankobra)).getText(), /Ankobra River — Western Region, Ghana/);
+    assert.deepEqual(searches.slice(before), ["Ank"], "one request per pause, none under 3 letters");
+    if (SHOTS) {
+      fs.mkdirSync(SHOTS, { recursive: true });
+      await b.saveScreenshot(path.join(SHOTS, "web-river-search.png"));
+    }
+    await (await b.$(`${ankobra} button`)).click();
+    await until(b, "the whole river", async () => (await exists(b, "reach-length")) && /km/.test(await text(b, "reach-length")));
+    assert.equal(await (await tid(b, "reach-start")).getValue(), "-2.26885, 4.89839", "Start is the mouth");
+    assert.equal(await (await tid(b, "reach-end")).getValue(), "-2.13492, 5.72949", "End is the upstream end");
+    const whole = Number((await text(b, "reach-length")).match(/([\d.]+) km/)[1]);
+    const route = (await pageDoc(b)).provenance.route;
+    assert.equal(route.settings.osm_id, "relation/3328713");
+    assert.equal(route.settings.river_search.source, "osm-photon");
+    if (SHOTS) await b.saveScreenshot(path.join(SHOTS, "web-river-route.png"));
+    // Move End to the middle of the river (as a drag does) and cut again: shorter, no new request.
+    const asked = searches.length;
+    await (await tid(b, "reach-end")).setValue("-2.1533567, 5.3025015");
+    await (await tid(b, "reach-route")).click();
+    await until(b, "the shorter reach", async () => Number((await text(b, "reach-length")).match(/([\d.]+) km/)[1]) < whole);
+    assert.equal(searches.length, asked);
   });
 
   it("starts a study from a river: route, inputs with badges, a depth, the class table, and Use this vessel", async () => {

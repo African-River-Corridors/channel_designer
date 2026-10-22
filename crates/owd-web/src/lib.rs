@@ -232,6 +232,66 @@ impl Session {
         self.edit(|s| s.reach_route(&JsFetch(fetch), &at, river, start, end, &via, &date))
     }
 
+    /// The rivers and canals whose name starts with or matches a text, as a JSON list (spec 0012,
+    /// T13). Changes nothing.
+    pub fn reach_search(
+        &self,
+        text: &str,
+        country: &str,
+        at: &str,
+        fetch: js_sys::Function,
+    ) -> Js<String> {
+        let at = ok(endpoints(at))?;
+        let hits = ok(owd_shell::reach::search_rivers(
+            &JsFetch(fetch),
+            &at,
+            text,
+            Some(country),
+        ))?;
+        Ok(hits.to_string())
+    }
+
+    /// Start a new study from a whole river chosen from the search. `also` is a JSON list of more
+    /// OSM ways of the same river, as the search gives them.
+    pub fn reach_river(
+        &mut self,
+        osm_id: &str,
+        also: &str,
+        at: &str,
+        fetch: js_sys::Function,
+    ) -> Js<String> {
+        let also: Vec<String> =
+            ok(serde_json::from_str(also).map_err(|e| format!("not a list of OSM ids: {e}")))?;
+        let at = ok(endpoints(at))?;
+        let river = ok(owd_shell::reach::read_river(
+            &JsFetch(fetch),
+            &at,
+            osm_id,
+            &also,
+        ))?;
+        let date = today();
+        self.edit(|s| s.start_river(river, &date))
+    }
+
+    /// Cut a reach out of the chosen river. `points` as for `reach_route`.
+    pub fn reach_cut(&mut self, points: &str) -> Js<String> {
+        let v: Value =
+            ok(serde_json::from_str(points).map_err(|e| format!("not reach points: {e}")))?;
+        let start = ok(point(&v["start"]))?;
+        let end = ok(point(&v["end"]))?;
+        let via = ok(v["via"]
+            .as_array()
+            .map(|a| a.iter().map(point).collect::<Result<Vec<_>, _>>())
+            .unwrap_or(Ok(Vec::new())))?;
+        let date = today();
+        self.edit(|s| s.reach_cut(start, end, &via, &date))
+    }
+
+    /// True while the study holds nothing but its reach.
+    pub fn reach_route_only(&self) -> bool {
+        self.state.reach_route_only()
+    }
+
     /// Give a JRC occurrence tile the user downloaded and dropped in.
     pub fn reach_add_tile(&mut self, name: &str, bytes: Vec<u8>) -> Js<String> {
         self.edit(|s| s.reach_add_tile(name, bytes))

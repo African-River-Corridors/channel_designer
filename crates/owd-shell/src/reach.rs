@@ -14,6 +14,8 @@ use owd_reach::edgefit::{FitParams, SceneQuery, default_range, fit_to_scene, rec
 use owd_reach::level::{Datum, LevelParams, SWOT_SCIENCE_START, level_from_sources, record_level};
 use owd_reach::overpass::{DEFAULT_ENDPOINT, Overpass};
 use owd_reach::reach::{Planned, plan_points, record_reach};
+use owd_reach::river::{WholeRiver, record_river_reach, whole_river};
+use owd_reach::search::{OsmRef, RiverHit, RiverSearch};
 use owd_reach::seed::{SeedParams, banks_from_s2, record_s2_banks};
 use owd_reach::{DroppedFiles, Fetch};
 use serde_json::{Value, json};
@@ -23,6 +25,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReachEndpoints {
     pub overpass: String,
+    pub photon: String,
     pub stac: String,
     pub sword_record: String,
     pub hydrocron: String,
@@ -32,6 +35,7 @@ impl Default for ReachEndpoints {
     fn default() -> Self {
         ReachEndpoints {
             overpass: DEFAULT_ENDPOINT.to_string(),
+            photon: owd_reach::search::PHOTON_ENDPOINT.to_string(),
             stac: owd_reach::sentinel2::SEARCH_ENDPOINT.to_string(),
             sword_record: owd_reach::sword::RECORD_API.to_string(),
             hydrocron: owd_reach::level::HYDROCRON_ENDPOINT.to_string(),
@@ -46,6 +50,7 @@ impl ReachEndpoints {
         let s = |k: &str, def: String| v[k].as_str().map_or(def, str::to_string);
         ReachEndpoints {
             overpass: s("overpass", d.overpass),
+            photon: s("photon", d.photon),
             stac: s("stac", d.stac),
             sword_record: s("sword_record", d.sword_record),
             hydrocron: s("hydrocron", d.hydrocron),
@@ -57,6 +62,8 @@ impl ReachEndpoints {
 #[derive(Debug, Default, Clone)]
 pub struct ReachMemo {
     plan: Option<Planned>,
+    /// The whole river the user chose from the search, to cut reaches out of with no new request.
+    river: Option<WholeRiver>,
     banks: Option<MaskBanks>,
     /// JRC tiles the user gave, by file name.
     tiles: Vec<(String, Arc<Vec<u8>>)>,
@@ -206,6 +213,47 @@ impl ReachJob {
     }
 }
 
+/// One river search hit as the app lists it.
+pub fn hit_value(h: &RiverHit) -> Value {
+    json!({
+        "osm_id": h.osm.to_string(), "label": h.label(), "name": h.name, "kind": h.kind,
+        "region": h.region, "country": h.country, "country_code": h.country_code,
+        "also": h.also.iter().map(ToString::to_string).collect::<Vec<_>>(), "bbox": h.bbox,
+    })
+}
+
+/// The rivers and canals for a text (spec 0012, T13), as a JSON list, best first. Under three
+/// letters it asks nothing. Network work only: it changes no state.
+pub fn search_rivers(
+    fetch: &dyn Fetch,
+    at: &ReachEndpoints,
+    text: &str,
+    country: Option<&str>,
+) -> Result<Value, String> {
+    let hits = RiverSearch::with_endpoint(fetch, &at.photon)
+        .search(text, country.filter(|c| !c.trim().is_empty()))
+        .map_err(err)?;
+    Ok(Value::Array(hits.iter().map(hit_value).collect()))
+}
+
+/// Read a whole river from OSM (spec 0012, T14): `osm` and `also` as a search hit gives them
+/// (`relation/N`, `way/N`). Network work only.
+pub fn read_river(
+    fetch: &dyn Fetch,
+    at: &ReachEndpoints,
+    osm: &str,
+    also: &[String],
+) -> Result<WholeRiver, String> {
+    let osm: OsmRef = osm.parse().map_err(err)?;
+    let also = also
+        .iter()
+        .map(|a| a.parse::<OsmRef>())
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(err)?;
+    let ov = Overpass::with_endpoint(fetch, &at.overpass);
+    whole_river(&ov, osm, &also).map_err(err)
+}
+
 /// Plan a reach over Overpass: the route from a start, through via points, to an end. A river
 /// name, if given, is searched too. Network work only: it changes no state.
 pub fn plan_reach(
@@ -240,9 +288,54 @@ impl AppState {
         self.start_reach(plan, date)
     }
 
+    /// Start a new study from a whole river the user chose from the search: Start at the mouth, End
+    /// at the upstream end. The river is kept, so [`AppState::reach_cut`] needs no new request.
+    pub fn start_river(&mut self, river: WholeRiver, date: &str) -> Result<(), String> {
+        let plan = river.planned();
+        self.start_reach_with(plan, Some(river), date)
+    }
+
+    /// Cut a reach out of the river chosen from the search: the route along its own ways from
+    /// `start`, through `via`, to `end`. A new, unsaved study, as for [`AppState::reach_route`].
+    pub fn reach_cut(
+        &mut self,
+        start: [f64; 2],
+        end: [f64; 2],
+        via: &[[f64; 2]],
+        date: &str,
+    ) -> Result<(), String> {
+        self.refuse_while_running()?;
+        let river = self
+            .reach_memo()
+            .river
+            .clone()
+            .ok_or("choose a river from the search first")?;
+        let plan = river.cut(start, end, via).map_err(err)?;
+        self.start_reach_with(plan, Some(river), date)
+    }
+
+    /// True while the study holds nothing but its reach: re-cutting it then loses no work, so the
+    /// app need not ask before it.
+    pub fn reach_route_only(&self) -> bool {
+        self.reach_memo().plan.is_some()
+            && self.reach_memo().banks.is_none()
+            && self.session().document()["provenance"]
+                .as_object()
+                .is_none_or(|p| p.keys().all(|k| k == "route"))
+    }
+
     /// Record a planned reach in a new, unsaved design named after the river. The JRC tiles given
     /// so far are kept.
     pub fn start_reach(&mut self, plan: Planned, date: &str) -> Result<(), String> {
+        self.start_reach_with(plan, None, date)
+    }
+
+    fn start_reach_with(
+        &mut self,
+        plan: Planned,
+        river: Option<WholeRiver>,
+        date: &str,
+    ) -> Result<(), String> {
         self.refuse_while_running()?;
         let title = plan
             .spec
@@ -251,12 +344,17 @@ impl AppState {
             .unwrap_or_else(|| "Reach study".to_string());
         let tiles = std::mem::take(&mut self.reach_memo_mut().tiles);
         let mut next = AppState::new_design(&title, date);
-        if let Err(e) = record_reach(next.session_mut(), &plan, date) {
+        let recorded = match &river {
+            Some(r) => record_river_reach(next.session_mut(), &plan, r.osm, true, date),
+            None => record_reach(next.session_mut(), &plan, date),
+        };
+        if let Err(e) = recorded {
             self.reach_memo_mut().tiles = tiles;
             return Err(err(e));
         }
         *next.reach_memo_mut() = ReachMemo {
             plan: Some(plan),
+            river,
             banks: None,
             tiles,
         };
@@ -371,6 +469,14 @@ impl AppState {
             "jrc_tiles": jrc,
             "dem_tiles": dem,
             "has_mask_banks": memo.banks.is_some(),
+            "start": plan.spec.start,
+            "end": plan.spec.end,
+            "river": memo.river.as_ref().map(|r| json!({
+                "osm_id": r.osm.to_string(),
+                "name": r.name,
+                "length_m": r.route.length_m,
+                "line": r.route.line().iter().map(|p| json!([p[0], p[1]])).collect::<Vec<_>>(),
+            })),
         })
     }
 

@@ -278,6 +278,17 @@ export async function createWebPlatform(): Promise<Platform> {
       carriedDirty = false;
       return change("reach_route", a.river ?? "", JSON.stringify({ start: a.start, end: a.end, via: a.via ?? [] }), reachAt);
     },
+    reach_search: (a) => json("reach_search", a.text ?? "", a.country ?? "", reachAt),
+    reach_river: async (a) => {
+      if (!confirmDiscard()) return null;
+      carriedDirty = false;
+      return change("reach_river", a.osmId, JSON.stringify(a.also ?? []), reachAt);
+    },
+    reach_cut: async (a) => {
+      if (!(await host.rpc<boolean>("reach_route_only")) && !confirmDiscard()) return null;
+      carriedDirty = false;
+      return change("reach_cut", JSON.stringify({ start: a.start, end: a.end, via: a.via ?? [] }));
+    },
     reach_add_tile: async (a) => {
       const file = a.file instanceof File ? a.file : await pickFile(".tif,.tiff");
       if (!file) return null;

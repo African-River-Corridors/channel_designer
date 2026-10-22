@@ -1,7 +1,8 @@
 // Recorded answers for "Start from a river" (spec 0012, T10), so no e2e test touches the network: the
 // Overpass network of a river arm of the lower Sassandra (synthetic), the Earth Search answer and the
 // Sentinel-2 band windows of 23 December 2023, the SWORD subset on a Zenodo-like record, and the
-// Hydrocron series. Byte ranges are honoured and every answer allows CORS, as the real hosts do.
+// Hydrocron series; and, for the river search (T13 to T15), Photon's answer for "Ank" and the Ankobra
+// relation from Overpass, both recorded on 2026-10-22 (© OpenStreetMap contributors). Byte ranges are honoured and every answer allows CORS, as the real hosts do.
 // `endpoints(origin)` gives what to point the app at.
 import http from "node:http";
 import fs from "node:fs";
@@ -14,14 +15,25 @@ const read = (name) => fs.readFileSync(path.join(EX, name));
 export function endpoints(origin) {
   return {
     overpass: `${origin}/overpass/api/interpreter`,
+    photon: `${origin}/photon/api/`,
     stac: `${origin}/stac/search`,
     sword_record: `${origin}/zenodo/record`,
     hydrocron: `${origin}/hydrocron/timeseries`,
   };
 }
 
+/** Every river search the server answered, by its text: a test checks how often the app asked. */
+export const searches = [];
+
 function answer(url, origin) {
   const p = url.pathname;
+  if (p === "/photon/api/") {
+    const q = url.searchParams.get("q") ?? "";
+    searches.push(q);
+    if (q.toLowerCase().startsWith("ank")) return { body: read("photon_ank.json"), type: "application/json" };
+    return { body: Buffer.from(JSON.stringify({ type: "FeatureCollection", features: [] })), type: "application/json" };
+  }
+  if (p === "/overpass/api/interpreter" && (url.searchParams.get("data") ?? "").includes("rel(3328713)")) return { body: read("overpass_ankobra.json"), type: "application/json" };
   if (p === "/overpass/api/interpreter") return { body: read("synthetic/sassandra_arm.json"), type: "application/json" };
   if (p === "/stac/search") return { body: Buffer.from(read("stac_search_sassandra.json").toString().replaceAll(S2, `${origin}/s2`)), type: "application/json" };
   const band = p.match(/^\/s2\/(B03|B04|B08|B11|SCL)\.tif$/);
