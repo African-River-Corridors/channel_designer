@@ -96,15 +96,13 @@ def test_property_rolling_circle_lifts_min_radius_to_target():
     res = rolling_circle(line, r_min, step=10.0)
     assert res.n_arcs > 0
     pts = np.array(res.centreline.coords)
-    # The arc meets the old line where the circle CROSSES it, not tangentially, so there is a
-    # short kink at each arc exit. Measured on a 50 m chord (a vessel-length scale) the radius
-    # holds; on a 10 m chord the kink reads as a tighter radius. Known issue, kept on
-    # purpose: see KNOWN_ISSUES in the module docstring and docs/known-issues.md.
+    # Tangent exits (issue #5): the radius holds on a vessel-length resample and on a short one.
+    # The short-chord property tests live with the algorithm, in the Rust core.
     from owd.alignment.limits import resample_line
-    rmin, _ = route.min_radius_of_line(resample_line(res.centreline, 50.0))
-    assert rmin >= 0.95 * r_min, rmin
-    fine, _ = route.min_radius_of_line(resample_line(res.centreline, 10.0))
-    assert fine < r_min, "if this starts passing, the exit kink is fixed: update the docstring"
+    for step in (50.0, 10.0):
+        rmin, _ = route.min_radius_of_line(resample_line(res.centreline, step))
+        assert rmin >= 0.95 * r_min, (step, rmin)
+    assert all(c["tangent_exit"] for c in res.circles)
     assert pts[0].tolist() == list(line.coords[0]) and pts[-1].tolist() == list(line.coords[-1])
 
 

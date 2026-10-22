@@ -1,34 +1,30 @@
 # Known issues
 
-## Rolling-circle exits leave a short kink
+## Fixed: rolling-circle exits left a short kink
 
-**Module:** `owd.alignment.rolling_circle`
+**Module:** `owd.alignment.rolling_circle` (issue #5)
 
-**What happens.** The rolling circle replaces a tight bend with an arc of radius R_min. The arc
-joins the old line where the circle *crosses* it, not where it is tangent to it. So each arc
-exit has a short kink. Over a vessel length the line still holds R_min. Over a short chord the
-kink reads as a much tighter radius.
+Up to 0.2.0 each spliced arc joined the old line where the circle *crossed* it, so each exit
+had a short kink. From 0.3.0 the rolling circle uses tangent exits: circle, then straight, as
+in a Dubins path. See the `CHANGELOG.md` entry under 0.3.0 (Unreleased until it ships) and the
+rule in the module doc of `crates/owd-core/src/alignment/rolling_circle.rs`.
 
-**Measured** on the package's synthetic river (`synthetic.synthetic_river()`), R_min = 300 m,
-minimum three-point radius of the result resampled at three chord lengths:
+On the package's synthetic river (`synthetic.synthetic_river()`), minimum three-point radius of
+the result resampled at three spacings:
 
-| Rolling step | 10 m chord | 25 m chord | 50 m chord |
+| R_min, rolling step | 10 m resample | 25 m resample | 50 m resample |
 |---|---|---|---|
-| 10 m | 111 m | 288 m | 297 m |
-| 25 m | 55 m | 165 m | 296 m |
+| 300 m, 10 m (was) | 111 m | 288 m | 297 m |
+| 300 m, 10 m (now) | 295 m | 300 m | 300 m |
+| 300 m, 25 m (was) | 55 m | 165 m | 296 m |
+| 300 m, 25 m (now) | 280 m | 299 m | 300 m |
+| 255 m, 10 m (was) | 227 m | 250 m | 254 m |
+| 255 m, 10 m (now) | 254 m | 254 m | 255 m |
 
-At R_min = 255 m and a 10 m step the same figures are 227 m, 250 m and 254 m.
-
-**Effect.** Volumes that read curvature on a vessel-length chord (about 50 m), such as
-`volumes.cut_model.widened_hb`, are barely affected. Anything that reads curvature on a short
-chord is affected: bend widening on a 10 m resample, channel limits, drawings.
-
-**What to do now.** Read radius on a chord of about one vessel length, or smooth the exits
-before you use the line for curvature. Do not quote a minimum radius measured on a short chord.
-
-**Status.** Kept as is for this release. A test (`test_property_rolling_circle_lifts_min_radius_to_target`)
-pins the behaviour, so a fix shows up as a failing test. The fix is tangent exits; it changes
-every rolled line, so it ships as its own change.
+What is left at a 25 m step is at the arc *entries*, not the exits: the circle is placed tangent
+to the line's direction read on the 25 m resample, which can differ from the line's own heading
+by a fraction of a degree. A circle whose straight cannot meet the old line (the line curves
+away first, or ends) keeps the old crossing exit; its record says `tangent_exit: False`.
 
 ## R_min is reported, not guaranteed
 
