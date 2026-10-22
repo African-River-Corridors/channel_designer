@@ -104,9 +104,11 @@ impl Session {
         self.screening_value_on(option, walk, river, centre, None)
     }
 
-    /// [`Session::screening_value`], with the river's own radius read on `radius_line` (a plan line
-    /// such as a fairway fit) instead of the river centreline. The reaches and everything else still
-    /// read the river centreline.
+    /// [`Session::screening_value`], with the radius read on `radius_line` (a plan line, such as a
+    /// fairway fit or the reference line) instead of on the option's own line. Without one, the
+    /// radius is the option's own (#369): a design line that cuts across a bend does not take the
+    /// river's bend. The reaches still read the river centreline. The answer names the line in
+    /// `radius_read_on`.
     pub(super) fn screening_value_on(
         &self,
         option: &Value,
@@ -125,8 +127,8 @@ impl Session {
         // plain functions, to the last bit).
         let widths = (!river.is_empty()).then(|| WaterWidth::new(&line, river));
         let on_line = RadiusOn::new(&line);
-        let on_centre =
-            (centre.len() >= 2).then(|| (RadiusOn::new(centre), linear::ProjectIndex::new(centre)));
+        // The centreline gives each station its reach.
+        let on_centre = (centre.len() >= 2).then(|| linear::ProjectIndex::new(centre));
         let on_plan = radius_line
             .filter(|l| l.len() >= 2)
             .map(|l| (RadiusOn::new(l), linear::ProjectIndex::new(l)));
@@ -141,16 +143,15 @@ impl Session {
                     .zip(&cs.terrain)
                     .min_by(|a, b| a.0.abs().total_cmp(&b.0.abs()))
                     .map_or(f64::NAN, |(_, t)| *t);
-                let river_s = on_centre.as_ref().map_or(f64::NAN, |(_, ix)| ix.project(p));
+                let river_s = on_centre.as_ref().map_or(f64::NAN, |ix| ix.project(p));
                 StationIn {
                     chainage_m: cs.chainage_m,
                     xy: p,
                     river_width_m: widths.as_ref().map_or(f64::NAN, |w| w.at(cs.chainage_m)),
                     river_depth_m: cs.wl - bed,
-                    river_radius_m: match (&on_plan, &on_centre) {
-                        (Some((r, ix)), _) => r.at(ix.project(p), chord),
-                        (None, Some((r, _))) if !river_s.is_nan() => r.at(river_s, chord),
-                        _ => f64::NAN,
+                    river_radius_m: match &on_plan {
+                        Some((r, ix)) => r.at(ix.project(p), chord),
+                        None => on_line.at(cs.chainage_m, chord),
                     },
                     line_radius_m: on_line.at(cs.chainage_m, chord),
                     reach: if on_centre.is_some() {
@@ -247,6 +248,11 @@ impl Session {
             "rules_notice": UNVERIFIED_NOTICE,
             "blocking_not_evaluated": {"count": blocking.len(), "rules": blocking},
             "constraint_stretches": stretches,
+            "radius_read_on": if on_plan.is_some() {
+                "the plan line"
+            } else {
+                "the design line option"
+            },
         }))
     }
 

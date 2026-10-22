@@ -18,7 +18,8 @@ pub enum StretchKind {
     Width,
     /// The water over the bed at the design line is shallower than the governing depth.
     Depth,
-    /// The river centreline bends more tightly than its reach's governing minimum radius.
+    /// The line read for the radius (the option's own, or a plan line) bends more tightly than its
+    /// reach's governing minimum radius.
     Radius,
 }
 
@@ -54,7 +55,8 @@ pub struct StationIn {
     pub river_width_m: f64,
     /// Water level less the bed at the design line (m); NaN where unknown.
     pub river_depth_m: f64,
-    /// Radius of the river centreline where the station projects onto it (m); infinity on a
+    /// The radius the minimum radius is checked against (m): the design line option's own at the
+    /// station, or a plan line's where the station projects onto it (#369); infinity on a
     /// straight.
     pub river_radius_m: f64,
     /// Radius of the design line at the station (m), for the bend widening it needs.

@@ -222,3 +222,42 @@ fn the_stretches_export_as_csv_and_geojson_lines_with_the_notice_basis_and_verdi
         assert!(lon.abs() < 4.0, "{lon}");
     }
 }
+
+#[test]
+fn a_straight_option_has_no_radius_stretch_and_says_which_line_it_read() {
+    // #369: the radius of a design line option is read on the option's own line. A straight line
+    // past the meanders' crests (240 m to one side of the river's axis, where the river bends at
+    // about 220 m, under the 255 m R_min) has no bend, whatever the river's bends are.
+    let (s, r) = screened(RiverParams::default());
+    let mut doc = s.document().clone();
+    let first = shift(&r.centreline[0]);
+    let last = shift(&r.centreline[r.centreline.len() - 1]);
+    let straight: Vec<Pt> = (0..=100)
+        .map(|i| {
+            let t = i as f64 / 100.0;
+            [
+                first[0] + t * (last[0] - first[0]),
+                first[1] + 240.0 + t * (last[1] - first[1]),
+            ]
+        })
+        .collect();
+    doc["options"][0]["line"]["coordinates"] = json!(straight);
+    let mut s = Session::open(&doc.to_string()).unwrap();
+    let terrain = |xs: &[f64], ys: &[f64]| -> Vec<f64> {
+        xs.iter()
+            .zip(ys)
+            .map(|(&x, &y)| r.terrain(x - SHIFT[0], y - SHIFT[1]))
+            .collect()
+    };
+    s.run_volumes(&json!({"cut_model": "b"}), Some(&terrain))
+        .unwrap();
+    let sc = &screening(&s)[0];
+    let radius: Vec<&Value> = sc["constraint_stretches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|x| x["kind"] == "radius")
+        .collect();
+    assert!(radius.is_empty(), "{radius:?}");
+    assert_eq!(sc["radius_read_on"], "the design line option");
+}
