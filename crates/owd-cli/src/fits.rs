@@ -82,9 +82,14 @@ pub fn fits(
     doc: &str,
     choices: &[String],
     show: bool,
+    plan_line: Option<&str>,
     output: &Option<String>,
     json_mode: bool,
 ) -> Result {
+    let plan_line = match plan_line {
+        Some(p) => owd_format::design::fits::PlanLine::parse(p).map_err(from_design)?,
+        None => owd_format::design::fits::PlanLine::default(),
+    };
     let (mut session, bytes) = open_with_dem(doc)?;
     if show {
         let status = session.fits_status();
@@ -122,11 +127,12 @@ pub fn fits(
         None => None,
     };
     session
-        .run_fits_with(
+        .run_fits_on(
             (!choices.is_empty()).then_some(choices),
             sampler
                 .as_ref()
                 .map(|s| s as &(dyn Fn(&[f64], &[f64]) -> Vec<f64> + Sync)),
+            plan_line,
         )
         .map_err(from_design)?;
     let dest = destination(doc, output);

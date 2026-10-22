@@ -451,6 +451,10 @@ enum Command {
         /// Print the answer the document holds, and say if it is stale, without running.
         #[arg(long)]
         show: bool,
+        /// The line the full answer reads the river's own radius on: `centreline` (the default),
+        /// or `fairway`, each class's fairway fit (ADR 0007) in the water.
+        #[arg(long, value_name = "LINE")]
+        plan_line: Option<String>,
         #[command(flatten)]
         out: Out,
     },
@@ -625,8 +629,16 @@ pub fn main() -> ExitCode {
             doc,
             ruleset,
             show,
+            plan_line,
             out,
-        } => crate::fits::fits(&doc, &ruleset, show, &out.output, out.json),
+        } => crate::fits::fits(
+            &doc,
+            &ruleset,
+            show,
+            plan_line.as_deref(),
+            &out.output,
+            out.json,
+        ),
         Command::Size {
             doc,
             rule_set,

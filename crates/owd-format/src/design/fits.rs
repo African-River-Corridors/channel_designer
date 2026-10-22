@@ -58,6 +58,36 @@ use serde_json::{Value, json};
 /// The label of a full answer: what it read, and what it assumed.
 pub const FULL_LABEL: &str = "width, radius and depth; depth assumed, not measured";
 
+/// The line the full answer reads the river's own radius on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PlanLine {
+    /// The river centreline (the default).
+    #[default]
+    Centreline,
+    /// A fairway fit (ADR 0007) for each class: the smoothest line a channel of that class can
+    /// take in the water, seeded from the river centreline.
+    Fairway,
+}
+
+impl PlanLine {
+    pub fn name(self) -> &'static str {
+        match self {
+            PlanLine::Centreline => "centreline",
+            PlanLine::Fairway => "fairway",
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<PlanLine, DesignError> {
+        match s {
+            "centreline" => Ok(PlanLine::Centreline),
+            "fairway" => Ok(PlanLine::Fairway),
+            o => Err(DesignError::Input(format!(
+                "the plan line is `centreline` or `fairway`, not `{o}`"
+            ))),
+        }
+    }
+}
+
 /// The Rule Set choice (an old ruleset name) a run uses when none is named.
 pub const DEFAULT_FITS_CHOICE: &str = "PIANC-B";
 
@@ -189,6 +219,18 @@ impl Session {
         choices: Option<&[String]>,
         terrain: Option<SyncTerrain>,
     ) -> Result<(), DesignError> {
+        self.run_fits_on(choices, terrain, PlanLine::Centreline)
+    }
+
+    /// [`Session::run_fits_with`], with the full answer reading the river's own radius on
+    /// `plan_line`. The choice is kept in the answer's settings (only when it is not the default),
+    /// so changing it makes the answer stale.
+    pub fn run_fits_on(
+        &mut self,
+        choices: Option<&[String]>,
+        terrain: Option<SyncTerrain>,
+        plan_line: PlanLine,
+    ) -> Result<(), DesignError> {
         let ids: Vec<String> = match choices {
             Some(r) if !r.is_empty() => r.to_vec(),
             _ => self.fits_choices(),
@@ -207,10 +249,14 @@ impl Session {
         if let Some(t) =
             terrain.filter(|_| self.bed_model_value().is_some() && self.water_profile().is_some())
         {
-            self.add_full(&mut results, &line, t, true)?;
+            self.add_full(&mut results, &line, t, true, plan_line)?;
+        }
+        let mut settings = json!({"rule_sets": ids});
+        if plan_line != PlanLine::Centreline {
+            settings["plan_line"] = json!(plan_line.name());
         }
         self.doc["fits"] = json!({
-            "settings": {"rule_sets": ids},
+            "settings": settings,
             "results": results,
             "depends_on": null,
             "engine_version": ENGINE_VERSION,
@@ -228,6 +274,7 @@ impl Session {
         centre: &[[f64; 2]],
         terrain: SyncTerrain,
         parallel: bool,
+        plan_line: PlanLine,
     ) -> Result<(), DesignError> {
         let option = json!({
             "id": "river",
@@ -275,7 +322,38 @@ impl Session {
             sized.set_vessel(class, None)?;
             let plan = sized.section_plan(&json!({}))?;
             let walk = sized.option_sections(&plan, &option, terrain)?;
-            sized.screening_value(&option, &walk, &plan.river, &plan.centre)
+            match plan_line {
+                PlanLine::Centreline => {
+                    sized.screening_value(&option, &walk, &plan.river, &plan.centre)
+                }
+                PlanLine::Fairway => {
+                    // The class's own fairway: its R_min and bottom width, in the river's water,
+                    // with the alignment stage's defaults (no clearance, no smoothing).
+                    use owd_core::alignment::fairway_fit::{
+                        FitParams, Fixed, fairway_fit_in_water,
+                    };
+                    let shape = sized.sized_shape()?;
+                    let fit = fairway_fit_in_water(
+                        &plan.centre,
+                        &plan.river,
+                        &shape,
+                        0.0,
+                        0.0,
+                        &Fixed::default(),
+                        &FitParams::new(shape.min_bend_radius_m),
+                    )
+                    .map_err(|e| {
+                        DesignError::Input(format!("the fairway fit for {class}: {}", e.message))
+                    })?;
+                    sized.screening_value_on(
+                        &option,
+                        &walk,
+                        &plan.river,
+                        &plan.centre,
+                        Some(&fit.line),
+                    )
+                }
+            }
         };
         let answers = run_all(&jobs, |(_, _, id, class)| screen(id, class), parallel);
         for ((i, j, _, _), screening) in jobs.iter().zip(answers) {
@@ -301,6 +379,9 @@ impl Session {
             rs["largest_fitting"] = largest.unwrap_or(Value::Null);
         }
         results["mode"] = json!("full");
+        if plan_line != PlanLine::Centreline {
+            results["plan_line"] = json!(plan_line.name());
+        }
         results["label"] = json!(FULL_LABEL);
         results["notice"] = json!(super::screening::SCREENING_NOTICE);
         results["rules_notice"] = json!(super::screening::UNVERIFIED_NOTICE);
@@ -375,8 +456,10 @@ mod tests {
             probe.doc["fits"]["results"].clone()
         };
         let (mut a, mut b) = (base.clone(), base);
-        s.add_full(&mut a, &line, &land, true).unwrap();
-        s.add_full(&mut b, &line, &land, false).unwrap();
+        s.add_full(&mut a, &line, &land, true, PlanLine::Centreline)
+            .unwrap();
+        s.add_full(&mut b, &line, &land, false, PlanLine::Centreline)
+            .unwrap();
         assert_eq!(a.to_string(), b.to_string());
         assert_eq!(a["mode"], "full");
     }

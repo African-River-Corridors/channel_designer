@@ -196,3 +196,87 @@ fn without_a_dem_or_without_a_bed_model_the_rows_are_the_plan_only_ones() {
     s2.set_water_profile(&[[0.0, 11.0]]).unwrap();
     assert_eq!(s2.fits_status(), owd_format::design::StageStatus::Fresh);
 }
+
+/// The river of the shallow-bar test, but its centreline zigzags by 3 m every 40 m, as one drawn
+/// from bank lines can: on the centreline the wiggle reads as tight bends; the water is straight.
+fn wiggly() -> Session {
+    let mut s = Session::new("Wiggly", "2026-10-22");
+    let at = |x: f64, y: f64| [X0 + x, Y0 + y];
+    let ring = json!([
+        at(0.0, -200.0),
+        at(3000.0, -200.0),
+        at(3000.0, 200.0),
+        at(0.0, 200.0),
+        at(0.0, -200.0)
+    ]);
+    let polygon = format!(r#"{{"type":"Polygon",{UTM30},"coordinates":[{ring}]}}"#);
+    let pts: Vec<[f64; 2]> = (0..=75)
+        .map(|i| at(40.0 * f64::from(i), if i % 2 == 0 { 3.0 } else { -3.0 }))
+        .collect();
+    let centre = format!(
+        r#"{{"type":"LineString",{UTM30},"coordinates":{}}}"#,
+        json!(pts)
+    );
+    s.import(&[
+        (Role::RiverPolygon, polygon.as_str()),
+        (Role::Centreline, centre.as_str()),
+    ])
+    .unwrap();
+    s.set_water_profile(&[[0.0, 10.0]]).unwrap();
+    s.set_bed_model(&[[0.0, 6.0]], Some("dry"), "2026-10-22")
+        .unwrap();
+    s
+}
+
+fn radius_stretches(s: &Session) -> usize {
+    rows(s)
+        .iter()
+        .map(|r| {
+            r["constraint_stretches"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|x| x["kind"] == "radius")
+                .count()
+        })
+        .sum()
+}
+
+#[test]
+fn on_the_fairway_the_river_radius_is_the_water_s_not_the_wiggle_of_its_centreline() {
+    use owd_format::design::fits::PlanLine;
+    // Label: property. The default reads the centreline: its 3 m zigzag is a run of tight bends.
+    let mut centre = wiggly();
+    centre.run_fits_with(None, Some(&land)).unwrap();
+    assert!(radius_stretches(&centre) > 0);
+    let r = &centre.document()["fits"];
+    assert!(
+        r["settings"].get("plan_line").is_none() && r["results"].get("plan_line").is_none(),
+        "the default writes nothing new"
+    );
+    // Opted in: each class's fairway fit in the straight water has no tight bend.
+    let mut fairway = wiggly();
+    fairway
+        .run_fits_on(None, Some(&land), PlanLine::Fairway)
+        .unwrap();
+    assert_eq!(
+        radius_stretches(&fairway),
+        0,
+        "{}",
+        fairway.document()["fits"]["results"]
+    );
+    let r = &fairway.document()["fits"];
+    assert_eq!(r["settings"]["plan_line"], "fairway");
+    assert_eq!(r["results"]["plan_line"], "fairway");
+    // Width and depth are read as before: the same stretches of those kinds either way.
+    let others = |s: &Session| -> Vec<String> {
+        rows(s)
+            .iter()
+            .flat_map(|r| r["constraint_stretches"].as_array().unwrap().clone())
+            .filter(|x| x["kind"] != "radius")
+            .map(|x| x.to_string())
+            .collect()
+    };
+    assert_eq!(others(&centre), others(&fairway));
+    assert!(PlanLine::parse("bank").is_err());
+}
