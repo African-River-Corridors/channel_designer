@@ -177,4 +177,4 @@ rules, and no document stage uses them. A package that adds a width method decla
 my_method = "my_package.widths:MY_METHOD"
 ```
 
-The old group `channel_designer.width_methods` is no longer read.
+The group used before the rename to OWD is no longer read.
