@@ -353,8 +353,9 @@ enum Command {
         /// The study's title (default: the river's name).
         #[arg(long)]
         title: Option<String>,
-        /// Another Overpass server (default: overpass-api.de).
-        #[arg(long, value_name = "URL")]
+        /// Other Overpass servers, separated by commas, asked in that order when one fails (default:
+        /// overpass-api.de, then the public mirrors overpass.kumi.systems and overpass.private.coffee).
+        #[arg(long, value_name = "URLS", env = "OWD_OVERPASS_URLS")]
         overpass: Option<String>,
         /// Created date, YYYY-MM-DD (default: today, UTC).
         #[arg(long, value_name = "DATE")]

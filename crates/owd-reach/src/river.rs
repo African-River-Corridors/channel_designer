@@ -10,12 +10,10 @@
 use crate::error::ReachError;
 use crate::geo::LonLat;
 use crate::overpass::{Overpass, Way, parse_ways};
-use crate::provenance::provenance_record;
-use crate::reach::{Planned, ReachSpec, record_reach};
+use crate::reach::{Planned, ReachSpec, record_reach, route_record};
 use crate::route::{Graph, Route};
 use crate::search::OsmRef;
 use owd_format::design::Session;
-use owd_format::design::provenance::Mark;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -36,6 +34,9 @@ pub struct WholeRiver {
     /// Every way of the river, for cutting a reach out of it. OSM geometry: never written into the
     /// document.
     pub ways: Vec<Way>,
+    /// The Overpass server that answered, and what happened if the first did not (#319).
+    pub server: Option<String>,
+    pub notes: Vec<String>,
 }
 
 /// Escape text for an exact Overpass tag match inside double quotes.
@@ -227,6 +228,8 @@ pub fn whole_river(ov: &Overpass, osm: OsmRef, also: &[OsmRef]) -> Result<WholeR
         upstream,
         route,
         ways,
+        server: ov.answered_by(),
+        notes: ov.notes(),
     })
 }
 
@@ -295,6 +298,8 @@ impl WholeRiver {
             },
             route: self.route.clone(),
             candidates: Vec::new(),
+            server: self.server.clone(),
+            notes: self.notes.clone(),
         }
     }
 
@@ -315,6 +320,8 @@ impl WholeRiver {
             },
             route,
             candidates: Vec::new(),
+            server: self.server.clone(),
+            notes: self.notes.clone(),
         })
     }
 }
@@ -332,9 +339,12 @@ pub fn record_river_reach(
     date: &str,
 ) -> Result<(), ReachError> {
     record_reach(session, planned, date)?;
-    let mut rec =
-        provenance_record("osm-overpass", date, Mark::Default, false).map_err(ReachError::Input)?;
-    let mut settings = json!({"osm_id": osm.to_string()});
+    let mut rec = route_record(planned, date)?;
+    let mut settings = rec["settings"].take();
+    if !settings.is_object() {
+        settings = json!({});
+    }
+    settings["osm_id"] = json!(osm.to_string());
     if let Some(source) = searched {
         settings["river_search"] = json!({"source": source, "date": date});
     }

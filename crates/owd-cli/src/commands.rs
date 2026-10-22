@@ -1796,7 +1796,7 @@ pub fn reach_with(
     fetch: &dyn owd_reach::Fetch,
     jrc: &dyn owd_reach::Fetch,
 ) -> Result {
-    use owd_reach::overpass::{DEFAULT_ENDPOINT, Overpass};
+    use owd_reach::overpass::{Overpass, default_endpoints, host};
     use owd_reach::reach::{plan_points, plan_trace, record_reach};
     let date = flags.date.clone().unwrap_or_else(today);
     if flags.start.is_none() && flags.trace.is_none() && flags.osm_id.is_none() {
@@ -1804,7 +1804,8 @@ pub fn reach_with(
             "give --start and --end (and --river), --osm-id (from --search), or --trace FILE",
         ));
     }
-    let ov = Overpass::with_endpoint(fetch, flags.overpass.as_deref().unwrap_or(DEFAULT_ENDPOINT));
+    let servers = flags.overpass.clone().unwrap_or_else(default_endpoints);
+    let ov = Overpass::with_endpoint(fetch, &servers);
     let river = flags.river.as_deref();
     let osm: Option<owd_reach::search::OsmRef> = flags
         .osm_id
@@ -2042,6 +2043,9 @@ pub fn reach_with(
     {
         human.push_str("\nwarning: the bank lines still cross in places after the repairs (flagged `crossing`): check them by eye with `owd qa-overlay`");
     }
+    if !planned.notes.is_empty() {
+        human.push_str(&format!("\nOverpass: {}", planned.notes.join("; ")));
+    }
     human.push_str("\n© OpenStreetMap contributors (ODbL)");
     say(
         flags.file == "-",
@@ -2050,6 +2054,7 @@ pub fn reach_with(
         json!({
             "ok": true, "file": flags.file, "length_m": route.length_m,
             "ways": route.way_ids(), "as_drawn_stretches": drawn,
+            "overpass": {"server": planned.server.as_deref().map(host), "notes": planned.notes},
             "osm_id": osm.map(|o| o.to_string()),
             "start": planned.spec.start, "end": planned.spec.end,
             "river_search": found,
