@@ -183,6 +183,13 @@ fn import_records_the_dem_by_relative_path_hash_crs_and_nodata() {
 fn volumes_equal_the_core_called_directly_on_the_same_dem() {
     let dir = work_dir("direct");
     let (doc, dem) = build(&dir);
+    // The volumes engine, not the alignment: with water, every bend of the 40 m river is
+    // infeasible, and an option with no feasible line has no volumes (issue #366).
+    let mut d = read_doc(&doc);
+    d["stages"]["alignment"]["settings"]["rolling_circle"]["use_water"] = json!(false);
+    std::fs::write(&doc, d.to_string()).unwrap();
+    let o = run(&["align", &doc, "--method", "rolling-circle"]);
+    assert_eq!(code(&o), 0, "{}", err(&o));
     let mut args = vec!["volumes", &doc as &str, "--json"];
     args.extend(VOLUME_FLAGS);
     let o = run(&args);

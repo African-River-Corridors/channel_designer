@@ -755,6 +755,7 @@ fn a_failed_fits_in_water_check_is_in_status_the_csv_and_the_geojson_and_exits_1
     let o = run(&["align", &doc, "--method", "rolling-circle", "--json"], "");
     assert_eq!(code(&o), 1, "{}", err(&o));
     assert!(err(&o).contains("fits_in_water"), "{}", err(&o));
+    assert!(err(&o).contains("no_feasible_line"), "{}", err(&o));
     let res: Value = serde_json::from_str(&out(&o)).unwrap();
     let c = &res["option"]["checks"]["fits_in_water"];
     assert_eq!(c["ok"], false);
@@ -775,12 +776,24 @@ fn a_failed_fits_in_water_check_is_in_status_the_csv_and_the_geojson_and_exits_1
             .contains(&json!("fits_in_water")),
         "{sj}"
     );
-    assert_eq!(sj["options"][0]["notes"], "width only, no depth data");
+    // Issue #366: every apex too narrow is no feasible line, in every output.
+    assert!(
+        sj["options"][0]["failed_checks"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("no_feasible_line")),
+        "{sj}"
+    );
+    assert_eq!(
+        sj["options"][0]["notes"],
+        "no feasible line; width only, no depth data"
+    );
     let human = run(&["status", &doc], "");
     assert!(out(&human).contains("FAILS") && out(&human).contains("fits_in_water"));
     let csv = run(&["export", &doc, "--csv"], "");
     assert!(out(&csv).contains("fits_in_water"), "{}", out(&csv));
-    assert!(out(&csv).contains("width only, no depth data"));
+    assert!(out(&csv).contains("no_feasible_line"), "{}", out(&csv));
+    assert!(out(&csv).contains("no feasible line; width only, no depth data"));
     let g = run(&["export", &doc, "--geojson"], "");
     let fc: Value = serde_json::from_str(&out(&g)).unwrap();
     let props = &fc["features"][0]["properties"];
@@ -790,7 +803,10 @@ fn a_failed_fits_in_water_check_is_in_status_the_csv_and_the_geojson_and_exits_1
             .unwrap()
             .contains(&json!("fits_in_water"))
     );
-    assert_eq!(props["notes"], "width only, no depth data");
+    assert_eq!(
+        props["notes"],
+        "no feasible line; width only, no depth data"
+    );
 }
 
 /// The package builds one binary, `owd`: the old alias binary is gone (spec 0006, T10).

@@ -162,6 +162,24 @@ impl Session {
             let id = o["id"].as_str().unwrap_or("?");
             let v = self.option_sections(&plan, o, terrain)?;
             let screening = self.screening_value(o, &v, &plan.river, &plan.centre)?;
+            // Issue #366: an option with no feasible line is not a design, so it has no volumes.
+            if super::export::no_feasible_line(o) {
+                rows.push(json!({
+                    "id": id,
+                    "name": o["name"],
+                    "dredge_m3": null,
+                    "excav_m3": null,
+                    "total_m3": null,
+                    "max_face_h_m": null,
+                    "stations": v.stations.len(),
+                    "radius_ok": o["checks"]["radius_ok"],
+                    "no_feasible_line": true,
+                    "note": super::alignment::NO_FEASIBLE_LINE,
+                    "water_source": plan.water_source,
+                    "screening": screening,
+                }));
+                continue;
+            }
             rows.push(json!({
                 "id": id,
                 "name": o["name"],

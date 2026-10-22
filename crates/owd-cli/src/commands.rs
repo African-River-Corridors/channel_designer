@@ -1,7 +1,7 @@
 //! The `owd` subcommands. File, stdin, stdout and clock access live here.
 
 use owd_format::design::alignment::WIDTH_ONLY;
-use owd_format::design::export::{failed_checks, water_note};
+use owd_format::design::export::{failed_checks, no_feasible_line, notes_of};
 use owd_format::design::geopackage;
 use owd_format::design::{
     AlignMethod, DemCheck, DesignError, Role, Session, Stage, StageStatus, Terrain,
@@ -815,6 +815,9 @@ pub fn align(
     if c["join_guard"]["ok"].as_bool() == Some(false) {
         human.push_str("\njoin guard: FAILS");
     }
+    if no_feasible_line(&option) {
+        human.push_str("\nNO FEASIBLE LINE: every bend is infeasible; the line is not a design");
+    }
     say(
         dest == "-",
         json_mode,
@@ -1024,6 +1027,15 @@ pub fn volumes(doc: &str, flags: VolumesFlags, output: &Option<String>, json_mod
     let mut human = Vec::new();
     let mut all_ok = true;
     for r in rows.as_array().into_iter().flatten() {
+        // Issue #366: an option with no feasible line is not a design and is not costed.
+        if r["no_feasible_line"] == true {
+            all_ok = false;
+            human.push(format!(
+                "{}: no feasible line, not costed  [FAILS no_feasible_line]",
+                r["name"].as_str().unwrap_or("?")
+            ));
+            continue;
+        }
         let ok = r["radius_ok"].as_bool().unwrap_or(false);
         all_ok &= ok;
         let f = |k: &str| r[k].as_f64().unwrap_or(f64::NAN);
@@ -1046,7 +1058,7 @@ pub fn volumes(doc: &str, flags: VolumesFlags, output: &Option<String>, json_mod
         Ok(())
     } else {
         Err(Failure {
-            message: "an option fails R_min".into(),
+            message: "an option fails R_min or has no feasible line".into(),
             code: 1,
         })
     }
@@ -1611,7 +1623,7 @@ pub fn status(doc: &str, json_mode: bool) -> Result {
         .flatten()
         .map(|o| {
             let failed = failed_checks(o);
-            let note = water_note(o);
+            let note = notes_of(o, None);
             if !failed.is_empty() {
                 human.push(format!(
                     "option {}: FAILS {}",

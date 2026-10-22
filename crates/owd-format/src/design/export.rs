@@ -10,11 +10,20 @@ use serde_json::{Value, json};
 /// The label every export carries.
 pub const SCREENING_LABEL: &str = "Screening — not for construction";
 
+/// Whether every bend of a water-aware option is infeasible: no feasible line (issue #366).
+pub fn no_feasible_line(option: &Value) -> bool {
+    option["checks"]["feasible"]["ok"].as_bool() == Some(false)
+}
+
 /// The checks an option fails, by name. `R_min` when the minimum radius is under the ruleset's;
 /// `fits_in_water` when a water-aware option has an infeasible stretch, and `join_guard` when a
-/// join that held R_min failed after a later fit (spec 0005).
+/// join that held R_min failed after a later fit (spec 0005); `no_feasible_line` when every bend
+/// of a water-aware option is infeasible (issue #366).
 pub fn failed_checks(option: &Value) -> Vec<&'static str> {
     let mut failed = Vec::new();
+    if no_feasible_line(option) {
+        failed.push("no_feasible_line");
+    }
     let c = &option["checks"];
     if c["radius_ok"].as_bool() == Some(false) {
         failed.push("R_min");
@@ -35,9 +44,14 @@ pub fn water_note(option: &Value) -> Option<&'static str> {
         .then_some(super::alignment::WIDTH_ONLY)
 }
 
-/// The notes of an option: the water note and the depth note, joined; `None` when there is neither.
-fn notes_of(option: &Value, depth: Option<&str>) -> Option<String> {
-    let parts: Vec<&str> = [water_note(option), depth].into_iter().flatten().collect();
+/// The notes of an option: "no feasible line", the water note and the depth note, joined; `None`
+/// when there is none.
+pub fn notes_of(option: &Value, depth: Option<&str>) -> Option<String> {
+    let nfl = no_feasible_line(option).then_some(super::alignment::NO_FEASIBLE_LINE);
+    let parts: Vec<&str> = [nfl, water_note(option), depth]
+        .into_iter()
+        .flatten()
+        .collect();
     (!parts.is_empty()).then(|| parts.join("; "))
 }
 

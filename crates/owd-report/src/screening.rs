@@ -6,7 +6,8 @@
 use crate::Context;
 use crate::fmt::{km, m3, md, num, text, val};
 use crate::{figures, limits, trace};
-use owd_format::design::export::failed_checks;
+use owd_format::design::alignment::NO_FEASIBLE_LINE;
+use owd_format::design::export::{failed_checks, no_feasible_line};
 use serde_json::{Value, json};
 
 /// The most stretches the screening report lists; the rest are in the quantity schedule.
@@ -543,6 +544,18 @@ fn quantities(ctx: &Context) -> Value {
                 .cloned()
                 .unwrap_or(Value::Null);
             let failed = failed_checks(o);
+            // Issue #366: an option with no feasible line is not a design and has no quantities.
+            if no_feasible_line(o) {
+                let none = NO_FEASIBLE_LINE.to_string();
+                return vec![
+                    text(&o["name"], text(&o["id"], "?")).to_string(),
+                    none.clone(),
+                    none.clone(),
+                    none.clone(),
+                    none,
+                    failed.join(", "),
+                ];
+            }
             vec![
                 text(&o["name"], text(&o["id"], "?")).to_string(),
                 m3(&v["dredge_m3"]),

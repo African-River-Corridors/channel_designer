@@ -72,8 +72,14 @@ fn aligned() -> Session {
         .unwrap();
     s.set_vessel("CEMT_IV", Some(2.5)).unwrap();
     s.run_stage(Stage::Sizing).unwrap();
-    s.align(AlignMethod::RollingCircle, &Value::Null, None)
-        .unwrap();
+    // The volumes engine, not the alignment: with water, every bend of the 40 m river is
+    // infeasible, and an option with no feasible line has no volumes (issue #366).
+    s.align(
+        AlignMethod::RollingCircle,
+        &serde_json::json!({"use_water": false}),
+        None,
+    )
+    .unwrap();
     s
 }
 

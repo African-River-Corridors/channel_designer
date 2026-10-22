@@ -303,6 +303,10 @@ impl Session {
 /// The text every export of a water-aware option carries (spec 0005).
 pub const WIDTH_ONLY: &str = "width only, no depth data";
 
+/// What an option whose every bend is infeasible says (issue #366). Its line is the fit that
+/// breaks the rules least, not a design: the volumes stage does not cost it.
+pub const NO_FEASIBLE_LINE: &str = "no feasible line";
+
 /// A stretch as the document records it.
 fn stretch_json(line: &[Pt], s: &Stretch) -> Value {
     let (a, b) = (linear::project(line, s.start), linear::project(line, s.end));
@@ -486,6 +490,12 @@ impl Session {
                 "fits_in_water".into(),
                 json!({"ok": stretches.is_empty(), "stretches": stretches, "note": WIDTH_ONLY}),
             );
+            // Issue #366: every bend infeasible is no feasible line, not a design.
+            let mut feasible = json!({"ok": r.feasible});
+            if !r.feasible {
+                feasible["note"] = json!(NO_FEASIBLE_LINE);
+            }
+            checks.insert("feasible".into(), feasible);
         }
         for (k, v) in checks {
             base_checks[k] = v;
