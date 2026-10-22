@@ -630,15 +630,13 @@ describe("Open Waterway Designer app smoke test", () => {
       await until("the route", async () => /km/.test((await text("reach-length").catch(() => "")) ?? ""), 60000);
       // The buttons are enabled again once the status is gone.
       await until("the route's status gone", async () => !(await (await browser.$("[data-testid=reach-status]")).isExisting()), 30000);
-      const tile = path.join(WORK, "occurrence_10W_10Nv1_4_2021.tif");
-      fs.copyFileSync(path.resolve(here, "../../examples/reach/jrc_occurrence_sassandra_estuary.tif"), tile);
-      answer("jrc.txt", tile);
-      await (await browser.$("[data-testid=reach-add-tile]")).click();
-      await until("the tile given", async () => (await (await browser.$("[data-testid='reach-jrc-occurrence_10W_10Nv1_4_2021.tif']")).getAttribute("data-given")) === "true");
+      // The JRC tile comes by download, not by hand: a tile given by hand stays given for the next
+      // study, and the next test checks the download (#321).
+      answer("jrc-mirror.txt", `${reach.origin}/jrc`);
       const mark = async () => (await browser.$("[data-testid=mark-left_bank]")).getAttribute("data-mark");
       const before = await mark();
       await (await browser.$("[data-testid=reach-generate]")).click();
-      await until("a request named in the status line", async () => /\(request \d+\)/.test((await text("reach-now").catch(() => "")) ?? ""), 30000);
+      await until("a request named in the status line", async () => /\(request \d+\)|downloading JRC tile/.test((await text("reach-now").catch(() => "")) ?? ""), 30000);
       assert.match(await text("reach-progress"), /Step 1 of \d+: /);
       assert.match(await text("reach-elapsed"), /^\d+:\d\d$/);
       await (await browser.$("[data-testid=reach-cancel]")).click();
