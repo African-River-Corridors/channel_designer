@@ -522,6 +522,14 @@ pub fn gb_class_found(vessel: &Vessel, inputs: &[(String, String)]) -> GbClass {
     if let Some((_, typed)) = inputs.iter().find(|(k, _)| k == GB_CLASS) {
         return found(typed, "typed".into(), false);
     }
+    // A custom vessel (spec 0015 T1): GB 50139 cannot derive a class for a vessel it does not know.
+    if vessel.family == super::custom::CUSTOM_FAMILY {
+        return found(
+            GB_CLASS_UNKNOWN,
+            "a custom vessel has no GB 50139 class unless one is given (its `gb_class`)".into(),
+            false,
+        );
+    }
     // The Chinese classes: `CN-III-MOTOR` in the catalogue (`III` in older studies' terms).
     if vessel.family == CN_FAMILY || vessel.family.starts_with("CN-") {
         let class = vessel
@@ -593,9 +601,12 @@ impl Channel<'_> {
     }
 
     /// `typical` when a table of a selected set keyed by [`GB_TYPICAL`] has a row for the vessel,
-    /// else `special`; always `special` above 3000 t.
+    /// else `special`; always `special` above 3000 t, and for a custom vessel (spec 0015 T1:
+    /// Appendix A).
     fn gb_vessel(&self) -> &'static str {
-        if gb_class_found(self.vessel, self.inputs).above_3000_t {
+        if self.vessel.family == super::custom::CUSTOM_FAMILY
+            || gb_class_found(self.vessel, self.inputs).above_3000_t
+        {
             return "special";
         }
         let key = gb_typical_key(&self.gb_class(), self.vessel);

@@ -51,7 +51,7 @@ fn run_all<J: Sync, T: Send>(jobs: &[J], f: impl Fn(&J) -> T + Sync, parallel: b
 }
 use super::hash::hash_value;
 use super::session::{DesignError, ENGINE_VERSION, Session, StageStatus};
-use owd_core::fits::{ClassFit, Fits, PLAN_ONLY_LABEL, plan_only_fits_of};
+use owd_core::fits::{ClassFit, Fits, PLAN_ONLY_LABEL, plan_only_fits_with};
 use owd_core::rules::engine::old_name_choice;
 use serde_json::{Value, json};
 
@@ -92,7 +92,7 @@ impl PlanLine {
 pub const DEFAULT_FITS_CHOICE: &str = "PIANC-B";
 
 fn class_json(r: &ClassFit) -> Value {
-    json!({
+    let mut v = json!({
         "vessel_standard_id": r.vessel_standard_id,
         "class_name": r.class_name,
         "family": r.family,
@@ -118,7 +118,14 @@ fn class_json(r: &ClassFit) -> Value {
         "warnings": r.warnings,
         // Every row says what it did not read.
         "label": PLAN_ONLY_LABEL,
-    })
+    });
+    // The custom vessel's row has no class id; it shows its label (spec 0015 T1).
+    if r.custom {
+        v["vessel_standard_id"] = Value::Null;
+        v["vessel_label"] = json!(r.vessel_standard_id);
+        v["custom"] = json!(true);
+    }
+    v
 }
 
 /// The Rule Set and set input an old name stands for, so a caller can size to it with
@@ -161,7 +168,7 @@ impl Session {
                 "sizing": self.doc["stages"]["sizing"]["settings"]["rule_sets"],
             })
         });
-        hash_value(&json!({
+        let mut dep = json!({
             "full": full,
             "left_bank": inp["left_bank"],
             "right_bank": inp["right_bank"],
@@ -169,7 +176,14 @@ impl Session {
             "river_polygon": inp["river_polygon"],
             "crs": self.doc["project"]["crs"],
             "settings": self.doc["fits"]["settings"],
-        }))
+        });
+        // The custom vessel's row reads the custom vessel (spec 0015 T1); without one the hash
+        // stays what it was.
+        let custom = &self.doc["stages"]["sizing"]["settings"]["custom_vessel"];
+        if custom.is_object() {
+            dep["custom_vessel"] = custom.clone();
+        }
+        hash_value(&dep)
     }
 
     /// Where the answer stands: not run, fresh, or stale.
@@ -256,7 +270,8 @@ impl Session {
         })?;
         let line = self.river_centreline()?;
         let refs: Vec<&str> = ids.iter().map(String::as_str).collect();
-        let fits = plan_only_fits_of(&line, &water, &refs, all_classes)
+        let custom = self.custom_vessel();
+        let fits = plan_only_fits_with(&line, &water, &refs, all_classes, custom.as_ref())
             .map_err(|e| DesignError::Input(e.message))?;
         let mut results = fits_json(&fits);
         if let Some(t) =
@@ -316,6 +331,7 @@ impl Session {
                     .flatten()
                     .enumerate()
                     .map(move |(j, c)| {
+                        // The custom vessel's row has no class id: an empty one stands for it.
                         let class = c["vessel_standard_id"].as_str().unwrap_or_default();
                         (i, j, id.clone(), class.to_string())
                     })
@@ -335,7 +351,12 @@ impl Session {
                 sized.add_waterway_reach(0.0, None, "canal", true)?;
             }
             sized.set_rule_sets(&[set], &[(input, value)])?;
-            sized.set_vessel(class, None)?;
+            match self.custom_vessel().filter(|_| class.is_empty()) {
+                Some(c) => {
+                    sized.set_custom_vessel(&c)?;
+                }
+                None => sized.set_vessel(class, None)?,
+            }
             let plan = sized.section_plan(&json!({}))?;
             let walk = sized.option_sections(&plan, &option, terrain)?;
             match plan_line {
@@ -390,7 +411,7 @@ impl Session {
                 .into_iter()
                 .flatten()
                 .rev()
-                .find(|c| c["fits"] == true)
+                .find(|c| c["fits"] == true && c["custom"] != true)
                 .map(|c| c["vessel_standard_id"].clone());
             rs["largest_fitting"] = largest.unwrap_or(Value::Null);
         }

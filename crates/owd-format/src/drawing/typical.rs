@@ -65,7 +65,8 @@ pub fn facts(session: &Session) -> Result<Facts, DrawError> {
     let text = |v: &Value| v.as_str().unwrap_or("").to_string();
     Ok(Facts {
         rule_sets: text(&r["rule_sets"]),
-        vessel: text(&r["vessel_standard_id"]),
+        // The class id, or a custom vessel's label (spec 0015 T1).
+        vessel: text(r.get("vessel_label").unwrap_or(&r["vessel_standard_id"])),
         source: text(&r["source"]),
         bottom_width_m: get(&r["bottom_width_straight_m"], "bottom width (sizing stage)")?,
         design_depth_m: get(&r["design_depth_m"], "design depth (sizing stage)")?,
@@ -113,7 +114,7 @@ fn notes(f: &Facts, style: &super::Style) -> Vec<String> {
         "DESIGN WATER LEVEL: THE WATER PROFILE OF THE DESIGN (ONE LEVEL PER CHAINAGE).".to_string(),
         format!(
             "VESSEL {}: LENGTH {:.1} M, BEAM {:.1} M, DRAUGHT {:.2} M.",
-            clean(&f.vessel),
+            clean(&f.vessel.replace('×', "x")),
             f.loa_m,
             f.beam_m,
             f.draught_m
@@ -218,7 +219,7 @@ pub(super) fn build(
         "type": "polyline", "layer": "OBJECT", "id": "ts-vessel", "closed": true,
         "points_m": [pt(-b, ukc), pt(b, ukc), pt(b, d), pt(-b, d)],
     }));
-    let vessel_label = clean(&f.vessel);
+    let vessel_label = clean(&f.vessel.replace('×', "x"));
     if text_width(&vessel_label, H_SMALL).unwrap_or(f64::MAX) + 2.0 < f.beam_m * k
         && f.draught_m * k > H_SMALL + 2.0
     {

@@ -144,11 +144,46 @@ enum Command {
         /// The vessel class: any class of the shared vessel catalogue with a length, a beam and a
         /// draught, by id, for example CEMT-IV or CEMT-VIb-motor (an older id such as CEMT_IV also
         /// works). Default: the one the design has.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "custom_vessel")]
         vessel: Option<String>,
-        /// The design draught in metres (default: the vessel class's).
+        /// The design draught in metres (default: the vessel class's). With --custom-vessel, the
+        /// custom vessel's draught (required).
         #[arg(long, value_name = "METRES")]
         draught: Option<f64>,
+        /// A custom vessel of your own, by name (spec 0015): give --loa, --beam, --draught and
+        /// --formation; --abreast and --in-line for a convoy; --gb-class, --air-draught and
+        /// --deadweight as options. It replaces the class; `--vessel ID` replaces it again.
+        #[arg(long = "custom-vessel", value_name = "NAME")]
+        custom_vessel: Option<String>,
+        /// Custom vessel: the length overall in metres (of the whole convoy, for a convoy).
+        #[arg(long, value_name = "METRES", requires = "custom_vessel")]
+        loa: Option<f64>,
+        /// Custom vessel: the beam in metres (of the whole convoy, for a convoy).
+        #[arg(long, value_name = "METRES", requires = "custom_vessel")]
+        beam: Option<f64>,
+        /// Custom vessel: motor or convoy.
+        #[arg(long, value_name = "FORMATION", requires = "custom_vessel")]
+        formation: Option<String>,
+        /// Custom convoy: the number of barges abreast.
+        #[arg(long, value_name = "N", requires = "custom_vessel")]
+        abreast: Option<u32>,
+        /// Custom convoy: the number of barges in line.
+        #[arg(long = "in-line", value_name = "N", requires = "custom_vessel")]
+        in_line: Option<u32>,
+        /// Custom vessel: its GB 50139 channel class, I to VII (GB 50139 reads it; without one its
+        /// width and depth are not evaluated).
+        #[arg(long = "gb-class", value_name = "CLASS", requires = "custom_vessel")]
+        gb_class: Option<String>,
+        /// Custom vessel: the air draught in metres (stored only).
+        #[arg(
+            long = "air-draught",
+            value_name = "METRES",
+            requires = "custom_vessel"
+        )]
+        air_draught: Option<f64>,
+        /// Custom vessel: the deadweight in tonnes (stored only).
+        #[arg(long, value_name = "TONNES", requires = "custom_vessel")]
+        deadweight: Option<f64>,
         #[command(flatten)]
         out: Out,
     },
@@ -819,6 +854,15 @@ pub fn main() -> ExitCode {
             rule_set_file,
             vessel,
             draught,
+            custom_vessel,
+            loa,
+            beam,
+            formation,
+            abreast,
+            in_line,
+            gb_class,
+            air_draught,
+            deadweight,
             out,
         } => commands::size(
             &doc,
@@ -828,6 +872,17 @@ pub fn main() -> ExitCode {
                 files: rule_set_file,
                 vessel,
                 draught,
+                custom: custom_vessel.map(|name| commands::CustomFlags {
+                    name,
+                    loa,
+                    beam,
+                    formation,
+                    abreast,
+                    in_line,
+                    gb_class,
+                    air_draught,
+                    deadweight,
+                }),
             },
             &out.output,
             out.json,

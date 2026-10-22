@@ -34,7 +34,7 @@ fn a_new_design_opens_with_pianc_wg141_quality_c_all_marked_default() {
             .unwrap();
         assert_eq!(x["hash"], set.hash.as_str());
     }
-    assert_eq!(s.document()["format_version"], 3);
+    assert_eq!(s.document()["format_version"], "0.4");
     assert!(s.validate().is_empty(), "{:?}", s.validate());
     // Nothing to size until a vessel is chosen, and `run` does not try.
     let mut s = s;

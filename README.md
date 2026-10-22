@@ -54,8 +54,12 @@ Your scripts do not change. The 0.2.0 functions and classes have the names, argu
 `owd size` sizes the channel to the Rule Sets you select (`--rule-set pianc-wg141 --set-input se_quality=B`); with
 two sets the strictest Rule governs. `owd waterway` marks canal and river reaches, so a Rule can apply on part of
 the river. After the volumes stage each design line option has a verdict and its constraint stretches
-(`owd export --csv --stretches`), and `owd trace` prints the full Rule Trace. Designs are document format 3: a file
-from an earlier OWD is refused and must be rebuilt. See [docs/rules/channel-rules.md](docs/rules/channel-rules.md).
+(`owd export --csv --stretches`), and `owd trace` prints the full Rule Trace. Size for any class of the shared vessel
+catalogue (`--vessel CEMT-VIb-motor`), or for a vessel of your own: `owd size design.owd --custom-vessel "My barge"
+--loa 140 --beam 29 --draught 4.7 --formation motor` (a convoy also takes `--abreast` and `--in-line`; GB 50139 reads
+`--gb-class`). Every output labels it `Custom: My barge, 140 × 29 × 4.7 m`, and `owd fits` adds it as one more row.
+Designs are document format 0.4; a format 0.3 file (the number 3) opens and is saved as 0.4, and an older file is
+refused and must be rebuilt. See [docs/rules/channel-rules.md](docs/rules/channel-rules.md).
 
 ### Drawings
 

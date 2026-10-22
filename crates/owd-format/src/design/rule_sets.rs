@@ -7,8 +7,9 @@
 
 use super::session::{DesignError, Session};
 use arc_rules::load::Library;
+use owd_core::rules::custom::{CustomVessel, Formation};
 use owd_core::rules::engine::{self, ChannelDomain, Selection};
-use owd_core::rules::rulesets::{ChannelShape, channel_shape_for};
+use owd_core::rules::rulesets::{ChannelShape, channel_shape_for, channel_shape_for_custom};
 use serde_json::{Value, json};
 
 /// The set a new design selects, with its inputs, all marked `default`.
@@ -128,6 +129,47 @@ pub(super) fn default_settings() -> Value {
     })
 }
 
+/// A custom vessel as the study keeps it (`stages.sizing.settings.custom_vessel`, spec 0015 T1):
+/// the optional fields only when given.
+pub fn custom_vessel_json(v: &CustomVessel) -> Value {
+    let mut o = json!({
+        "name": v.name.trim(),
+        "loa_m": v.loa_m,
+        "beam_m": v.beam_m,
+        "draught_m": v.draught_m,
+        "formation": v.formation.as_str(),
+    });
+    for (k, x) in [
+        ("n_abreast", v.n_abreast.map(|n| json!(n))),
+        ("n_in_line", v.n_in_line.map(|n| json!(n))),
+        ("gb_class", v.gb_class.as_ref().map(|c| json!(c))),
+        ("air_draught_m", v.air_draught_m.map(|x| json!(x))),
+        ("deadweight_t", v.deadweight_t.map(|x| json!(x))),
+    ] {
+        if let Some(x) = x {
+            o[k] = x;
+        }
+    }
+    o
+}
+
+/// A custom vessel from the study's JSON; `None` when `v` is not one.
+pub fn custom_vessel_of(v: &Value) -> Option<CustomVessel> {
+    let num = |k: &str| v[k].as_f64();
+    Some(CustomVessel {
+        name: v["name"].as_str()?.to_string(),
+        loa_m: num("loa_m")?,
+        beam_m: num("beam_m")?,
+        draught_m: num("draught_m")?,
+        formation: Formation::parse(v["formation"].as_str()?).ok()?,
+        n_abreast: v["n_abreast"].as_u64().map(|n| n as u32),
+        n_in_line: v["n_in_line"].as_u64().map(|n| n as u32),
+        gb_class: v["gb_class"].as_str().map(str::to_string),
+        air_draught_m: num("air_draught_m"),
+        deadweight_t: num("deadweight_t"),
+    })
+}
+
 impl Session {
     /// The Rule Sets this session can select: the built-in ones and any loaded at run time.
     pub fn rule_set_library(&self) -> &Library {
@@ -231,10 +273,45 @@ impl Session {
         let mut settings = self.sizing_settings();
         settings["vessel_standard_id"] = json!(class.standard_id);
         settings["draught_m"] = json!(draught_m);
+        // A class replaces a custom vessel (spec 0015 T1).
+        if let Some(o) = settings.as_object_mut() {
+            o.remove("custom_vessel");
+        }
         // The shape must size before the choice is kept, so a set that cannot size it is refused here.
         self.shape_for_settings(&settings)?;
         self.doc["stages"]["sizing"]["settings"] = settings;
         Ok(())
+    }
+
+    /// Choose a custom vessel (spec 0015 T1): it replaces the class. A vessel that cannot be right
+    /// is refused, naming the field; the warnings of an unusual one are returned. Nothing runs.
+    pub fn set_custom_vessel(&mut self, v: &CustomVessel) -> Result<Vec<String>, DesignError> {
+        let warnings = v
+            .check()
+            .map_err(|e| DesignError::Input(e.raw_message().to_string()))?;
+        let mut settings = self.sizing_settings();
+        settings["vessel_standard_id"] = Value::Null;
+        settings["draught_m"] = Value::Null;
+        settings["custom_vessel"] = custom_vessel_json(v);
+        self.shape_for_settings(&settings)?;
+        self.doc["stages"]["sizing"]["settings"] = settings;
+        Ok(warnings)
+    }
+
+    /// The custom vessel of the sizing settings, if there is one.
+    pub fn custom_vessel(&self) -> Option<CustomVessel> {
+        custom_vessel_of(&self.doc["stages"]["sizing"]["settings"]["custom_vessel"])
+    }
+
+    /// What every output calls the vessel: the class id, or a custom vessel's label
+    /// (`Custom: My barge, 140 × 29 × 4.7 m`). `None` before a vessel is chosen.
+    pub fn vessel_label(&self) -> Option<String> {
+        match self.custom_vessel() {
+            Some(c) => Some(c.label()),
+            None => self.doc["stages"]["sizing"]["settings"]["vessel_standard_id"]
+                .as_str()
+                .map(str::to_string),
+        }
     }
 
     /// The sizing settings, or the default ones if the document has none.
@@ -298,19 +375,28 @@ impl Session {
     /// The engine selection of the sizing settings. A set the library does not hold, or holds with
     /// another content hash, is refused.
     pub fn selection(&self) -> Result<Selection, DesignError> {
-        Ok(selection_of(&self.library, &self.sizing_settings())?
-            .with_reaches(waterway_reaches(&self.doc)))
+        let s = selection_of(&self.library, &self.sizing_settings())?
+            .with_reaches(waterway_reaches(&self.doc));
+        // A custom vessel's GB class is the `gb_class` set input (spec 0015 T1).
+        Ok(match self.custom_vessel() {
+            Some(c) => owd_core::rules::rulesets::custom_selection(&s, &c),
+            None => s,
+        })
     }
 
     /// The channel shape of the sizing settings.
     pub(super) fn shape_for_settings(&self, settings: &Value) -> Result<ChannelShape, DesignError> {
+        let selection =
+            selection_of(&self.library, settings)?.with_reaches(waterway_reaches(&self.doc));
+        if let Some(custom) = custom_vessel_of(&settings["custom_vessel"]) {
+            return channel_shape_for_custom(&selection, &custom)
+                .map_err(|e| DesignError::Input(e.raw_message().to_string()));
+        }
         let Some(vessel) = settings["vessel_standard_id"].as_str() else {
             return Err(DesignError::Input(
                 "the sizing stage has no vessel class: choose one first".into(),
             ));
         };
-        let selection =
-            selection_of(&self.library, settings)?.with_reaches(waterway_reaches(&self.doc));
         channel_shape_for(&selection, vessel, settings["draught_m"].as_f64())
             .map_err(|e| DesignError::Input(e.raw_message().to_string()))
     }

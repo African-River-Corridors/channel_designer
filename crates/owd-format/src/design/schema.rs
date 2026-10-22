@@ -239,7 +239,7 @@ mod tests {
     fn the_published_schema_is_valid_json_with_the_four_stages() {
         let s = schema();
         // Version 3 since spec 0007; an older document is refused.
-        assert_eq!(s["properties"]["format_version"]["const"], json!(3));
+        assert_eq!(s["properties"]["format_version"]["const"], json!("0.4"));
         assert_eq!(
             s["properties"]["stages"]["required"]
                 .as_array()

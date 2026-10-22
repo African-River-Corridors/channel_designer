@@ -1,15 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/African-River-Corridors/open-waterway-designer/schema/owd.schema.json",
-  "title": "Open Waterway Designer document (.owd), format version 2",
+  "title": "Open Waterway Designer document (.owd), format 0.4",
   "description": "One screening study of one river reach for one vessel: its inputs, the choices made and the results of each stage. Each stage records a hash of what it depended on; a stage whose hash no longer matches is stale. Numbers are SI. Geometry is GeoJSON in the project CRS.",
   "type": "object",
   "required": ["format_version", "engine_version", "project", "inputs", "stages", "options"],
   "additionalProperties": false,
   "properties": {
     "format_version": {
-      "description": "3 since spec 0007 (the Rule Set selection). An older file is refused, with no migration: rebuild the design.",
-      "const": 3
+      "description": "The string \"0.4\" since spec 0015 (the custom vessel). A file with the number 3 (format 0.3, spec 0007) opens and is saved as 0.4. An older file is refused, with no migration: rebuild the design.",
+      "const": "0.4"
     },
     "engine_version": { "type": "string", "minLength": 1 },
     "project": {
@@ -445,7 +445,25 @@
                   }
                 },
                 "vessel_standard_id": { "type": ["string", "null"], "minLength": 1 },
-                "draught_m": { "type": ["number", "null"], "minimum": 0 }
+                "draught_m": { "type": ["number", "null"], "minimum": 0 },
+                "custom_vessel": {
+                  "description": "A custom vessel (spec 0015): the user's own dimensions, sized like a catalogue class. When it is set, `vessel_standard_id` is null. For a convoy, the length and beam are those of the whole convoy; `n_abreast` and `n_in_line` are for a convoy only. `gb_class` is the GB 50139 channel class, read by GB 50139 alone. `air_draught_m` and `deadweight_t` are stored only.",
+                  "type": "object",
+                  "required": ["name", "loa_m", "beam_m", "draught_m", "formation"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+                    "loa_m": { "type": "number", "minimum": 0 },
+                    "beam_m": { "type": "number", "minimum": 0 },
+                    "draught_m": { "type": "number", "minimum": 0 },
+                    "formation": { "enum": ["motor", "convoy"] },
+                    "n_abreast": { "type": "integer", "minimum": 1 },
+                    "n_in_line": { "type": "integer", "minimum": 1 },
+                    "gb_class": { "enum": ["I", "II", "III", "IV", "V", "VI", "VII"] },
+                    "air_draught_m": { "type": "number", "minimum": 0 },
+                    "deadweight_t": { "type": "number", "minimum": 0 }
+                  }
+                }
               }
             }
           ]

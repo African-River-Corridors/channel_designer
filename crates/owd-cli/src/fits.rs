@@ -28,7 +28,11 @@ fn table(results: &Value) -> String {
         for c in rs["classes"].as_array().into_iter().flatten() {
             out.push_str(&format!(
                 "{:<24} {:>6} {:>6} {:>7} {:>5} {:>10} {:>11} {:>8}\n",
-                c["vessel_standard_id"].as_str().unwrap_or("?"),
+                // The class id, or the custom vessel's label (spec 0015 T1).
+                c["vessel_standard_id"]
+                    .as_str()
+                    .or(c["vessel_label"].as_str())
+                    .unwrap_or("?"),
                 f1(&c["loa_m"]),
                 f1(&c["beam_m"]),
                 format!("{:.0}", c["r_min_m"].as_f64().unwrap_or(f64::NAN)),
