@@ -44,6 +44,12 @@ const until = async (what, check, timeout = 15000) => {
 };
 
 const text = async (testid) => (await browser.$(`[data-testid=${testid}]`)).getText();
+/** Open "Start from a river" if it is not open: the button toggles the view. */
+const openReachView = async () => {
+  const b = await browser.$("[data-testid=start-from-river]");
+  if ((await b.getAttribute("aria-pressed")) !== "true") await b.click();
+  await until("the reach view", async () => (await browser.$("[data-testid=reach-view]")).isExisting());
+};
 const fileLabel = () => text("file-label");
 
 
@@ -544,7 +550,7 @@ describe("Open Waterway Designer app smoke test", () => {
       fs.writeFileSync(at, JSON.stringify(endpoints(reach.origin)));
       answer("reach-endpoints.json", at);
       answer("discard.txt", "yes");
-      await (await browser.$("[data-testid=start-from-river]")).click();
+      await openReachView();
       const before = searches.length;
       await (await browser.$("[data-testid=reach-river]")).setValue("Ank");
       const ankobra = '[data-testid="reach-hit"][data-osm="relation/3328713"]';
@@ -561,8 +567,12 @@ describe("Open Waterway Designer app smoke test", () => {
       await (await browser.$("[data-testid=reach-route]")).click();
       await until("the shorter reach", async () => Number((await text("reach-length")).match(/([\d.]+) km/)[1]) < whole);
       assert.equal(searches.length, asked);
-      // Typing again lets go of the river: the next route is planned from clicks, as before.
-      await (await browser.$("[data-testid=reach-river]")).setValue("");
+      // Typing again lets go of the river: the next route is planned from clicks, as before. The
+      // desktop driver refuses empty text, so the box is cleared with an input event.
+      await browser.execute((el) => {
+        el.value = "";
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      }, await browser.$("[data-testid=reach-river]"));
     } finally {
       reach.server.close();
     }
@@ -575,7 +585,7 @@ describe("Open Waterway Designer app smoke test", () => {
       fs.writeFileSync(at, JSON.stringify(endpoints(reach.origin)));
       answer("reach-endpoints.json", at);
       answer("discard.txt", "yes");
-      await (await browser.$("[data-testid=start-from-river]")).click();
+      await openReachView();
       await (await browser.$("[data-testid=reach-start]")).setValue("-6.0715, 4.966");
       await (await browser.$("[data-testid=reach-end]")).setValue("-6.07, 4.983");
       await (await browser.$("[data-testid=reach-route]")).click();
