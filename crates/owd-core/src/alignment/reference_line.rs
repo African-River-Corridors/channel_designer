@@ -10,13 +10,14 @@
 //! **The refit** runs the fairway fit (ADR 0007) on the seed in the water, with a bank clearance of
 //! the larger of [`CLEARANCE_MIN_M`] and [`CLEARANCE_SHARE`] of the local width, no minimum radius
 //! (the line only has to be smooth), and one pull towards the seed ([`SEED_PULL_WEIGHT`]), so the
-//! line stays central and does not hug the inside of each bend.
+//! line stays central and does not hug the inside of each bend. Each end is then cut back by
+//! [`END_TRIM_M`], so the ends lie inside the water, not on the polygon's end edges.
 //!
 //! The line takes no vessel input: one line serves every vessel. No file, clock or network access.
 
 use super::PyError;
 use super::centreline::{
-    compute_paired_centreline, ensure_orientation, resample_polyline,
+    compute_paired_centreline, ensure_orientation, resample_polyline, trim_polyline,
 };
 use super::fairway_fit::{Clearance, FitParams, Fixed, fairway_fit};
 use super::navigable::{Chained, Stretch, StretchReason};
@@ -46,6 +47,9 @@ pub const CLEARANCE_SHARE: f64 = 0.10;
 /// against the seed's 7.1 and 6.4). At 0.3 the sign changes halve (3.6 and 3.1 per km) and the
 /// line stays central (off-centre share 0.07 and 0.05; 0 is the mid-line, 1 a bank).
 pub const SEED_PULL_WEIGHT: f64 = 0.3;
+/// How much is cut from each end of the refitted line (m). The banks end on the river polygon's
+/// end edges, so the mid-line's ends lie on the edge of the water, where nothing reads as water.
+pub const END_TRIM_M: f64 = CLEARANCE_MIN_M;
 /// The length that scales the curvature cost in the refit (m). The refit has no minimum radius:
 /// this only sets the balance with the pull towards the seed.
 pub const REFIT_SCALE_M: f64 = 100.0;
@@ -108,13 +112,20 @@ pub fn reference_line(
     let seed = seed_mid_line(left, right)?;
     let params = refit_params(&seed, left, right);
     let fit = fairway_fit(&seed, water, &Fixed::default(), &params)?;
+    let line = trim_polyline(&fit.line, END_TRIM_M).map_err(PyError::value)?;
     Ok(ReferenceLine {
+        // The stretches are by chainage on the line before the trim.
         outside_water: fit
             .infeasible
             .into_iter()
             .filter(|s| s.reason == StretchReason::TooNarrow)
+            .map(|mut s| {
+                s.start_chainage_m = (s.start_chainage_m - END_TRIM_M).max(0.0);
+                s.end_chainage_m = (s.end_chainage_m - END_TRIM_M).max(0.0);
+                s
+            })
             .collect(),
-        line: fit.line,
+        line,
         seed,
         notes: fit.notes,
     })
@@ -281,6 +292,19 @@ mod tests {
         let off = rl.line.iter().fold(0.0f64, |m, p| m.max(p[1].abs()));
         assert!(off < 0.5, "the line strays {off} m from the centreline");
         assert!(rl.outside_water.is_empty());
+    }
+
+    #[test]
+    fn its_ends_lie_inside_the_water_not_on_its_edge() {
+        // The banks end on the polygon's end edges, so the mid-line's ends lie on them.
+        let (l, r, w, _) = channel(&meander(3000.0, 100.0, 1200.0), 100.0, 0.0);
+        let rl = reference_line(&l, &r, &[w.clone()]).unwrap();
+        let grid = crate::geom::grid::EdgeGrid::new(&[w.clone()]);
+        for p in [rl.line[0], rl.line[rl.line.len() - 1]] {
+            assert!(grid.contains(p), "an end {p:?} is not inside the water");
+            let d = point_line_distance(p, &w.exterior);
+            assert!(d > END_TRIM_M - 0.5, "an end {p:?} is {d:.2} m from the edge");
+        }
     }
 
     #[test]

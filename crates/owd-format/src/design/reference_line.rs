@@ -8,7 +8,7 @@ use super::alignment::pts_of;
 use super::hash::hash_value;
 use super::session::{DesignError, Session, StageStatus};
 use owd_core::alignment::reference_line::{
-    CHAIKIN_PASSES, CLEARANCE_MIN_M, CLEARANCE_SHARE, REFIT_CHORD_M, REFIT_SCALE_M,
+    CHAIKIN_PASSES, CLEARANCE_MIN_M, CLEARANCE_SHARE, END_TRIM_M, REFIT_CHORD_M, REFIT_SCALE_M,
     SEED_MAX_STEPS_AHEAD, SEED_PULL_WEIGHT, SEED_STEP_M, TAUBIN_ITERATIONS, TAUBIN_LAMBDA,
     TAUBIN_MU, carry_by_chainage, reference_line,
 };
@@ -26,6 +26,7 @@ pub fn reference_line_parameters() -> Value {
         "seed_pull_weight": SEED_PULL_WEIGHT,
         "refit_scale_m": REFIT_SCALE_M,
         "refit_chord_m": REFIT_CHORD_M,
+        "end_trim_m": END_TRIM_M,
     })
 }
 
@@ -232,8 +233,8 @@ mod tests {
         s.run_reference_line().unwrap();
         let low = &s.reference_line_value().unwrap()["low_confidence"];
         assert_eq!(low[0]["kind"], "narrow");
-        // The line starts where the centreline does: the stretch keeps its chainage.
-        assert!((low[0]["from_m"].as_f64().unwrap() - 500.0).abs() < 1.0);
-        assert!((low[0]["to_m"].as_f64().unwrap() - 700.0).abs() < 1.0);
+        // The line starts `END_TRIM_M` along the centreline: the stretch keeps its place.
+        assert!((low[0]["from_m"].as_f64().unwrap() - (500.0 - END_TRIM_M)).abs() < 1.0);
+        assert!((low[0]["to_m"].as_f64().unwrap() - (700.0 - END_TRIM_M)).abs() < 1.0);
     }
 }
