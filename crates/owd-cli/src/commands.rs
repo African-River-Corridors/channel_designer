@@ -2089,6 +2089,23 @@ pub fn reach_with(
     {
         human.push_str("\nwarning: the bank lines still cross in places after the repairs (flagged `crossing`): check them by eye with `owd qa-overlay`");
     }
+    // Issue #360: banks and a centreline far from the route's length, or banks that cross, are
+    // broken whatever the per-station checks found. The last banks written are the ones checked.
+    let warnings: Vec<owd_reach::sanity::Warning> = match (&fitted, &banks) {
+        (Some(f), _) => {
+            owd_reach::sanity::check(route.length_m, &f.fit.left, &f.fit.right, &f.fit.centreline)
+        }
+        (None, Some(b)) => {
+            owd_reach::sanity::check(route.length_m, &b.left, &b.right, &b.centreline)
+        }
+        (None, None) => vec![],
+    };
+    for w in &warnings {
+        human.push_str(&format!(
+            "\nwarning: {}: check the banks by eye with `owd qa-overlay`",
+            w.message
+        ));
+    }
     if !planned.notes.is_empty() {
         human.push_str(&format!("\nOverpass: {}", planned.notes.join("; ")));
     }
@@ -2098,7 +2115,8 @@ pub fn reach_with(
         flags.json,
         &human,
         json!({
-            "ok": true, "file": flags.file, "length_m": route.length_m,
+            "ok": warnings.is_empty(), "file": flags.file, "length_m": route.length_m,
+            "warnings": warnings.iter().map(|w| json!({"check": w.check, "message": w.message})).collect::<Vec<_>>(),
             "ways": route.way_ids(), "as_drawn_stretches": drawn,
             "overpass": {"server": planned.server.as_deref().map(host), "notes": planned.notes},
             "osm_id": osm.map(|o| o.to_string()),
@@ -2122,5 +2140,20 @@ pub fn reach_with(
             })),
         }),
     );
-    Ok(())
+    // The study is written; broken banks are a failed check: exit code 1.
+    if warnings.is_empty() {
+        Ok(())
+    } else {
+        Err(Failure {
+            message: format!(
+                "the banks fail the reach checks: {}",
+                warnings
+                    .iter()
+                    .map(|w| w.check)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            code: 1,
+        })
+    }
 }
