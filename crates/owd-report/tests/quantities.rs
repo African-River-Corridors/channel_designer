@@ -16,6 +16,7 @@ fn schedule(design: &str, dem: Option<&[u8]>) -> Report {
         kind: Kind::Quantities,
         option: None,
         control: Control::draft(DATE),
+        requested_by: None,
     };
     build(design, dem, &req).unwrap()
 }

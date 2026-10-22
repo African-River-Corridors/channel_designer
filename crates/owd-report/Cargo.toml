@@ -18,3 +18,4 @@ serde_json.workspace = true
 # A second reader for the tests (the PDF read back), not the code under test.
 [dev-dependencies]
 lopdf = "0.46.0"
+sha2 = "0.11.1"

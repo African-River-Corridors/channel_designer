@@ -10,6 +10,7 @@ mod figures;
 mod fmt;
 mod limits;
 mod quantities;
+mod run;
 mod screening;
 mod sections;
 mod trace;
@@ -34,10 +35,14 @@ pub enum Kind {
     /// The section pack: the typical section, the cross sections and the setting-out table
     /// (report 3).
     Sections,
+    /// The run report, for testers and developers: what ran, the versions and the input hashes
+    /// (report 4).
+    Run,
 }
 
 impl Kind {
-    pub const ALL: &'static [Kind] = &[Kind::Screening, Kind::Quantities, Kind::Sections];
+    pub const ALL: &'static [Kind] =
+        &[Kind::Screening, Kind::Quantities, Kind::Sections, Kind::Run];
 
     /// The word `--kind` takes.
     pub fn word(self) -> &'static str {
@@ -45,6 +50,7 @@ impl Kind {
             Kind::Screening => "screening",
             Kind::Quantities => "quantities",
             Kind::Sections => "sections",
+            Kind::Run => "run",
         }
     }
 
@@ -58,6 +64,7 @@ impl Kind {
             Kind::Screening => "screening-report",
             Kind::Quantities => "quantity-schedule",
             Kind::Sections => "section-pack",
+            Kind::Run => "run-report",
         }
     }
 
@@ -67,6 +74,7 @@ impl Kind {
             Kind::Screening => "SR",
             Kind::Quantities => "QS",
             Kind::Sections => "SP",
+            Kind::Run => "RR",
         }
     }
 }
@@ -107,6 +115,9 @@ pub struct Request {
     /// The design line option, by id or name (default: the first, as `owd draw`).
     pub option: Option<String>,
     pub control: Control,
+    /// What asked for the report (the command line, or the app and its platform), for the run
+    /// report.
+    pub requested_by: Option<String>,
 }
 
 /// A report: its ORD document and the bytes of its figures, ready to render.
@@ -226,6 +237,7 @@ pub fn build(design: &str, dem: Option<&[u8]>, req: &Request) -> Result<Report, 
         Kind::Screening => screening::body(&ctx, &mut assets),
         Kind::Quantities => quantities::schedule(&ctx),
         Kind::Sections => sections::pack(&ctx, &mut assets),
+        Kind::Run => run::report(&ctx, req.requested_by.as_deref()),
     };
     let c = &req.control;
     let mut control = json!({
@@ -372,6 +384,10 @@ fn summary(ctx: &Context, kind: Kind) -> String {
         Kind::Sections => {
             "The typical section, the cross sections at chainages and the setting-out table of a \
              design line option, from the drawing sheets Open Waterway Designer makes."
+        }
+        Kind::Run => {
+            "What ran to make the design's results: the versions, the stages, the inputs and the \
+             hashes of the results, for testers and developers."
         }
     });
     s.push_str(" Every number is read from the design's stage results.");
