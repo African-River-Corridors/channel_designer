@@ -334,6 +334,8 @@ describe("OWD web smoke tests", () => {
       await until(b, "the route's status", async () => exists(b, "reach-status"));
       assert.match(await text(b, "reach-progress"), /Finding the route/);
       await until(b, "the route", async () => (await exists(b, "reach-length")) && /km/.test(await text(b, "reach-length")));
+      // The buttons are enabled again once the status is gone.
+      await until(b, "the route's status gone", async () => !(await exists(b, "reach-status")));
       const tile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "owd-jrc-")), "occurrence_10W_10Nv1_4_2021.tif");
       fs.copyFileSync(path.resolve(here, "../../examples/reach/jrc_occurrence_sassandra_estuary.tif"), tile);
       await pick(b, async () => (await tid(b, "reach-add-tile")).click(), tile);

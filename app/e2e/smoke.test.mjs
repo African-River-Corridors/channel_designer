@@ -601,6 +601,8 @@ describe("Open Waterway Designer app smoke test", () => {
       await until("the route's status", async () => (await browser.$("[data-testid=reach-status]")).isExisting(), 30000);
       assert.match(await text("reach-progress"), /Finding the route/);
       await until("the route", async () => /km/.test((await text("reach-length").catch(() => "")) ?? ""), 60000);
+      // The buttons are enabled again once the status is gone.
+      await until("the route's status gone", async () => !(await (await browser.$("[data-testid=reach-status]")).isExisting()), 30000);
       const tile = path.join(WORK, "occurrence_10W_10Nv1_4_2021.tif");
       fs.copyFileSync(path.resolve(here, "../../examples/reach/jrc_occurrence_sassandra_estuary.tif"), tile);
       answer("jrc.txt", tile);
