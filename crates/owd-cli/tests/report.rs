@@ -112,3 +112,44 @@ fn a_bad_kind_or_format_is_refused() {
         );
     }
 }
+
+#[test]
+fn kind_all_writes_every_kind() {
+    let d = work_dir("kinds");
+    let doc = d.join("river-example.owd");
+    let o = run(&[
+        "report",
+        doc.to_str().unwrap(),
+        "--kind",
+        "all",
+        "--date",
+        "2026-10-22",
+        "-o",
+        d.to_str().unwrap(),
+        "--json",
+    ]);
+    assert_eq!(
+        o.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let v: Value = serde_json::from_slice(&o.stdout).unwrap();
+    let kinds: Vec<&str> = v["reports"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        kinds,
+        owd_report::Kind::ALL
+            .iter()
+            .map(|k| k.word())
+            .collect::<Vec<_>>()
+    );
+    for r in v["reports"].as_array().unwrap() {
+        let stem = r["number"].as_str().unwrap().to_lowercase();
+        assert!(d.join(format!("{stem}.pdf")).is_file(), "{stem}");
+    }
+}

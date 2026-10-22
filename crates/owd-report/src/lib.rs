@@ -9,6 +9,7 @@
 mod figures;
 mod fmt;
 mod limits;
+mod quantities;
 mod screening;
 mod trace;
 
@@ -27,15 +28,18 @@ pub const ORD_VERSION: &str = ord::VERSION;
 pub enum Kind {
     /// The screening report, for decision-makers (spec 0014, report 1).
     Screening,
+    /// The quantity schedule: dredge and dry cut by stretch, and the cut face (report 2).
+    Quantities,
 }
 
 impl Kind {
-    pub const ALL: &'static [Kind] = &[Kind::Screening];
+    pub const ALL: &'static [Kind] = &[Kind::Screening, Kind::Quantities];
 
     /// The word `--kind` takes.
     pub fn word(self) -> &'static str {
         match self {
             Kind::Screening => "screening",
+            Kind::Quantities => "quantities",
         }
     }
 
@@ -47,6 +51,7 @@ impl Kind {
     pub fn class(self) -> &'static str {
         match self {
             Kind::Screening => "screening-report",
+            Kind::Quantities => "quantity-schedule",
         }
     }
 
@@ -54,6 +59,7 @@ impl Kind {
     pub fn code(self) -> &'static str {
         match self {
             Kind::Screening => "SR",
+            Kind::Quantities => "QS",
         }
     }
 }
@@ -211,6 +217,7 @@ pub fn build(design: &str, dem: Option<&[u8]>, req: &Request) -> Result<Report, 
     let mut assets = Vec::new();
     let (body, appendices) = match req.kind {
         Kind::Screening => screening::body(&ctx, &mut assets),
+        Kind::Quantities => quantities::schedule(&ctx),
     };
     let c = &req.control;
     let mut control = json!({
@@ -238,7 +245,7 @@ pub fn build(design: &str, dem: Option<&[u8]>, req: &Request) -> Result<Report, 
         "title": ctx.title,
         "subtitle": subtitle(&ctx),
         "control": control,
-        "summary": summary(&ctx),
+        "summary": summary(&ctx, req.kind),
         "notice": SCREENING_NOTICE,
         "body": body,
     });
@@ -344,11 +351,18 @@ fn subtitle(ctx: &Context) -> String {
 }
 
 /// The cover summary: what the report is, and the rules notice while every Rule is unverified.
-fn summary(ctx: &Context) -> String {
-    let mut s = String::from(
-        "A screening of the river for navigation, made by Open Waterway Designer from the design \
-         file. Every number is read from the design's stage results.",
-    );
+fn summary(ctx: &Context, kind: Kind) -> String {
+    let mut s = String::from(match kind {
+        Kind::Screening => {
+            "A screening of the river for navigation, made by Open Waterway Designer from the \
+             design file."
+        }
+        Kind::Quantities => {
+            "The quantities of the works for each design line option, by constraint stretch, made \
+             by Open Waterway Designer from the design file."
+        }
+    });
+    s.push_str(" Every number is read from the design's stage results.");
     if let Some(n) = ctx.doc["stages"]["sizing"]["results"]["rules_notice"].as_str() {
         s.push(' ');
         s.push_str(&fmt::md(n));
