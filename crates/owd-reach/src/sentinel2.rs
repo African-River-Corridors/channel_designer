@@ -440,13 +440,15 @@ mod tests {
                       "swir16":{"href":"s/B11.tif"},"blue":{"href":"b/B02.tif"}}}]}"#;
         let s = parse_scenes(item.as_bytes()).unwrap();
         assert_eq!(s[0].blue.as_deref(), Some("b/B02.tif"));
-        // The recorded answer has no blue asset: none, and nothing else changes.
-        assert!(
-            parse_scenes(STAC.as_bytes())
-                .unwrap()
-                .iter()
-                .all(|s| s.blue.is_none())
-        );
+        // The recorded answer has a blue asset for the scene the tests use, and none for the others.
+        for s in &parse_scenes(STAC.as_bytes()).unwrap() {
+            assert_eq!(
+                s.blue.is_some(),
+                s.id == "S2B_29NRF_20231223_0_L2A",
+                "{}",
+                s.id
+            );
+        }
     }
 
     #[test]

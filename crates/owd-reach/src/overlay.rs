@@ -663,3 +663,147 @@ pub fn scene_ids(doc: &serde_json::Value) -> Vec<String> {
     }
     out
 }
+
+/// The largest picture, in 10 m pixels each way (30 km): a longer reach is drawn a part at a time.
+pub const MAX_SIDE_PX: f64 = 3_000.0;
+
+/// The margin around the lines, in metres.
+const MARGIN_M: f64 = 300.0;
+
+/// What to draw: a stretch of the centreline, and the scenes (empty: the ones the document names).
+#[derive(Debug, Clone, Default)]
+pub struct OverlayRequest {
+    pub from_m: Option<f64>,
+    pub to_m: Option<f64>,
+    pub scenes: Vec<String>,
+}
+
+/// The overlay of a document, ready to save: the PNG with its legend, the KMZ, and what they show.
+#[derive(Debug, Clone)]
+pub struct Rendered {
+    pub png: Vec<u8>,
+    pub kmz: Vec<u8>,
+    /// The PNG's size, legend included.
+    pub width: usize,
+    pub height: usize,
+    pub from_m: f64,
+    pub to_m: f64,
+    pub scenes: Vec<String>,
+    pub flags: usize,
+    pub notices: Vec<String>,
+    /// A name for the files and the KML, from the study's title and the stretch.
+    pub name: String,
+}
+
+/// Draw a document's banks, centreline and low-confidence stretches over the Sentinel-2 true colour
+/// of the scenes its banks came from (spec 0013): the one function behind `owd qa-overlay` and the
+/// app's export, so they give the same bytes. `endpoint` is the STAC search endpoint.
+pub fn render_document(
+    fetch: &dyn crate::fetch::Fetch,
+    doc: &serde_json::Value,
+    endpoint: &str,
+    req: &OverlayRequest,
+) -> Result<Rendered, ReachError> {
+    use crate::sentinel2::{item_url, parse_item, read_blue, read_imagery};
+    let (utm, all) = lines_from_document(doc)?;
+    let length = arc(&all.centre).last().copied().unwrap_or(0.0);
+    let (a, b) = (req.from_m.unwrap_or(0.0), req.to_m.unwrap_or(length));
+    if a >= b || a.is_nan() || b.is_nan() {
+        return Err(ReachError::Input(
+            "the start of the stretch must come before its end".into(),
+        ));
+    }
+    let lines = all.crop(a, b);
+    let (lo, hi) = lines
+        .bounds()
+        .ok_or_else(|| ReachError::Input("nothing to draw between those chainages".into()))?;
+    let (min, max) = (
+        [lo[0] - MARGIN_M, lo[1] - MARGIN_M],
+        [hi[0] + MARGIN_M, hi[1] + MARGIN_M],
+    );
+    if (max[0] - min[0]) / 10.0 > MAX_SIDE_PX || (max[1] - min[1]) / 10.0 > MAX_SIDE_PX {
+        return Err(ReachError::Input(format!(
+            "the stretch is more than {:.0} km across: draw part of it (from and to, in km along \
+             the centreline, which is {:.1} km long)",
+            MAX_SIDE_PX / 100.0,
+            length / 1000.0
+        )));
+    }
+    let ids = if req.scenes.is_empty() {
+        scene_ids(doc)
+    } else {
+        req.scenes.clone()
+    };
+    if ids.is_empty() {
+        return Err(ReachError::Input(
+            "the document names no Sentinel-2 scene to draw on: give one".into(),
+        ));
+    }
+    let mut windows = Vec::new();
+    let mut used = Vec::new();
+    for id in &ids {
+        let scene = parse_item(&fetch.get(&item_url(endpoint, id))?)?;
+        if scene.epsg.is_some_and(|e| e != utm.epsg()) {
+            continue; // another UTM zone: its grid does not line up with the study's
+        }
+        let im = read_imagery(fetch, &scene, min, max)?;
+        let blue = read_blue(fetch, &scene, &im)?;
+        used.push(scene);
+        windows.push((im, blue));
+    }
+    if windows.is_empty() {
+        return Err(ReachError::Input(format!(
+            "none of the scenes {ids:?} is in the study's UTM zone {}",
+            utm.zone
+        )));
+    }
+    let shots: Vec<Shot> = windows
+        .iter()
+        .map(|(im, blue)| Shot { imagery: im, blue })
+        .collect();
+    // Up to 4 picture pixels per 10 m, so a small window is not a thumbnail.
+    let raw = true_colour(&shots)?;
+    let k = (1_600 / raw.width.max(raw.map_rows)).clamp(1, 4);
+    let mut map = raw.upscale(k);
+    map.draw(&lines);
+    let s2 = crate::sources::source("sentinel2-l2a").expect("sentinel2-l2a is in the registry");
+    let mut years: Vec<String> = used
+        .iter()
+        .map(|s| s.date.chars().take(4).collect())
+        .collect();
+    years.sort();
+    years.dedup();
+    // The image's notices, then those of the bank lines (the water mask's among them).
+    let mut notices: Vec<String> = years.iter().map(|y| s2.notice_for(y)).collect();
+    let banks = doc["provenance"]["left_bank"]["notice"]
+        .as_str()
+        .unwrap_or("");
+    for n in banks.split("; ").filter(|n| !n.is_empty()) {
+        if !notices.iter().any(|o| o == n) && !n.contains("Copernicus Sentinel") {
+            notices.push(n.to_string());
+        }
+    }
+    let title = doc["project"]["title"].as_str().unwrap_or("Reach");
+    let ids_used: Vec<String> = used.iter().map(|s| s.id.clone()).collect();
+    let mut text: Vec<String> = vec![format!(
+        "{title} km {:.2} to {:.2}; scenes: {}",
+        a / 1000.0,
+        b / 1000.0,
+        ids_used.join(", ")
+    )];
+    text.extend(notices.iter().cloned());
+    let legend = map.with_legend(&text);
+    let name = format!("{title} km {:.2} to {:.2}", a / 1000.0, b / 1000.0);
+    Ok(Rendered {
+        png: legend.png()?,
+        kmz: kmz(&map, &lines, &name, &notices)?,
+        width: legend.width,
+        height: legend.height,
+        from_m: a,
+        to_m: b,
+        scenes: ids_used,
+        flags: lines.flags.len(),
+        notices,
+        name,
+    })
+}

@@ -178,7 +178,7 @@ describe("Open Waterway Designer app smoke test", () => {
   });
 
   beforeEach(() => {
-    for (const f of ["open.txt", "save.txt", "discard.txt", "load.txt", "export.txt", "sheets.txt", "jrc.txt", "reach-endpoints.json"]) forget(f);
+    for (const f of ["open.txt", "save.txt", "discard.txt", "load.txt", "export.txt", "sheets.txt", "qa.txt", "jrc.txt", "reach-endpoints.json"]) forget(f);
   });
 
   it("shows the screening label on its status line from the start", async () => {
@@ -608,6 +608,16 @@ describe("Open Waterway Designer app smoke test", () => {
         assert.match(await badge.getText(), /default/, `${input}: a word, not colour alone`);
       }
       assert.match(await text("map-notices"), /OpenStreetMap/);
+      // The QA overlay (spec 0013): the banks over the scene, a PNG and a KMZ in the folder chosen.
+      const qa = path.join(WORK, "qa-overlay");
+      answer("qa.txt", qa);
+      await (await browser.$("[data-testid=reach-qa-overlay]")).click();
+      await until("the QA overlay", async () => (await browser.$("[data-testid=reach-qa-saved]")).isExisting(), 120000);
+      const saved = fs.readdirSync(qa).sort();
+      assert.equal(saved.length, 2, saved.join(", "));
+      assert.ok(saved[0].endsWith("QA overlay.kmz") && saved[1].endsWith("QA overlay.png"), saved.join(", "));
+      assert.equal(fs.readFileSync(path.join(qa, saved[0])).subarray(0, 2).toString(), "PK");
+      assert.equal(fs.readFileSync(path.join(qa, saved[1])).subarray(1, 4).toString(), "PNG");
       await (await browser.$("[data-testid=bed-depth]")).setValue("3");
       await (await browser.$("[data-testid=bed-set]")).click();
       await until("the depth", async () => (await (await browser.$("[data-testid=mark-bed]")).getAttribute("data-mark")) === "user");

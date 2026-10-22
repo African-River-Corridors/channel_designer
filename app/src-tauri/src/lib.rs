@@ -369,6 +369,42 @@ async fn export_sheets(
     Ok(Some(folder.to_string_lossy().into_owned()))
 }
 
+/// The QA overlay of the study's banks (spec 0013): a PNG and a KMZ in a folder the user picks.
+/// `from_km` and `to_km` cut the stretch along the centreline. The scenes are read over the network.
+#[tauri::command]
+async fn export_qa_overlay(
+    app: AppHandle,
+    state: State<'_, Shared>,
+    from_km: Option<f64>,
+    to_km: Option<f64>,
+) -> Result<Option<String>, String> {
+    let job = lock(&state)?.qa_job()?;
+    let picked = match test_answer("qa.txt") {
+        Some(answer) => answer.map(PathBuf::from),
+        None => app
+            .dialog()
+            .file()
+            .blocking_pick_folder()
+            .map(|p| p.into_path().map_err(|e| e.to_string()))
+            .transpose()?,
+    };
+    let Some(folder) = picked else {
+        return Ok(None);
+    };
+    let at = reach_endpoints();
+    let files = tauri::async_runtime::spawn_blocking(move || {
+        job.files(&owd_cli::reach_fetch::HttpFetch, &at, from_km, to_km)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    std::fs::create_dir_all(&folder)
+        .map_err(|e| format!("cannot create {}: {e}", folder.display()))?;
+    for (name, bytes) in &files {
+        write_bytes(&folder.join(name), bytes)?;
+    }
+    Ok(Some(folder.to_string_lossy().into_owned()))
+}
+
 /// The option comparison table and the checks list: failed options first, numbers kept.
 #[tauri::command]
 fn option_table(state: State<Shared>) -> Reply {
@@ -817,6 +853,7 @@ pub fn run() {
             option_table,
             export_file,
             sheets,
+            export_qa_overlay,
             export_sheets,
             long_section,
             cross_section,

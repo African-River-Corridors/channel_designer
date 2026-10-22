@@ -332,6 +332,10 @@ describe("OWD web smoke tests", () => {
     }
     assert.match(await text(b, "map-notices"), /OpenStreetMap/);
     assert.match(await text(b, "map-notices"), /Sentinel/);
+    // The QA overlay (spec 0013): drawn in the worker and saved as two downloads, named in the notice.
+    await (await tid(b, "reach-qa-overlay")).click();
+    await until(b, "the QA overlay", async () => (await tid(b, "reach-qa-saved")).isExisting(), 120000);
+    assert.match(await text(b, "reach-qa-saved"), /QA overlay\.png, .*QA overlay\.kmz/);
     await (await tid(b, "bed-depth")).setValue("3");
     await (await tid(b, "bed-set")).click();
     await until(b, "the depth", async () => (await (await tid(b, "mark-bed")).getAttribute("data-mark")) === "user");
