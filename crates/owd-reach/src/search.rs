@@ -3,8 +3,9 @@
 //! with one name stay two hits, so the user picks the right one.
 //!
 //! The geocoder is Photon (OSM data, built for search as you type). The Nominatim policy forbids
-//! type-ahead on its public API, so it is not used for the list. Only this module knows the
-//! geocoder: a change of provider touches nothing else. The only network access is the `Fetch` it
+//! type-ahead on its public API, so it is not used for the list; when Photon fails, the user may ask
+//! Nominatim once, by pressing Enter ([`RiverSearch::search_once`]). Only this module knows the
+//! geocoders: a change of provider touches nothing else. The only network access is the `Fetch` it
 //! is given.
 
 use crate::error::ReachError;
@@ -18,6 +19,8 @@ use std::str::FromStr;
 
 /// The public Photon server.
 pub const PHOTON_ENDPOINT: &str = "https://photon.komoot.io/api/";
+/// The public Nominatim server, asked once on Enter when Photon fails.
+pub const NOMINATIM_ENDPOINT: &str = "https://nominatim.openstreetmap.org/search";
 /// The fewest letters worth a request: fewer match too much.
 pub const MIN_CHARS: usize = 3;
 /// How long the app waits after the last key before it asks, in milliseconds.
@@ -149,6 +152,46 @@ impl<'a> RiverSearch<'a> {
         Ok(u)
     }
 
+    /// The Nominatim request URL for a text and an optional country.
+    pub fn nominatim_url(
+        &self,
+        endpoint: &str,
+        text: &str,
+        country: Option<&str>,
+    ) -> Result<String, ReachError> {
+        let mut u = format!(
+            "{endpoint}?q={}&format=jsonv2&addressdetails=1&limit=20&accept-language=en",
+            urlencode(text.trim())
+        );
+        if let Some(c) = country.map(str::trim).filter(|c| !c.is_empty()) {
+            u.push_str(&format!(
+                "&countrycodes={}",
+                country_code(c)?.to_ascii_lowercase()
+            ));
+        }
+        Ok(u)
+    }
+
+    /// One Nominatim search, for when Photon fails: the user asks for it (Enter), never as they
+    /// type. Same hits and cache as [`RiverSearch::search`].
+    pub fn search_once(
+        &self,
+        endpoint: &str,
+        text: &str,
+        country: Option<&str>,
+    ) -> Result<Vec<RiverHit>, ReachError> {
+        if text.trim().chars().count() < MIN_CHARS {
+            return Ok(Vec::new());
+        }
+        let url = self.nominatim_url(endpoint, text, country)?;
+        if let Some(hits) = self.cache.borrow().get(&url) {
+            return Ok(hits.clone());
+        }
+        let hits = parse_nominatim(&self.fetch.get(&url)?)?;
+        self.cache.borrow_mut().insert(url, hits.clone());
+        Ok(hits)
+    }
+
     /// The rivers and canals for a text, best first. Under [`MIN_CHARS`] letters it asks nothing
     /// and finds nothing. A text asked before is answered from the cache.
     pub fn search(&self, text: &str, country: Option<&str>) -> Result<Vec<RiverHit>, ReachError> {
@@ -245,6 +288,53 @@ pub fn parse_photon(body: &[u8]) -> Result<Vec<RiverHit>, ReachError> {
     Ok(out)
 }
 
+/// Hits from a Nominatim `jsonv2` answer: only waterway rivers and canals, in its order.
+pub fn parse_nominatim(body: &[u8]) -> Result<Vec<RiverHit>, ReachError> {
+    let v: Value = serde_json::from_slice(body).map_err(|e| {
+        ReachError::Parse(format!(
+            "the river search answer is not JSON ({e}); the server may be busy"
+        ))
+    })?;
+    let rows = v
+        .as_array()
+        .ok_or_else(|| ReachError::Parse("the river search answer is not a list".into()))?;
+    let mut out = Vec::new();
+    for r in rows {
+        let kind = r["type"].as_str().unwrap_or_default();
+        if r["category"] != "waterway" || !matches!(kind, "river" | "canal") {
+            continue;
+        }
+        let Some(id) = r["osm_id"].as_i64() else {
+            continue;
+        };
+        let osm = match r["osm_type"].as_str() {
+            Some("relation") => OsmRef::Relation(id),
+            Some("way") => OsmRef::Way(id),
+            _ => continue,
+        };
+        // Nominatim's box is [south, north, west, east], as strings.
+        let b: Option<Vec<f64>> = r["boundingbox"]
+            .as_array()
+            .and_then(|a| a.iter().map(|x| x.as_str()?.parse().ok()).collect());
+        let Some([s, n, w, e]) = b.as_deref().map(|b| [b[0], b[1], b[2], b[3]]) else {
+            continue;
+        };
+        let a = &r["address"];
+        let s_ = |k: &str| a[k].as_str().map(str::to_string);
+        out.push(RiverHit {
+            name: r["name"].as_str().unwrap_or_default().to_string(),
+            kind: kind.to_string(),
+            region: s_("state"),
+            country: s_("country"),
+            country_code: s_("country_code").map(|c| c.to_ascii_uppercase()),
+            osm,
+            also: Vec::new(),
+            bbox: [w, s, e, n],
+        });
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     //! Label: sourced - answers recorded from photon.komoot.io on 2026-10-22
@@ -319,6 +409,35 @@ mod tests {
         assert!(e.to_string().contains("not JSON"), "{e}");
         let e = parse_photon(b"{}").unwrap_err();
         assert!(e.to_string().contains("no `features`"), "{e}");
+    }
+
+    #[test]
+    fn nominatim_once_finds_the_ankobra_and_keeps_only_waterways() {
+        //! Label: sourced - `examples/reach/nominatim_ankobra.json`, recorded from
+        //! nominatim.openstreetmap.org on 2026-10-22.
+        const NOM: &str = include_str!("../../../examples/reach/nominatim_ankobra.json");
+        let f = ReplayFetch::new();
+        let url = RiverSearch::new(&f)
+            .nominatim_url(NOMINATIM_ENDPOINT, "Ankobra", None)
+            .unwrap();
+        let f = ReplayFetch::new().with_response(&url, NOM);
+        let s = RiverSearch::new(&f);
+        let hits = s.search_once(NOMINATIM_ENDPOINT, "Ankobra", None).unwrap();
+        // The answer also holds a village and a residential area: only the river is a hit.
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].osm, OsmRef::Relation(3328713));
+        assert_eq!(
+            hits[0].label(),
+            "Ankobra River \u{2014} Western Region, Ghana"
+        );
+        assert_eq!(hits[0].bbox, [-2.2745332, 4.8983929, -2.1050123, 5.7297061]);
+        let again = s.search_once(NOMINATIM_ENDPOINT, "Ankobra", None).unwrap();
+        assert_eq!(again, hits);
+        assert_eq!(f.requests().len(), 1, "one request");
+        let u = s
+            .nominatim_url(NOMINATIM_ENDPOINT, "Ankobra", Some("GH"))
+            .unwrap();
+        assert!(u.ends_with("&countrycodes=gh"), "{u}");
     }
 
     #[test]

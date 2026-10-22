@@ -154,6 +154,11 @@ export interface ReachView {
   jrc_tiles: { name: string; url: string; given: boolean }[];
   dem_tiles: { name: string; url: string }[];
   has_mask_banks: boolean;
+  /** The reach's start and end as the session recorded them. */
+  start?: LonLat;
+  end?: LonLat;
+  /** The whole river chosen from the search, when there is one: reaches are cut out of it. */
+  river?: { osm_id: string; name: string | null; length_m: number; line: LonLat[] } | null;
   /** Constraint stretches of the answer, by Rule Set choice then vessel class, with their ends in WGS84. */
   fits_stretches: Record<string, Record<string, { kind: string; from: LonLat | null; to: LonLat | null }[]>>;
 }
@@ -387,6 +392,25 @@ export const undoBankEdit = () => invoke<Snapshot>("undo_bank_edit");
 /** Plan a reach (start, end and via points as [lon, lat]) and start a new study from it. null when the user keeps an unsaved design. */
 export const reachRoute = (river: string, start: LonLat, end: LonLat, via: LonLat[]) => invoke<Snapshot | null>("reach_route", { river, start, end, via });
 /** Give a JRC occurrence tile the user downloaded (a File in a browser). null on cancel. */
+/** One river from the search: "name — region, country", and the OSM object to route. */
+export interface RiverHit {
+  osm_id: string;
+  label: string;
+  name: string;
+  kind: string;
+  region: string | null;
+  country: string | null;
+  country_code: string | null;
+  also: string[];
+  bbox: [number, number, number, number];
+}
+/** The rivers and canals whose name starts with or matches a text (at least 3 letters): Photon as the
+ * user types, or Nominatim once (`once`) when Photon fails. */
+export const reachSearch = (text: string, country: string, once = false) => invoke<RiverHit[]>("reach_search", { text, country: country.trim() || null, once });
+/** Start a new study from a whole river chosen from the search. null when the user keeps an unsaved design. */
+export const reachRiver = (osmId: string, also: string[], search: string) => invoke<Snapshot | null>("reach_river", { osmId, also, search });
+/** Cut a reach out of the chosen river. null when the user keeps an unsaved design. */
+export const reachCut = (start: LonLat, end: LonLat, via: LonLat[]) => invoke<Snapshot | null>("reach_cut", { start, end, via });
 export const reachAddTile = (file?: File) => invoke<Snapshot | null>("reach_add_tile", { file: file ?? null });
 export type ReachStepName = "banks" | "edge_fit" | "level";
 /** Run one step of the reach on the network. Rejects with the reason, or with `cancelled`. */

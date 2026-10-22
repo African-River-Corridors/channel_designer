@@ -320,22 +320,23 @@ impl WholeRiver {
 }
 
 /// Record a reach taken from a whole river: as [`record_reach`], and the route's provenance also
-/// names the OSM river and, when the user chose it from the river search, that source and date.
+/// names the OSM river and, when the user chose it from the river search, that search's source id
+/// (`osm-photon` or `osm-nominatim`) and date.
 /// The mouth and upstream end are two OSM node positions, kept as the reach's start and end like a
 /// click: an insubstantial extract.
 pub fn record_river_reach(
     session: &mut Session,
     planned: &Planned,
     osm: OsmRef,
-    searched: bool,
+    searched: Option<&str>,
     date: &str,
 ) -> Result<(), ReachError> {
     record_reach(session, planned, date)?;
     let mut rec =
         provenance_record("osm-overpass", date, Mark::Default, false).map_err(ReachError::Input)?;
     let mut settings = json!({"osm_id": osm.to_string()});
-    if searched {
-        settings["river_search"] = json!({"source": "osm-photon", "date": date});
+    if let Some(source) = searched {
+        settings["river_search"] = json!({"source": source, "date": date});
     }
     rec["settings"] = settings;
     session
@@ -440,7 +441,7 @@ mod tests {
         assert!(cut.route.length_m < r.route.length_m);
         assert!(cut.route.length_m > 0.3 * r.route.length_m);
         let mut d = Session::new("Ankobra River", "2026-10-22");
-        record_river_reach(&mut d, &cut, r.osm, true, "2026-10-22").unwrap();
+        record_river_reach(&mut d, &cut, r.osm, Some("osm-photon"), "2026-10-22").unwrap();
         let p = &d.document()["provenance"]["route"];
         assert_eq!(p["source"], "osm-overpass");
         assert_eq!(p["settings"]["osm_id"], "relation/3328713");

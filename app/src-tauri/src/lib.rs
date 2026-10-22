@@ -603,14 +603,22 @@ fn run_stale(window: Window, state: State<Shared>) -> Reply {
 // --- Start from a river (spec 0012, T10) -------------------------------------------------------
 
 /// Where the reach sources are. A debug build reads `reach-endpoints.json` from the test folder,
-/// so the smoke test can point them at recorded answers.
+/// so the smoke test can point them at recorded answers. `OWD_PHOTON_URL` and `OWD_NOMINATIM_URL`
+/// name another river search server (for example a Photon of your own).
 fn reach_endpoints() -> owd_shell::reach::ReachEndpoints {
-    test_answer("reach-endpoints.json")
+    let mut at = test_answer("reach-endpoints.json")
         .flatten()
         .and_then(|path| std::fs::read_to_string(path).ok())
         .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
         .map(|v| owd_shell::reach::ReachEndpoints::from_json(&v))
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if let Ok(u) = std::env::var("OWD_PHOTON_URL") {
+        at.photon = u;
+    }
+    if let Ok(u) = std::env::var("OWD_NOMINATIM_URL") {
+        at.nominatim = u;
+    }
+    at
 }
 
 /// Bumped by Cancel: a reach step that began before it is not kept.
@@ -645,6 +653,67 @@ async fn reach_route(
     .map_err(|e| e.to_string())??;
     let mut guard = lock(&state)?;
     guard.start_reach(plan, &today())?;
+    finish(&window, &guard)
+}
+
+/// The rivers and canals whose name starts with or matches a text (spec 0012, T13).
+#[tauri::command]
+async fn reach_search(text: String, country: Option<String>, once: Option<bool>) -> Reply {
+    let at = reach_endpoints();
+    tauri::async_runtime::spawn_blocking(move || {
+        owd_shell::reach::search_rivers(
+            &owd_cli::reach_fetch::HttpFetch,
+            &at,
+            &text,
+            country.as_deref(),
+            once.unwrap_or(false),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Start a new study from a whole river chosen from the search: Start at its mouth, End at its
+/// upstream end. Asks first when the design has unsaved changes.
+#[tauri::command]
+async fn reach_river(
+    app: AppHandle,
+    window: Window,
+    state: State<'_, Shared>,
+    osm_id: String,
+    also: Vec<String>,
+    search: Option<String>,
+) -> Reply {
+    if !confirm_discard(&app, &state)? {
+        return Ok(serde_json::Value::Null);
+    }
+    let at = reach_endpoints();
+    let river = tauri::async_runtime::spawn_blocking(move || {
+        owd_shell::reach::read_river(&owd_cli::reach_fetch::HttpFetch, &at, &osm_id, &also)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let mut guard = lock(&state)?;
+    guard.start_river(river, search.as_deref(), &today())?;
+    finish(&window, &guard)
+}
+
+/// Cut a reach out of the chosen river (Start or End dragged or picked). Asks first only when the
+/// study holds more than its reach.
+#[tauri::command]
+fn reach_cut(
+    app: AppHandle,
+    window: Window,
+    state: State<Shared>,
+    start: [f64; 2],
+    end: [f64; 2],
+    via: Vec<[f64; 2]>,
+) -> Reply {
+    if !lock(&state)?.reach_route_only() && !confirm_discard(&app, &state)? {
+        return Ok(serde_json::Value::Null);
+    }
+    let mut guard = lock(&state)?;
+    guard.reach_cut(start, end, &via, &today())?;
     finish(&window, &guard)
 }
 
@@ -762,6 +831,9 @@ pub fn run() {
             fetch_dem,
             basemap_tiles,
             reach_route,
+            reach_search,
+            reach_river,
+            reach_cut,
             reach_add_tile,
             reach_step,
             reach_cancel,

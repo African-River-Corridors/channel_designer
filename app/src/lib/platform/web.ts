@@ -173,8 +173,18 @@ export async function createWebPlatform(): Promise<Platform> {
     }
   }
 
-  /** Where the reach sources are: empty is the public services; a test points them at recordings. */
-  let reachAt = "";
+  /** Where the reach sources are: empty is the public services; a test points them at recordings.
+   * `?photon=URL` and `?nominatim=URL` on the page name another river search server. */
+  let reachAt = (() => {
+    try {
+      const q = new URLSearchParams(window.location.search);
+      const at: Record<string, string> = {};
+      for (const k of ["photon", "nominatim"]) if (q.get(k)) at[k] = q.get(k)!;
+      return Object.keys(at).length ? JSON.stringify(at) : "";
+    } catch {
+      return "";
+    }
+  })();
 
   /** One reach step in the worker. Cancel ends the worker, as for a stage, and the design comes back as it was. */
   async function reachStep(step: string, percentile: number | null) {
@@ -277,6 +287,17 @@ export async function createWebPlatform(): Promise<Platform> {
       if (!confirmDiscard()) return null;
       carriedDirty = false;
       return change("reach_route", a.river ?? "", JSON.stringify({ start: a.start, end: a.end, via: a.via ?? [] }), reachAt);
+    },
+    reach_search: (a) => json("reach_search", a.text ?? "", a.country ?? "", a.once === true, reachAt),
+    reach_river: async (a) => {
+      if (!confirmDiscard()) return null;
+      carriedDirty = false;
+      return change("reach_river", a.osmId, JSON.stringify(a.also ?? []), (a.search as string) ?? "", reachAt);
+    },
+    reach_cut: async (a) => {
+      if (!(await host.rpc<boolean>("reach_route_only")) && !confirmDiscard()) return null;
+      carriedDirty = false;
+      return change("reach_cut", JSON.stringify({ start: a.start, end: a.end, via: a.via ?? [] }));
     },
     reach_add_tile: async (a) => {
       const file = a.file instanceof File ? a.file : await pickFile(".tif,.tiff");

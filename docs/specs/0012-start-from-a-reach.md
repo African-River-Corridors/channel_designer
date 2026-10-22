@@ -174,12 +174,18 @@ An engineer wants a route that leaves one river, follows a creek and joins anoth
 - The list comes from **Photon** (photon.komoot.io, OSM data, built for search as you type), with our
   User-Agent and answers cached by request. The Nominatim usage policy forbids type-ahead on its
   public API, so Nominatim is not used for the list. Only `owd_reach::search` knows the provider.
+- The search server is a setting, so a Photon of your own can replace the public one: `--search-endpoint`
+  or `OWD_PHOTON_URL` on the CLI, `OWD_PHOTON_URL` for the desktop app, `?photon=URL` on the web page.
+- The list carries the OSM attribution, "© OpenStreetMap contributors (ODbL)", and names the search.
+- If Photon fails or is busy, the app says so plainly and offers one Nominatim search when the user
+  presses Enter (`owd reach --search TEXT --nominatim` on the CLI). Nominatim is never asked as the
+  user types.
 - Choosing an entry reads its waterways from Overpass and routes the main stem. OSM draws a waterway
   in the direction of flow: the **mouth** is the downstream end, and the **upstream end** is the
   source reached by the longest route from the mouth. Start is set to the mouth and End to the
   upstream end; the user drags either, or clicks, to cut a reach. Via points work as before.
-- The document records the chosen OSM id and the search source with its date in the route's
-  provenance settings, beside Overpass. The mouth and upstream end are two OSM node positions, kept as
+- The document records the chosen OSM id and the search source (`osm-photon` or `osm-nominatim`) with
+  its date in the route's provenance settings, beside Overpass. The mouth and upstream end are two OSM node positions, kept as
   the reach's start and end like a click: an insubstantial extract. The route itself stays way ids.
 - CLI: `owd reach --search TEXT [--country CC]` lists the entries with their OSM ids; `owd reach FILE
   --osm-id relation/N` makes the study from the whole river, and `--start`, `--end` and `--via` cut it.

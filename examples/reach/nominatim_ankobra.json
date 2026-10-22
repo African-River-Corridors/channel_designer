@@ -1,0 +1,89 @@
+[
+ {
+  "place_id": 300921198,
+  "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+  "osm_type": "node",
+  "osm_id": 13798854278,
+  "lat": "4.9025694",
+  "lon": "-2.2716311",
+  "category": "place",
+  "type": "village",
+  "place_rank": 19,
+  "importance": 0.14671242771038373,
+  "addresstype": "village",
+  "name": "Sanwoma",
+  "display_name": "Sanwoma, Ellembelle District, Western Region, Ghana",
+  "address": {
+   "village": "Sanwoma",
+   "county": "Ellembelle District",
+   "state": "Western Region",
+   "ISO3166-2-lvl4": "GH-WP",
+   "country": "Ghana",
+   "country_code": "gh"
+  },
+  "boundingbox": [
+   "4.8825694",
+   "4.9225694",
+   "-2.2916311",
+   "-2.2516311"
+  ]
+ },
+ {
+  "place_id": 299745058,
+  "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+  "osm_type": "way",
+  "osm_id": 373818053,
+  "lat": "5.4476862",
+  "lon": "-2.1257353",
+  "category": "landuse",
+  "type": "residential",
+  "place_rank": 24,
+  "importance": 0.08004161669336993,
+  "addresstype": "residential",
+  "name": "Ankobra",
+  "display_name": "Ankobra, Prestea, Prestea-Huni Valley Municipal District, Western Region, Ghana",
+  "address": {
+   "residential": "Ankobra",
+   "town": "Prestea",
+   "county": "Prestea-Huni Valley Municipal District",
+   "state": "Western Region",
+   "ISO3166-2-lvl4": "GH-WP",
+   "country": "Ghana",
+   "country_code": "gh"
+  },
+  "boundingbox": [
+   "5.4462834",
+   "5.4492047",
+   "-2.1280711",
+   "-2.1243178"
+  ]
+ },
+ {
+  "place_id": 299744307,
+  "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+  "osm_type": "relation",
+  "osm_id": 3328713,
+  "lat": "5.3025015",
+  "lon": "-2.1533567",
+  "category": "waterway",
+  "type": "river",
+  "place_rank": 18,
+  "importance": 0.3281491818164103,
+  "addresstype": "river",
+  "name": "Ankobra River",
+  "display_name": "Ankobra River, Western Region, Ghana",
+  "address": {
+   "river": "Ankobra River",
+   "state": "Western Region",
+   "ISO3166-2-lvl4": "GH-WP",
+   "country": "Ghana",
+   "country_code": "gh"
+  },
+  "boundingbox": [
+   "4.8983929",
+   "5.7297061",
+   "-2.2745332",
+   "-2.1050123"
+  ]
+ }
+]

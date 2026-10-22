@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { remote } from "webdriverio";
-import { endpoints, serveReach } from "./reach-server.mjs";
+import { endpoints, searches, serveReach } from "./reach-server.mjs";
 
 const here = import.meta.dirname;
 const EXAMPLE = path.resolve(here, "../../examples/synthetic-river.owd");
@@ -535,6 +535,37 @@ describe("Open Waterway Designer app smoke test", () => {
     }
     await (await browser.$("[data-testid=sheets-toggle]")).click();
     await until("the map to return", async () => !(await (await browser.$("[data-testid=sheets-view]")).isExisting()));
+  });
+  it("finds a river as you type, draws it from its mouth to its upstream end, and cuts a reach out of it", async () => {
+    // The recorded answers stand in for Photon and Overpass.
+    const reach = await serveReach();
+    try {
+      const at = path.join(WORK, "reach-endpoints.json");
+      fs.writeFileSync(at, JSON.stringify(endpoints(reach.origin)));
+      answer("reach-endpoints.json", at);
+      answer("discard.txt", "yes");
+      await (await browser.$("[data-testid=start-from-river]")).click();
+      const before = searches.length;
+      await (await browser.$("[data-testid=reach-river]")).setValue("Ank");
+      const ankobra = '[data-testid="reach-hit"][data-osm="relation/3328713"]';
+      await until("the list", async () => (await browser.$(ankobra)).isExisting(), 30000);
+      assert.match(await (await browser.$(ankobra)).getText(), /Ankobra River — Western Region, Ghana/);
+      assert.deepEqual(searches.slice(before), ["Ank"], "one request per pause, none under 3 letters");
+      await (await browser.$(`${ankobra} button`)).click();
+      await until("the whole river", async () => /km/.test((await text("reach-length").catch(() => "")) ?? ""), 60000);
+      assert.equal(await (await browser.$("[data-testid=reach-start]")).getValue(), "-2.26885, 4.89839");
+      assert.equal(await (await browser.$("[data-testid=reach-end]")).getValue(), "-2.13492, 5.72949");
+      const whole = Number((await text("reach-length")).match(/([\d.]+) km/)[1]);
+      const asked = searches.length;
+      await (await browser.$("[data-testid=reach-end]")).setValue("-2.1533567, 5.3025015");
+      await (await browser.$("[data-testid=reach-route]")).click();
+      await until("the shorter reach", async () => Number((await text("reach-length")).match(/([\d.]+) km/)[1]) < whole);
+      assert.equal(searches.length, asked);
+      // Typing again lets go of the river: the next route is planned from clicks, as before.
+      await (await browser.$("[data-testid=reach-river]")).setValue("");
+    } finally {
+      reach.server.close();
+    }
   });
   it("starts a study from a river: route, inputs with badges, a depth, the class table, and Use this vessel", async () => {
     // The recorded answers stand in for Overpass, Earth Search, Sentinel-2, Zenodo and Hydrocron.

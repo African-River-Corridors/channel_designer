@@ -24,7 +24,7 @@ arc-rules.workspace = true
 otd.workspace = true
 # `owd draw --imagery`: the source, its licence rule and the tile fetcher.
 otd-imagery.workspace = true
-clap = { version = "4.6.7", features = ["derive"] }
+clap = { version = "4.6.7", features = ["derive", "env"] }
 serde_json.workspace = true
 ureq = { version = "3.4.2", default-features = false, features = ["rustls"] }
 

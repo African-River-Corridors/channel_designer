@@ -7,7 +7,7 @@
   import type * as GeoJSON from "geojson";
   import * as api from "./api";
   import { docPart } from "./api";
-  import type { FitsResult, FitsSelection, LonLat, Provenance, ProvenanceInput, ReachStepName, Snapshot } from "./api";
+  import type { FitsResult, FitsSelection, LonLat, Provenance, ProvenanceInput, ReachStepName, RiverHit, Snapshot } from "./api";
   import MarkBadge from "./MarkBadge.svelte";
   import { platform } from "./platform";
   import { token } from "./theme";
@@ -38,6 +38,25 @@
   };
 
   let river = $state("");
+  let country = $state("");
+  let hits = $state<RiverHit[]>([]);
+  let listOpen = $state(false);
+  let active = $state(-1);
+  let searching = $state(false);
+  /** Why the search as you type failed; then Enter asks Nominatim once. */
+  let failed = $state<string | null>(null);
+  /** The source of the hits shown: Photon as you type, or Nominatim once. */
+  let hitSource = $state("osm-photon");
+  /** The hit the user chose; cleared when they type again. */
+  let chosen = $state<RiverHit | null>(null);
+  /** Answers by country and text, and river lengths by OSM id once known: a repeat asks nothing. */
+  const answers = new Map<string, RiverHit[]>();
+  const lengths = new Map<string, number>();
+  let asked = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  /** Wait this long after the last key before asking (owd_reach::search::DEBOUNCE_MS). */
+  const DEBOUNCE_MS = 350;
+  const MIN_CHARS = 3;
   let startText = $state("");
   let endText = $state("");
   let viaText = $state("");
@@ -67,6 +86,99 @@
     { id: "dem", label: "DEM" },
     { id: "bed", label: "Depth" },
   ];
+
+  // --- the river search: a list as the user types ------------------------------------------------
+  function typed() {
+    chosen = null;
+    clearTimeout(timer);
+    const text = river.trim();
+    if (text.length < MIN_CHARS) {
+      hits = [];
+      listOpen = false;
+      return;
+    }
+    timer = setTimeout(() => search(text), DEBOUNCE_MS);
+  }
+  async function search(text: string) {
+    const key = `${country.trim().toUpperCase()}|${text.toLowerCase()}`;
+    const mine = ++asked;
+    let found = answers.get(key);
+    let why: string | null = null;
+    if (!found) {
+      searching = true;
+      try {
+        found = await api.reachSearch(text, country);
+        answers.set(key, found);
+      } catch (e) {
+        why = String(e);
+        found = [];
+      } finally {
+        if (mine === asked) searching = false;
+      }
+    }
+    if (mine !== asked) return; // a later key won
+    failed = why;
+    hitSource = "osm-photon";
+    hits = found;
+    active = found.length ? 0 : -1;
+    listOpen = true;
+  }
+  /** Nominatim, one request, when the user presses Enter after the search as you type failed. */
+  async function searchOnce() {
+    const text = river.trim();
+    if (text.length < MIN_CHARS) return;
+    const mine = ++asked;
+    searching = true;
+    try {
+      const found = await api.reachSearch(text, country, true);
+      if (mine !== asked) return;
+      failed = null;
+      hitSource = "osm-nominatim";
+      hits = found;
+      active = found.length ? 0 : -1;
+      listOpen = true;
+    } catch (e) {
+      if (mine === asked) failed = `The river search (Nominatim) did not answer either: ${String(e)}`;
+    } finally {
+      if (mine === asked) searching = false;
+    }
+  }
+  async function choose(h: RiverHit) {
+    chosen = h;
+    river = h.label;
+    listOpen = false;
+    working = true;
+    const ok = await act(() => api.reachRiver(h.osm_id, h.also, hitSource));
+    working = false;
+    if (ok && map) map.fitBounds([[h.bbox[0], h.bbox[1]], [h.bbox[2], h.bbox[3]]], { padding: 40, duration: 0 });
+  }
+  function keys(e: KeyboardEvent) {
+    if (e.key === "Enter" && failed && !chosen) {
+      e.preventDefault();
+      searchOnce();
+      return;
+    }
+    if (!listOpen || hits.length === 0) return;
+    if (e.key === "ArrowDown") active = (active + 1) % hits.length;
+    else if (e.key === "ArrowUp") active = (active - 1 + hits.length) % hits.length;
+    else if (e.key === "Enter" && active >= 0) choose(hits[active]);
+    else if (e.key === "Escape") listOpen = false;
+    else return;
+    e.preventDefault();
+  }
+  const km = (m: number) => `${(m / 1000).toFixed(m < 10000 ? 1 : 0)} km`;
+  // The session's start and end fill the fields when they change (a river chosen, a reach cut).
+  let shownEnds = "";
+  $effect(() => {
+    const k = JSON.stringify([view?.start, view?.end]);
+    if (k === shownEnds) return;
+    shownEnds = k;
+    if (view?.start) startText = fmt(view.start);
+    if (view?.end) endText = fmt(view.end);
+  });
+  $effect(() => {
+    if (view?.river) lengths.set(view.river.osm_id, view.river.length_m);
+  });
 
   function pick(which: "start" | "end" | "via") {
     picking = picking === which ? null : which;
@@ -106,7 +218,8 @@
       via.push(p);
     }
     working = true;
-    await act(() => api.reachRoute(river, start, end, via));
+    // With a river chosen, the reach is cut out of it; otherwise the route is planned as before.
+    await act(() => (chosen && view?.river ? api.reachCut(start, end, via) : api.reachRoute(river, start, end, via)));
     working = false;
   }
 
@@ -156,6 +269,9 @@
     if (m.getSource("reach")) return;
     m.addSource("reach", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
     const ink = token("plate-ink");
+    // A light casing under the route and the river, so the dark line reads on satellite imagery.
+    m.addLayer({ id: "reach-casing", type: "line", source: "reach", filter: ["match", ["get", "kind"], ["route", "river"], true, false], paint: { "line-color": token("cream"), "line-width": 5, "line-opacity": 0.7 } });
+    m.addLayer({ id: "reach-river", type: "line", source: "reach", filter: ["==", ["get", "kind"], "river"], paint: { "line-color": ink, "line-width": 1.5, "line-opacity": 0.45 } });
     m.addLayer({ id: "reach-route", type: "line", source: "reach", filter: ["==", ["get", "kind"], "route"], paint: { "line-color": ink, "line-width": 2, "line-dasharray": [3, 2] } });
     m.addLayer({ id: "reach-stretch", type: "line", source: "reach", filter: ["==", ["get", "kind"], "stretch"], paint: { "line-color": token("fail"), "line-width": 6, "line-opacity": 0.8 } });
     m.addLayer({ id: "reach-points", type: "circle", source: "reach", filter: ["==", ["get", "kind"], "point"], paint: { "circle-radius": 6, "circle-color": token("cream"), "circle-stroke-color": ink, "circle-stroke-width": 2 } });
@@ -164,22 +280,80 @@
   $effect(() => {
     const m = map;
     if (!m) return;
+    // The features are made here, so the effect follows every value they read; the map takes them
+    // now, or once its style is ready (tiles still loading do not hold them back).
+    const features: GeoJSON.Feature[] = [];
+    if (view?.river) features.push({ type: "Feature", properties: { kind: "river" }, geometry: { type: "LineString", coordinates: view.river.line } });
+    if (view?.route) features.push({ type: "Feature", properties: { kind: "route" }, geometry: { type: "LineString", coordinates: view.route } });
+    const ends: [string, string][] = [["start", startText], ["end", endText], ...viaText.split(";").map((t): [string, string] => ["via", t])];
+    for (const [role, t] of ends) {
+      const p = parse(t);
+      if (p) features.push({ type: "Feature", properties: { kind: "point", role }, geometry: { type: "Point", coordinates: p } });
+    }
+    const rs = fits?.rule_sets[0]?.rule_set;
+    for (const s of (rs && shownClass ? view?.fits_stretches[rs]?.[shownClass] : undefined) ?? []) {
+      if (s.from && s.to) features.push({ type: "Feature", properties: { kind: "stretch" }, geometry: { type: "LineString", coordinates: [s.from, s.to] } });
+    }
     const draw = () => {
       addLayers(m);
-      const features: GeoJSON.Feature[] = [];
-      if (view?.route) features.push({ type: "Feature", properties: { kind: "route" }, geometry: { type: "LineString", coordinates: view.route } });
-      for (const t of [startText, endText, ...viaText.split(";")]) {
-        const p = parse(t);
-        if (p) features.push({ type: "Feature", properties: { kind: "point" }, geometry: { type: "Point", coordinates: p } });
-      }
-      const rs = fits?.rule_sets[0]?.rule_set;
-      for (const s of (rs && shownClass ? view?.fits_stretches[rs]?.[shownClass] : undefined) ?? []) {
-        if (s.from && s.to) features.push({ type: "Feature", properties: { kind: "stretch" }, geometry: { type: "LineString", coordinates: [s.from, s.to] } });
-      }
       (m.getSource("reach") as maplibregl.GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features });
     };
-    if (m.isStyleLoaded()) draw();
-    else m.once("idle", draw);
+    try {
+      draw();
+    } catch {
+      m.once("styledata", draw); // the style itself is not loaded yet
+    }
+  });
+
+  // Drag Start or End along the river: the reach is cut again where it is let go.
+  $effect(() => {
+    const m = map;
+    if (!m) return;
+    let dragging: "start" | "end" | null = null;
+    const down = (e: maplibregl.MapLayerMouseEvent) => {
+      const role = e.features?.[0]?.properties?.role;
+      if (!chosen || !view?.river || (role !== "start" && role !== "end")) return;
+      e.preventDefault();
+      dragging = role;
+      m.getCanvas().style.cursor = "grabbing";
+    };
+    // The dragged point glides along the river: the nearest point of the line the session gave.
+    const onRiver = (lon: number, lat: number): LonLat => {
+      const k = Math.cos((lat * Math.PI) / 180);
+      let best: LonLat = [lon, lat];
+      let d = Infinity;
+      for (const q of view?.river?.line ?? []) {
+        const dd = ((q[0] - lon) * k) ** 2 + (q[1] - lat) ** 2;
+        if (dd < d) [d, best] = [dd, q];
+      }
+      return best;
+    };
+    const move = (e: maplibregl.MapMouseEvent) => {
+      if (!dragging) return;
+      const p = fmt(onRiver(e.lngLat.lng, e.lngLat.lat));
+      if (dragging === "start") startText = p;
+      else endText = p;
+    };
+    const up = () => {
+      if (!dragging) return;
+      dragging = null;
+      m.getCanvas().style.cursor = "";
+      route();
+    };
+    const over = () => chosen && view?.river && (m.getCanvas().style.cursor = "grab");
+    const out = () => !dragging && (m.getCanvas().style.cursor = "");
+    m.on("mousedown", "reach-points", down);
+    m.on("mouseenter", "reach-points", over);
+    m.on("mouseleave", "reach-points", out);
+    m.on("mousemove", move);
+    m.on("mouseup", up);
+    return () => {
+      m.off("mousedown", "reach-points", down);
+      m.off("mouseenter", "reach-points", over);
+      m.off("mouseleave", "reach-points", out);
+      m.off("mousemove", move);
+      m.off("mouseup", up);
+    };
   });
 
   const prov = (id: ProvenanceInput) => (provenance as Partial<Record<ProvenanceInput, Provenance>>)[id];
@@ -192,11 +366,50 @@
 
   <section aria-label="Pick the reach">
     <h3>1. Pick the reach</h3>
-    <label>River <input data-testid="reach-river" bind:value={river} placeholder="for example Sassandra" /></label>
+    <div class="search">
+      <label>River
+        <input
+          data-testid="reach-river"
+          role="combobox"
+          aria-expanded={listOpen}
+          aria-controls="reach-river-list"
+          aria-autocomplete="list"
+          aria-activedescendant={listOpen && active >= 0 ? `reach-hit-${active}` : undefined}
+          autocomplete="off"
+          bind:value={river}
+          oninput={typed}
+          onkeydown={keys}
+          onfocus={() => hits.length && !chosen && (listOpen = true)}
+          placeholder="type 3 letters, for example Ank"
+        />
+        <input class="cc" data-testid="reach-country" bind:value={country} oninput={typed} maxlength="2" placeholder="Any" title="Country code, optional (for example GH)" aria-label="Country code (optional), for example GH" />
+      </label>
+      {#if listOpen}
+        <div class="dropdown">
+        {#if failed}<p class="failed" role="alert" data-testid="reach-search-failed">{failed}</p>{/if}
+        <ul class="hits" id="reach-river-list" role="listbox" data-testid="reach-hits">
+          {#each hits as h, i}
+            {@const len = lengths.get(h.osm_id)}
+            <li id="reach-hit-{i}" role="option" aria-selected={i === active} class:active={i === active} data-testid="reach-hit" data-osm={h.osm_id}>
+              <button type="button" onmousedown={(e) => e.preventDefault()} onclick={() => choose(h)}>
+                <span class="name">{h.label}</span>
+                <span class="meta">{h.kind}{len ? ` · ${km(len)}` : ""}</span>
+              </button>
+            </li>
+          {:else}
+            {#if !failed}<li class="none" data-testid="reach-no-hits">No river or canal found.</li>{/if}
+          {/each}
+        </ul>
+        <p class="credit" data-testid="reach-search-credit">© OpenStreetMap contributors (ODbL) · search by {hitSource === "osm-nominatim" ? "Nominatim" : "Photon"}</p>
+        </div>
+      {/if}
+      {#if searching}<p class="help" role="status">Searching…</p>{/if}
+    </div>
     <label>Start <input data-testid="reach-start" bind:value={startText} placeholder="lon, lat" /><button class:on={picking === "start"} data-testid="reach-pick-start" onclick={() => pick("start")}>Pick on map</button></label>
     <label>End <input data-testid="reach-end" bind:value={endText} placeholder="lon, lat" /><button class:on={picking === "end"} data-testid="reach-pick-end" onclick={() => pick("end")}>Pick on map</button></label>
     <label>Via <input data-testid="reach-via" bind:value={viaText} placeholder="lon, lat; lon, lat" /><button class:on={picking === "via"} data-testid="reach-pick-via" onclick={() => pick("via")}>Add on map</button></label>
     {#if picking}<p class="help" role="status">Click the map to place the {picking} point.</p>{/if}
+    {#if chosen && view?.river}<p class="help" data-testid="reach-river-help">Start is the mouth and End the upstream end of the {view.river.name ?? "river"} ({km(view.river.length_m)}). Drag either on the map, or pick one, to cut a reach.</p>{/if}
     <button class="primary" data-testid="reach-route" disabled={working} onclick={route}>Find the route</button>
     {#if view?.route}
       <p data-testid="reach-length">Route: {((view.length_m ?? 0) / 1000).toFixed(1)} km{view.as_drawn ? `, ${view.as_drawn} stretch(es) kept as drawn (check them)` : ""}</p>
@@ -323,4 +536,15 @@
   .fail { color: var(--fail); }
   tr.shown { background: var(--surface-2); }
   .fits tbody tr { cursor: pointer; }
+  .search { position: relative; display: flex; flex-direction: column; gap: var(--sp-1); }
+  .search input.cc { flex: 0 0 3.5em; min-width: 0; text-transform: uppercase; }
+  .search input.cc::placeholder { text-transform: none; }
+  .dropdown { position: absolute; top: 100%; left: 0; right: 0; z-index: 5; margin-top: 2px; background: var(--surface); border: var(--lw-thin) solid var(--rule); box-shadow: 0 4px 12px rgb(0 0 0 / 0.25); }
+  .hits { margin: 0; padding: 0; list-style: none; max-height: 16em; overflow-y: auto; }
+  .dropdown .failed { margin: 0; padding: 4px var(--sp-2); background: var(--warn-soft); color: var(--warn); }
+  .hits li button { display: flex; justify-content: space-between; gap: var(--sp-2); width: 100%; text-align: left; border: 0; border-radius: 0; background: none; padding: 4px var(--sp-2); }
+  .hits li.active button, .hits li button:hover { background: var(--accent); color: var(--accent-ink); }
+  .hits .meta { color: inherit; opacity: 0.7; white-space: nowrap; }
+  .hits .none, .dropdown .credit { padding: 4px var(--sp-2); color: var(--ink-3); }
+  .dropdown .credit { margin: 0; font-size: var(--fs-11, 11px); border-top: var(--lw-thin) solid var(--rule); }
 </style>

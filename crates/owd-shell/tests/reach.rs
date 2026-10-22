@@ -22,6 +22,8 @@ fn ex(name: &str) -> Vec<u8> {
 fn endpoints() -> ReachEndpoints {
     ReachEndpoints {
         overpass: "https://overpass.example/api/interpreter".into(),
+        photon: "https://photon.example/api/".into(),
+        nominatim: "https://nominatim.example/search".into(),
         stac: "https://stac.example/v1/search".into(),
         sword_record: "https://zenodo.example/record".into(),
         hydrocron: "https://hydrocron.example/timeseries".into(),

@@ -278,8 +278,12 @@ enum Command {
         /// With --search: only rivers in this country, as a two-letter code (for example GH).
         #[arg(long, value_name = "CC", requires = "search")]
         country: Option<String>,
-        /// With --search: another Photon server (default: photon.komoot.io).
-        #[arg(long, value_name = "URL", requires = "search")]
+        /// With --search: ask Nominatim once instead of Photon, for when Photon is not answering.
+        #[arg(long, requires = "search")]
+        nominatim: bool,
+        /// With --search: another search server (default: photon.komoot.io, or
+        /// nominatim.openstreetmap.org with --nominatim), for example a Photon of your own.
+        #[arg(long, value_name = "URL", requires = "search", env = "OWD_PHOTON_URL")]
         search_endpoint: Option<String>,
         /// The river's name, searched in OSM. The route may leave this river.
         #[arg(long, conflicts_with = "osm_id")]
@@ -865,10 +869,17 @@ pub fn main() -> ExitCode {
         Command::Reach {
             search: Some(text),
             country,
+            nominatim,
             search_endpoint,
             json,
             ..
-        } => commands::reach_search(&text, country.as_deref(), search_endpoint.as_deref(), json),
+        } => commands::reach_search(
+            &text,
+            country.as_deref(),
+            nominatim,
+            search_endpoint.as_deref(),
+            json,
+        ),
         Command::Reach {
             file,
             river,
