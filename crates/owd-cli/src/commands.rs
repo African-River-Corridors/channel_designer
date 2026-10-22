@@ -818,11 +818,18 @@ pub fn align(
     if no_feasible_line(&option) {
         human.push_str("\nNO FEASIBLE LINE: every bend is infeasible; the line is not a design");
     }
+    // Issue #367: a failed option is saved, marked failed, and the summary says so.
+    if !ok {
+        human.push_str(&format!(
+            "\nthe option is saved, marked failed: {}",
+            failed.join(", ")
+        ));
+    }
     say(
         dest == "-",
         json_mode,
         &human,
-        json!({"ok": true, "option": option}),
+        json!({"ok": ok, "failed_checks": failed, "option": option}),
     );
     // An option that fails a check is a failed check: exit code 1, with the document written.
     if ok {
@@ -962,11 +969,17 @@ pub fn optimise(
         c["r_min_m"].as_f64().unwrap_or(f64::NAN),
         if ok { "ok" } else { "FAILS R_min" }
     );
+    let human = if ok {
+        human
+    } else {
+        format!("{human}\nthe option is saved, marked failed: R_min")
+    };
+    let failed: Vec<&str> = if ok { vec![] } else { vec!["R_min"] };
     say(
         dest == "-",
         json_mode,
         &human,
-        json!({"ok": true, "cascade": res["cascade"], "pools": res["pools"], "option": option}),
+        json!({"ok": ok, "failed_checks": failed, "cascade": res["cascade"], "pools": res["pools"], "option": option}),
     );
     if ok {
         Ok(())
@@ -1052,7 +1065,7 @@ pub fn volumes(doc: &str, flags: VolumesFlags, output: &Option<String>, json_mod
         dest == "-",
         json_mode,
         &human.join("\n"),
-        json!({"ok": true, "options": rows}),
+        json!({"ok": all_ok, "options": rows}),
     );
     if all_ok {
         Ok(())
