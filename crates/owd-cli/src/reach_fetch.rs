@@ -13,8 +13,17 @@ const USER_AGENT: &str = concat!(
     " (+https://github.com/African-River-Corridors/open-waterway-designer)"
 );
 
-/// Native HTTP.
+/// Native HTTP. Every request goes through [`agent`], so requests to one host reuse its pooled
+/// connections (#375).
 pub struct HttpFetch;
+
+/// The one HTTP agent of the process (#375). `ureq::get` makes a new agent for each call, so no
+/// connection was reused: each range read opened a new TCP and TLS connection, and on a long reach
+/// the closed ones used up the local ports (`os error 49`).
+pub fn agent() -> &'static ureq::Agent {
+    static AGENT: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
+    AGENT.get_or_init(|| ureq::Agent::config_builder().build().into())
+}
 
 /// Progress on stderr (#320): every counted step, and the first request of each kind of work and
 /// every 25th after it, so a long run says what it is doing without a flood of lines.
@@ -59,7 +68,8 @@ fn range_header(start: u64, len: u64) -> String {
 
 impl Fetch for HttpFetch {
     fn get(&self, url: &str) -> Result<Vec<u8>, FetchError> {
-        let mut resp = ureq::get(url)
+        let mut resp = agent()
+            .get(url)
             .header("User-Agent", USER_AGENT)
             .header("Accept", "*/*")
             .call()
@@ -72,7 +82,8 @@ impl Fetch for HttpFetch {
     }
 
     fn get_range(&self, url: &str, start: u64, len: u64) -> Result<Vec<u8>, FetchError> {
-        let mut resp = ureq::get(url)
+        let mut resp = agent()
+            .get(url)
             .header("User-Agent", USER_AGENT)
             .header("Range", range_header(start, len))
             .call()
@@ -96,7 +107,8 @@ pub fn download(
     stop: &dyn Fn() -> bool,
 ) -> Result<u64, String> {
     use std::io::{Read, Write};
-    let resp = ureq::get(url)
+    let resp = agent()
+        .get(url)
         .header("User-Agent", USER_AGENT)
         .call()
         .map_err(|e| format!("cannot fetch {url}: {e}"))?;
@@ -263,6 +275,67 @@ mod local_tests {
         assert_eq!(e, "cancelled");
         assert!(!stopped.exists() && !stopped.with_extension("part").exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod agent_tests {
+    //! Label: property (a local keep-alive server counts the connections a run of range reads makes).
+    use super::*;
+    use std::io::{BufRead, BufReader, Write};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// A server that answers every request on a connection, keeping it open (HTTP/1.1
+    /// keep-alive), and counts the connections it accepts. Returns its URL and the count.
+    fn keep_alive_server() -> (String, Arc<AtomicUsize>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/scene.tif", listener.local_addr().unwrap());
+        let conns = Arc::new(AtomicUsize::new(0));
+        let c = conns.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(s) = stream else { continue };
+                c.fetch_add(1, Ordering::SeqCst);
+                std::thread::spawn(move || {
+                    let mut w = s.try_clone().unwrap();
+                    let mut r = BufReader::new(s);
+                    loop {
+                        // Read one request head; stop when the client closes.
+                        let mut line = String::new();
+                        loop {
+                            line.clear();
+                            match r.read_line(&mut line) {
+                                Ok(0) | Err(_) => return,
+                                Ok(_) => {}
+                            }
+                            if line == "\r\n" {
+                                break;
+                            }
+                        }
+                        let body = b"0123";
+                        let head = format!(
+                            "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\n\r\n",
+                            body.len()
+                        );
+                        if w.write_all(head.as_bytes()).is_err() || w.write_all(body).is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        (url, conns)
+    }
+
+    #[test]
+    fn many_range_reads_to_one_host_reuse_one_connection() {
+        let (url, conns) = keep_alive_server();
+        for i in 0..50 {
+            assert_eq!(HttpFetch.get_range(&url, i * 4, 4).unwrap(), b"0123");
+        }
+        let n = conns.load(Ordering::SeqCst);
+        assert!(n <= 2, "50 reads made {n} connections");
     }
 }
 
