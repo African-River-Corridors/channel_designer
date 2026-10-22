@@ -5,6 +5,13 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **The app's Sheets view and PDF export (spec 0004, T8).** A Sheets button lays a view over the map and sections.
+  It lists the drawing sheets of the active design line option and shows each sheet's SVG on white paper,
+  with zoom. Export PDFs writes one PDF a sheet: on the desktop into a folder you pick, on the web as
+  downloads. The sheets come from the same builder as `owd draw` through the shell (`owd_shell::sheets`), so
+  each PDF has the bytes `owd draw --option` writes for the same design and style. The front end only places
+  and zooms the SVG. The live long-section and cross-section views are unchanged.
+
 - **The full `fits` answer can read the river's radius on a fairway (spec 0012, opt-in).** `owd fits --plan-line
   fairway` reads the river's own radius on each class's fairway fit (ADR 0007: the smoothest line a channel of
   that class can take in the water) instead of the river centreline. A centreline drawn from bank lines wiggles at

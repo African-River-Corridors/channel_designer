@@ -184,6 +184,9 @@ const answer: Record<string, () => unknown> = {
   }),
   map_geometry: () => geometry, option_table: () => table, long_section: () => longSection, cross_section: () => crossSection,
   station_near: () => 9000, hillshade: relief,
+  export_sheets: () => "/tmp/owd-sheets",
+  sheets: () => [{ number: "OWD-MOCK-PL-001", title: "PLAN OVERVIEW", warnings: [],
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" width="841mm" height="594mm" viewBox="0 0 841 594"><rect x="20" y="10" width="811" height="574" fill="none" stroke="#000"/></svg>' }],
   // The tile address fails at once, so the map shows the hillshade and its offline note.
   basemap_tiles: () => "http://127.0.0.1:9/{z}/{x}/{y}.jpg",
 };

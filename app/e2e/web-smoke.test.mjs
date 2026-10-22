@@ -302,7 +302,9 @@ describe("OWD web smoke tests", () => {
     walk(DIST);
     // Hosts that are not data sources: the basemap (EOX), and standards and docs that libraries name in
     // comments and messages. None is a server of ours; a new host fails here until it is looked at.
-    const KNOWN = ["tiles.maps.eox.at", "cloudless.eox.at", "www.w3.org", "svelte.dev", "maplibre.org", "maplibre.invalid", "github.com", "wiki.openstreetmap.org", "json-schema.org"];
+    // tribby.com and scripts.sil.org are in the name table of the drawing font (Barlow, SIL OFL), which
+    // the PDF writer embeds in the wasm: its designer's site and its licence's. Text, never fetched.
+    const KNOWN = ["tiles.maps.eox.at", "cloudless.eox.at", "www.w3.org", "svelte.dev", "maplibre.org", "maplibre.invalid", "github.com", "wiki.openstreetmap.org", "json-schema.org", "tribby.com", "scripts.sil.org"];
     const allowed = (h) => [...PUBLIC_HOSTS, ...KNOWN].some((k) => h === k || h.startsWith(k));
     const unknown = [...hosts].filter((h) => !allowed(h));
     assert.deepEqual(unknown, [], `hosts in the web bundle that are neither a public source nor known: ${unknown.join(" ")}`);

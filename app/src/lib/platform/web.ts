@@ -251,6 +251,13 @@ export async function createWebPlatform(): Promise<Platform> {
     option_table: () => json("option_table"),
     hillshade: () => json("hillshade"),
     long_section: (a) => json("long_section", a.option),
+    sheets: (a) => json("sheets", a.option),
+    export_sheets: async (a) => {
+      // each sheet's PDF, as `owd draw` names it; the browser saves them as downloads
+      const pdfs = await host.rpc<[string, Uint8Array][]>("sheet_pdfs", a.option);
+      for (const [name, bytes] of pdfs) download(name, bytes as BlobPart, "application/pdf");
+      return pdfs.length ? `${pdfs.length} PDF${pdfs.length === 1 ? "" : "s"}` : null;
+    },
     cross_section: (a) => json("cross_section", a.option, a.chainage),
     station_near: (a) => host.rpc("station_near", a.option, a.lon, a.lat),
     load_input: (a) => loadInput(a.role as string, a.path),
