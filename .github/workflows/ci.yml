@@ -15,6 +15,8 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# The Rust caches save from main only (`save-if`): a pull request's cache serves no other pull request,
+# and with every PR saving its own, the repository's 10 GB cache limit evicted main's caches.
 permissions:
   contents: read
 
@@ -82,6 +84,8 @@ jobs:
       - name: Install the pinned Rust toolchain (rust-toolchain.toml)
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Format, clippy and the leftover-names check
         env:
           GATES_STEPS: fmt,clippy,oldnames
@@ -103,6 +107,8 @@ jobs:
       - name: Install the pinned Rust toolchain (rust-toolchain.toml)
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest@0.9.100
@@ -123,6 +129,8 @@ jobs:
       - name: Install the pinned Rust toolchain (rust-toolchain.toml)
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # vessel_designer installs from git. While that repository is private this step needs read
       # access to it; after release it does not.
       - name: Install
@@ -185,6 +193,8 @@ jobs:
       - name: Install the pinned Rust toolchain (rust-toolchain.toml)
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Build owd
         run: cargo build -p owd-cli
       - name: Install the Python implementation of the standard at the pinned commit
@@ -231,6 +241,8 @@ jobs:
       - name: Install the pinned Rust toolchain (rust-toolchain.toml)
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Tauri system libraries
         run: |
           sudo apt-get update
@@ -263,6 +275,8 @@ jobs:
       - name: Install the pinned Rust toolchain (rust-toolchain.toml)
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Tauri system libraries, WebDriver and a virtual display
         run: |
           sudo apt-get update
@@ -276,7 +290,8 @@ jobs:
           key: tauri-driver-2.1.0-${{ runner.os }}
       - name: Install tauri-driver
         if: steps.driver.outputs.cache-hit != 'true'
-        run: cargo install tauri-driver --version 2.1.0 --locked
+        # --force: the Rust cache can hold the binary in ~/.cargo/bin when this cache entry was evicted.
+        run: cargo install tauri-driver --version 2.1.0 --locked --force
       - name: Build the debug app
         working-directory: app
         run: |
@@ -304,6 +319,8 @@ jobs:
           rustup toolchain install
           rustup target add wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: The pinned wasm-bindgen version
         id: wb
         run: echo "version=$(sed -n 's/^wasm-bindgen = "=\([0-9.]*\)".*/\1/p' crates/owd-web/Cargo.toml)" >> "$GITHUB_OUTPUT"
@@ -357,6 +374,8 @@ jobs:
           rustup toolchain install
           rustup target add wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: The pinned wasm-bindgen version
         id: wb
         run: echo "version=$(sed -n 's/^wasm-bindgen = "=\([0-9.]*\)".*/\1/p' crates/owd-web/Cargo.toml)" >> "$GITHUB_OUTPUT"
