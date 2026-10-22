@@ -5,6 +5,9 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **Width-method plugins load from the `owd.width_methods` entry-point group only.** The old group
+  `channel_designer.width_methods`, read for one release after the rename, is no longer read. **Plugin authors:** declare
+  your method under `[project.entry-points."owd.width_methods"]` in your package's `pyproject.toml`.
 - **The app's Sheets view and PDF export (spec 0004, T8).** A Sheets button lays a view over the map and sections.
   It lists the drawing sheets of the active design line option and shows each sheet's SVG on white paper,
   with zoom. Export PDFs writes one PDF a sheet: on the desktop into a folder you pick, on the web as
