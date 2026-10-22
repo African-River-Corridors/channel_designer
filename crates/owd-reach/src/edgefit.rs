@@ -1372,7 +1372,9 @@ mod join_tests {
     fn the_slope_limit_holds_after_a_join_and_kept_stations_stay_at_zero() {
         let mut x: u64 = 7;
         let mut next = || {
-            x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (x >> 33) as i64
         };
         for _ in 0..300 {
@@ -1380,7 +1382,13 @@ mod join_tests {
             let cap = 1 + next() % 2000;
             let fixed: Vec<bool> = (0..n).map(|_| next() % 7 == 0).collect();
             let d: Vec<i64> = (0..n)
-                .map(|i| if fixed[i] { 0 } else { next() % 60_001 - 30_000 })
+                .map(|i| {
+                    if fixed[i] {
+                        0
+                    } else {
+                        next() % 60_001 - 30_000
+                    }
+                })
                 .collect();
             let out = slope_limited(pinned_envelope(&d, &fixed, cap), &fixed, cap);
             for i in 0..n {
