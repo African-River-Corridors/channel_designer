@@ -642,7 +642,7 @@ fn cancel_run(state: State<Shared>) -> Result<bool, String> {
 /// Fetch a Copernicus DEM for the reach with `owd fetch-dem`, beside the saved design, then
 /// reload the design from the file. The design must be saved first: the tiles go next to it.
 #[tauri::command]
-async fn fetch_dem(window: Window, state: State<'_, Shared>) -> Reply {
+async fn fetch_dem(app: AppHandle, window: Window, state: State<'_, Shared>) -> Reply {
     let path = {
         let guard = lock(&state)?;
         guard.refuse_unsaved_fetch()?;
@@ -653,9 +653,22 @@ async fn fetch_dem(window: Window, state: State<'_, Shared>) -> Reply {
     };
     let doc = path.to_string_lossy().into_owned();
     let mirror = test_answer("dem-mirror.txt").flatten();
+    let turn = REACH_TURN.load(std::sync::atomic::Ordering::SeqCst);
+    let ticker = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        owd_cli::commands::fetch_dem(&doc, 1000.0, mirror.as_deref(), None, true)
-            .map_err(|f| f.message)
+        let report = progress_events(ticker);
+        let stop = || REACH_TURN.load(std::sync::atomic::Ordering::SeqCst) != turn;
+        owd_cli::commands::fetch_dem_watched(
+            &doc,
+            1000.0,
+            mirror.as_deref(),
+            None,
+            true,
+            &owd_cli::fetch::Mirror,
+            &report,
+            &stop,
+        )
+        .map_err(|f| f.message)
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -707,6 +720,53 @@ fn reach_endpoints() -> owd_shell::reach::ReachEndpoints {
 /// Bumped by Cancel: a reach step that began before it is not kept.
 static REACH_TURN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// Progress for the window as `reach-progress` events (#320): every counted step, and at most four
+/// other reports a second.
+fn progress_events(app: AppHandle) -> impl Fn(&owd_shell::reach::Step) {
+    let last = std::cell::Cell::new(None::<std::time::Instant>);
+    move |s: &owd_shell::reach::Step| {
+        let now = std::time::Instant::now();
+        if s.total > 0
+            || last
+                .get()
+                .is_none_or(|t| now - t >= std::time::Duration::from_millis(250))
+        {
+            last.set(Some(now));
+            let _ = app.emit(
+                "reach-progress",
+                serde_json::json!({"done": s.done, "total": s.total, "what": s.line()}),
+            );
+        }
+    }
+}
+
+/// Network work for a reach, off the main thread (#320): it reports its progress to the window, and
+/// Cancel stops it before its next request. Work Cancel came during is dropped.
+async fn watched<T, F>(app: &AppHandle, work: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce(&dyn owd_shell::reach::Fetch) -> Result<T, String> + Send + 'static,
+{
+    use std::sync::atomic::Ordering;
+    let turn = REACH_TURN.load(Ordering::SeqCst);
+    let ticker = app.clone();
+    let out = tauri::async_runtime::spawn_blocking(move || {
+        let report = progress_events(ticker);
+        let stop = || REACH_TURN.load(Ordering::SeqCst) != turn;
+        work(&owd_shell::reach::Reporting::new(
+            &owd_cli::reach_fetch::HttpFetch,
+            &report,
+            &stop,
+        ))
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    if REACH_TURN.load(Ordering::SeqCst) != turn {
+        return Err("cancelled".into());
+    }
+    out
+}
+
 /// Plan the reach and start a new study from it. Asks first when the design has unsaved changes.
 #[tauri::command]
 async fn reach_route(
@@ -722,18 +782,10 @@ async fn reach_route(
         return Ok(serde_json::Value::Null);
     }
     let at = reach_endpoints();
-    let plan = tauri::async_runtime::spawn_blocking(move || {
-        owd_shell::reach::plan_reach(
-            &owd_cli::reach_fetch::HttpFetch,
-            &at,
-            river.as_deref(),
-            start,
-            end,
-            &via,
-        )
+    let plan = watched(&app, move |f| {
+        owd_shell::reach::plan_reach(f, &at, river.as_deref(), start, end, &via)
     })
-    .await
-    .map_err(|e| e.to_string())??;
+    .await?;
     let mut guard = lock(&state)?;
     guard.start_reach(plan, &today())?;
     finish(&window, &guard)
@@ -771,11 +823,10 @@ async fn reach_river(
         return Ok(serde_json::Value::Null);
     }
     let at = reach_endpoints();
-    let river = tauri::async_runtime::spawn_blocking(move || {
-        owd_shell::reach::read_river(&owd_cli::reach_fetch::HttpFetch, &at, &osm_id, &also)
+    let river = watched(&app, move |f| {
+        owd_shell::reach::read_river(f, &at, &osm_id, &also)
     })
-    .await
-    .map_err(|e| e.to_string())??;
+    .await?;
     let mut guard = lock(&state)?;
     guard.start_river(river, search.as_deref(), &today())?;
     finish(&window, &guard)
@@ -803,7 +854,7 @@ fn reach_cut(
 /// Draw the reach of an opened study again: its route is planned once more from OSM (#318). The
 /// document is not changed.
 #[tauri::command]
-async fn reach_restore(window: Window, state: State<'_, Shared>) -> Reply {
+async fn reach_restore(app: AppHandle, window: Window, state: State<'_, Shared>) -> Reply {
     let doc = {
         let guard = lock(&state)?;
         if !guard.reach_needs_restore() {
@@ -812,11 +863,7 @@ async fn reach_restore(window: Window, state: State<'_, Shared>) -> Reply {
         guard.snapshot()["document"].clone()
     };
     let at = reach_endpoints();
-    let restored = tauri::async_runtime::spawn_blocking(move || {
-        owd_shell::reach::plan_restore(&owd_cli::reach_fetch::HttpFetch, &at, &doc)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
+    let restored = watched(&app, move |f| owd_shell::reach::plan_restore(f, &at, &doc)).await?;
     let mut guard = lock(&state)?;
     guard.restore_reach(restored)?;
     finish(&window, &guard)
@@ -851,31 +898,24 @@ fn reach_add_tile(app: AppHandle, window: Window, state: State<Shared>) -> Reply
 /// result unless Cancel came first.
 #[tauri::command]
 async fn reach_step(
+    app: AppHandle,
     window: Window,
     state: State<'_, Shared>,
     step: String,
     percentile: Option<f64>,
 ) -> Reply {
-    use std::sync::atomic::Ordering;
     let step = owd_shell::reach::ReachStep::of(&step, percentile)?;
-    let turn = REACH_TURN.load(Ordering::SeqCst);
     let job = lock(&state)?.begin_reach(step)?;
     let at = reach_endpoints();
     let date = today();
-    let job = tauri::async_runtime::spawn_blocking(move || {
-        job.run(&owd_cli::reach_fetch::HttpFetch, &at, &date)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-    if REACH_TURN.load(Ordering::SeqCst) != turn {
-        return Err("cancelled".into());
-    }
+    let job = watched(&app, move |f| job.run(f, &at, &date)).await?;
     let mut guard = lock(&state)?;
     guard.keep_reach(job)?;
     finish(&window, &guard)
 }
 
-/// Cancel the reach step that is running: its result is dropped.
+/// Cancel the network work that is running (a route, a reach step, a DEM fetch): it stops before
+/// its next request, and its result is dropped.
 #[tauri::command]
 fn reach_cancel() {
     REACH_TURN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);

@@ -89,6 +89,8 @@ fn a_box_makes_a_dem_marked_default_with_the_copernicus_notice() {
         "--json",
     ]);
     assert_eq!(o.status.code(), Some(0), "{}", err(&o));
+    // The CLI says what it is doing, as the app's status line does (#320).
+    assert!(err(&o).contains("fetching DEM tile 1 of 1"), "{}", err(&o));
     let d = read_doc(&doc);
     assert_eq!(d["inputs"]["dem"]["source"]["tiles"][0]["name"], TILE);
     assert_eq!(d["provenance"]["dem"]["source"], "cop-dem-glo30");
@@ -182,4 +184,37 @@ fn the_web_path_gives_the_same_dem_as_the_native_fetch() {
     let tiles: Vec<DemTile> = want;
     let web = write_geotiff(&dem_from_tiles(&dropped, &tiles).unwrap()).unwrap();
     assert_eq!(web, native);
+}
+
+#[test]
+fn a_stopped_fetch_leaves_the_document_as_it_was() {
+    let dir = work_dir("stopped");
+    let doc = dir.join("study.owd").to_str().unwrap().to_string();
+    assert_eq!(
+        run(&["new", &doc, "--title", "Box", "--date", "2026-10-21"])
+            .status
+            .code(),
+        Some(0)
+    );
+    let before = std::fs::read(&doc).unwrap();
+    let seen = std::cell::RefCell::new(Vec::new());
+    let report = |s: &owd_reach::Step| seen.borrow_mut().push(s.line());
+    let r = owd_cli::commands::fetch_dem_watched(
+        &doc,
+        0.0,
+        Some(&recorded_mirror()),
+        Some("-2.58,5.50,-2.56,5.52"),
+        true,
+        &owd_cli::fetch::Mirror,
+        &report,
+        &|| true,
+    );
+    let e = r.unwrap_err();
+    assert!(e.message.contains("cancelled"), "{}", e.message);
+    assert_eq!(
+        std::fs::read(&doc).unwrap(),
+        before,
+        "the document is unchanged"
+    );
+    assert!(seen.borrow().is_empty(), "stopped before the first tile");
 }

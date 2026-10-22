@@ -598,7 +598,14 @@ pub fn level_from_sources(
         sword_record,
         [b[0] - m, b[1] - m, b[2] + m, b[3] + m],
     )?;
+    let asked = std::cell::Cell::new(0);
     let observations = |id: &str| -> Result<Vec<Observation>, ReachError> {
+        asked.set(asked.get() + 1);
+        fetch.progress(&crate::fetch::Step::new(
+            asked.get(),
+            reaches.len(),
+            "SWOT levels for SWORD reach",
+        ));
         parse_hydrocron(&fetch.get(&hydrocron_url(hydrocron, id, dates.0, dates.1))?)
     };
     default_level(

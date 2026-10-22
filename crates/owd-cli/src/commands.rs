@@ -1092,7 +1092,8 @@ fn parse_bbox(s: &str) -> core::result::Result<[f64; 4], Failure> {
     Ok([w, so, e, n])
 }
 
-/// `fetch-dem` with the fetcher given, so a test can serve a recorded response.
+/// `fetch-dem` with the fetcher given, so a test can serve a recorded response. Progress prints on
+/// stderr.
 pub fn fetch_dem_with(
     doc: &str,
     margin: f64,
@@ -1100,6 +1101,32 @@ pub fn fetch_dem_with(
     bbox: Option<&str>,
     json_mode: bool,
     fetcher: &dyn crate::fetch::Fetcher,
+) -> Result {
+    let report = crate::reach_fetch::stderr_reporter();
+    fetch_dem_watched(
+        doc,
+        margin,
+        mirror,
+        bbox,
+        json_mode,
+        fetcher,
+        &report,
+        &|| false,
+    )
+}
+
+/// `fetch-dem` reporting each tile to `report`, and stopping before the next tile once `stop` says
+/// so (#320). The document is written only at the end, so a stopped fetch leaves it as it was.
+#[allow(clippy::too_many_arguments)]
+pub fn fetch_dem_watched(
+    doc: &str,
+    margin: f64,
+    mirror: Option<&str>,
+    bbox: Option<&str>,
+    json_mode: bool,
+    fetcher: &dyn crate::fetch::Fetcher,
+    report: &dyn Fn(&owd_reach::Step),
+    stop: &dyn Fn() -> bool,
 ) -> Result {
     use owd_format::design::dem_source::{
         COPERNICUS_NOTICE, DEFAULT_MIRROR, SOURCE_NAME, mosaic, tiles_for, write_geotiff,
@@ -1175,7 +1202,12 @@ pub fn fetch_dem_with(
     let mut dems = Vec::new();
     let mut fetched = 0;
     let mut withheld: Vec<owd_format::design::dem_source::TileId> = Vec::new();
-    for (t, rel, path, found) in plan {
+    let total = plan.len();
+    for (i, (t, rel, path, found)) in plan.into_iter().enumerate() {
+        if stop() {
+            return Err(input_error("cancelled: the channel design is as it was"));
+        }
+        report(&owd_reach::Step::new(i + 1, total, "fetching DEM tile"));
         let bytes = match found {
             Some(b) => b,
             None => {
@@ -1702,7 +1734,9 @@ pub fn reach(flags: ReachFlags) -> Result {
             .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
         dropped = dropped.with_file(&name, bytes);
     }
-    let http = crate::reach_fetch::HttpFetch;
+    let report = crate::reach_fetch::stderr_reporter();
+    let never = || false;
+    let http = owd_reach::Reporting::new(&crate::reach_fetch::HttpFetch, &report, &never);
     let jrc: &dyn owd_reach::Fetch = if flags.jrc_tile.is_empty() {
         &http
     } else {

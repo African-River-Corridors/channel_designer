@@ -12,7 +12,7 @@ import path from "node:path";
 import { remote } from "webdriverio";
 import { serve } from "./web-server.mjs";
 import { reportEngineHost } from "./report-engine-hosts.mjs";
-import { endpoints, searches, serveReach } from "./reach-server.mjs";
+import { endpoints, searches, serveReach, slow } from "./reach-server.mjs";
 import { compare } from "../../tools/web_parity_compare.mjs";
 
 const here = import.meta.dirname;
@@ -318,6 +318,41 @@ describe("OWD web smoke tests", () => {
     const route = (await pageDoc(b)).provenance.route;
     assert.equal(route.settings.river_search.source, "osm-nominatim");
     assert.equal(route.settings.osm_id, "relation/3328713");
+  });
+
+  it("shows what a long step is doing, with a bar, the time and Cancel, which leaves the study as it was", async () => {
+    const b = await start({ args: ["--headless=new", "--no-sandbox", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--window-size=1500,950"] });
+    await b.url(`${origin}/owd/app`);
+    await loaded(b);
+    await b.execute(async (at) => window.__owdPlatform.call("set_reach_endpoints", { endpoints: at }), endpoints(reach.origin));
+    await (await tid(b, "start-from-river")).click();
+    await (await tid(b, "reach-start")).setValue("-6.0715, 4.966");
+    await (await tid(b, "reach-end")).setValue("-6.07, 4.983");
+    try {
+      slow(300);
+      await (await tid(b, "reach-route")).click();
+      await until(b, "the route's status", async () => exists(b, "reach-status"));
+      assert.match(await text(b, "reach-progress"), /Finding the route/);
+      await until(b, "the route", async () => (await exists(b, "reach-length")) && /km/.test(await text(b, "reach-length")));
+      const tile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "owd-jrc-")), "occurrence_10W_10Nv1_4_2021.tif");
+      fs.copyFileSync(path.resolve(here, "../../examples/reach/jrc_occurrence_sassandra_estuary.tif"), tile);
+      await pick(b, async () => (await tid(b, "reach-add-tile")).click(), tile);
+      await until(b, "the tile given", async () => (await (await tid(b, "reach-jrc-occurrence_10W_10Nv1_4_2021.tif")).getAttribute("data-given")) === "true");
+      const before = await pageDoc(b);
+      await (await tid(b, "reach-generate")).click();
+      await until(b, "a request named in the status line", async () => (await exists(b, "reach-now")) && /\(request \d+\)/.test(await text(b, "reach-now")), 30000);
+      assert.match(await text(b, "reach-progress"), /Step 1 of \d+: /);
+      assert.match(await text(b, "reach-elapsed"), /^\d+:\d\d$/);
+      assert.ok(await exists(b, "reach-bar"));
+      await (await tid(b, "reach-cancel")).click();
+      await until(b, "the status gone", async () => !(await exists(b, "reach-status")), 30000);
+      assert.match(await text(b, "error"), /cancelled/i);
+      const after = await pageDoc(b);
+      assert.deepEqual(after.provenance, before.provenance, "Cancel leaves the study as it was");
+      assert.equal(after.inputs?.left_bank, before.inputs?.left_bank);
+    } finally {
+      slow(0);
+    }
   });
 
   it("starts a study from a river: route, inputs with badges, a depth, the class table, and Use this vessel", async () => {

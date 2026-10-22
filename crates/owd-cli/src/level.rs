@@ -32,9 +32,11 @@ pub struct Endpoints<'a> {
 }
 
 pub fn water_level(flags: LevelFlags) -> Result {
+    let report = crate::reach_fetch::stderr_reporter();
+    let never = || false;
     water_level_with(
         flags,
-        &crate::reach_fetch::HttpFetch,
+        &owd_reach::Reporting::new(&crate::reach_fetch::HttpFetch, &report, &never),
         &Endpoints {
             sword_record: owd_reach::sword::RECORD_API,
             hydrocron: HYDROCRON_ENDPOINT,

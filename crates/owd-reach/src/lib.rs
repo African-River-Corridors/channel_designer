@@ -29,5 +29,5 @@ pub mod water;
 pub mod zip;
 
 pub use error::ReachError;
-pub use fetch::{DroppedFiles, Fetch, FetchError, ReplayFetch};
+pub use fetch::{DroppedFiles, Fetch, FetchError, ReplayFetch, Reporting, Step};
 pub use sources::{Source, registry, source};
