@@ -206,3 +206,38 @@ fn an_opened_study_routed_from_points_is_planned_again_from_its_points() {
         .unwrap();
     assert_eq!(opened.snapshot()["reach_view"]["route"], before);
 }
+
+#[test]
+fn a_study_from_a_river_is_named_by_date_river_and_kilometres_from_the_mouth() {
+    let f = fetch();
+    let river = read_river(&f, &endpoints(), "relation/3328713", &[]).unwrap();
+    let mut s = AppState::new_design("t", "2026-10-22");
+    s.start_river(river, Some("osm-photon"), "2026-10-22")
+        .unwrap();
+    assert_eq!(
+        s.study_folder_name("2026-10-22").unwrap(),
+        "2026-10-22 Ankobra River km 0-166"
+    );
+    // A reach cut from a point up the river to the far end starts at that point's kilometre.
+    let line = s.snapshot()["reach_view"]["river"]["line"].clone();
+    let line = line.as_array().unwrap();
+    let mid = &line[line.len() / 2];
+    let mid = [mid[0].as_f64().unwrap(), mid[1].as_f64().unwrap()];
+    s.reach_cut(mid, [-2.1349229, 5.7294889], &[], "2026-10-22")
+        .unwrap();
+    let name = s.study_folder_name("2026-10-22").unwrap();
+    let km: Vec<f64> = name
+        .rsplit(' ')
+        .next()
+        .unwrap()
+        .split('-')
+        .map(|k| k.parse().unwrap())
+        .collect();
+    assert!(km[0] > 40.0 && km[0] < 130.0, "{name}");
+    assert_eq!(km[1], 166.0, "{name}");
+    assert!(
+        AppState::new_design("t", "2026-10-22")
+            .study_folder_name("2026-10-22")
+            .is_none()
+    );
+}

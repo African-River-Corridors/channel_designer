@@ -264,7 +264,7 @@ impl AppState {
         self.dem.clone()
     }
 
-    pub(crate) fn refuse_while_running(&self) -> Result<(), String> {
+    pub fn refuse_while_running(&self) -> Result<(), String> {
         match &self.running {
             Some((stage, _)) => Err(format!(
                 "the {} stage is running: wait for it, or press Cancel",

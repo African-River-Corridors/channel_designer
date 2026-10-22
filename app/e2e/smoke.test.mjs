@@ -17,6 +17,7 @@ const APP = path.resolve(here, process.env.CD_APP_BINARY ?? "../../target/debug/
 const DIALOGS = process.env.CD_TEST_DIALOG_DIR;
 assert.ok(DIALOGS, "CD_TEST_DIALOG_DIR must be set (run e2e/run.sh)");
 const WORK = fs.mkdtempSync(path.join(os.tmpdir(), "cd-e2e-work-"));
+const PROJECTS = path.join(WORK, "projects");
 
 const answer = (file, text) => fs.writeFileSync(path.join(DIALOGS, file), text);
 const forget = (file) => fs.rmSync(path.join(DIALOGS, file), { force: true });
@@ -178,7 +179,9 @@ describe("Open Waterway Designer app smoke test", () => {
   });
 
   beforeEach(() => {
-    for (const f of ["open.txt", "save.txt", "discard.txt", "load.txt", "export.txt", "sheets.txt", "report.txt", "qa.txt", "jrc.txt", "reach-endpoints.json"]) forget(f);
+    for (const f of ["open.txt", "save.txt", "discard.txt", "load.txt", "export.txt", "sheets.txt", "report.txt", "qa.txt", "jrc.txt", "reach-endpoints.json", "dem-mirror.txt"]) forget(f);
+    // Studies from a river save themselves here, not in the runner's home (#322).
+    answer("projects.txt", PROJECTS);
   });
 
   it("shows the screening label on its status line from the start", async () => {
@@ -568,6 +571,13 @@ describe("Open Waterway Designer app smoke test", () => {
       assert.deepEqual(searches.slice(before), ["Ank"], "one request per pause, none under 3 letters");
       await (await browser.$(`${ankobra} button`)).click();
       await until("the whole river", async () => /km/.test((await text("reach-length").catch(() => "")) ?? ""), 60000);
+      // Saved at once in its own folder, with no dialog (#322).
+      const today = new Date().toISOString().slice(0, 10);
+      const studies = () => (fs.existsSync(PROJECTS) ? fs.readdirSync(PROJECTS).filter((d) => d.includes("Ankobra River")) : []);
+      await until("the study's folder", async () => studies().length === 1);
+      assert.deepEqual(studies(), [`${today} Ankobra River km 0-166`]);
+      assert.ok(fs.existsSync(path.join(PROJECTS, studies()[0], `${studies()[0]}.owd`)));
+      assert.doesNotMatch(await fileLabel(), /\(unsaved\)/);
       assert.equal(await (await browser.$("[data-testid=reach-start]")).getValue(), "-2.26885, 4.89839");
       assert.equal(await (await browser.$("[data-testid=reach-end]")).getValue(), "-2.13492, 5.72949");
       const whole = Number((await text("reach-length")).match(/([\d.]+) km/)[1]);
@@ -576,6 +586,19 @@ describe("Open Waterway Designer app smoke test", () => {
       await (await browser.$("[data-testid=reach-route]")).click();
       await until("the shorter reach", async () => Number((await text("reach-length")).match(/([\d.]+) km/)[1]) < whole);
       assert.equal(searches.length, asked);
+      // The study held only its reach: its folder follows the new kilometres, and no other is left.
+      await until("the folder renamed", async () => studies().length === 1 && !studies()[0].endsWith("km 0-166"));
+      assert.match(studies()[0], /^\d{4}-\d{2}-\d{2} Ankobra River km 0-\d+$/);
+      // A reach inside one DEM tile: Fetch DEM saves into the study's folder and never asks first.
+      await (await browser.$("[data-testid=reach-start]")).setValue("-2.1533567, 5.3025015");
+      await (await browser.$("[data-testid=reach-end]")).setValue("-2.1349229, 5.7294889");
+      await (await browser.$("[data-testid=reach-route]")).click();
+      await until("the upper reach", async () => /km \d+-166$/.test(studies()[0] ?? ""), 30000);
+      answer("dem-mirror.txt", path.resolve(here, "../../crates/owd-cli/tests/fixtures/mirror"));
+      await (await browser.$("[data-testid=reach-fetch-dem]")).click();
+      const study = () => path.join(PROJECTS, studies()[0], `${studies()[0]}.owd`);
+      await until("the DEM in the study", async () => fs.existsSync(study()) && fs.readFileSync(study(), "utf8").includes("cop-dem-glo30"), 60000);
+      assert.ok(fs.readdirSync(path.dirname(study())).length > 1, "the DEM's files are in the study's folder");
       // Typing again lets go of the river: the next route is planned from clicks, as before. The
       // desktop driver refuses empty text, so the box is cleared with an input event.
       await browser.execute((el) => {
