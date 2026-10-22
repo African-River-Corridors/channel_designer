@@ -629,6 +629,85 @@ pub fn enforce_min_radius(
     (o, passes, rmin)
 }
 
+/// The most passes [`open_bends`] makes on one corridor. Provisional: a 3 km meander at a 50 m
+/// station step settles in far fewer.
+pub const OPEN_BENDS_PASSES: i64 = 5000;
+
+/// The share of a station's own radius it may move towards its centre of curvature in
+/// [`open_bends`]: past the centre, the normals cross and the line folds. Provisional.
+pub const FOLD_FRACTION: f64 = 0.9;
+
+/// Laplacian passes on the built **line** (issue #381), not on the offsets: each station moves
+/// along its own normal by the normal part of `0.25 (p[i-1] + p[i+1]) - 0.5 p[i]`, within
+/// `±corridor_half` and short of its centre of curvature ([`FOLD_FRACTION`]). The ends are tapered
+/// by the range, not by the offsets: within `taper_stations` of an end the room grows from 0 (the
+/// end on the baseline) to the whole corridor. (Multiplying the offsets on every pass, as
+/// [`enforce_min_radius`] does, pulls them back to the baseline and keeps a bend near an end.) Its fixed point is the straightest line the corridor
+/// holds, so it opens a bend tighter than R_min where the corridor leaves room; a pass on the
+/// offsets keeps the baseline's own bends. Returns `(offsets, passes, min_r)`; stops when the
+/// measured min radius clears `target_r`, or after `max_iter` passes.
+pub fn open_bends(
+    offset_vals: &[f64],
+    centres: &[Pt],
+    normals: &[Pt],
+    target_r: f64,
+    corridor_half: f64,
+    max_iter: i64,
+    taper_stations: i64,
+) -> (Vec<f64>, i64, f64) {
+    let n = offset_vals.len();
+    let rho = radii(centres);
+    let beta = baseline_turn_angles(centres);
+    // The bounds: the corridor, and short of the centre of curvature on the inside of a bend
+    // (the side the baseline turns to: +normal for a left turn, as in `offset_bounds`).
+    let (lo, hi): (Vec<f64>, Vec<f64>) = (0..n)
+        .map(|i| {
+            let fold = if rho[i].is_finite() {
+                FOLD_FRACTION * rho[i]
+            } else {
+                f64::INFINITY
+            };
+            let k = i.min(n - 1 - i) as f64;
+            let room = if taper_stations > 0 {
+                corridor_half * (k / taper_stations as f64).min(1.0)
+            } else {
+                corridor_half
+            };
+            let (mut a, mut b) = (-room, room);
+            if beta[i] > 1e-6 {
+                b = b.min(fold);
+            } else if beta[i] < -1e-6 {
+                a = a.max(-fold);
+            }
+            (a, b)
+        })
+        .unzip();
+    let mut o = offset_vals.to_vec();
+    let mut passes = 0;
+    let mut rmin = min_radius_of(centres, normals, &o);
+    for _ in 0..max_iter {
+        if rmin >= target_r - 1e-6 {
+            break;
+        }
+        let p = build_line_from_offsets(centres, normals, &o);
+        let mut next = o.clone();
+        for i in 1..n.saturating_sub(1) {
+            let d = [
+                0.25 * (p[i - 1][0] + p[i + 1][0]) - 0.5 * p[i][0],
+                0.25 * (p[i - 1][1] + p[i + 1][1]) - 0.5 * p[i][1],
+            ];
+            let moved = o[i] + d[0] * normals[i][0] + d[1] * normals[i][1];
+            next[i] = moved.max(lo[i]).min(hi[i]);
+        }
+        next[0] = next[0].max(lo[0]).min(hi[0]);
+        next[n - 1] = next[n - 1].max(lo[n - 1]).min(hi[n - 1]);
+        o = next;
+        rmin = min_radius_of(centres, normals, &o);
+        passes += 1;
+    }
+    (o, passes, rmin)
+}
+
 /// Grid-approx cost of `ovals` vs the baseline (offset 0 everywhere), as a percentage.
 pub fn approx_saving_pct(grid: &CostGrid, cost: &[Vec<f64>], ovals: &[f64]) -> f64 {
     let k = grid.offsets.len();
@@ -708,14 +787,31 @@ pub fn solve_at_corridor_fair(
     let beta = baseline_turn_angles(&grid.centres);
     let chosen: Vec<f64> = path.iter().map(|&j| offsets[j]).collect();
     let sm = smooth_offsets(&chosen, grid.station_step / r_min, &beta, grid.station_step);
-    let (sm, passes, rmin) = enforce_min_radius(
-        &sm,
-        &grid.centres,
-        &grid.normals,
-        (1.0 - RADIUS_TOL) * r_min,
-        600,
-        8,
-    );
+    let target = (1.0 - RADIUS_TOL) * r_min;
+    let (sm, passes, rmin) = enforce_min_radius(&sm, &grid.centres, &grid.normals, target, 600, 8);
+    // Issue #381: where the passes on the offsets cannot reach R_min (a baseline tighter than
+    // R_min), open the bends on the line itself, within this corridor. A line that already holds
+    // R_min is not touched.
+    let (sm, passes, rmin) = if rmin < target - 1e-6 {
+        let (o, more, r) = open_bends(
+            &sm,
+            &grid.centres,
+            &grid.normals,
+            target,
+            corridor_half,
+            OPEN_BENDS_PASSES,
+            8,
+        );
+        // It reads no cost, so it must not cut more of a protected bank than the line it starts
+        // from; if it would, the line stays as the passes on the offsets left it (and fails).
+        if grid.protected_cut(&o) <= grid.protected_cut(&sm) {
+            (o, passes + more, r)
+        } else {
+            (sm, passes, rmin)
+        }
+    } else {
+        (sm, passes, rmin)
+    };
     let sav = approx_saving_pct(grid, cost, &sm);
     Ok((sm, passes, rmin, sav))
 }
@@ -913,6 +1009,79 @@ mod tests {
             optimise_route(&grid, &bad).unwrap_err().message,
             "check_chord_m must be finite and positive."
         );
+    }
+
+    /// A sine meander (amplitude `amp`, wavelength 1500 m, over 3000 m, a station every 50 m) on
+    /// flat cost: its tightest bend is 1500² / (4π² amp), so 285 m at 200 m amplitude. Offsets run
+    /// ±`half` every 10 m.
+    fn meander_grid(amp: f64, half: f64) -> CostGrid {
+        let k = core::f64::consts::TAU / 1500.0;
+        let n = 61;
+        let centres: Vec<Pt> = (0..n)
+            .map(|i| {
+                let x = 50.0 * i as f64;
+                [x, amp * libm::sin(k * x)]
+            })
+            .collect();
+        let normals: Vec<Pt> = (0..n)
+            .map(|i| {
+                let x = 50.0 * i as f64;
+                let (dx, dy) = (1.0, amp * k * libm::cos(k * x));
+                let l = libm::hypot(dx, dy);
+                [-dy / l, dx / l]
+            })
+            .collect();
+        let m = (2.0 * half / 10.0) as usize + 1;
+        CostGrid {
+            offsets: (0..m).map(|j| -half + 10.0 * j as f64).collect(),
+            stations_m: (0..n).map(|i| 50.0 * i as f64).collect(),
+            centres,
+            normals,
+            grades: vec![0.0; n],
+            vol: vec![vec![1.0; m]; n],
+            wet: vec![vec![1.0; m]; n],
+            protected: vec![],
+            station_step: 50.0,
+            offset_step: 10.0,
+        }
+    }
+
+    fn meander_route(grid: &CostGrid, sweep: Vec<f64>) -> RouteResult {
+        optimise_route(
+            grid,
+            &RouteParams {
+                r_min: 600.0,
+                wet_weight: 1.0,
+                dry_weight: 1.0,
+                corridor_sweep: sweep,
+                check_chord_m: None,
+                fairness_weight: 0.0,
+            },
+        )
+        .unwrap()
+    }
+
+    /// Issue #381: on a baseline tighter than R_min, a corridor wide enough to open the bends gives
+    /// a line that holds R_min. Before, the Laplacian passes on the offsets kept the baseline's
+    /// own bends (their fixed point is a constant offset), and the option failed.
+    #[test]
+    fn a_wide_enough_corridor_opens_a_tight_baseline_to_r_min() {
+        let r = meander_route(&meander_grid(200.0, 200.0), vec![200.0]);
+        assert!(
+            r.radius_ok,
+            "measured {} on a {} m chord",
+            r.measured_min_radius_m, r.radius_check_chord_m
+        );
+        // The line stays inside the corridor.
+        assert!(r.offsets.iter().all(|o| o.abs() <= 200.0 + 1e-9));
+    }
+
+    /// When no corridor of the sweep leaves room, the route still fails, and says so.
+    #[test]
+    fn a_corridor_too_narrow_to_open_the_bends_still_fails_r_min() {
+        let r = meander_route(&meander_grid(200.0, 20.0), vec![20.0]);
+        assert!(!r.radius_ok, "{}", r.measured_min_radius_m);
+        assert!(r.offsets.iter().all(|o| o.abs() <= 20.0 + 1e-9));
     }
 
     /// Bending energy of a polyline: Σ (turn angle)² / (mean arm length), a discrete ∫κ² ds.
