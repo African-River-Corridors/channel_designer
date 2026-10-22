@@ -7,9 +7,10 @@ use owd_format::design::crs::Utm;
 use owd_format::design::provenance::Mark;
 use owd_reach::ReplayFetch;
 use owd_reach::level::{
-    Datum, LevelParams, Observation, Source, level_from_sources, never_rising, parse_hydrocron,
-    percentile, record_level,
+    Datum, LevelInputs, LevelParams, Observation, Source, default_level, level_from_sources,
+    never_rising, parse_hydrocron, percentile, record_level,
 };
+use owd_reach::sword::Reach;
 
 macro_rules! t {
     ($(#[$m:meta])* fn $n:ident() $b:block) => {
@@ -248,5 +249,102 @@ fn a_reach_hydrocron_does_not_know_gives_no_observations() {
     let body = br#"{"error": "400: Results with the specified Feature ID 1 were not found"}"#;
     assert!(parse_hydrocron(body).unwrap().is_empty());
     assert!(parse_hydrocron(b"{}").is_err());
+}
+}
+
+t! {
+fn a_dem_stretch_downstream_of_a_lower_swot_level_is_lowered_to_it() {
+    // Label: sourced - hand calculation (#280). A straight 10 km river flowing toward smaller
+    // chainage. SWOT gives 0.5 m on the reach at 0-3 km and 1.0 m on the reach at 7-10 km; the DEM
+    // reads 3.0 m everywhere, so the stretch between them (3-7 km) is filled from the DEM at 3.0 m,
+    // 2 m above the SWOT level just upstream of it. The level never rises downstream, so every DEM
+    // point there is lowered to 1.0 m, and each lowering is recorded.
+    let (x0, y0) = (400_000.0, 550_000.0);
+    let centre: Vec<[f64; 2]> = (0..=100).map(|k| [x0 + 100.0 * f64::from(k), y0]).collect();
+    let line = |a: f64, b: f64| -> Vec<[f64; 2]> {
+        (0..=10)
+            .map(|k| {
+                let x = x0 + a + (b - a) * f64::from(k) / 10.0;
+                UTM.inverse(x, y0).unwrap()
+            })
+            .collect()
+    };
+    let reach = |id: &str, a: f64, b: f64, dist_out_m: f64| Reach {
+        id: id.into(),
+        width_m: 400.0,
+        dist_out_m,
+        kind: 1,
+        name: "Test".into(),
+        line: line(a, b),
+    };
+    let reaches = [reach("down", 0.0, 3_000.0, 1_500.0), reach("up", 7_000.0, 10_000.0, 8_500.0)];
+    let observations = |id: &str| -> Result<Vec<Observation>, owd_reach::error::ReachError> {
+        let wse_m = if id == "down" { 0.5 } else { 1.0 };
+        Ok((0..3)
+            .map(|k| Observation {
+                time: format!("2024-01-0{}T00:00:00Z", k + 1),
+                wse_m,
+                geoid_m: 27.5,
+                quality: 0,
+            })
+            .collect())
+    };
+    let dem = |_: [f64; 2]| 3.0;
+    let l = default_level(
+        &centre,
+        UTM,
+        &reaches,
+        &LevelInputs { observations: &observations, dem: Some(&dem) },
+        &LevelParams::default(),
+        Datum::Egm2008,
+    )
+    .unwrap();
+    assert!(!l.downstream_is_increasing);
+    assert!(l.stretches.iter().any(|s| s.source == Source::Dem), "{:?}", l.stretches);
+    // Going up the chainage (upstream) the level never falls: it never rises downstream.
+    assert!(l.points.windows(2).all(|w| w[1][1] >= w[0][1]), "{:?}", l.points);
+    let swot_up = l.points.iter().find(|p| (p[0] - 8_500.0).abs() < 1.0).unwrap();
+    assert!((swot_up[1] - 1.0).abs() < 1e-12, "{swot_up:?}");
+    let filled: Vec<&[f64; 2]> =
+        l.points.iter().filter(|p| p[0] > 3_000.0 + 1.0 && p[0] < 7_000.0 - 1.0).collect();
+    assert!(filled.len() > 30, "{filled:?}");
+    assert!(filled.iter().all(|p| p[1] == 1.0), "{filled:?}");
+    // Each lowered level is in the profile's record, and in the water-level provenance.
+    assert_eq!(l.lowered.len(), filled.len());
+    assert!(l.lowered.iter().all(|w| w.was_m == 3.0 && w.now_m == 1.0));
+    let mut s = Session::new("Join test", "2026-10-22");
+    record_level(&mut s, &l, Mark::Default, None, "2026-10-22").unwrap();
+    let p = s.provenance("water_level").unwrap();
+    let rec = p["settings"]["lowered"].as_array().unwrap();
+    assert_eq!(rec.len(), filled.len());
+    assert_eq!(rec[0]["was_m"], 3.0);
+    assert_eq!(rec[0]["now_m"], 1.0);
+    assert_eq!(rec[0]["source"], "dem");
+    assert!(s.validate().is_empty(), "{:?}", s.validate());
+}
+}
+
+t! {
+fn the_recorded_sassandra_level_never_rises_toward_the_sea() {
+    // Label: property (#280). On the recorded lower Sassandra (the sea at chainage 0), with the
+    // narrow reaches taken from the DEM so SWOT and DEM stretches meet, no DEM level sits above the
+    // level just upstream of it: going up the chainage the level never falls into or out of a DEM
+    // stretch. Where one was lowered, the profile records it.
+    let p = LevelParams { min_swot_width_m: 320.0, ..LevelParams::default() };
+    let l = level(&p, Datum::Egm2008);
+    assert!(!l.downstream_is_increasing);
+    let in_dem = |c: f64| l.stretches.iter().any(|s| s.source == Source::Dem && c >= s.from_m && c <= s.to_m);
+    for w in l.points.windows(2) {
+        if in_dem(w[0][0]) {
+            assert!(w[1][1] >= w[0][1], "{w:?}");
+        }
+    }
+    // The DEM at 4.2 to 6.6 km reads 0.43 to 1.0 m, above reach 041's SWOT level just upstream.
+    assert!(!l.lowered.is_empty());
+    for w in &l.lowered {
+        let q = l.points.iter().find(|q| q[0] == w.chainage_m).unwrap();
+        assert_eq!(q[1], w.now_m);
+        assert!(w.was_m > w.now_m);
+    }
 }
 }

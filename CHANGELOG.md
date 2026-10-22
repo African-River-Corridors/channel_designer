@@ -5,6 +5,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **The default water level never rises downstream across a SWOT–DEM join (#280).** A DEM-filled stretch was
+  made never rising only within itself, so where it met a lower SWOT level just upstream, the level jumped up
+  going downstream (about 2.5 m at km 16.4 on the Sassandra). `owd water-level` now lowers each DEM level that
+  sits above the level just upstream of it to that level. SWOT levels are kept as observed. Each lowered level
+  is listed under `lowered` in the water-level provenance (chainage, the level before and after), and the
+  command says how many there were.
 - **Rolling-circle tangent exits (issue #5).** Each arc the rolling circle splices in now leaves the circle along
   a straight tangent to it, which meets the old line at a vertex with the old line's heading (circle, then
   straight, as in a Dubins path). Up to 0.2.0 the arc ended where the circle crossed the old line, which left a

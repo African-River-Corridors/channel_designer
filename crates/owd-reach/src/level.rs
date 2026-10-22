@@ -9,6 +9,8 @@
 //!    reach: the DEM water surface sampled on the centreline, made to never rise downstream (the
 //!    closest such profile in least squares: pool adjacent violators). Which way is downstream comes
 //!    from SWORD's distance to the outlet, else from the DEM.
+//! 4. Where a DEM level sits above the level just upstream of it, across a join with a SWOT level,
+//!    it is lowered to that level, and the provenance records it (#280).
 //!
 //! Datum: SWOT's `wse` is the height above the EGM2008 geoid that comes with each observation
 //! (`geoid_hght`, the geoid's height above the WGS84 ellipsoid). The Copernicus GLO-30 DEM is in
@@ -226,6 +228,17 @@ pub struct Stretch {
     pub why: Option<String>,
 }
 
+/// A level lowered so the whole profile never rises downstream (#280).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Lowered {
+    /// Where on the river centreline.
+    pub chainage_m: f64,
+    /// The level its source gave.
+    pub was_m: f64,
+    /// The level it was lowered to: the level just upstream of it.
+    pub now_m: f64,
+}
+
 /// The default level.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LevelProfile {
@@ -240,6 +253,9 @@ pub struct LevelProfile {
     pub datum: Datum,
     /// The dates of the first and last SWOT observation used (`YYYY-MM-DD`), if any.
     pub swot_dates: Option<(String, String)>,
+    /// The levels lowered so the whole profile never rises downstream, across the joins of SWOT and
+    /// DEM stretches.
+    pub lowered: Vec<Lowered>,
 }
 
 /// A SWORD reach placed on the centreline.
@@ -285,6 +301,39 @@ fn place<'a>(
     }
     out.sort_by(|a, b| a.from_m.total_cmp(&b.from_m));
     Ok(out)
+}
+
+/// Lower each DEM level that sits above the level just upstream of it, so the profile never rises
+/// downstream across the joins of SWOT and DEM stretches as well as within them (#280). A DEM
+/// stretch is made never rising on its own, so this only bites where it meets the level upstream of
+/// it. SWOT levels are kept as observed. `points` are by chainage; `dem` holds the chainages of the
+/// DEM levels.
+fn clamp_dem_joins(
+    points: &mut [(f64, f64)],
+    dem: &[f64],
+    downstream_is_increasing: bool,
+) -> Vec<Lowered> {
+    let mut order: Vec<usize> = (0..points.len()).collect();
+    if !downstream_is_increasing {
+        order.reverse();
+    }
+    let mut lowered = Vec::new();
+    let mut upstream = f64::INFINITY;
+    for i in order {
+        let (s, v) = points[i];
+        let is_dem = dem.contains(&s);
+        if is_dem && v > upstream {
+            points[i].1 = upstream;
+            lowered.push(Lowered {
+                chainage_m: s,
+                was_m: v,
+                now_m: upstream,
+            });
+        }
+        upstream = points[i].1;
+    }
+    lowered.sort_by(|a, b| a.chainage_m.total_cmp(&b.chainage_m));
+    lowered
 }
 
 /// What the level needs from outside: the observations of a reach, and the DEM water surface.
@@ -352,6 +401,7 @@ pub fn default_level(
     let mut dates: Vec<String> = Vec::new();
     let mut covered: Vec<(f64, f64)> = Vec::new();
     let mut fallback_why: Vec<(f64, f64, String)> = Vec::new();
+    let mut dem_at_points: Vec<f64> = Vec::new();
     for p in &placed {
         let obs: Vec<Observation> = (inputs.observations)(&p.reach.id)?
             .into_iter()
@@ -432,6 +482,7 @@ pub fn default_level(
         let levels: Vec<f64> = ordered.iter().map(|(_, v)| *v).collect();
         for ((s, _), v) in ordered.iter().zip(never_rising(&levels)) {
             points.push((*s, v));
+            dem_at_points.push(*s);
         }
         let (a, b) = (stations[start], stations[k - 1]);
         let why = fallback_why
@@ -456,6 +507,7 @@ pub fn default_level(
         ));
     }
     points.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let lowered = clamp_dem_joins(&mut points, &dem_at_points, downstream_is_increasing);
     stretches.sort_by(|a, b| a.from_m.total_cmp(&b.from_m));
     dates.sort();
     Ok(LevelProfile {
@@ -466,6 +518,7 @@ pub fn default_level(
         params: *params,
         datum,
         swot_dates: (!dates.is_empty()).then(|| (dates[0].clone(), dates[dates.len() - 1].clone())),
+        lowered,
     })
 }
 
@@ -568,6 +621,10 @@ pub fn record_level(
             }
             v
         }).collect::<Vec<_>>(),
+        "lowered": level.lowered.iter().map(|w| json!({
+            "chainage_m": w.chainage_m, "was_m": w.was_m, "now_m": w.now_m, "source": "dem",
+            "why": "above the level just upstream of it: the level never rises downstream",
+        })).collect::<Vec<_>>(),
         "provisional": ["percentile", "min_swot_width_m"],
     });
     let rec = record(

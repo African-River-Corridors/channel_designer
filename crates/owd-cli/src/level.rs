@@ -157,6 +157,12 @@ pub fn water_level_with(flags: LevelFlags, fetch: &dyn owd_reach::Fetch, at: &En
             s.why.as_deref().unwrap_or("")
         ));
     }
+    if !level.lowered.is_empty() {
+        human.push_str(&format!(
+            "\n  {} DEM level(s) lowered to the level just upstream, so the level never rises downstream (listed in the provenance)",
+            level.lowered.len()
+        ));
+    }
     if let Some((a, b)) = &level.swot_dates {
         human.push_str(&format!("\nSWOT observations from {a} to {b}"));
     }
@@ -178,6 +184,7 @@ pub fn water_level_with(flags: LevelFlags, fetch: &dyn owd_reach::Fetch, at: &En
             "percentile": params.percentile, "datum": datum.name(), "mark": if mark == Mark::Default { "default" } else { "user" },
             "swot_reaches": swot.iter().map(|(id, n, a, b)| json!({"sword_reach": id, "observations": n, "from_m": a, "to_m": b})).collect::<Vec<_>>(),
             "dem_stretches": dem_stretches,
+            "lowered": level.lowered.len(),
             "swot_dates": level.swot_dates.as_ref().map(|(a, b)| format!("{a}/{b}")),
             "downstream_is_increasing": level.downstream_is_increasing,
         }),
