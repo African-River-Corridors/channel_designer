@@ -378,6 +378,10 @@ describe("Open Waterway Designer app smoke test", () => {
     await browser.execute((el) => el.click(), remove);
     await until("one set again", async () => !(await text("shape-rule-sets")).includes("gb50139"));
     await until("volumes to go stale", async () => (await text("status-volumes")) === "stale");
+    // Back to the options tab, as the next tests expect: the tab stays as picked across files.
+    const options = await browser.$("[data-testid=tab-options]");
+    await browser.execute((el) => el.click(), options);
+    await until("the options tab", async () => (await options.getAttribute("aria-selected")) === "true");
   });
   it("sorts a failing option first with a red mark and its numbers, and selecting a row selects the option on the map", async () => {
     // Two options in the document, the passing one first. The failing one reads 222 m against R_min 330 m.
