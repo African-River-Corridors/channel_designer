@@ -484,8 +484,8 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Make the reports of a design (spec 0014): the screening report, as PDF, HTML and Word, through
-    /// the Open Report Designer. Each report has document control, the screening notice on every page
+    /// Make the reports of a design (spec 0014): the screening report, the quantity schedule, the
+    /// section pack and the run report, as PDF, HTML and Word, through the Open Report Designer. Each report has document control, the screening notice on every page
     /// and a "Data and limits" box. Files are named after the document number, in lower case.
     Report {
         /// The channel design. `-` is stdin.
