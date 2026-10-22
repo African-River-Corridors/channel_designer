@@ -137,6 +137,20 @@ impl Session {
         Ok(())
     }
 
+    /// The line the assumed bed is centred on, when it is not the centreline: a fresh reference
+    /// line (#398).
+    pub(super) fn bed_axis_line(&self) -> Option<Vec<Pt>> {
+        (self.reference_line_status() == StageStatus::Fresh)
+            .then(|| self.reference_line())
+            .flatten()
+    }
+
+    /// What [`Session::bed_axis_line`] was made from, for the hashes of what reads the bed.
+    pub(super) fn bed_axis_hash(&self) -> Option<Value> {
+        self.bed_axis_line()
+            .map(|_| self.doc["inputs"]["reference_line"]["depends_on"].clone())
+    }
+
     /// The reference line, made again first when it is missing or stale.
     pub fn fresh_reference_line(&mut self) -> Result<Vec<Pt>, DesignError> {
         if self.reference_line_status() != StageStatus::Fresh {

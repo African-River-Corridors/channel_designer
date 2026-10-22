@@ -116,9 +116,13 @@ impl Session {
             )
         })?;
         let centre = self.river_centreline()?;
-        BedModel::new(&table, &centre, &water)
-            .map(Some)
-            .map_err(|e| DesignError::Input(e.message))
+        // The parabola is centred on a fresh reference line (#398): the centreline wiggles, and a
+        // line off it would read the assumed bed as shallower than the river's middle.
+        let bed = match self.bed_axis_line() {
+            Some(axis) => BedModel::with_axis(&table, &centre, &axis, &water),
+            None => BedModel::new(&table, &centre, &water),
+        };
+        bed.map(Some).map_err(|e| DesignError::Input(e.message))
     }
 
     /// The water level the bed hangs from: the river's own profile (not the pools of the optimise
