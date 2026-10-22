@@ -126,6 +126,7 @@ pub fn choices(
 }
 
 /// Run the answer (or, with `show`, print the stored one) and write the document back.
+#[allow(clippy::too_many_arguments)]
 pub fn fits(
     doc: &str,
     choices: &[String],
