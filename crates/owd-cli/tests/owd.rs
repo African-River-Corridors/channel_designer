@@ -388,8 +388,8 @@ fn exit_code_1_is_a_failed_check() {
     let dir = work_dir("exit1");
     let doc = build(&dir);
     let text = std::fs::read_to_string(&doc).unwrap().replacen(
-        "\"format_version\": 3",
-        "\"format_version\": \"3\"",
+        "\"format_version\": \"0.4\"",
+        "\"format_version\": \"three\"",
         1,
     );
     std::fs::write(&doc, text).unwrap();

@@ -1,5 +1,6 @@
 //! The `owd` subcommands. File, stdin, stdout and clock access live here.
 
+use owd_core::rules::custom::{CustomVessel, Formation};
 use owd_format::design::alignment::WIDTH_ONLY;
 use owd_format::design::export::{failed_checks, no_feasible_line, notes_of};
 use owd_format::design::geopackage;
@@ -334,6 +335,46 @@ pub struct SizeFlags {
     pub files: Vec<String>,
     pub vessel: Option<String>,
     pub draught: Option<f64>,
+    /// `--custom-vessel NAME` and its fields (spec 0015 T1).
+    pub custom: Option<CustomFlags>,
+}
+
+/// The flags of a custom vessel; `--draught` is its draught.
+pub struct CustomFlags {
+    pub name: String,
+    pub loa: Option<f64>,
+    pub beam: Option<f64>,
+    pub formation: Option<String>,
+    pub abreast: Option<u32>,
+    pub in_line: Option<u32>,
+    pub gb_class: Option<String>,
+    pub air_draught: Option<f64>,
+    pub deadweight: Option<f64>,
+}
+
+impl CustomFlags {
+    /// The custom vessel, or the flag it lacks.
+    fn vessel(self, draught: Option<f64>) -> core::result::Result<CustomVessel, Failure> {
+        let need = |x: Option<f64>, flag: &str| {
+            x.ok_or_else(|| input_error(format!("--custom-vessel needs {flag}")))
+        };
+        let formation = self
+            .formation
+            .ok_or_else(|| input_error("--custom-vessel needs --formation (motor or convoy)"))?;
+        Ok(CustomVessel {
+            name: self.name,
+            loa_m: need(self.loa, "--loa")?,
+            beam_m: need(self.beam, "--beam")?,
+            draught_m: need(draught, "--draught")?,
+            formation: Formation::parse(&formation)
+                .map_err(|e| input_error(format!("--formation: {}", e.raw_message())))?,
+            n_abreast: self.abreast,
+            n_in_line: self.in_line,
+            gb_class: self.gb_class,
+            air_draught_m: self.air_draught,
+            deadweight_t: self.deadweight,
+        })
+    }
 }
 
 /// Load each Rule Set file into the session, through the loader the built-in sets take.
@@ -353,16 +394,36 @@ pub fn size(doc: &str, flags: SizeFlags, output: &Option<String>, json_mode: boo
     let mut session = open(doc)?;
     load_rule_set_files(&mut session, &flags.files)?;
     let settings = &session.document()["stages"]["sizing"]["settings"];
-    let vessel = match (&flags.vessel, settings["vessel_standard_id"].as_str()) {
-        (Some(v), _) => v.clone(),
-        (None, Some(v)) => v.to_string(),
-        (None, None) => return Err(input_error("choose a vessel class with --vessel")),
+    // The vessel: a new custom vessel, a class, or the one the design has (a class or a custom one).
+    enum Choice {
+        Class(String, Option<f64>),
+        Custom(CustomVessel),
+    }
+    let choice = match (flags.custom, &flags.vessel) {
+        (Some(c), _) => Choice::Custom(c.vessel(flags.draught)?),
+        (None, Some(v)) => Choice::Class(v.clone(), flags.draught),
+        (None, None) => match (
+            session.custom_vessel(),
+            settings["vessel_standard_id"].as_str(),
+        ) {
+            (Some(c), _) if flags.draught.is_none() => Choice::Custom(c),
+            (Some(_), _) => {
+                return Err(input_error(
+                    "the design has a custom vessel: give its draught with --custom-vessel NAME \
+                     --loa .. --beam .. --draught .. --formation ..",
+                ));
+            }
+            (None, Some(v)) => Choice::Class(
+                v.to_string(),
+                flags.draught.or_else(|| settings["draught_m"].as_f64()),
+            ),
+            (None, None) => {
+                return Err(input_error(
+                    "choose a vessel class with --vessel, or a custom vessel with --custom-vessel",
+                ));
+            }
+        },
     };
-    let draught = flags.draught.or_else(|| {
-        (flags.vessel.is_none())
-            .then(|| settings["draught_m"].as_f64())
-            .flatten()
-    });
     let mut inputs = Vec::new();
     for kv in &flags.set_inputs {
         let (k, v) = kv
@@ -372,8 +433,14 @@ pub fn size(doc: &str, flags: SizeFlags, output: &Option<String>, json_mode: boo
     }
     let ids: Vec<&str> = flags.rule_sets.iter().map(String::as_str).collect();
     session.set_rule_sets(&ids, &inputs).map_err(from_design)?;
-    session.set_vessel(&vessel, draught).map_err(from_design)?;
+    match &choice {
+        Choice::Class(v, draught) => session.set_vessel(v, *draught).map_err(from_design)?,
+        Choice::Custom(c) => {
+            session.set_custom_vessel(c).map_err(from_design)?;
+        }
+    }
     session.run_stage(Stage::Sizing).map_err(from_design)?;
+    let vessel = session.vessel_label().unwrap_or_default();
     let dest = destination(doc, output);
     write(&dest, &session.to_text())?;
     let shape = session.document()["stages"]["sizing"]["results"].clone();
@@ -419,7 +486,7 @@ pub fn trace(
     load_rule_set_files(&mut session, files)?;
     let t = session.rule_trace(option, station_m).map_err(from_design)?;
     let mut human = format!(
-        "# {}\n# {}\n# sets: {}\n",
+        "# {}\n# {}\n# sets: {}\n# vessel: {}\n",
         t["notice"].as_str().unwrap_or(""),
         t["rules_notice"].as_str().unwrap_or(""),
         t["sets"]
@@ -428,7 +495,8 @@ pub fn trace(
             .flatten()
             .filter_map(Value::as_str)
             .collect::<Vec<_>>()
-            .join(", ")
+            .join(", "),
+        t["vessel"].as_str().unwrap_or("none")
     );
     human.push_str("rule\tobject\tvalue\tcompare\tlimit\tmargin\toutcome\tgoverning\tstatus\n");
     let cell = |v: &Value| match v {

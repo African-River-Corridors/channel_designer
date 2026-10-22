@@ -30,7 +30,7 @@ pub fn data_box(ctx: &Context) -> Value {
 /// `(label, value)` per fact, in the spec's order.
 pub fn items(ctx: &Context) -> Vec<(String, String)> {
     let d = ctx.doc;
-    vec![
+    let mut out: Vec<(String, String)> = vec![
         ("Reach".into(), reach(d)),
         (
             "Coordinate system".into(),
@@ -44,7 +44,19 @@ pub fn items(ctx: &Context) -> Vec<(String, String)> {
         ("Plan line".into(), plan_line(d)),
         ("Rule Sets".into(), rule_sets(d)),
         ("Stale stages".into(), stale(ctx)),
-    ]
+    ];
+    // A custom vessel (spec 0015 T1): what its figures are, and any warning on them.
+    if let Some(c) = ctx.session.custom_vessel() {
+        let mut v = format!(
+            "{}: user-entered dimensions, not a catalogue class",
+            c.label()
+        );
+        for w in c.check().unwrap_or_default() {
+            v.push_str(&format!("; warning: {w}"));
+        }
+        out.insert(out.len() - 1, ("Vessel".into(), v));
+    }
+    out
 }
 
 fn provisional(settings: &Value, key: &str) -> bool {

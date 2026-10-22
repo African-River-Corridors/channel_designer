@@ -59,7 +59,10 @@ pub struct FitStretch {
 /// One row of the answer: a vessel class under a Rule Set choice.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClassFit {
+    /// The class's catalogue id, or a custom vessel's label.
     pub vessel_standard_id: String,
+    /// True for the study's custom vessel, the row after the classes (spec 0015 T1).
+    pub custom: bool,
     pub class_name: String,
     pub family: String,
     pub formation: String,
@@ -144,6 +147,18 @@ pub fn plan_only_fits_of(
     choices: &[&str],
     all: bool,
 ) -> Result<Fits, PyError> {
+    plan_only_fits_with(centreline, water, choices, all, None)
+}
+
+/// [`plan_only_fits_of`] with the study's custom vessel as one more row after the classes (spec
+/// 0015 T1). The largest fitting class is read over the classes only.
+pub fn plan_only_fits_with(
+    centreline: &[Pt],
+    water: &[Polygon],
+    choices: &[&str],
+    all: bool,
+    custom: Option<&crate::rules::custom::CustomVessel>,
+) -> Result<Fits, PyError> {
     if centreline.len() < 2 {
         return Err(PyError::value(
             "the river centreline needs at least two points.",
@@ -160,13 +175,31 @@ pub fn plan_only_fits_of(
         for class in &classes {
             let shape = channel_shape_for(&selection, class, None)
                 .map_err(|e| PyError::value(e.raw_message().to_string()))?;
-            rows.push(class_fit(&chained, water, &shape, class)?);
+            let std = crate::rules::classes::class(class)
+                .map_err(|_| PyError::value(format!("unknown vessel class {class}")))?;
+            rows.push(class_fit(
+                &chained,
+                water,
+                &shape,
+                (std.class_name, std.family, std.formation),
+            )?);
         }
         let largest_fitting = rows
             .iter()
             .rev()
             .find(|r| r.fits)
             .map(|r| r.vessel_standard_id.clone());
+        if let Some(c) = custom {
+            let shape = crate::rules::rulesets::channel_shape_for_custom(&selection, c)
+                .map_err(|e| PyError::value(e.raw_message().to_string()))?;
+            let v = c.vessel();
+            rows.push(class_fit(
+                &chained,
+                water,
+                &shape,
+                (v.class_name, v.family, v.formation),
+            )?);
+        }
         rule_sets.push(RuleSetFits {
             rule_set: rs.to_string(),
             rows,
@@ -180,11 +213,12 @@ pub fn plan_only_fits_of(
     })
 }
 
+/// One row: `who` is the vessel's class name, family and formation.
 fn class_fit(
     c: &Chained,
     water: &[Polygon],
     shape: &ChannelShape,
-    class: &str,
+    who: (String, String, String),
 ) -> Result<ClassFit, PyError> {
     let r_min = shape.min_bend_radius_m;
     let chord = default_check_chord(r_min);
@@ -206,13 +240,13 @@ fn class_fit(
             .map(|s| s.deficit_m)
             .fold(0.0, f64::max)
     };
-    let std = crate::rules::classes::class(class)
-        .map_err(|_| PyError::value(format!("unknown vessel class {class}")))?;
+    let (class_name, family, formation) = who;
     Ok(ClassFit {
-        vessel_standard_id: class.to_string(),
-        class_name: std.class_name,
-        family: std.family,
-        formation: std.formation,
+        vessel_standard_id: shape.vessel_standard_id.clone(),
+        custom: shape.custom,
+        class_name,
+        family,
+        formation,
         loa_m: shape.loa_m,
         beam_m: shape.beam_m,
         r_min_m: r_min,

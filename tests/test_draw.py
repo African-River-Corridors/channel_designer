@@ -40,6 +40,16 @@ def test_draw_returns_five_files_per_sheet_and_writes_them(tmp_path):
         assert doc["status"] == "concept" and doc["standard_version"] == version
 
 
+def test_a_format_0_4_file_draws_as_its_format_0_3_original(tmp_path):
+    """Spec 0015 T1: the wheel reads format 0.4 (a string) and format 0.3 (the number 3) alike."""
+    text = EXAMPLE.read_text()
+    assert '"format_version": 3,' in text
+    new = tmp_path / "river-example.owd"
+    new.write_text(text.replace('"format_version": 3,', '"format_version": "0.4",', 1))
+    (tmp_path / "river-dem.tif").write_bytes((EXAMPLE.parent / "river-dem.tif").read_bytes())
+    assert owd.draw(new) == owd.draw(EXAMPLE)
+
+
 def test_draw_and_owd_draw_give_byte_identical_files(tmp_path):
     cli_out = tmp_path / "cli"
     subprocess.run([str(_owd_binary()), "draw", str(EXAMPLE), "--out", str(cli_out)],

@@ -69,6 +69,19 @@ fn num(v: &Value) -> String {
 }
 
 impl Session {
+    /// The notices every export carries: the inputs' licence notices, then, for a custom vessel,
+    /// its label (spec 0015 T1).
+    fn export_notices(&self) -> Vec<String> {
+        let mut n = self.notices();
+        if let Some(c) = self.custom_vessel() {
+            n.push(format!(
+                "Vessel: {}: user-entered dimensions, not a catalogue class",
+                c.label()
+            ));
+        }
+        n
+    }
+
     pub(super) fn volumes_row(&self, id: &str) -> Option<&Value> {
         self.doc["stages"]["volumes"]["results"]["options"]
             .as_array()?
@@ -94,7 +107,7 @@ impl Session {
     /// missing one makes the volumes stale.
     pub fn export_csv(&self, dem: Option<&[u8]>) -> String {
         let mut out = format!("# {SCREENING_LABEL}\n");
-        for n in self.notices() {
+        for n in self.export_notices() {
             out.push_str(&format!("# {}\n", n.replace('\n', " ")));
         }
         out.push_str(
@@ -193,7 +206,7 @@ impl Session {
             "title": self.doc["project"]["title"],
             "features": features,
         });
-        let notices = self.notices();
+        let notices = self.export_notices();
         if !notices.is_empty() {
             fc["notices"] = json!(notices);
         }
@@ -261,7 +274,7 @@ impl Session {
             "# {SCREENING_LABEL}\n# {}\n",
             super::screening::UNVERIFIED_NOTICE
         );
-        for n in self.notices() {
+        for n in self.export_notices() {
             out.push_str(&format!("# {}\n", n.replace('\n', " ")));
         }
         for l in self.basis_and_verdict_lines() {
@@ -371,7 +384,7 @@ impl Session {
             "volumes_status": self.volumes_status_name(dem),
             "features": features,
         });
-        let notices = self.notices();
+        let notices = self.export_notices();
         if !notices.is_empty() {
             fc["notices"] = json!(notices);
         }

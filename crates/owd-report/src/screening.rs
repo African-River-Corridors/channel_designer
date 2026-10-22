@@ -247,7 +247,15 @@ fn what_fits(ctx: &Context) -> Value {
                     };
                     rows.push(vec![
                         text(&rs["rule_set"], "?").to_string(),
-                        text(&c["vessel_standard_id"], "?").to_string(),
+                        text(
+                            if c["vessel_standard_id"].is_null() {
+                                &c["vessel_label"]
+                            } else {
+                                &c["vessel_standard_id"]
+                            },
+                            "?",
+                        )
+                        .to_string(),
                         verdict,
                         kind_counts(&list),
                     ]);
@@ -508,7 +516,10 @@ fn design_basis(ctx: &Context) -> Value {
     let mut body = vec![prose(format!(
         "The vessel is **{}** (length {} m, beam {} m, draught {} m). Each dimension names the Rule \
          that governs it.",
-        md(text(&r["vessel_standard_id"], "not recorded")),
+        md(text(
+            r.get("vessel_label").unwrap_or(&r["vessel_standard_id"]),
+            "not recorded"
+        )),
         val(&r["loa_m"], 2, "—"),
         val(&r["beam_m"], 2, "—"),
         val(&r["draught_m"], 2, "—"),

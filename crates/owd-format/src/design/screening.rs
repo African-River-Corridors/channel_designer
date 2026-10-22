@@ -323,6 +323,8 @@ impl Session {
             "notice": SCREENING_NOTICE,
             "rules_notice": UNVERIFIED_NOTICE,
             "sets": trace.sets,
+            // The class id, or a custom vessel's label (spec 0015 T1).
+            "vessel": self.vessel_label(),
             "option": option,
             "rows": rows,
         }))
