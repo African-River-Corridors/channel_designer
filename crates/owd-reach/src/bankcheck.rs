@@ -62,6 +62,9 @@ pub struct CheckParams {
     pub excursion_min_m: f64,
     /// The half-length of the running median an excursion stands out of, in metres.
     pub excursion_window_m: f64,
+    /// The most a repaired bank's offset may change from one station to the next, in metres (the edge
+    /// fit's step limit); a repair too short to keep to it is widened until it does. `None`: no limit.
+    pub max_step_m: Option<f64>,
     /// The half-length of the moving average that makes the reference line, in median river widths
     /// (at least two stations, at most 2 km).
     pub reference_widths: f64,
@@ -82,6 +85,7 @@ impl CheckParams {
             excursion_share: 0.25,
             excursion_min_m: 30.0,
             excursion_window_m: 250.0,
+            max_step_m: None,
             reference_widths: 1.0,
             reference_half_m: 250.0,
         }
@@ -259,6 +263,51 @@ fn jumps(off: &[Option<f64>], out: f64, p: &CheckParams) -> Vec<bool> {
         }
     }
     bad
+}
+
+/// Widen each run of bad stations of a bank until the straight line between the good stations either
+/// side changes by at most `max_step` per station (spec 0013, T4: the repairs keep to the edge fit's
+/// step limit). A run that reaches an end cannot be widened that way and is left.
+fn widen_runs(off: &[Option<f64>], bad: &mut [bool], max_step: f64) {
+    let n = bad.len();
+    let good = |i: usize, bad: &[bool]| !bad[i] && off[i].is_some();
+    let mut i = 0;
+    while i < n {
+        if good(i, bad) {
+            i += 1;
+            continue;
+        }
+        let mut j = i;
+        while j < n && !good(j, bad) {
+            j += 1;
+        }
+        // The run is i..j; its good neighbours are i - 1 and j.
+        let (mut a, mut b) = (i, j);
+        let mut grow_left = true;
+        while a > 0 && b < n {
+            let (va, vb) = (off[a - 1].unwrap_or(0.0), off[b].unwrap_or(0.0));
+            if (vb - va).abs() <= max_step * (b - a + 1) as f64 {
+                break;
+            }
+            // Take in the next good station on one side, then the other.
+            if grow_left {
+                a -= 1;
+                while a > 0 && !good(a - 1, bad) {
+                    a -= 1;
+                }
+            } else {
+                b += 1;
+                while b < n && !good(b, bad) {
+                    b += 1;
+                }
+            }
+            grow_left = !grow_left;
+        }
+        for k in bad.iter_mut().take(b).skip(a) {
+            *k = true;
+        }
+        i = b.max(j);
+    }
 }
 
 /// Fill the bad offsets of a bank by straight interpolation between its nearest good stations (the
@@ -657,6 +706,22 @@ fn check_once(
                 .into(),
         )
     };
+    let (mut bad_l, mut bad_r) = (bad_l, bad_r);
+    let mut checks = checks;
+    if let Some(m) = p.max_step_m {
+        widen_runs(&lo, &mut bad_l, m);
+        widen_runs(&ro, &mut bad_r, m);
+        // A station a repair took in to keep the step limit is part of that repair, and says so.
+        let flagged: Vec<usize> = (0..checks.len()).filter(|i| checks[*i].any()).collect();
+        for i in 0..checks.len() {
+            if (bad_l[i] || bad_r[i])
+                && !checks[i].any()
+                && let Some(j) = flagged.iter().min_by_key(|j| j.abs_diff(i))
+            {
+                checks[i] = checks[*j];
+            }
+        }
+    }
     let lf = fill(&lo, &bad_l).ok_or_else(fail)?;
     let rf = fill(&ro, &bad_r).ok_or_else(fail)?;
     let rebuild = |orig: &[P2], raw: &[Option<f64>], f: &[f64], bad: &[bool]| -> Vec<P2> {

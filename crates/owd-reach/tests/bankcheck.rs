@@ -149,3 +149,36 @@ fn after_the_checks_no_bank_is_on_the_wrong_side_and_a_crossing_left_is_flagged(
     }
 }
 }
+
+t! {
+fn a_repair_keeps_to_the_step_limit_and_flags_what_it_took_in() {
+    // 5 m stations, as after the edge fit. The left bank steps out 10 m at x = 3000 (within the jump
+    // limit, a real change) and dives across the river from x = 2990 to 3010. Repaired over the dive
+    // alone, the bank would change 10 m in 6 stations (1.7 m each): over the fit's 1.5 m limit.
+    let bank5 = |y: f64, f: &dyn Fn(f64) -> f64| -> Vec<P> {
+        (0..=1000).map(|i| {
+            let x = i as f64 * 5.0;
+            [x, y + f(x)]
+        }).collect()
+    };
+    let left = bank5(100.0, &|x| if (2_990.0..=3_010.0).contains(&x) { -220.0 } else if x > 3_010.0 { 10.0 } else { 0.0 });
+    let right = bank5(-100.0, &|_| 0.0);
+    let p = CheckParams { max_step_m: Some(1.5), ..CheckParams::at_step(5.0) };
+    let c = check_and_repair(&left, &right, &seed(), &p).unwrap();
+    let near: Vec<&P> = c.left.iter().filter(|q| (2_850.0..3_150.0).contains(&q[0])).collect();
+    for w in near.windows(2) {
+        let (dx, dy) = (w[1][0] - w[0][0], (w[1][1] - w[0][1]).abs());
+        assert!(dy <= 1.5 * dx / 5.0 + 0.05, "{:?} to {:?}: {dy:.2} m in {dx:.1} m", w[0], w[1]);
+    }
+    // The stretch covers what the repair moved, which is more than the dive alone.
+    let span = |c: &owd_reach::bankcheck::Checked| -> f64 {
+        c.stretches.iter().filter(|s| matches!(s.kind, StretchKind::Repaired(k) if k.side)).map(|s| s.to_m - s.from_m).sum()
+    };
+    let limited = span(&c);
+    // Without the limit the repair is the dive alone, and steeper.
+    let c = check_and_repair(&left, &right, &seed(), &CheckParams::at_step(5.0)).unwrap();
+    assert!(limited > span(&c), "{limited} against {}", span(&c));
+    let steep = c.left.windows(2).any(|w| (2_850.0..3_150.0).contains(&w[0][0]) && (w[1][1] - w[0][1]).abs() > 1.5 * (w[1][0] - w[0][0]) / 5.0 + 0.05);
+    assert!(steep, "the case must need the limit");
+}
+}
