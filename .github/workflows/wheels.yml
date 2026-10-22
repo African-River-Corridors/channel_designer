@@ -1,15 +1,39 @@
 name: Wheels
 
 # One abi3 wheel per platform (macOS, Windows, Linux), and a job that proves a Windows `pip install` of
-# the wheel needs no compiler (#11, ticket 35). Runs on pull requests that touch the build, and by hand.
+# the wheel needs no compiler (#11, ticket 35). Runs only when the wheel or what it builds from changes:
+# owd-py and the crates it links (owd-format, owd-core), the Python package, the packaging files, the
+# toolchain and this file. The same filter on a push to main; and by hand. The `test` job builds owd-py on
+# Linux on every pull request (clippy, and pytest through `pip install -e`).
 on:
   pull_request:
     paths:
-      - "crates/**"
+      - "crates/owd-py/**"
+      - "crates/owd-format/**"
+      - "crates/owd-core/**"
       - "src/**"
       - "pyproject.toml"
+      - "README.md"
+      - "LICENSE"
+      - "NOTICE"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/wheels.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/owd-py/**"
+      - "crates/owd-format/**"
+      - "crates/owd-core/**"
+      - "src/**"
+      - "pyproject.toml"
+      - "README.md"
+      - "LICENSE"
+      - "NOTICE"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/wheels.yml"
   workflow_dispatch:
 

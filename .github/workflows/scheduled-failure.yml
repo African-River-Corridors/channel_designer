@@ -1,0 +1,37 @@
+name: Scheduled failure
+
+# A failed scheduled run (the nightly slow tests, the weekly CI run, the weekly CodeQL run) opens an
+# issue, or comments on the open issue for that workflow, so a failure found overnight is not lost.
+# A run that is not scheduled (a pull request, a push) is left alone: its author sees it.
+on:
+  workflow_run:
+    workflows: [CI, Nightly, CodeQL]
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  report:
+    if: github.event.workflow_run.event == 'schedule' && github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Open an issue, or comment on the open one
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          WORKFLOW: ${{ github.event.workflow_run.name }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          title="Scheduled run failed: ${WORKFLOW}"
+          body="The scheduled run of **${WORKFLOW}** failed on \`${SHA:0:7}\`: ${RUN_URL}"
+          n=$(gh issue list --state open --search "in:title \"${title}\"" --json number,title \
+                --jq "map(select(.title == \"${title}\")) | .[0].number // empty")
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi

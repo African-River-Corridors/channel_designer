@@ -4,12 +4,33 @@ name: App bundles
 # They are build artifacts of the run, kept for 14 days. Nothing here publishes a GitHub Release:
 # publishing waits for the maintainer, and signing is a 1.0 gate (the maintainer's purchase).
 
+# Runs only when the app or what it builds from changes: its code, the crates it links (owd-cli pulls in
+# owd-reach; not owd-py or owd-web), the toolchain and this file. The same filter on a push to main.
 on:
   pull_request:
     paths:
       - "app/**"
-      - "crates/**"
+      - "crates/owd-core/**"
+      - "crates/owd-format/**"
+      - "crates/owd-cli/**"
+      - "crates/owd-shell/**"
+      - "crates/owd-reach/**"
+      - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/app-bundles.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "crates/owd-core/**"
+      - "crates/owd-format/**"
+      - "crates/owd-cli/**"
+      - "crates/owd-shell/**"
+      - "crates/owd-reach/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/app-bundles.yml"
   workflow_dispatch:
 

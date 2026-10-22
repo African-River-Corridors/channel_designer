@@ -20,18 +20,16 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "tools/build_web.sh"
+  # On a pull request, only when the site or the pages it assembles change (website/build.py: the root
+  # Markdown files, docs/) or the token file it must equal. The web app inside the site is checked on
+  # pull requests by the CI `web-app` job; main rebuilds the whole site on any of the paths above.
   pull_request:
     paths:
       - "website/**"
       - "docs/**"
       - "*.md"
+      - "app/src/tokens.css"
       - ".github/workflows/website.yml"
-      - "app/**"
-      - "crates/**"
-      - "examples/web/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "tools/build_web.sh"
   workflow_dispatch:
 
 permissions:

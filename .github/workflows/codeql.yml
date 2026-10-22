@@ -1,0 +1,44 @@
+name: CodeQL
+
+# Code scanning on a push to main and weekly, not on every pull request (it ran four to six jobs on
+# each one). This is the "advanced setup". It takes over from the repository's "default setup" only when
+# the maintainer turns that off (Settings > Code security > CodeQL analysis > Switch to advanced) and
+# sets the repository variable CODEQL_ADVANCED_SETUP to true. Until then the job is skipped, because
+# GitHub rejects advanced-setup results while the default setup is on.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "29 4 * * 0"
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    if: vars.CODEQL_ADVANCED_SETUP == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [actions, javascript-typescript, python, rust]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          category: /language:${{ matrix.language }}
