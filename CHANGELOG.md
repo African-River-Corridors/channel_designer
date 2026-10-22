@@ -5,6 +5,13 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **The full `fits` answer can read the river's radius on a fairway (spec 0012, opt-in).** `owd fits --plan-line
+  fairway` reads the river's own radius on each class's fairway fit (ADR 0007: the smoothest line a channel of
+  that class can take in the water) instead of the river centreline. A centreline drawn from bank lines wiggles at
+  the scale of its stations, and on the Sassandra that made about a thousand short "tight bend" stretches per class.
+  Width, depth, the water level and the reaches still read the river centreline. The default stays `centreline`,
+  and a default run writes nothing new; the choice is kept in the answer's settings, so changing it makes the answer
+  stale.
 - **Point-in-water and water-width tests indexed (spec 0012).** The full `fits` answer on the edge-fitted Sassandra
   (a 181 km centreline, a 77,000-vertex river polygon) took 748 s. It now takes 45 s, with the same answer to the
   last bit. Many points tested against one long river now go through an index: `PolygonIndex` (each ring's segments
