@@ -11,6 +11,7 @@ mod fmt;
 mod limits;
 mod quantities;
 mod screening;
+mod sections;
 mod trace;
 
 use owd_format::design::Session;
@@ -30,16 +31,20 @@ pub enum Kind {
     Screening,
     /// The quantity schedule: dredge and dry cut by stretch, and the cut face (report 2).
     Quantities,
+    /// The section pack: the typical section, the cross sections and the setting-out table
+    /// (report 3).
+    Sections,
 }
 
 impl Kind {
-    pub const ALL: &'static [Kind] = &[Kind::Screening, Kind::Quantities];
+    pub const ALL: &'static [Kind] = &[Kind::Screening, Kind::Quantities, Kind::Sections];
 
     /// The word `--kind` takes.
     pub fn word(self) -> &'static str {
         match self {
             Kind::Screening => "screening",
             Kind::Quantities => "quantities",
+            Kind::Sections => "sections",
         }
     }
 
@@ -52,6 +57,7 @@ impl Kind {
         match self {
             Kind::Screening => "screening-report",
             Kind::Quantities => "quantity-schedule",
+            Kind::Sections => "section-pack",
         }
     }
 
@@ -60,6 +66,7 @@ impl Kind {
         match self {
             Kind::Screening => "SR",
             Kind::Quantities => "QS",
+            Kind::Sections => "SP",
         }
     }
 }
@@ -218,6 +225,7 @@ pub fn build(design: &str, dem: Option<&[u8]>, req: &Request) -> Result<Report, 
     let (body, appendices) = match req.kind {
         Kind::Screening => screening::body(&ctx, &mut assets),
         Kind::Quantities => quantities::schedule(&ctx),
+        Kind::Sections => sections::pack(&ctx, &mut assets),
     };
     let c = &req.control;
     let mut control = json!({
@@ -360,6 +368,10 @@ fn summary(ctx: &Context, kind: Kind) -> String {
         Kind::Quantities => {
             "The quantities of the works for each design line option, by constraint stretch, made \
              by Open Waterway Designer from the design file."
+        }
+        Kind::Sections => {
+            "The typical section, the cross sections at chainages and the setting-out table of a \
+             design line option, from the drawing sheets Open Waterway Designer makes."
         }
     });
     s.push_str(" Every number is read from the design's stage results.");
