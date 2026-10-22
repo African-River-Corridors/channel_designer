@@ -284,3 +284,25 @@ fn with_a_bed_model_and_a_dem_the_answer_is_full_with_the_verdict_and_the_depth_
     assert!(t.contains("verdict: navigable-with-works"), "{t}");
     assert!(t.contains("works: dredge"), "{t}");
 }
+
+#[test]
+fn the_answer_says_which_plan_line_it_read_the_radius_on() {
+    // Plan only: the fairway needs the full answer, so the radius is read on the centreline.
+    let (_dir, doc) = setup("fits-plan-line");
+    let t = out(&owd(&["fits", &doc]));
+    assert!(t.contains("Plan line: centreline"), "{t}");
+    assert!(t.contains("fairway"), "{t}");
+    // Full: the default is the fairway.
+    let doc = full_study("fits-plan-line-full");
+    let o = owd(&["fits", &doc, "--json"]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let v: Value = serde_json::from_str(&out(&o)).unwrap();
+    assert_eq!(v["fits"]["plan_line"], "fairway");
+    let t = out(&owd(&["fits", &doc, "--show"]));
+    assert!(t.contains("Plan line: fairway"), "{t}");
+    // Asked for: the centreline.
+    let o = owd(&["fits", &doc, "--plan-line", "centreline", "--json"]);
+    let v: Value = serde_json::from_str(&out(&o)).unwrap();
+    assert_eq!(v["fits"]["plan_line"], "centreline");
+    assert!(v["fits"].get("plan_line_note").is_none());
+}

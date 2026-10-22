@@ -20,11 +20,14 @@ is fetched at run time into `sassandra-study/`; nothing is bundled. The script:
    the JRC water mask, then moves them onto dry-season Sentinel-2 scenes, tile by tile.
 2. `owd fetch-dem` gets the Copernicus GLO-30 DEM. `owd water-level` sets the low-water level from SWORD and
    SWOT, with the DEM where they give none.
-3. `owd fits` gives the plan-only answer: width and radius, no depth.
+3. `owd fits` gives the plan-only answer: width and radius, no depth. It reads the radius on the
+   centreline, and says so: the fairway fit runs only for the full answer.
 4. `owd bed --depth 3 --season dry` gives the one depth people who use the river know: 3 m at low water in the
    dry season.
-5. `owd fits` again gives the full answer: width, radius and depth, with a verdict for each vessel class.
-6. The same full answer, reading the river's radius on each class's fairway fit (`--plan-line fairway`).
+5. `owd fits` again gives the full answer: width, radius and depth, with a verdict for each vessel class. It
+   reads the river's radius on each class's fairway fit, the default plan line (ADR 0013).
+6. The same full answer, reading the radius on the river centreline instead (`--plan-line centreline`), to
+   compare.
 7. `owd report --kind all --format all` writes the four reports (spec 0014) as PDF, HTML and Word into
    `reports/`.
 
@@ -56,7 +59,7 @@ Under PIANC WG 141 quality B, **no vessel class fits the Sassandra as it is.** E
 `navigable-with-works`: it can use the river after works. The table gives each class's constraint stretches
 (where the river falls short) by kind.
 
-| Class | Needs depth (m) | Plan only: fits? | Full, centreline: verdict, stretches (width / depth / radius) | Full, fairway: verdict, stretches (width / depth / radius) |
+| Class | Needs depth (m) | Plan only: fits? | Full, centreline: verdict, stretches (width / depth / radius) | Full, fairway (the default): verdict, stretches (width / depth / radius) |
 |---|---|---|---|---|
 | CEMT_IV | 3.25 | no | navigable-with-works: 228 / 1 / 1009 | navigable-with-works: 228 / 1 / 148 |
 | CN_IV_motor | 2.08 | no | navigable-with-works: 194 / 4 / 894 | navigable-with-works: 194 / 4 / 163 |
@@ -78,14 +81,17 @@ stations (see "Limits").
 ### Two plan lines
 
 The radius columns differ by plan line:
-- **On the river centreline (the default):** about 1,000 radius stretches per class.
-- **On each class's fairway fit:** about 150.
+- **On each class's fairway fit (the default):** about 150 radius stretches per class.
+- **On the river centreline (`--plan-line centreline`):** about 1,000.
 
 The centreline is drawn from the bank lines, and it wiggles at the scale of its 5 m stations. Each wiggle
 reads as a tight bend, so most of those 1,000 are not the river. The fairway fit (ADR 0007) is the smoothest
 line a channel of that class can take in the water. The radius stretches left on it are mostly where the
-water itself forces a bend, but some may be where the fit is infeasible. **Which plan line is the default is
-still to be decided.** Read the radius columns with this in mind.
+water itself forces a bend, but some may be where the fit is infeasible. The width and depth stretches are
+the same on both lines.
+
+On 2026-10-22 the maintainer compared the two on the whole river and chose the fairway as the default
+(ADR 0013). The answer says which line it read: `Plan line: fairway` in the table, `plan_line` in the JSON.
 
 ## Labels and notices
 
@@ -126,7 +132,8 @@ These are not yet calibrated against a surveyed reach. Each is named so in the s
   stretch for them. At a few stations the edge-fitted centreline leaves the water the bed model covers. There
   the DEM surface (which sits above the water) is read instead, and the depth found there is negative.
   These show as single-station depth stretches.
-- **The plan line for the radius** is still to be chosen (above).
+- **The plan line for the radius** is each class's fairway fit (above). The plan-only answer reads the
+  centreline, so its radius stretches are mostly the centreline's wiggle.
 - **Width:** the width stretches use the banks as found, with the limits above.
 - **Air draught, rapids and rock** are out of scope (#12, #13). The Soubré dam is the end of the reach.
 

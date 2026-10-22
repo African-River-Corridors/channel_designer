@@ -231,11 +231,14 @@ fn plan_line(d: &Value) -> String {
     if !fits.is_object() {
         return NOT_RECORDED.into();
     }
-    text(
+    let line = text(
         &fits["results"]["plan_line"],
         text(&fits["settings"]["plan_line"], "centreline"),
-    )
-    .to_string()
+    );
+    match fits["results"]["plan_line_note"].as_str() {
+        Some(n) => format!("{line}; {n}"),
+        None => line.to_string(),
+    }
 }
 
 fn rule_sets(d: &Value) -> String {
