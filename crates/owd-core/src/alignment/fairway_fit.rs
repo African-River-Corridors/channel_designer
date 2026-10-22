@@ -721,7 +721,25 @@ fn solve_corridor(
     let half_window = params.chord_m / 2.0;
     // Row weights by position along the line (share of its length), carried between passes.
     let mut wprev: Vec<(f64, f64)> = Vec::new();
-    let mut best: Option<((usize, f64), Vec<Node>)> = None;
+    // Keep the best line: fewest free points outside the water, then the widest tightest bend on the
+    // chord. The line the solve starts from is the first candidate, so the fit never returns a line
+    // worse by that rule than the one it was given (issue #132).
+    let score = |nodes: &[Node]| {
+        let line: Vec<Pt> = nodes
+            .iter()
+            .filter(|nd| nd.kind != Kind::Ghost)
+            .map(|nd| nd.p)
+            .collect();
+        let outside = nodes
+            .iter()
+            .filter(|nd| nd.kind == Kind::Free && !grid.covers(nd.p, params.inside_tol_m))
+            .count();
+        (
+            outside,
+            min_radius_on_chord(&line, params.chord_m).unwrap_or(0.0),
+        )
+    };
+    let mut best: Option<((usize, f64), Vec<Node>)> = Some((score(nodes), nodes.clone()));
     for pass in 0..params.passes {
         let pts: Vec<Pt> = nodes.iter().map(|nd| nd.p).collect();
         let n = pts.len();
@@ -847,18 +865,8 @@ fn solve_corridor(
         }
         resample_free(nodes, h);
         wprev = wnow;
-        // Keep the best pass: fewest free points outside the water, then the widest tightest
-        // bend on the chord. A late pass never makes the result worse.
-        let line: Vec<Pt> = nodes
-            .iter()
-            .filter(|nd| nd.kind != Kind::Ghost)
-            .map(|nd| nd.p)
-            .collect();
-        let outside = nodes
-            .iter()
-            .filter(|nd| nd.kind == Kind::Free && !grid.covers(nd.p, params.inside_tol_m))
-            .count();
-        let radius = min_radius_on_chord(&line, params.chord_m).unwrap_or(0.0);
+        // A late pass never makes the result worse.
+        let (outside, radius) = score(nodes);
         if best
             .as_ref()
             .is_none_or(|((o, r), _)| outside < *o || (outside == *o && radius > *r))
@@ -1064,6 +1072,61 @@ mod tests {
     fn narrowing_reach_navigable_ends() -> (f64, f64) {
         let a = 900.0 + (30.0 - HALF * 1.04_f64.sqrt()) / 0.2;
         (a, 2500.0 - a)
+    }
+
+    /// A creek of issue #132: a sine centreline over two wavelengths, the water's width stepping
+    /// every 150 m of chainage between 45 and 100 m. The centreline lies inside the navigable water
+    /// (the strip is about 15 to 70 m wide) throughout.
+    fn stepped_creek(wavelength: f64, amplitude: f64) -> (Vec<Pt>, Vec<Polygon>) {
+        let k = 2.0 * core::f64::consts::PI / wavelength;
+        let centre: Vec<Pt> = (0..=((2.0 * wavelength / 10.0) as usize))
+            .map(|i| {
+                let x = i as f64 * 10.0;
+                [x, amplitude * libm::sin(k * x)]
+            })
+            .collect();
+        let cum = Chained::new(&centre).cum;
+        let (mut left, mut right) = (Vec::new(), Vec::new());
+        for (i, p) in centre.iter().enumerate() {
+            let slope = amplitude * k * libm::cos(k * p[0]);
+            let norm = libm::sqrt(1.0 + slope * slope);
+            let n = [-slope / norm, 1.0 / norm];
+            let half = if ((cum[i] / 150.0) as usize).is_multiple_of(2) {
+                22.5
+            } else {
+                50.0
+            };
+            left.push([p[0] + n[0] * half, p[1] + n[1] * half]);
+            right.push([p[0] - n[0] * half, p[1] - n[1] * half]);
+        }
+        right.reverse();
+        let mut ring = left;
+        ring.extend(right);
+        ring.push(ring[0]);
+        let water = Polygon {
+            exterior: ring,
+            holes: vec![],
+        };
+        let nav = navigable_water(core::slice::from_ref(&water), HALF, 0.0, 0.0).unwrap();
+        (centre, nav)
+    }
+
+    #[test]
+    fn a_feasible_input_s_tightest_bend_is_never_fitted_sharper() {
+        // Issue #132: these creeks were fitted 4 to 7 % sharper than their input (949 -> 880 m,
+        // 738 -> 696 m, 776 -> 743 m).
+        let params = FitParams::new(R_MIN);
+        for (wavelength, amplitude) in [(2319.0, 143.0), (2320.0, 186.0), (2209.0, 159.0)] {
+            let (input, nav) = stepped_creek(wavelength, amplitude);
+            let before = min_radius_on_chord(&input, params.chord_m).unwrap();
+            // (the water's closed ends are too narrow for a few metres: that is the reported stretch)
+            let r = fairway_fit(&input, &nav, &Fixed::default(), &params).unwrap();
+            let after = min_radius_on_chord(&r.line, params.chord_m).unwrap();
+            assert!(
+                after >= before,
+                "creek {wavelength}/{amplitude}: input {before:.0} m, fit {after:.0} m"
+            );
+        }
     }
 
     #[test]
