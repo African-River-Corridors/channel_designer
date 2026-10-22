@@ -27,9 +27,38 @@ def test_the_required_jobs_exist_and_always_run_on_every_pull_request():
     assert "paths" not in (ci["on"]["pull_request"] or {}), "a path filter on ci.yml could skip a required check"
     for name in REQUIRED:
         job = ci["jobs"][name]
-        assert "if" not in job, f"{name} must not be conditional"
+        assert job.get("if", "always()") == "always()", f"{name} must not be conditional"
         needs = job.get("needs", [])
         assert "changes" not in (needs if isinstance(needs, list) else [needs])
+    for name, job in ci["jobs"].items():
+        if name.startswith("gate-"):
+            assert "if" not in job and "needs" not in job, f"{name} is part of `test`: it must always run"
+
+
+def test_the_test_check_needs_every_part_of_the_gate_and_fails_unless_all_passed():
+    jobs = load("ci.yml")["jobs"]
+    parts = sorted(n for n in jobs if n.startswith("gate-"))
+    test = jobs["test"]
+    assert sorted(test["needs"]) == parts and test["if"] == "always()"
+    script = test["steps"][-1]["run"]
+    assert f"keys == {str(parts).replace(chr(39), chr(34))}" in script and '.result == "success"' in script
+
+
+def test_the_parts_run_every_step_of_the_gate_and_every_rust_partition():
+    jobs = load("ci.yml")["jobs"]
+    steps, partitions = [], []
+    for name, job in jobs.items():
+        if not name.startswith("gate-"):
+            continue
+        env = job["steps"][-1]["env"]
+        steps += env["GATES_STEPS"].split(",")
+        if "GATES_PARTITION" in env:
+            partitions = job["strategy"]["matrix"]["partition"]
+    gates = (ROOT / "tools" / "gates.sh").read_text(encoding="utf-8")
+    all_steps = re.search(r'ALL_STEPS="([^"]+)"', gates).group(1).split(",")
+    assert sorted(steps) == sorted(all_steps), "each gate step runs in exactly one part"
+    n = len(partitions)
+    assert n >= 2 and partitions == [f"{k}/{n}" for k in range(1, n + 1)]
 
 
 def test_a_filtered_job_runs_on_main_and_on_a_pull_request_that_changes_its_inputs():

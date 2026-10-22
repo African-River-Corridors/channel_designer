@@ -5,6 +5,10 @@ Issue #151 (build-speed fix 3). The `test` job runs `tools/gates.sh`, which runs
 a debug build, about 920 s of test time together). `.github/workflows/nightly.yml` runs **every** test with
 `--profile nightly`, daily and on demand (`workflow_dispatch`). The list lives in `.config/nextest.toml`.
 
+On a pull request the `pr` profile runs in 3 hash partitions, one CI job each (`gate-rust`, since
+2026-10-22). With 3 partitions the longest `pr` test (about 70 s) is shorter than its partition's run, so no
+test moved for the split.
+
 Nothing is deleted. A test that is renamed drops out of the list and so runs in the pull-request job again.
 To move a test, edit the filter in `.config/nextest.toml` and the table below. To run all tests locally:
 `GATES_NEXTEST_PROFILE=nightly bash tools/gates.sh`.

@@ -27,6 +27,13 @@
 # system libraries, and its own CI jobs (`app-linux`, `app-e2e`) build and test it.
 #
 # CD_PYTHON picks the Python for step 4 (default python3).
+#
+# CI runs the gate in parallel parts (the `gate-*` jobs in .github/workflows/ci.yml; one job named `test`
+# needs them all). Two settings pick a part; with neither set, the script runs every step, as before:
+#   GATES_STEPS      the steps to run, by name, separated by commas: fmt, clippy, rust, pytest, oldnames.
+#                    An unknown name fails. The script fails unless every named step ran.
+#   GATES_PARTITION  k/N: step 3 runs only the k-th of N hash partitions of the Rust tests
+#                    (`cargo nextest run --partition hash:k/N`). The doctests run in partition 1 only.
 set -euo pipefail
 
 fail() { echo "gates: FAIL: $*" >&2; exit 1; }
@@ -42,8 +49,23 @@ need() {
 need dirname
 cd "$(dirname "$0")/.."
 PY="${CD_PYTHON:-python3}"
-EXPECTED_STEPS=5
+ALL_STEPS="fmt,clippy,rust,pytest,oldnames"
+STEPS="${GATES_STEPS:-$ALL_STEPS}"
+PARTITION="${GATES_PARTITION:-}"
+EXPECTED_STEPS=0
 steps_run=0
+for s in ${STEPS//,/ }; do
+  case ",$ALL_STEPS," in
+    *",$s,"*) EXPECTED_STEPS=$((EXPECTED_STEPS + 1)) ;;
+    *) fail "unknown step '$s' in GATES_STEPS (known: $ALL_STEPS)" ;;
+  esac
+done
+[ "$EXPECTED_STEPS" -gt 0 ] || fail "GATES_STEPS names no step"
+wants() { case ",$STEPS," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
+if [ -n "$PARTITION" ]; then
+  [[ "$PARTITION" =~ ^([1-9][0-9]*)/([1-9][0-9]*)$ ]] && [ "${BASH_REMATCH[1]}" -le "${BASH_REMATCH[2]}" ] \
+    || fail "GATES_PARTITION must be k/N with 1 <= k <= N, not '$PARTITION'"
+fi
 
 need git
 need mktemp
@@ -53,10 +75,10 @@ need env
 need cargo
 need rustc
 need "$PY"
-cargo fmt --version >/dev/null 2>&1 || fail "rustfmt is not installed (rustup component add rustfmt)"
-cargo clippy --version >/dev/null 2>&1 || fail "clippy is not installed (rustup component add clippy)"
-cargo nextest --version >/dev/null 2>&1 || fail "cargo-nextest is not installed (cargo install cargo-nextest --locked)"
-"$PY" -c "import pytest" 2>/dev/null || fail "pytest is not importable by $PY (pip install -e '.[dev]')"
+if wants fmt; then cargo fmt --version >/dev/null 2>&1 || fail "rustfmt is not installed (rustup component add rustfmt)"; fi
+if wants clippy; then cargo clippy --version >/dev/null 2>&1 || fail "clippy is not installed (rustup component add clippy)"; fi
+if wants rust; then cargo nextest --version >/dev/null 2>&1 || fail "cargo-nextest is not installed (cargo install cargo-nextest --locked)"; fi
+if wants pytest; then "$PY" -c "import pytest" 2>/dev/null || fail "pytest is not importable by $PY (pip install -e '.[dev]')"; fi
 
 # Note: "$@" runs inside `||`, so bash ignores `set -e` in it. A step that is a shell function
 # must return non-zero on every failure itself (see cargo_test_without_python).
@@ -82,11 +104,15 @@ cargo_test_without_python() {
   done
   # Explicit `|| return 1`: `step` calls this function inside `||`, where bash ignores `set -e`,
   # so without it a failing cargo test would fall through and the step would report ok.
+  local part=()
+  [ -n "$PARTITION" ] && part=(--partition "hash:$PARTITION")
   PATH="$shims:$PATH" CD_PYTHON="$shims/python3" cargo nextest run --workspace --exclude owd-app --exclude owd-py --exclude owd-web \
-    --all-features --profile "${GATES_NEXTEST_PROFILE:-pr}" || return 1
-  # nextest does not run doctests.
-  PATH="$shims:$PATH" CD_PYTHON="$shims/python3" cargo test --doc --workspace --exclude owd-app --exclude owd-py --exclude owd-web \
-    --all-features || return 1
+    --all-features --profile "${GATES_NEXTEST_PROFILE:-pr}" ${part[@]+"${part[@]}"} || return 1
+  # nextest does not run doctests. They run once: with no partition, or in partition 1.
+  if [ -z "$PARTITION" ] || [ "${PARTITION%%/*}" = 1 ]; then
+    PATH="$shims:$PATH" CD_PYTHON="$shims/python3" cargo test --doc --workspace --exclude owd-app --exclude owd-py --exclude owd-web \
+      --all-features || return 1
+  fi
   if [ -e "$marker" ]; then
     echo "gates: cargo test called Python:" >&2
     cat "$marker" >&2
@@ -94,11 +120,13 @@ cargo_test_without_python() {
   fi
 }
 
-step "cargo fmt --check" cargo fmt --all --check
-step "clippy -D warnings" cargo clippy --workspace --exclude owd-app --exclude owd-web --all-targets --all-features -- -D warnings
-step "cargo test (no Python)" cargo_test_without_python
-step "pytest" "$PY" -m pytest -q
-step "old names" "$PY" tools/old_names.py
+if wants fmt; then step "cargo fmt --check" cargo fmt --all --check; fi
+if wants clippy; then
+  step "clippy -D warnings" cargo clippy --workspace --exclude owd-app --exclude owd-web --all-targets --all-features -- -D warnings
+fi
+if wants rust; then step "cargo test (no Python)${PARTITION:+, partition $PARTITION}" cargo_test_without_python; fi
+if wants pytest; then step "pytest" "$PY" -m pytest -q; fi
+if wants oldnames; then step "old names" "$PY" tools/old_names.py; fi
 
 [ "$steps_run" -eq "$EXPECTED_STEPS" ] || fail "only $steps_run of $EXPECTED_STEPS steps ran"
-echo "gates: all $EXPECTED_STEPS steps passed in $SECONDS s"
+echo "gates: all $EXPECTED_STEPS steps passed in $SECONDS s ($STEPS${PARTITION:+, partition $PARTITION})"
