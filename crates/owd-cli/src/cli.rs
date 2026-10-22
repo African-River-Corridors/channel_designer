@@ -318,15 +318,22 @@ enum Command {
         /// follows; a stretch with none near it stays as drawn.
         #[arg(long, value_name = "FILE")]
         trace: Option<String>,
-        /// Also make bank lines, a river polygon and a centreline from the JRC water mask. Reads a few
-        /// small windows of the JRC tile over the network, or the tile files you give with --jrc-tile.
+        /// Also make bank lines, a river polygon and a centreline. By default from the water seen in
+        /// dry-season Sentinel-2 scenes (Earth Search; small windows of a few scenes are read), with the
+        /// JRC water mask where no scene sees the river and as a cross-check; or from the JRC mask
+        /// alone with --seed jrc. The JRC tile is read over the network, or from the files you give
+        /// with --jrc-tile.
         #[arg(long)]
         banks: bool,
+        /// What the banks are traced on: `s2` (the default) or `jrc`. Needs --banks.
+        #[arg(long, value_name = "SEED", requires = "banks")]
+        seed: Option<String>,
         /// A JRC occurrence tile you downloaded (for example occurrence_10W_10Nv1_4_2021.tif), by its
         /// own file name. Repeat for more tiles. Needs --banks.
         #[arg(long, value_name = "FILE", requires = "banks")]
         jrc_tile: Vec<String>,
-        /// The JRC occurrence, in percent, from which a pixel is water (default 75, provisional).
+        /// The JRC occurrence, in percent, from which a pixel is water (default 75, provisional): the
+        /// seed with --seed jrc, else the fallback and the cross-check.
         #[arg(long, value_name = "PERCENT", requires = "banks")]
         mask_threshold: Option<f64>,
         /// Then move the mask banks onto the water edge in a dry-season, low-cloud Sentinel-2 scene
@@ -334,10 +341,10 @@ enum Command {
         #[arg(long, requires = "banks")]
         edge_fit: bool,
         /// The most cloud, in percent of the scene, for a scene to be used (default 20, provisional).
-        #[arg(long, value_name = "PERCENT", requires = "edge_fit")]
+        #[arg(long, value_name = "PERCENT", requires = "banks")]
         max_cloud: Option<f64>,
         /// Another STAC search endpoint for the Sentinel-2 scenes (default: Earth Search).
-        #[arg(long, value_name = "URL", requires = "edge_fit")]
+        #[arg(long, value_name = "URL", requires = "banks")]
         stac: Option<String>,
         /// The study's title (default: the river's name).
         #[arg(long)]
@@ -871,6 +878,7 @@ pub fn main() -> ExitCode {
             via,
             trace,
             banks,
+            seed,
             jrc_tile,
             mask_threshold,
             edge_fit,
@@ -883,6 +891,7 @@ pub fn main() -> ExitCode {
             ..
         } => commands::reach(commands::ReachFlags {
             banks,
+            seed,
             jrc_tile,
             mask_threshold,
             edge_fit,

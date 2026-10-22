@@ -101,9 +101,12 @@ fn a_reach_becomes_a_study_with_marked_inputs_a_level_a_bed_and_an_answer() {
     assert_eq!(snap["dirty"], true);
 
     step(&mut s, &f, ReachStep::Banks);
-    assert_eq!(
-        s.snapshot()["document"]["provenance"]["left_bank"]["source"],
-        "jrc-gsw"
+    let p = &s.snapshot()["document"]["provenance"]["left_bank"];
+    assert_eq!(p["source"], "sentinel2-l2a");
+    assert_eq!(p["settings"]["seed"], "sentinel2-l2a");
+    assert!(
+        p["notice"].as_str().unwrap().contains("EC JRC/Google"),
+        "{p}"
     );
     step(&mut s, &f, ReachStep::EdgeFit);
     let snap = s.snapshot();

@@ -9,11 +9,12 @@ use crate::state::AppState;
 use owd_format::design::Session;
 use owd_format::design::provenance::Mark;
 use owd_format::geotiff::Dem;
-use owd_reach::banks::{BankParams, MaskBanks, banks_from_jrc, record_banks, window_bbox};
+use owd_reach::banks::{BankParams, MaskBanks, window_bbox};
 use owd_reach::edgefit::{FitParams, SceneQuery, default_range, fit_to_scene, record_edge_fit};
 use owd_reach::level::{Datum, LevelParams, SWOT_SCIENCE_START, level_from_sources, record_level};
 use owd_reach::overpass::{DEFAULT_ENDPOINT, Overpass};
 use owd_reach::reach::{Planned, plan_points, record_reach};
+use owd_reach::seed::{SeedParams, banks_from_s2, record_s2_banks};
 use owd_reach::{DroppedFiles, Fetch};
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -64,7 +65,7 @@ pub struct ReachMemo {
 /// One step after the route.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ReachStep {
-    /// Banks, polygon and centreline from the JRC mask.
+    /// Banks, polygon and centreline from Sentinel-2 water, the JRC mask where no scene sees.
     Banks,
     /// Move the mask banks onto the water edge in Sentinel-2.
     EdgeFit,
@@ -133,10 +134,28 @@ impl ReachJob {
                 } else {
                     &dropped
                 };
-                let b =
-                    banks_from_jrc(jrc, &plan.route.line(), &BankParams::default()).map_err(err)?;
-                record_banks(&mut self.session, &b).map_err(err)?;
-                self.memo.banks = Some(b);
+                // Spec 0013: the banks are traced on the water of dry-season Sentinel-2 scenes, the
+                // JRC mask filling what no scene sees and checking the widths.
+                let line = plan.route.line();
+                let (from, to) = default_range(date).map_err(err)?;
+                let q = SceneQuery {
+                    endpoint: at.stac.clone(),
+                    from,
+                    to,
+                    months: owd_reach::sentinel2::default_dry_months(line[line.len() / 2][1]),
+                    max_cloud_pct: owd_reach::sentinel2::DEFAULT_MAX_CLOUD_PCT,
+                };
+                let b = banks_from_s2(
+                    fetch,
+                    Some(jrc),
+                    &line,
+                    &BankParams::default(),
+                    &q,
+                    &SeedParams::default(),
+                )
+                .map_err(err)?;
+                record_s2_banks(&mut self.session, &b).map_err(err)?;
+                self.memo.banks = Some(b.banks);
             }
             ReachStep::EdgeFit => {
                 let banks = self.memo.banks.as_ref().ok_or("make the banks first")?;

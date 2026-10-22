@@ -118,7 +118,7 @@ fn a_real_throat_is_flagged_narrow_and_never_widened() {
 }
 
 t! {
-fn after_the_checks_no_bank_is_on_the_wrong_side_and_none_crosses() {
+fn after_the_checks_no_bank_is_on_the_wrong_side_and_a_crossing_left_is_flagged() {
     // Property over random channels with random spikes and dives.
     let mut x: u64 = 3;
     let mut next = || {
@@ -134,12 +134,13 @@ fn after_the_checks_no_bank_is_on_the_wrong_side_and_none_crosses() {
         let left = bank(w / 2.0, |x| wave(x) + fault(x, 0));
         let right = bank(-w / 2.0, |x| wave(x) - fault(x, 1));
         let seed: Vec<P> = (0..=50).map(|i| [i as f64 * 100.0, wave(i as f64 * 100.0)]).collect();
-        let c = match check_and_repair(&left, &right, &seed, &params()) {
-            Ok(c) => c,
-            // A crossing left is an error, never a silent pass: that is allowed, a silent cross is not.
-            Err(e) => { assert!(e.to_string().contains("still cross"), "case {case}: {e}"); continue; }
-        };
-        assert!(lines_cross(&c.left, &c.right).is_none(), "case {case}");
+        let c = check_and_repair(&left, &right, &seed, &params()).unwrap();
+        // A crossing left is flagged, never passed in silence.
+        let flagged = c.stretches.iter().any(|s| matches!(s.kind, StretchKind::Repaired(k) if k.crossing));
+        assert_eq!(lines_cross(&c.left, &c.right).is_some(), flagged, "case {case}");
+        if flagged {
+            continue;
+        }
         for (i, o) in bank_offsets(&c.centreline, &c.left, &c.right).iter().enumerate() {
             if let (Some(l), Some(r)) = o {
                 assert!(*l > 0.0 && *r < 0.0, "case {case}, station {i}: {l} {r}");

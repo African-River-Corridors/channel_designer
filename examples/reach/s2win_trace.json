@@ -1,0 +1,60 @@
+{
+ "note": "Drawn by hand on the true-colour image of Sentinel-2 scene S2B_29NQG_20250205_0_L2A, down the middle of the water along the route of the spec 0012 worked example, from its km 148 to its km 152 (downstream first). WGS84.",
+ "trace": {
+  "type": "LineString",
+  "coordinates": [
+   [
+    -6.524352,
+    5.655164
+   ],
+   [
+    -6.527506,
+    5.656082
+   ],
+   [
+    -6.531109,
+    5.657453
+   ],
+   [
+    -6.534714,
+    5.658372
+   ],
+   [
+    -6.53832,
+    5.659065
+   ],
+   [
+    -6.541475,
+    5.659756
+   ],
+   [
+    -6.543272,
+    5.661572
+   ],
+   [
+    -6.544618,
+    5.663385
+   ],
+   [
+    -6.546416,
+    5.664748
+   ],
+   [
+    -6.548217,
+    5.66566
+   ],
+   [
+    -6.550016,
+    5.667023
+   ],
+   [
+    -6.551361,
+    5.668836
+   ],
+   [
+    -6.552258,
+    5.670196
+   ]
+  ]
+ }
+}

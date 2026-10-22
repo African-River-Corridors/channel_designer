@@ -4,16 +4,21 @@
 //! centreline), smoothed over about one river width so that one inlet cannot drag it. Along the reference's left normal, each station
 //! has an offset to the left bank and one to the right bank. The checks, in order:
 //!
-//! 1. **Own side.** The left bank lies at a positive offset, the right bank at a negative one. A normal
-//!    that meets no bank is `missing`.
+//! 1. **Own side.** The left bank lies left of the right bank along the normal; where it does not,
+//!    one bank has crossed to the other shore, and both are repaired there. A normal that meets no
+//!    bank is `missing`.
 //! 2. **Lateral jump.** Per bank, the offset may move outward by at most `jump_factor` station steps
 //!    from one station to the next. A station past the limit starts a run of bad stations that ends
 //!    where the bank comes back within the limit of the offset before the run. Only outward jumps are
 //!    cut (inlets, tributary mouths, spikes onto land): a jump inward narrows the river, and narrowing
 //!    is left to the width check, which flags it and never widens it. A run longer than
-//!    `max_run_m`, or one that runs to the end of the banks, is a real change of the river, not an
+//!    `max_run_m`, or one that touches either end of the banks, is a real change of the river, not an
 //!    excursion: it is kept.
-//! 3. **Width.** The width must lie between `width_low` and `width_high` times the running median of
+//! 3. **Excursion.** Per bank, an offset outward of the running median of the bank's own offsets
+//!    over 250 m either side by more than a quarter of the local median width, and at least 30 m, is
+//!    cut: a bay, a tributary mouth, or a cut across an island into another
+//!    channel, rising too gradually for the jump limit.
+//! 4. **Width.** The width must lie between `width_low` and `width_high` times the running median of
 //!    the good widths within `width_window_m`. A wide station is repaired on the bank that left its
 //!    own running median the most. A narrow one is flagged and kept: a real throat must never be
 //!    widened away (and where a `narrow` stretch already covers it, it adds nothing).
@@ -22,7 +27,8 @@
 //! bank. The banks are rebuilt from the offsets, loops are cut out, and the centreline is rebuilt as
 //! the mid-line of the final banks. Every flagged station joins a low-confidence stretch of kind
 //! `repaired`, which says which checks failed. A crossing of the two banks left after the repairs is
-//! an error: the check fails loudly, never silently.
+//! flagged `crossing` and named by the commands: loud, never silent, but it does not stop a whole
+//! reach for one bad place.
 //!
 //! Defaults (provisional until calibrated against a surveyed reach): jump limit 2 station steps per
 //! station, width 0.5 to 2 times the running median over 500 m either side, reference smoothed over
@@ -50,6 +56,12 @@ pub struct CheckParams {
     pub width_window_m: f64,
     pub width_low: f64,
     pub width_high: f64,
+    /// An excursion stands outward of the running median by more than this share of the median width,
+    /// and at least `excursion_min_m`.
+    pub excursion_share: f64,
+    pub excursion_min_m: f64,
+    /// The half-length of the running median an excursion stands out of, in metres.
+    pub excursion_window_m: f64,
     /// The half-length of the moving average that makes the reference line, in median river widths
     /// (at least two stations, at most 2 km).
     pub reference_widths: f64,
@@ -67,6 +79,9 @@ impl CheckParams {
             width_window_m: 500.0,
             width_low: 0.5,
             width_high: 2.0,
+            excursion_share: 0.25,
+            excursion_min_m: 30.0,
+            excursion_window_m: 250.0,
             reference_widths: 1.0,
             reference_half_m: 250.0,
         }
@@ -91,11 +106,22 @@ pub struct Checks {
     pub width_wide: bool,
     /// Narrower than its neighbours: flagged, the banks kept.
     pub width_narrow: bool,
+    /// A bank standing outward of its neighbours over a short run (a bay, a tributary mouth, a cut
+    /// across an island into another channel), rising too gradually to be a jump: repaired.
+    pub excursion: bool,
+    /// The banks still cross here after every round of repairs: not repaired, and said loudly.
+    pub crossing: bool,
 }
 
 impl Checks {
     pub fn any(self) -> bool {
-        self.side || self.missing || self.jump || self.width_wide || self.width_narrow
+        self.side
+            || self.missing
+            || self.jump
+            || self.width_wide
+            || self.width_narrow
+            || self.excursion
+            || self.crossing
     }
 
     fn or(self, o: Checks) -> Checks {
@@ -105,6 +131,8 @@ impl Checks {
             jump: self.jump || o.jump,
             width_wide: self.width_wide || o.width_wide,
             width_narrow: self.width_narrow || o.width_narrow,
+            excursion: self.excursion || o.excursion,
+            crossing: self.crossing || o.crossing,
         }
     }
 
@@ -117,6 +145,8 @@ impl Checks {
             (self.jump, "jump"),
             (self.width_wide, "width-wide"),
             (self.width_narrow, "width-narrow"),
+            (self.excursion, "excursion"),
+            (self.crossing, "crossing"),
         ] {
             if on {
                 v.push(name);
@@ -184,7 +214,8 @@ fn jumps(off: &[Option<f64>], out: f64, p: &CheckParams) -> Vec<bool> {
     let mut bad = vec![false; off.len()];
     // Start from the first station that agrees with the running median of its neighbours, so an
     // outlier at the start (a hooked bank end) does not make everything after it look like a jump.
-    // Stations before it that stand outward of that median are cut too.
+    // The stations before it are not judged: like a run that reaches the end, there is nothing
+    // beyond them to judge them against.
     let kw = (p.width_window_m / p.station_m).round() as usize;
     let med = |i: usize| {
         let (a, b) = (i.saturating_sub(kw), (i + kw).min(off.len() - 1));
@@ -196,11 +227,6 @@ fn jumps(off: &[Option<f64>], out: f64, p: &CheckParams) -> Vec<bool> {
     else {
         return bad;
     };
-    for i in 0..start {
-        if let (Some(o), Some(m)) = (off[i], med(i)) {
-            bad[i] = out * (o - m) > lim;
-        }
-    }
     let mut last_good: Option<(usize, f64)> = None;
     let mut i = start;
     while i < off.len() {
@@ -426,24 +452,27 @@ fn assess(left: &[P2], right: &[P2], seed: &[P2], p: &CheckParams) -> Assessed {
     let both = |i: usize| off[i].0.is_some() && off[i].1.is_some();
     let first = (0..n).find(|i| both(*i)).unwrap_or(n);
     let last = (0..n).rev().find(|i| both(*i)).unwrap_or(0);
+    // The banks are out of order where the left one lies at or right of the right one along the
+    // normal: one has crossed to the other shore. A reference that strays off a narrow river puts
+    // both banks on one side of it, in order: that is not a fault, and repairing it would widen the
+    // river.
     for (i, (l, r)) in off.iter().enumerate() {
-        let lok = l.filter(|v| *v > 0.0);
-        let rok = r.filter(|v| *v < 0.0);
         if i < first || i > last {
-            lo.push(lok);
-            ro.push(rok);
+            lo.push(*l);
+            ro.push(*r);
             continue;
         }
         if l.is_none() || r.is_none() {
             checks[i].missing = true;
         }
-        if (l.is_some() && lok.is_none()) || (r.is_some() && rok.is_none()) {
+        let swapped = matches!((l, r), (Some(a), Some(b)) if a <= b);
+        if swapped {
             checks[i].side = true;
         }
-        bad_l[i] = lok.is_none();
-        bad_r[i] = rok.is_none();
-        lo.push(lok);
-        ro.push(rok);
+        bad_l[i] = l.is_none() || swapped;
+        bad_r[i] = r.is_none() || swapped;
+        lo.push(l.filter(|_| !swapped));
+        ro.push(r.filter(|_| !swapped));
     }
     // 2. Lateral jumps, per bank.
     for (o, bad, out) in [(&mut lo, &mut bad_l, 1.0), (&mut ro, &mut bad_r, -1.0)] {
@@ -451,6 +480,36 @@ fn assess(left: &[P2], right: &[P2], seed: &[P2], p: &CheckParams) -> Assessed {
         for i in 0..n {
             if j[i] {
                 checks[i].jump = true;
+                bad[i] = true;
+                o[i] = None;
+            }
+        }
+    }
+    // 2b. Excursions: a bank outward of the running median of its own offsets (over
+    // `excursion_window_m` either side) by more than a share of the local median width.
+    let ww: Vec<Option<f64>> = (0..n).map(|i| Some(lo[i]? - ro[i]?)).collect();
+    let kw = (p.width_window_m / p.station_m).round() as usize;
+    let local_width: Vec<Option<f64>> = (0..n)
+        .map(|i| {
+            let (a, b) = (i.saturating_sub(kw), (i + kw).min(n - 1));
+            let mut v: Vec<f64> = ww[a..=b].iter().flatten().copied().collect();
+            median(&mut v)
+        })
+        .collect();
+    let ke = (p.excursion_window_m / p.station_m).round() as usize;
+    for (o, bad, out) in [(&mut lo, &mut bad_l, 1.0), (&mut ro, &mut bad_r, -1.0)] {
+        let med: Vec<Option<f64>> = (0..n)
+            .map(|i| {
+                let (a, b) = (i.saturating_sub(ke), (i + ke).min(n - 1));
+                let mut v: Vec<f64> = o[a..=b].iter().flatten().copied().collect();
+                median(&mut v)
+            })
+            .collect();
+        for i in 0..n {
+            if let (Some(v), Some(m), Some(w)) = (o[i], med[i], local_width[i])
+                && out * (v - m) > (p.excursion_share * w).max(p.excursion_min_m)
+            {
+                checks[i].excursion = true;
                 bad[i] = true;
                 o[i] = None;
             }
@@ -496,14 +555,90 @@ pub fn check_banks(left: &[P2], right: &[P2], seed: &[P2], p: &CheckParams) -> V
         .collect()
 }
 
+/// The most rounds of checks and repairs.
+pub const MAX_ROUNDS: usize = 3;
+
+fn repairs(c: &Checked) -> bool {
+    c.failed
+        .iter()
+        .any(|(_, k)| k.side || k.missing || k.jump || k.width_wide || k.excursion)
+}
+
 /// Check the banks, repair them, and rebuild the centreline as their mid-line. `seed` is any rough
-/// centreline (the last one, or the route).
+/// centreline (the last one, or the route). Each round reads the banks along the last round's
+/// centreline, so a fault one reading missed the next one finds; the rounds stop when one repairs
+/// nothing, at most [`MAX_ROUNDS`]. A crossing left after the last round is flagged (`crossing`),
+/// never passed in silence. The stretches are every round's.
 pub fn check_and_repair(
     left: &[P2],
     right: &[P2],
     seed: &[P2],
     p: &CheckParams,
 ) -> Result<Checked, ReachError> {
+    let (mut c, mut crossed) = check_once(left, right, seed, p)?;
+    for _ in 1..MAX_ROUNDS {
+        if !repairs(&c) && !crossed {
+            break;
+        }
+        let (mut next, x) = check_once(&c.left, &c.right, &c.centreline, p)?;
+        let earlier = rechain(&c.stretches, &c.centreline, &next.centreline);
+        next.stretches = merge(earlier, next.stretches);
+        c = next;
+        crossed = x;
+    }
+    if crossed {
+        flag_crossings(&mut c, p);
+    }
+    Ok(c)
+}
+
+/// Flag where the banks still cross: a `repaired` stretch with the check `crossing` around each
+/// crossing point, by chainage on the centreline. Nothing is moved: the stretch says to look.
+fn flag_crossings(c: &mut Checked, p: &CheckParams) {
+    let cs = owd_format::design::midline::arc(&c.centreline);
+    let mut points = Vec::new();
+    let idx = SegIndex::new(&c.right, 50.0);
+    let mut buf = Vec::new();
+    for w in c.left.windows(2) {
+        let len = ((w[1][0] - w[0][0]).powi(2) + (w[1][1] - w[0][1]).powi(2)).sqrt();
+        if len == 0.0 {
+            continue;
+        }
+        let d = [(w[1][0] - w[0][0]) / len, (w[1][1] - w[0][1]) / len];
+        let mid = [(w[0][0] + w[1][0]) / 2.0, (w[0][1] + w[1][1]) / 2.0];
+        if let Some(t) = idx.nearest_hit(mid, d, len / 2.0, &mut buf) {
+            points.push([mid[0] + d[0] * t, mid[1] + d[1] * t]);
+        }
+    }
+    let crossing = Checks {
+        crossing: true,
+        ..Checks::default()
+    };
+    let flags: Vec<Stretch> = points
+        .iter()
+        .map(|x| {
+            let at = chainage_on(&c.centreline, &cs, *x);
+            Stretch {
+                from_m: (at - p.station_m).max(0.0),
+                to_m: at + p.station_m,
+                kind: StretchKind::Repaired(crossing),
+                min_width_m: 0.0,
+            }
+        })
+        .collect();
+    for f in &flags {
+        c.failed.push((f.from_m + p.station_m, crossing));
+    }
+    c.stretches = merge(std::mem::take(&mut c.stretches), flags);
+}
+
+/// One round of checks and repairs, and whether the banks still cross after it.
+fn check_once(
+    left: &[P2],
+    right: &[P2],
+    seed: &[P2],
+    p: &CheckParams,
+) -> Result<(Checked, bool), ReachError> {
     if left.len() < 2 || right.len() < 2 || seed.len() < 2 {
         return Err(ReachError::Input("the banks are too short to check".into()));
     }
@@ -529,12 +664,7 @@ pub fn check_and_repair(
     };
     let left2 = rebuild(left, &lo, &lf, &bad_l);
     let right2 = rebuild(right, &ro, &rf, &bad_r);
-    if let Some(x) = lines_cross(&left2, &right2) {
-        return Err(ReachError::Input(format!(
-            "the banks still cross at ({:.1}, {:.1}) after the repairs: check them by eye (owd qa-overlay)",
-            x[0], x[1]
-        )));
-    }
+    let crossed = lines_cross(&left2, &right2).is_some();
     let centreline = midline(&left2, &right2, &reference, p.station_m);
     let widths: Vec<f64> = bank_offsets(&centreline, &left2, &right2)
         .iter()
@@ -567,11 +697,23 @@ pub fn check_and_repair(
     let half = p.station_m / 2.0;
     let mut stretches: Vec<Stretch> = Vec::new();
     let mut prev: Option<usize> = None;
+    // The search window, in segments, of the walk along the centreline.
+    const WINDOW: usize = 200;
+    let mut cursor = 0usize;
     for (i, c) in checks.iter().enumerate() {
         if !c.any() {
+            // Keep the cursor with the stations, so the window follows them.
+            cursor = (i * centreline.len()) / reference.len().max(1);
             continue;
         }
-        let at = chainage_on(&centreline, &cs, reference[i]);
+        // Near where the last flagged station was: the stations run along the centreline.
+        let (at, seg) = chainage_near(
+            &centreline,
+            &cs,
+            reference[i],
+            cursor.saturating_sub(WINDOW)..cursor + 4 * WINDOW,
+        );
+        cursor = seg;
         let w = width_near(&cs, &widths, at);
         match stretches.last_mut() {
             Some(s) if prev == Some(i.wrapping_sub(1)) => {
@@ -591,14 +733,17 @@ pub fn check_and_repair(
         }
         prev = Some(i);
     }
-    Ok(Checked {
-        left: left2,
-        right: right2,
-        centreline,
-        widths,
-        stretches,
-        failed,
-    })
+    Ok((
+        Checked {
+            left: left2,
+            right: right2,
+            centreline,
+            widths,
+            stretches,
+            failed,
+        },
+        crossed,
+    ))
 }
 
 fn width_near(cs: &[f64], widths: &[f64], at: f64) -> f64 {
@@ -610,8 +755,16 @@ fn width_near(cs: &[f64], widths: &[f64], at: f64) -> f64 {
 
 /// The chainage of `p` along `line` (arc lengths `s`): of its nearest point.
 pub fn chainage_on(line: &[P2], s: &[f64], p: P2) -> f64 {
-    let mut best = (f64::MAX, 0.0);
-    for (i, w) in line.windows(2).enumerate() {
+    chainage_near(line, s, p, 0..line.len().saturating_sub(1)).0
+}
+
+/// The chainage of the nearest point of `line` to `p` among the segments `segs`, and that segment.
+/// Searching only near where the point is expected keeps a walk along a long line linear.
+pub fn chainage_near(line: &[P2], s: &[f64], p: P2, segs: std::ops::Range<usize>) -> (f64, usize) {
+    let mut best = (f64::MAX, 0.0, segs.start);
+    let end = segs.end.min(line.len().saturating_sub(1));
+    for i in segs.start.min(end)..end {
+        let w = [line[i], line[i + 1]];
         let d = [w[1][0] - w[0][0], w[1][1] - w[0][1]];
         let l2 = d[0] * d[0] + d[1] * d[1];
         let t = if l2 == 0.0 {
@@ -622,10 +775,10 @@ pub fn chainage_on(line: &[P2], s: &[f64], p: P2) -> f64 {
         let q = [w[0][0] + t * d[0], w[0][1] + t * d[1]];
         let dd = (p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2);
         if dd < best.0 {
-            best = (dd, s[i] + t * (s[i + 1] - s[i]));
+            best = (dd, s[i] + t * (s[i + 1] - s[i]), i);
         }
     }
-    best.1
+    (best.1, best.2)
 }
 
 /// Move stretches from chainage on `old` to chainage on `new` (each end through its point).
@@ -637,7 +790,18 @@ pub fn rechain(stretches: &[Stretch], old: &[P2], new: &[P2]) -> Vec<Stretch> {
         owd_format::design::midline::arc(old),
         owd_format::design::midline::arc(new),
     );
-    let at = |c: f64| chainage_on(new, &sn, owd_format::design::midline::point_at(old, &so, c));
+    // Near the same share of the length: the two lines follow the same river.
+    let (lo, ln) = (so[so.len() - 1].max(1e-9), sn[sn.len() - 1]);
+    let at = |c: f64| {
+        let guess = sn.partition_point(|v| *v < c / lo * ln);
+        chainage_near(
+            new,
+            &sn,
+            owd_format::design::midline::point_at(old, &so, c),
+            guess.saturating_sub(300)..guess + 300,
+        )
+        .0
+    };
     stretches
         .iter()
         .map(|s| {
