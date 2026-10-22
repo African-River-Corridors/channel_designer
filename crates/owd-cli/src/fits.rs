@@ -32,6 +32,11 @@ fn table(results: &Value) -> String {
     if let Some(n) = results["plan_line_note"].as_str() {
         out.push_str(&format!("Note: {n}.\n"));
     }
+    if let Some(d) = results["draught_m"].as_f64() {
+        out.push_str(&format!(
+            "Draught: {d} m for every class (a custom vessel keeps its own).\n"
+        ));
+    }
     for rs in results["rule_sets"].as_array().into_iter().flatten() {
         out.push_str(&format!("\n{}\n", rs["rule_set"].as_str().unwrap_or("?")));
         out.push_str(&format!(
@@ -127,6 +132,7 @@ pub fn fits(
     show: bool,
     plan_line: Option<&str>,
     all: bool,
+    draught_m: Option<f64>,
     output: &Option<String>,
     json_mode: bool,
 ) -> Result {
@@ -171,13 +177,14 @@ pub fn fits(
         None => None,
     };
     session
-        .run_fits_classes(
+        .run_fits_at(
             (!choices.is_empty()).then_some(choices),
             sampler
                 .as_ref()
                 .map(|s| s as &(dyn Fn(&[f64], &[f64]) -> Vec<f64> + Sync)),
             plan_line,
             all,
+            draught_m,
         )
         .map_err(from_design)?;
     let dest = destination(doc, output);

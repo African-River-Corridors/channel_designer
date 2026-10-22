@@ -624,6 +624,10 @@ enum Command {
         /// the 12 classes OWD has always checked).
         #[arg(long)]
         all: bool,
+        /// Size every class at this draught in metres, such as a laden draught (default: each
+        /// class's own). A custom vessel keeps its own draught.
+        #[arg(long, value_name = "M")]
+        draught: Option<f64>,
         #[command(flatten)]
         out: Out,
     },
@@ -879,6 +883,7 @@ pub fn main() -> ExitCode {
             show,
             plan_line,
             all,
+            draught,
             out,
         } => crate::fits::choices(ruleset, &rule_set, &set_input).and_then(|choices| {
             crate::fits::fits(
@@ -887,6 +892,7 @@ pub fn main() -> ExitCode {
                 show,
                 plan_line.as_deref(),
                 all,
+                draught,
                 &out.output,
                 out.json,
             )
