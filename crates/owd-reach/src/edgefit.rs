@@ -22,6 +22,7 @@
 //! Provisional defaults until calibrated against a surveyed reach: +-40 m search, at most 30 m shift,
 //! at most 1.5 m change per 5 m, under 3 pixels (30 m) wide after the fit is low-confidence.
 
+use crate::bankcheck::{CheckParams, check_and_repair, merge, rechain};
 use crate::banks::{MaskBanks, Stretch, StretchKind};
 use crate::error::ReachError;
 use crate::sentinel2::Imagery;
@@ -112,7 +113,7 @@ pub struct EdgeFit {
     /// Moved by the full shift limit, the water edge lying beyond it.
     pub left_beyond: Vec<bool>,
     pub right_beyond: Vec<bool>,
-    /// Width at each left station, in metres.
+    /// Width at each station of the centreline (the banks' mid-line), in metres.
     pub widths: Vec<f64>,
     pub stretches: Vec<Stretch>,
 }
@@ -784,7 +785,7 @@ pub fn fit_banks(
     let seed = ring(&banks.left, &banks.right);
     let all = [0..geo[0].0.len(), 0..geo[1].0.len()];
     let res = fit_range(imagery, params, &geo, &all, seed)?;
-    Ok(finish(banks, params, &geo, res))
+    finish(banks, params, &geo, res)
 }
 
 /// Per bank: the stations' arc lengths, points, outward normals and distances to the centreline.
@@ -847,7 +848,12 @@ fn fit_range(
 }
 
 /// The fitted banks, centreline, widths and flagged stretches, from the shifts of every station.
-fn finish(banks: &MaskBanks, cfg: &FitParams, geo: &[Geo; 2], res: [OneBank; 2]) -> EdgeFit {
+fn finish(
+    banks: &MaskBanks,
+    cfg: &FitParams,
+    geo: &[Geo; 2],
+    res: [OneBank; 2],
+) -> Result<EdgeFit, ReachError> {
     let left = moved(&geo[0].1, &geo[0].2, &res[0]);
     let right = moved(&geo[1].1, &geo[1].2, &res[1]);
 
@@ -922,8 +928,25 @@ fn finish(banks: &MaskBanks, cfg: &FitParams, geo: &[Geo; 2], res: [OneBank; 2])
             }),
         }
     }
+    // Spec 0013: check and repair the fitted banks, and make the centreline their mid-line.
+    let checked = check_and_repair(
+        &left,
+        &right,
+        &centre,
+        &CheckParams::at_step(cfg.station_step_m),
+    )?;
+    let stretches = merge(
+        rechain(&stretches, &centre, &checked.centreline),
+        checked.stretches,
+    );
+    let (left, right, centre, widths) = (
+        checked.left,
+        checked.right,
+        checked.centreline,
+        checked.widths,
+    );
     let polygon = ring(&left, &right);
-    EdgeFit {
+    Ok(EdgeFit {
         utm: banks.utm,
         params: *cfg,
         left,
@@ -938,7 +961,7 @@ fn finish(banks: &MaskBanks, cfg: &FitParams, geo: &[Geo; 2], res: [OneBank; 2])
         right_beyond: res[1].beyond.clone(),
         widths,
         stretches,
-    }
+    })
 }
 
 fn moved(pts: &[P2], nrm: &[P2], r: &OneBank) -> Vec<P2> {
@@ -1246,7 +1269,7 @@ pub fn fit_to_scene(
         OneBank { d, fixed, beyond }
     });
     Ok(Fitted {
-        fit: finish(banks, params, &geo, res),
+        fit: finish(banks, params, &geo, res)?,
         scene: first,
         parts,
     })
@@ -1260,16 +1283,7 @@ impl EdgeFit {
             "min_width_m": self.params.min_trusted_width_m,
             "provisional": true,
             "source": "sentinel2-l2a",
-            "stretches": self.stretches.iter().map(|s| json!({
-                "from_m": s.from_m, "to_m": s.to_m,
-                "kind": match s.kind {
-                    StretchKind::Narrow => "narrow",
-                    StretchKind::NoWater => "no-water",
-                    StretchKind::NoEdge => "no-edge",
-                    StretchKind::AtShiftLimit => "at-shift-limit",
-                },
-                "min_width_m": s.min_width_m,
-            })).collect::<Vec<_>>(),
+            "stretches": crate::banks::stretches_value(&self.stretches),
         })
     }
 }

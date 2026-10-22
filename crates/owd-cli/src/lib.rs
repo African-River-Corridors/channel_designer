@@ -2,6 +2,7 @@
 //! `fetch-dem`) instead of keeping a second copy. The argument parser is in `cli`; the `owd` binary and the `owd` alias both call it.
 
 pub mod bed;
+pub mod check_banks;
 pub mod cli;
 pub mod commands;
 pub mod fetch;

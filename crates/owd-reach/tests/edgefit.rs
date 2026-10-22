@@ -303,7 +303,7 @@ mod recorded {
         let fit = &fitted.fit;
         let shifts: Vec<f64> = fit.left_shift.iter().chain(&fit.right_shift).copied().collect();
         // Never more than the largest shift, as recorded and as drawn: every fitted vertex lies within
-        // 30 m of its mask bank.
+        // 30 m of its mask bank, outside the stretches the bank checks repaired (spec 0013).
         assert!(shifts.iter().all(|d| d.abs() <= p.max_shift_m + 1e-9));
         let near = |line: &[[f64; 2]], q: [f64; 2]| {
             line.windows(2).map(|w| {
@@ -313,8 +313,24 @@ mod recorded {
                 ((q[0] - w[0][0] - t * d[0]).powi(2) + (q[1] - w[0][1] - t * d[1]).powi(2)).sqrt()
             }).fold(f64::MAX, f64::min)
         };
+        // Spec 0013: outside the stretches the bank checks repaired, which say so. The window opens
+        // into a lagoon, whose mouth is an outward excursion of the bank and is cut; the repaired
+        // stretches stay under a third of the centreline.
+        let repaired_m: f64 = fit.stretches.iter().filter(|s| matches!(s.kind, StretchKind::Repaired(_))).map(|s| s.to_m - s.from_m).sum();
+        let length = fit.centreline.windows(2).map(|w| ((w[1][0] - w[0][0]).powi(2) + (w[1][1] - w[0][1]).powi(2)).sqrt()).sum::<f64>();
+        assert!(repaired_m * 3.0 < length, "{repaired_m} m of {length} m repaired: {:?}", fit.stretches);
+        let cs: Vec<f64> = fit.centreline.windows(2).scan(0.0, |a, w| {
+            *a += ((w[1][0] - w[0][0]).powi(2) + (w[1][1] - w[0][1]).powi(2)).sqrt();
+            Some(*a)
+        }).collect();
+        let cs: Vec<f64> = std::iter::once(0.0).chain(cs).collect();
+        let repaired = |q: [f64; 2]| {
+            let at = owd_reach::bankcheck::chainage_on(&fit.centreline, &cs, q);
+            fit.stretches.iter().any(|s| matches!(s.kind, StretchKind::Repaired(_)) && at >= s.from_m - 10.0 && at <= s.to_m + 10.0)
+        };
         for (fitted, mask) in [(&fit.left, &banks.left), (&fit.right, &banks.right)] {
-            let worst = fitted.iter().map(|q| near(mask, *q)).fold(0.0, f64::max);
+            let kept: Vec<&[f64; 2]> = fitted.iter().filter(|q| !repaired(**q)).collect();
+            let worst = kept.iter().map(|q| near(mask, **q)).fold(0.0, f64::max);
             assert!(worst <= p.max_shift_m + 0.01, "a fitted bank is {worst} m from its mask bank");
         }
         // And they moved: the mask's 75 % line lies inside the dry-season water, so the fit moves the
@@ -353,8 +369,8 @@ mod recorded {
     }
     }
 
-    const SNAPSHOT_TOTAL_SHIFT_M: f64 = 25_709.149;
-    const SNAPSHOT_STATIONS: (usize, usize) = (410, 536);
+    const SNAPSHOT_TOTAL_SHIFT_M: f64 = 20_358.091;
+    const SNAPSHOT_STATIONS: (usize, usize) = (308, 434);
 }
 
 mod recorded_tiles {

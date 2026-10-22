@@ -233,7 +233,7 @@
       }
     },
     "low_confidence_width": {
-      "description": "Spec 0012: stretches of the generated banks where the water was too narrow to trust (under `min_width_m`) or was not found. Chainage is along the generated centreline, in metres from its start. Optional.",
+      "description": "Spec 0012: stretches of the generated banks where the water was too narrow to trust (under `min_width_m`) or was not found; spec 0013 adds stretches where a bank check failed (`repaired`). Chainage is along the generated centreline, in metres from its start. Optional.",
       "type": "object",
       "required": ["min_width_m", "stretches"],
       "additionalProperties": false,
@@ -250,8 +250,13 @@
             "properties": {
               "from_m": { "type": "number" },
               "to_m": { "type": "number" },
-              "kind": { "enum": ["narrow", "no-water", "no-edge", "at-shift-limit"] },
-              "min_width_m": { "type": "number", "minimum": 0 }
+              "kind": { "enum": ["narrow", "no-water", "no-edge", "at-shift-limit", "repaired"] },
+              "min_width_m": { "type": "number", "minimum": 0 },
+              "checks": {
+                "description": "Spec 0013, kind `repaired`: the bank checks that failed. `side`, `missing`, `jump` and `width-wide` were repaired; `width-narrow` is flagged and the banks kept.",
+                "type": "array",
+                "items": { "enum": ["side", "missing", "jump", "width-wide", "width-narrow"] }
+              }
             }
           }
         }

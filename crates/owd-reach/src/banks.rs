@@ -10,6 +10,7 @@
 //! Defaults (provisional until calibrated against a surveyed reach): occurrence of 75 % or more is
 //! water; under 3 pixels (90 m on JRC) is low-confidence width.
 
+use crate::bankcheck::{CheckParams, check_and_repair, merge, rechain};
 use crate::error::ReachError;
 use crate::fetch::Fetch;
 use crate::geo::LonLat;
@@ -75,6 +76,37 @@ pub enum StretchKind {
     /// The imagery shows water (or land) running on past the largest shift: the bank moved by that
     /// shift, and the edge lies farther.
     AtShiftLimit,
+    /// A bank check failed here (spec 0013): the bank was repaired, or (a narrow width alone) flagged.
+    Repaired(crate::bankcheck::Checks),
+}
+
+impl StretchKind {
+    /// The name the document writes.
+    pub fn name(self) -> &'static str {
+        match self {
+            StretchKind::Narrow => "narrow",
+            StretchKind::NoWater => "no-water",
+            StretchKind::NoEdge => "no-edge",
+            StretchKind::AtShiftLimit => "at-shift-limit",
+            StretchKind::Repaired(_) => "repaired",
+        }
+    }
+}
+
+/// The stretches as the document writes them.
+pub fn stretches_value(stretches: &[Stretch]) -> Vec<Value> {
+    stretches
+        .iter()
+        .map(|s| {
+            let mut v = json!({
+                "from_m": s.from_m, "to_m": s.to_m, "kind": s.kind.name(), "min_width_m": s.min_width_m,
+            });
+            if let StretchKind::Repaired(c) = s.kind {
+                v["checks"] = json!(c.names());
+            }
+            v
+        })
+        .collect()
 }
 
 /// A flagged stretch, by chainage along the generated centreline.
@@ -92,11 +124,11 @@ pub struct Stretch {
 pub struct MaskBanks {
     pub utm: Utm,
     pub params: BankParams,
-    /// One entry per station that has water.
+    /// The mid-line of the banks (spec 0013), at stations `station_step_m` apart.
     pub centreline: Vec<[f64; 2]>,
     pub left: Vec<[f64; 2]>,
     pub right: Vec<[f64; 2]>,
-    /// Width at each of those stations, in metres.
+    /// Width at each station of the centreline, in metres.
     pub widths: Vec<f64>,
     /// Closed ring: left bank, then right bank back.
     pub polygon: Vec<[f64; 2]>,
@@ -395,8 +427,24 @@ pub fn banks_from_mask(
     }
     let left: Vec<[f64; 2]> = found.iter().map(|(c, _)| c.left).collect();
     let right: Vec<[f64; 2]> = found.iter().map(|(c, _)| c.right).collect();
-    let centreline: Vec<[f64; 2]> = found.iter().map(|(c, _)| c.centre).collect();
-    let widths: Vec<f64> = found.iter().map(|(c, _)| c.width).collect();
+    let centre: Vec<[f64; 2]> = found.iter().map(|(c, _)| c.centre).collect();
+    // Spec 0013: check and repair the banks, and make the centreline their mid-line.
+    let checked = check_and_repair(
+        &left,
+        &right,
+        &centre,
+        &CheckParams::at_step(params.station_step_m),
+    )?;
+    let stretches = merge(
+        rechain(&stretches, &line, &checked.centreline),
+        checked.stretches,
+    );
+    let (left, right, centreline, widths) = (
+        checked.left,
+        checked.right,
+        checked.centreline,
+        checked.widths,
+    );
     let mut polygon = left.clone();
     polygon.extend(right.iter().rev());
     polygon.push(left[0]);
@@ -450,16 +498,7 @@ impl MaskBanks {
             "min_width_m": self.params.min_width_m(),
             "provisional": true,
             "source": "jrc-gsw",
-            "stretches": self.stretches.iter().map(|s| json!({
-                "from_m": s.from_m, "to_m": s.to_m,
-                "kind": match s.kind {
-                    StretchKind::Narrow => "narrow",
-                    StretchKind::NoWater => "no-water",
-                    StretchKind::NoEdge => "no-edge",
-                    StretchKind::AtShiftLimit => "at-shift-limit",
-                },
-                "min_width_m": s.min_width_m,
-            })).collect::<Vec<_>>(),
+            "stretches": stretches_value(&self.stretches),
         })
     }
 }

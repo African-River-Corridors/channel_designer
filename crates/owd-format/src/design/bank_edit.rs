@@ -1,7 +1,7 @@
 //! Edits to a bank line (spec 0012, ticket #236): splice a redrawn stretch, and move, add and
 //! delete a vertex. The geometry is pure planar code in project metres. [`Session::edit_bank`]
 //! applies an edit given in longitude and latitude, marks the input `edited`, and rebuilds the river
-//! polygon and centreline from the two banks. A refused edit changes nothing.
+//! polygon from the two banks, and the centreline as their mid-line (`midline`, spec 0013). A refused edit changes nothing.
 //!
 //! Every edit is refused when the line would cross itself or the other bank, so a bank always
 //! stays one simple line.
@@ -94,7 +94,7 @@ impl Session {
         if left.len() >= 2 && right.len() >= 2 {
             self.doc["inputs"]["river_polygon"] =
                 json!({"type": "Polygon", "coordinates": [polygon(&left, &right)]});
-            self.doc["inputs"]["centreline"] = json!({"type": "LineString", "coordinates": centreline(&left, &right, CENTRELINE_STATION_M)});
+            self.doc["inputs"]["centreline"] = json!({"type": "LineString", "coordinates": rebuilt_centreline(crs, &left, &right)?});
             for derived in ["river_polygon", "centreline"] {
                 self.set_provenance(derived, edited(&base))?;
             }
@@ -118,6 +118,31 @@ impl Session {
             )?;
         }
         Ok(())
+    }
+}
+
+/// The centreline of two banks: their mid-line (spec 0013), worked out in metres. A WGS84 study is
+/// worked in the UTM zone of its middle and brought back.
+fn rebuilt_centreline(crs: Crs, left: &[Pt], right: &[Pt]) -> Result<Vec<Pt>, DesignError> {
+    let mid = |l: &[Pt], r: &[Pt]| {
+        super::midline::midline(
+            l,
+            r,
+            &centreline(l, r, CENTRELINE_STATION_M),
+            CENTRELINE_STATION_M,
+        )
+    };
+    match crs {
+        Crs::Utm(_) => Ok(mid(left, right)),
+        Crs::Wgs84 => {
+            let c = left[left.len() / 2];
+            let u = super::crs::Utm::for_point(c[0], c[1]);
+            let (l, r) = (
+                u.forward_all(left).map_err(DesignError::Input)?,
+                u.forward_all(right).map_err(DesignError::Input)?,
+            );
+            u.inverse_all(&mid(&l, &r)).map_err(DesignError::Input)
+        }
     }
 }
 
@@ -318,7 +343,7 @@ fn along(line: &[Pt], frac: f64) -> Pt {
     line[0]
 }
 
-/// A centreline between two banks: the midpoints of points at equal fractions of each bank's
+/// The seed of the mid-line: the midpoints of points at equal fractions of each bank's
 /// length, one per station metre of the longer bank (at least 2 points).
 pub fn centreline(left: &[Pt], right: &[Pt], station_m: f64) -> Vec<Pt> {
     let length = |l: &[Pt]| {
@@ -345,6 +370,47 @@ mod tests {
     }
     fn right() -> Vec<Pt> {
         (0..=10).map(|i| [i as f64 * 10.0, 0.0]).collect()
+    }
+
+    #[test]
+    fn an_edit_rebuilds_the_centreline_as_the_banks_mid_line() {
+        // A channel 100 m wide in UTM 30N; then the left bank is moved out 40 m at one vertex. The
+        // banks paired by their share of length would put the centreline off the middle all along;
+        // the mid-line stays on it.
+        let crs = r#","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:EPSG::32630"}}"#;
+        let line = |y: f64| {
+            let pts: Vec<Pt> = (0..=100)
+                .map(|i| [500_000.0 + i as f64 * 20.0, 600_000.0 + y])
+                .collect();
+            format!(
+                r#"{{"type":"LineString"{crs},"coordinates":{}}}"#,
+                json!(pts)
+            )
+        };
+        let mut s = Session::new("t", "2026-10-22");
+        let (l, r) = (line(100.0), line(0.0));
+        s.import(&[(Role::LeftBank, l.as_str()), (Role::RightBank, r.as_str())])
+            .unwrap();
+        let crate::design::crs::Crs::Utm(u) = crate::design::crs::Crs::from_epsg(32630).unwrap()
+        else {
+            unreachable!()
+        };
+        let to = u
+            .inverse(500_000.0 + 50.0 * 20.0, 600_000.0 + 140.0)
+            .unwrap();
+        s.edit_bank(
+            Role::LeftBank,
+            BankEdit::Move { index: 50, to },
+            "2026-10-22",
+        )
+        .unwrap();
+        let get = |k: &str| super::super::geojson::all_positions(&s.document()["inputs"][k]);
+        let (c, left, right) = (get("centreline"), get("left_bank"), get("right_bank"));
+        let off = crate::design::midline::midline_offsets(&c, &left, &right);
+        for (i, o) in off.iter().enumerate().skip(1).take(off.len() - 2) {
+            let o = o.unwrap_or_else(|| panic!("station {i} met no bank"));
+            assert!(o < 1.0, "station {i} is {o} m off the mid-line");
+        }
     }
 
     #[test]
