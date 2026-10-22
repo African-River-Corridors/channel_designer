@@ -446,6 +446,35 @@ fn splice_runs(
     cut_loops(&out, 64)
 }
 
+/// The part of a bank whose vertices lie alongside the centreline: leading and trailing vertices whose
+/// nearest point on the centreline is its first or last point, more than one station's length beyond
+/// it, are dropped. At least two vertices are kept.
+fn trim_to_centreline(bank: &[P2], centre: &[P2]) -> Vec<P2> {
+    if bank.len() < 3 || centre.len() < 2 {
+        return bank.to_vec();
+    }
+    let cs = owd_format::design::midline::arc(centre);
+    let len = cs[cs.len() - 1];
+    let beyond = |p: P2, end: P2, next: P2| {
+        // Past the end along the centreline's direction there.
+        let d = [end[0] - next[0], end[1] - next[1]];
+        let l = (d[0] * d[0] + d[1] * d[1]).sqrt().max(1e-9);
+        ((p[0] - end[0]) * d[0] + (p[1] - end[1]) * d[1]) / l
+    };
+    let (c0, c1) = (centre[0], centre[1]);
+    let (z0, z1) = (centre[centre.len() - 1], centre[centre.len() - 2]);
+    let step = (len / (centre.len() - 1) as f64).max(1.0);
+    let mut a = 0;
+    while a + 2 < bank.len() && beyond(bank[a], c0, c1) > step {
+        a += 1;
+    }
+    let mut b = bank.len() - 1;
+    while b > a + 1 && beyond(bank[b], z0, z1) > step {
+        b -= 1;
+    }
+    bank[a..=b].to_vec()
+}
+
 /// Whether two lines cross each other.
 pub fn lines_cross(a: &[P2], b: &[P2]) -> Option<P2> {
     if a.len() < 2 || b.len() < 2 {
@@ -750,6 +779,12 @@ fn check_once(
     } else {
         (centreline, widths)
     };
+    // And the banks end where the centreline does: a bank running on past either end (a cast that
+    // found other water at the first or last station) is met by no normal, so no check sees it.
+    let (left2, right2) = (
+        trim_to_centreline(&left2, &centreline),
+        trim_to_centreline(&right2, &centreline),
+    );
     let rs = owd_format::design::midline::arc(&reference);
     let failed: Vec<(f64, Checks)> = checks
         .iter()
