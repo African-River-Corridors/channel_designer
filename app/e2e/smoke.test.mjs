@@ -172,7 +172,7 @@ describe("Open Waterway Designer app smoke test", () => {
   });
 
   beforeEach(() => {
-    for (const f of ["open.txt", "save.txt", "discard.txt", "load.txt", "export.txt", "jrc.txt", "reach-endpoints.json"]) forget(f);
+    for (const f of ["open.txt", "save.txt", "discard.txt", "load.txt", "export.txt", "sheets.txt", "jrc.txt", "reach-endpoints.json"]) forget(f);
   });
 
   it("shows the screening label on its status line from the start", async () => {
@@ -504,6 +504,37 @@ describe("Open Waterway Designer app smoke test", () => {
     assert.equal(fc.screening, "Screening \u2014 not for construction");
     assert.ok(fc.features.length >= 1);
     assert.ok(fc.features.every((f) => f.properties.screening === "Screening \u2014 not for construction" && Array.isArray(f.properties.failed_checks)));
+  });
+  it("shows the drawing sheets of the active option and exports them as PDF (spec 0004)", async () => {
+    await open(designWithDem("sheets-"), "with-dem.owd");
+    await formShowsExample();
+    await (await browser.$("[data-testid=run-alignment]")).click();
+    await until("alignment to be fresh", async () => (await text("status-alignment")) === "fresh", 60000);
+    await (await browser.$("[data-testid=water-level]")).setValue("38");
+    await (await browser.$("[data-testid=set-water]")).click();
+    await (await browser.$("[data-testid=run-volumes]")).click();
+    await until("volumes to be fresh", async () => (await text("status-volumes")) === "fresh", 120000);
+    await (await browser.$("[data-testid=sheets-toggle]")).click();
+    // The view shows a sheet: the SVG as the drawing builder wrote it.
+    await until("a sheet", async () => (await (await browser.$("[data-testid=sheet] svg")).isExisting()), 180000);
+    const shown = await browser.execute(() => ({
+      tabs: document.querySelectorAll("[data-testid=sheet-tab]").length,
+      number: document.querySelector("[data-testid=sheet]").dataset.number,
+      texts: document.querySelectorAll("[data-testid=sheet] svg text").length,
+    }));
+    assert.ok(shown.tabs >= 4, `sheets listed: ${shown.tabs}`);
+    assert.match(shown.number, /^OWD-.+-(XS|TS|SO|PL)-\d{3}$/);
+    assert.ok(shown.texts > 10, "the sheet draws its title block and notes");
+    // Export: one PDF a sheet, named as owd draw names them.
+    const dir = path.join(WORK, "sheets-pdf");
+    answer("sheets.txt", dir);
+    await (await browser.$("[data-testid=export-sheets]")).click();
+    await until("the PDFs to be written", async () => fs.existsSync(dir) && fs.readdirSync(dir).filter((f) => f.endsWith(".pdf")).length === shown.tabs, 180000);
+    for (const f of fs.readdirSync(dir).filter((f) => f.endsWith(".pdf"))) {
+      assert.equal(fs.readFileSync(path.join(dir, f)).subarray(0, 5).toString(), "%PDF-", f);
+    }
+    await (await browser.$("[data-testid=sheets-toggle]")).click();
+    await until("the map to return", async () => !(await (await browser.$("[data-testid=sheets-view]")).isExisting()));
   });
   it("starts a study from a river: route, inputs with badges, a depth, the class table, and Use this vessel", async () => {
     // The recorded answers stand in for Overpass, Earth Search, Sentinel-2, Zenodo and Hydrocron.

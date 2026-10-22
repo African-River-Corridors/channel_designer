@@ -124,11 +124,15 @@ fn pick_save(app: &AppHandle) -> Result<Option<PathBuf>, String> {
 }
 
 fn write_file(path: &Path, text: &str) -> Result<(), String> {
+    write_bytes(path, text.as_bytes())
+}
+
+fn write_bytes(path: &Path, data: &[u8]) -> Result<(), String> {
     // Write beside the target and rename, so a failed write cannot leave half a file.
     let mut tmp = path.as_os_str().to_owned();
     tmp.push(".tmp");
     let tmp = PathBuf::from(tmp);
-    std::fs::write(&tmp, text).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    std::fs::write(&tmp, data).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
     std::fs::rename(&tmp, path).map_err(|e| format!("cannot write {}: {e}", path.display()))
 }
 
@@ -321,6 +325,48 @@ async fn export_file(
     }
     write_file(&path, &text)?;
     Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+/// The drawing sheets of an option (spec 0004, ticket 8): `[{number, title, svg, warnings}]`, made by
+/// the same builder as `owd draw`, off the main thread.
+#[tauri::command]
+async fn sheets(state: State<'_, Shared>, option: String) -> Reply {
+    let job = lock(&state)?.sheets_job(&option);
+    tauri::async_runtime::spawn_blocking(move || job.pages())
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Write each sheet's PDF of an option into a folder the user picks, named as `owd draw` names them.
+/// Returns the folder, or `null` on cancel. The PDFs have the bytes `owd draw` writes.
+#[tauri::command]
+async fn export_sheets(
+    app: AppHandle,
+    state: State<'_, Shared>,
+    option: String,
+) -> Result<Option<String>, String> {
+    let job = lock(&state)?.sheets_job(&option);
+    let picked = match test_answer("sheets.txt") {
+        Some(answer) => answer.map(PathBuf::from),
+        None => app
+            .dialog()
+            .file()
+            .blocking_pick_folder()
+            .map(|p| p.into_path().map_err(|e| e.to_string()))
+            .transpose()?,
+    };
+    let Some(folder) = picked else {
+        return Ok(None);
+    };
+    let pdfs = tauri::async_runtime::spawn_blocking(move || job.pdfs())
+        .await
+        .map_err(|e| e.to_string())??;
+    std::fs::create_dir_all(&folder)
+        .map_err(|e| format!("cannot create {}: {e}", folder.display()))?;
+    for (name, bytes) in &pdfs {
+        write_bytes(&folder.join(name), bytes)?;
+    }
+    Ok(Some(folder.to_string_lossy().into_owned()))
 }
 
 /// The option comparison table and the checks list: failed options first, numbers kept.
@@ -701,6 +747,8 @@ pub fn run() {
             map_geometry,
             option_table,
             export_file,
+            sheets,
+            export_sheets,
             long_section,
             cross_section,
             station_near,

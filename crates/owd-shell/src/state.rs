@@ -515,6 +515,11 @@ impl AppState {
             .map_err(message)
     }
 
+    /// The inputs of the drawing sheets of an option (spec 0004, ticket 8), to run off the lock.
+    pub fn sheets_job(&self, option: &str) -> crate::sheets::SheetsJob {
+        crate::sheets::SheetsJob::new(self.session.to_text(), self.dem_bytes.clone(), option)
+    }
+
     /// The quantity table as CSV, from the session. The same text as `owd export --csv`.
     pub fn export_csv(&self) -> String {
         self.session

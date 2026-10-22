@@ -347,6 +347,26 @@ impl Session {
         .to_string())
     }
 
+    /// The drawing sheets of an option (spec 0004, ticket 8) as JSON: `[{number, title, svg,
+    /// warnings}]`, made by the same builder as `owd draw`.
+    pub fn sheets(&self, option: &str) -> Js<String> {
+        ok(self.state.sheets_job(option).pages()).map(|v| v.to_string())
+    }
+
+    /// Each sheet's PDF of an option, as `[[name, bytes], ...]`, with the bytes `owd draw` writes.
+    pub fn sheet_pdfs(&self, option: &str) -> Js<js_sys::Array> {
+        let pdfs = ok(self.state.sheets_job(option).pdfs())?;
+        Ok(pdfs
+            .into_iter()
+            .map(|(name, bytes)| {
+                let pair = js_sys::Array::new();
+                pair.push(&JsValue::from_str(&name));
+                pair.push(&js_sys::Uint8Array::from(bytes.as_slice()));
+                JsValue::from(pair)
+            })
+            .collect())
+    }
+
     pub fn long_section(&mut self, option: &str) -> Js<String> {
         let w = self.walked(option)?;
         Ok(ok(w

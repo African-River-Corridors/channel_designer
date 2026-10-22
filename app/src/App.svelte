@@ -10,6 +10,7 @@
   import MapPanel from "./lib/MapPanel.svelte";
   import BankEditor from "./lib/BankEditor.svelte";
   import StartFromRiver from "./lib/StartFromRiver.svelte";
+  import SheetsView from "./lib/SheetsView.svelte";
   import type * as maplibregl from "maplibre-gl";
   import LeftPanel from "./lib/LeftPanel.svelte";
   import { platform } from "./lib/platform";
@@ -36,6 +37,8 @@
   let editingBanks = $state(false);
   /** "Start from a river" (spec 0012) is showing in the left panel. */
   let reachView = $state(false);
+  /** The Sheets view over the map and sections (spec 0004): the drawing sheets of the active option. */
+  let sheetsView = $state(false);
   /** Set while a map click picks a point of the reach. */
   let reachPicker = $state<((lon: number, lat: number) => void) | undefined>();
 
@@ -378,6 +381,7 @@
     <button class:on={reachView} data-testid="start-from-river" aria-pressed={reachView} onclick={() => (reachView = !reachView)} title="Make a study's inputs from open data for a river reach">Start from a river</button>
     <button onclick={() => fileAction(api.save)}>Save</button>
     <button onclick={() => fileAction(api.saveAs)}>Save as</button>
+    <button class:on={sheetsView} data-testid="sheets-toggle" aria-pressed={sheetsView} disabled={!(table?.rows.length)} onclick={() => (sheetsView = !sheetsView)} title="The drawing sheets of the active option, as owd draw makes them">Sheets</button>
     <button disabled={!(table?.rows.length)} onclick={() => exportAs("geojson")} title="Design line options as GeoJSON (WGS84), with their checks">Export GeoJSON</button>
     <button disabled={!(table?.rows.length)} onclick={() => exportAs("csv")} title="The quantity table as CSV">Export CSV</button>
     <button class="primary" disabled={!anyStale || busy !== null} onclick={runStale} title="Rerun every stale stage, in order">Run stale</button>
@@ -426,6 +430,7 @@
     </section>
     <div class="handle v" role="separator" aria-orientation="vertical" onpointerdown={drag("x")}></div>
     <section class="main">
+      {#if sheetsView}<SheetsView option={selectedId} onNotice={(m) => (notice = m)} onError={(m) => (error = m)} />{/if}
       <div class="mapbox">
         {#if tiles}<MapPanel {geometry} {selectedId} {stretches} {selectedStretch} {hillshade} {tiles} stationPosition={crossSection?.position ?? null} onPick={editingBanks ? undefined : reachView && reachPicker ? reachPicker : pickPoint} onReady={(m) => (map = m)} bind:offline />{/if}
         <BankEditor {map} {geometry} {snap} onSnap={(next) => (snap = next)} bind:active={editingBanks} />
@@ -490,7 +495,7 @@
   .body > section { overflow: auto; min-width: 0; min-height: 0; }
   .left { grid-column: 1; grid-row: 1 / 4; background: var(--surface); }
   .handle.v { grid-column: 2; grid-row: 1 / 4; cursor: col-resize; background: var(--ink); }
-  .main { grid-column: 3; grid-row: 1; overflow: hidden; display: grid; grid-template-rows: minmax(120px, 1fr) minmax(150px, 40%); }
+  .main { grid-column: 3; grid-row: 1; overflow: hidden; position: relative; display: grid; grid-template-rows: minmax(120px, 1fr) minmax(150px, 40%); }
   .mapbox { min-height: 0; position: relative; }
   .sections { display: grid; grid-template-columns: 1fr minmax(260px, 42%); min-height: 0; border-top: var(--lw-thin) solid var(--ink); background: var(--surface); }
   .longbox, .crossbox { min-width: 0; min-height: 0; overflow: hidden; }

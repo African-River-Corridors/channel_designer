@@ -363,6 +363,13 @@ export const stationNear = (option: string, lon: number, lat: number) => invoke<
 /** Export through the session to a file the user picks. Returns the path, or null when they cancel. Rejects with the reason (for example: no options yet). */
 export const exportFile = (kind: "geojson" | "csv") => invoke<string | null>("export_file", { kind });
 
+/** A drawing sheet as `owd draw` makes it (spec 0004): its number, title and SVG. */
+export type SheetPage = { number: string; title: string; svg: string; warnings: string[] };
+/** The drawing sheets of an option, from the same builder as `owd draw`. */
+export const sheets = (option: string) => invoke<SheetPage[]>("sheets", { option });
+/** Write each sheet's PDF of an option; the folder (desktop) or what was saved (web), or null on cancel. */
+export const exportSheets = (option: string) => invoke<string | null>("export_sheets", { option });
+
 /** Web only: open the bundled example (a short synthetic river with its DEM). null when the user cancels. */
 export const openExample = () => invoke<Snapshot | null>("open_example");
 
