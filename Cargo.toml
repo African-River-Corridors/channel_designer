@@ -34,3 +34,13 @@ otd-imagery = { git = "https://github.com/African-River-Corridors/open-technical
 # float_roundtrip, arbitrary_precision: read every number exactly as written, big ints too.
 # preserve_order: a JSON object keeps its key order, as a Python dict does.
 serde_json = { version = "1", features = ["float_roundtrip", "arbitrary_precision", "preserve_order"] }
+
+# The web build (tools/build_web.sh): link-time optimisation in one unit, and no symbol names. Smaller and no
+# slower than `release`. Not `opt-level = "z"`: that is smaller still, but the design runs half as slow again
+# in the browser (measured in the PR that added this). Native builds keep `release`.
+[profile.wasm]
+inherits = "release"
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
