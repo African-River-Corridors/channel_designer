@@ -428,3 +428,65 @@ fn with_both_banks_the_default_reads_the_reference_line_and_stores_it() {
     let t = out(&owd(&["fits", &doc, "--show"]));
     assert!(t.contains("Plan line: reference"), "{t}");
 }
+
+/// `fits` takes a Rule Set and its quality as `size` does (#362): `--rule-set pianc-wg141
+/// --set-input se_quality=C` is the answer under PIANC-C.
+#[test]
+fn fits_names_a_rule_set_and_its_quality_as_size_does() {
+    let (_dir, doc) = setup("fits-size-names");
+    let o = owd(&[
+        "fits",
+        &doc,
+        "--rule-set",
+        "pianc-wg141",
+        "--set-input",
+        "se_quality=C",
+        "--json",
+    ]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let v: Value = serde_json::from_str(&out(&o)).unwrap();
+    assert_eq!(v["fits"]["rule_sets"][0]["rule_set"], "PIANC-C");
+    assert_eq!(
+        v["fits"]["rule_sets"][0]["selection"]["set_inputs"][0]["value"],
+        "C"
+    );
+    // Two sets, each with its own input, and the old name too: three answers, in order.
+    let o = owd(&[
+        "fits",
+        &doc,
+        "--rule-set",
+        "pianc-wg141",
+        "--rule-set",
+        "gb50139",
+        "--set-input",
+        "se_quality=A",
+        "--set-input",
+        "range_end=strict",
+        "--ruleset",
+        "PIANC-B",
+        "--json",
+    ]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let v: Value = serde_json::from_str(&out(&o)).unwrap();
+    let names: Vec<&str> = v["fits"]["rule_sets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["rule_set"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["PIANC-B", "PIANC-A", "CN-conservative"]);
+    // A set without its input, or an input the set does not take, is refused with the fix.
+    let o = owd(&["fits", &doc, "--rule-set", "pianc-wg141"]);
+    assert_eq!(o.status.code(), Some(2));
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(err.contains("se_quality"), "{err}");
+    let o = owd(&[
+        "fits",
+        &doc,
+        "--rule-set",
+        "pianc-wg141",
+        "--set-input",
+        "se_quality=Z",
+    ]);
+    assert_eq!(o.status.code(), Some(2));
+}
