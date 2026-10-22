@@ -241,6 +241,20 @@ fn set_vessel(
     finish(&window, &guard)
 }
 
+/// Choose a custom vessel from the form's fields (spec 0015 T2); the channel is sized at once.
+#[tauri::command]
+fn set_custom_vessel(window: Window, state: State<Shared>, fields: serde_json::Value) -> Reply {
+    let mut guard = lock(&state)?;
+    guard.set_custom_vessel(&fields)?;
+    finish(&window, &guard)
+}
+
+/// Check a custom vessel's fields: the refusal and the field it is on, or the warnings.
+#[tauri::command]
+fn check_custom_vessel(state: State<Shared>, fields: serde_json::Value) -> Reply {
+    Ok(lock(&state)?.check_custom_vessel(&fields))
+}
+
 /// The constraint stretches as GeoJSON lines in WGS84, for the map.
 #[tauri::command]
 fn stretches_geojson(state: State<Shared>) -> Reply {
@@ -1134,6 +1148,8 @@ pub fn run() {
             save_as,
             set_rule_sets,
             set_vessel,
+            set_custom_vessel,
+            check_custom_vessel,
             stretches_geojson,
             run_stale,
             map_geometry,

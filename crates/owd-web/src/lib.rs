@@ -195,6 +195,20 @@ impl Session {
         self.edit(|s| s.set_vessel(vessel_standard_id, draught))
     }
 
+    /// Choose a custom vessel from the form's fields, as JSON text (spec 0015 T2).
+    pub fn set_custom_vessel(&mut self, fields: &str) -> Js<String> {
+        let fields: serde_json::Value =
+            ok(serde_json::from_str(fields).map_err(|e| e.to_string()))?;
+        self.edit(|s| s.set_custom_vessel(&fields))
+    }
+
+    /// Check a custom vessel's fields, as JSON text: the refusal and its field, or the warnings.
+    pub fn check_custom_vessel(&self, fields: &str) -> Js<String> {
+        let fields: serde_json::Value =
+            ok(serde_json::from_str(fields).map_err(|e| e.to_string()))?;
+        Ok(self.state.check_custom_vessel(&fields).to_string())
+    }
+
     /// The constraint stretches as GeoJSON lines in WGS84, for the map.
     pub fn stretches_geojson(&self) -> Js<String> {
         Ok(ok(self.state.stretches_geojson())?.to_string())

@@ -174,7 +174,8 @@ const blank = (): Snapshot => ({
 const none = (why: string) => () => Promise.reject(why);
 
 const answer: Record<string, () => unknown> = {
-  snapshot: () => snapshot, set_rule_sets: () => snapshot, set_vessel: () => snapshot, stretches_geojson: () => stretches, sizing_choices: () => ({
+  snapshot: () => snapshot, set_rule_sets: () => snapshot, set_vessel: () => snapshot, set_custom_vessel: () => snapshot,
+  check_custom_vessel: () => ({ refusal: null, warnings: [] }), stretches_geojson: () => stretches, sizing_choices: () => ({
     rule_sets: [
       { id: "pianc-wg141", version: "0.3.0", title: "PIANC WG 141", label: "PIANC WG 141 (pianc-wg141@0.3.0)", inputs: [{ name: "se_quality", label: "Safety and ease quality", default: "C", values: [{ value: "A", label: "A: the most room" }, { value: "B", label: "B: between A and C" }, { value: "C", label: "C: the least room" }] }] },
       { id: "gb50139", version: "0.3.0", title: "GB 50139", label: "GB 50139 (gb50139@0.3.0)", inputs: [{ name: "range_end", label: "End of each range the standard gives", default: null, values: [{ value: "permissive", label: "permissive: the less demanding end" }, { value: "strict", label: "strict: the more demanding end" }] }] },

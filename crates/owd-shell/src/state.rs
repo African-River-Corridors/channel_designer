@@ -100,6 +100,64 @@ fn relative_to(base: &Path, target: &Path) -> String {
     parts.join("/")
 }
 
+/// A custom vessel from the form's fields: each a number or the text typed (empty for none). A
+/// field that is not a number is refused by name; the vessel's own checks come after.
+fn custom_from_fields(
+    f: &Value,
+) -> Result<owd_core::rules::custom::CustomVessel, owd_core::rules::custom::Refusal> {
+    use owd_core::rules::custom::{CustomVessel, Formation, Refusal};
+    let text = |k: &str| match &f[k] {
+        Value::String(s) => s.trim().to_string(),
+        Value::Number(n) => n.to_string(),
+        _ => String::new(),
+    };
+    let not_a_number = |field: &'static str, t: &str| Refusal {
+        field,
+        message: format!("the custom vessel's {field} must be a number, not `{t}`"),
+    };
+    let optional = |field: &'static str| -> Result<Option<f64>, Refusal> {
+        let t = text(field);
+        if t.is_empty() {
+            return Ok(None);
+        }
+        t.parse::<f64>()
+            .map(Some)
+            .map_err(|_| not_a_number(field, &t))
+    };
+    let required = |field: &'static str| -> Result<f64, Refusal> {
+        optional(field)?.ok_or_else(|| Refusal {
+            field,
+            message: format!("the custom vessel needs its {field}"),
+        })
+    };
+    let count = |field: &'static str| -> Result<Option<u32>, Refusal> {
+        let t = text(field);
+        if t.is_empty() {
+            return Ok(None);
+        }
+        t.parse::<u32>()
+            .map(Some)
+            .map_err(|_| not_a_number(field, &t))
+    };
+    let formation = Formation::parse(&text("formation")).map_err(|e| Refusal {
+        field: "formation",
+        message: e.raw_message().to_string(),
+    })?;
+    let gb = text("gb_class");
+    Ok(CustomVessel {
+        name: text("name"),
+        loa_m: required("loa_m")?,
+        beam_m: required("beam_m")?,
+        draught_m: required("draught_m")?,
+        formation,
+        n_abreast: count("n_abreast")?,
+        n_in_line: count("n_in_line")?,
+        gb_class: (!gb.is_empty()).then_some(gb),
+        air_draught_m: optional("air_draught_m")?,
+        deadweight_t: optional("deadweight_t")?,
+    })
+}
+
 fn message(e: DesignError) -> String {
     e.to_string()
 }
@@ -191,6 +249,27 @@ impl AppState {
         self.edit_sizing(|s| s.set_vessel(vessel_standard_id, draught_m))
     }
 
+    /// Check a custom vessel's fields as the form has them (spec 0015 T2): `{"refusal":
+    /// {"field", "message"} | null, "warnings": [...]}`. Nothing changes.
+    pub fn check_custom_vessel(&self, fields: &Value) -> Value {
+        match custom_from_fields(fields) {
+            Err(r) => json!({"refusal": {"field": r.field, "message": r.message}, "warnings": []}),
+            Ok(v) => match v.refusal() {
+                Some(r) => {
+                    json!({"refusal": {"field": r.field, "message": r.message}, "warnings": []})
+                }
+                None => json!({"refusal": null, "warnings": v.warnings()}),
+            },
+        }
+    }
+
+    /// Choose a custom vessel from the form's fields, and size the channel at once. A refusal
+    /// names its field and leaves the design as it was. As [`AppState::set_vessel`] otherwise.
+    pub fn set_custom_vessel(&mut self, fields: &Value) -> Result<(), String> {
+        let v = custom_from_fields(fields).map_err(|r| r.message)?;
+        self.edit_sizing(|s| s.set_custom_vessel(&v).map(|_| ()))
+    }
+
     /// Make a sizing choice, then size the channel when it has a vessel class. All or nothing.
     fn edit_sizing(
         &mut self,
@@ -199,9 +278,9 @@ impl AppState {
         self.refuse_while_running()?;
         let before = self.session.clone();
         let outcome = choose(&mut self.session).and_then(|()| {
+            let settings = &self.session.document()["stages"]["sizing"]["settings"];
             let has_vessel =
-                !self.session.document()["stages"]["sizing"]["settings"]["vessel_standard_id"]
-                    .is_null();
+                !settings["vessel_standard_id"].is_null() || settings["custom_vessel"].is_object();
             if has_vessel {
                 self.session.run_stage(Stage::Sizing)
             } else {

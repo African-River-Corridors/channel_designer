@@ -26,7 +26,10 @@ export interface DesignBasisRow {
 export interface ChannelShape {
   /** The Rule Set selection as words, such as `pianc-wg141@0.3.0 (se_quality B)`. */
   rule_sets: string;
-  vessel_standard_id: string;
+  /** The class id; null for a custom vessel, which has `vessel_label` (spec 0015). */
+  vessel_standard_id: string | null;
+  /** A custom vessel's label, such as `Custom: My barge, 140 × 29 × 4.7 m`. */
+  vessel_label?: string;
   loa_m: number;
   beam_m: number;
   draught_m: number;
@@ -48,6 +51,37 @@ export interface SizingSettings {
   set_inputs: { name: string; value: string; source: ChoiceSource }[];
   vessel_standard_id: string | null;
   draught_m: number | null;
+  /** A custom vessel (spec 0015); `vessel_standard_id` is then null. */
+  custom_vessel?: CustomVessel;
+}
+/** A custom vessel as the study keeps it (spec 0015). */
+export interface CustomVessel {
+  name: string;
+  loa_m: number;
+  beam_m: number;
+  draught_m: number;
+  formation: "motor" | "convoy";
+  n_abreast?: number;
+  n_in_line?: number;
+  gb_class?: string;
+  air_draught_m?: number;
+  deadweight_t?: number;
+}
+/** A custom vessel's fields as the form has them: the text typed, empty for none. */
+export type CustomFields = Record<keyof CustomVessel, string>;
+/** The form's fields of a stored custom vessel (empty text for a field it does not have). */
+export const customFields = (v: CustomVessel): CustomFields => {
+  const t = (x: number | string | undefined) => (x == null ? "" : String(x));
+  return {
+    name: v.name, loa_m: t(v.loa_m), beam_m: t(v.beam_m), draught_m: t(v.draught_m), formation: v.formation,
+    n_abreast: t(v.n_abreast), n_in_line: t(v.n_in_line), gb_class: t(v.gb_class),
+    air_draught_m: t(v.air_draught_m), deadweight_t: t(v.deadweight_t),
+  };
+};
+/** The check of a custom vessel's fields: the refusal and the field it is on, or the warnings. */
+export interface CustomCheck {
+  refusal: { field: keyof CustomVessel; message: string } | null;
+  warnings: string[];
 }
 export type StretchKind = "width" | "depth" | "radius" | "infeasible";
 /** A stretch of a design line where the river falls short of a Rule, with the works it needs. */
@@ -169,7 +203,10 @@ export interface ReachView {
 }
 /** One vessel class in the "what fits" answer. */
 export interface FitsClass {
-  vessel_standard_id: string;
+  /** Null on the custom vessel's row, which has `custom` and `vessel_label` (spec 0015). */
+  vessel_standard_id: string | null;
+  custom?: boolean;
+  vessel_label?: string;
   class_name: string;
   family: string;
   loa_m: number;
@@ -239,6 +276,10 @@ export const saveAs = () => invoke<Snapshot | null>("save_as");
 export const setRuleSets = (ids: string[], inputs: Record<string, string>) => invoke<Snapshot>("set_rule_sets", { ids, inputs });
 /** Choose the vessel class and draught (as typed; empty is the vessel class's own); the channel is sized at once. Rejects with the reason. */
 export const setVessel = (vesselStandardId: string, draught: string) => invoke<Snapshot>("set_vessel", { vesselStandardId, draught });
+/** Choose a custom vessel from the form's fields; the channel is sized at once. Rejects with the reason. */
+export const setCustomVessel = (fields: CustomFields) => invoke<Snapshot>("set_custom_vessel", { fields });
+/** Check a custom vessel's fields: nothing changes. */
+export const checkCustomVessel = (fields: CustomFields) => invoke<CustomCheck>("check_custom_vessel", { fields });
 export const runStale = () => invoke<Snapshot>("run_stale");
 
 export type LonLat = [number, number];

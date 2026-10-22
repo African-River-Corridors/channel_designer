@@ -226,6 +226,39 @@ describe("Open Waterway Designer app smoke test", () => {
     assert.equal(await text("status-sizing"), "fresh");
   });
 
+  it("chooses Custom vessel…, sees the fields filled, edits the beam, sizes and sees the label; a refused beam turns Size off (spec 0015)", async () => {
+    await open(EXAMPLE, "synthetic-river.owd");
+    await formShowsExample();
+    await chooseVessel("__custom__");
+    await until("the custom vessel's fields", async () => (await browser.$("[data-testid=custom-vessel]")).isExisting());
+    const value = (id) => browser.execute((i) => document.querySelector(`[data-testid=custom-${i}]`).value, id);
+    assert.equal(await value("name"), `${EXAMPLE_VESSEL} (custom)`);
+    assert.equal(await value("formation"), "motor");
+    const loa = await value("loa_m");
+    const draught = await value("draught_m");
+    assert.ok(Number(loa) > 0 && Number(draught) > 0, `${loa} ${draught}`);
+    const type = (id, v) =>
+      browser.execute(
+        (i, x) => {
+          const el = document.querySelector(`[data-testid=custom-${i}]`);
+          el.value = x;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+        },
+        id,
+        v,
+      );
+    const sizeOn = () => browser.execute(() => !document.querySelector("[data-testid=custom-size]").disabled);
+    await type("beam_m", "900");
+    await until("the beam refused at its field", async () => (await browser.$("[data-testid=custom-error-beam_m]")).isExisting());
+    assert.equal(await sizeOn(), false);
+    await type("beam_m", "11");
+    await until("Size to turn on", async () => (await sizeOn()) && !(await (await browser.$("[data-testid=custom-error-beam_m]")).isExisting()));
+    await (await browser.$("[data-testid=custom-size]")).click();
+    const label = `Custom: ${EXAMPLE_VESSEL} (custom), ${loa} × 11 × ${draught} m`;
+    await until("the label in the channel shape", async () => (await text("shape-vessel")) === label);
+    assert.equal(await text("status-sizing"), "fresh");
+  });
+
   it("asks before it throws away unsaved changes, and keeps them when the answer is no", async () => {
     await open(EXAMPLE, "synthetic-river.owd");
     await formShowsExample();

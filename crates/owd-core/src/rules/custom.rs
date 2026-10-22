@@ -89,13 +89,27 @@ fn short(x: f64) -> String {
     format!("{x}")
 }
 
-fn positive(field: &str, x: f64) -> Result<(), RuleError> {
+/// A refusal of a custom vessel: the field it names (as the study writes it, such as `beam_m`)
+/// and the message.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Refusal {
+    pub field: &'static str,
+    pub message: String,
+}
+
+fn refuse(field: &'static str, message: String) -> Option<Refusal> {
+    Some(Refusal { field, message })
+}
+
+/// A refusal of `x` unless it is a positive number. `what` names it in words.
+fn positive(field: &'static str, what: &str, x: f64) -> Option<Refusal> {
     if x.is_finite() && x > 0.0 {
-        Ok(())
+        None
     } else {
-        Err(RuleError::Value(format!(
-            "the custom vessel's {field} must be a positive number, not {x}"
-        )))
+        refuse(
+            field,
+            format!("the custom vessel's {what} ({field}) must be a positive number, not {x}"),
+        )
     }
 }
 
@@ -125,60 +139,93 @@ impl CustomVessel {
 
     /// Refuse a vessel that cannot be right, naming the field; else the warnings (possibly none).
     pub fn check(&self) -> Result<Vec<String>, RuleError> {
+        match self.refusal() {
+            Some(r) => Err(RuleError::Value(r.message)),
+            None => Ok(self.warnings()),
+        }
+    }
+
+    /// The first refusal of the vessel, with the field it names; `None` when it can be sized.
+    pub fn refusal(&self) -> Option<Refusal> {
         let name = self.name.trim();
         if name.is_empty() {
-            return Err(RuleError::Value(
-                "the custom vessel's name must not be empty".into(),
-            ));
+            return refuse("name", "the custom vessel's name must not be empty".into());
         }
         if name.chars().count() > NAME_MAX_CHARS {
-            return Err(RuleError::Value(format!(
-                "the custom vessel's name must be at most {NAME_MAX_CHARS} characters"
-            )));
+            return refuse(
+                "name",
+                format!("the custom vessel's name must be at most {NAME_MAX_CHARS} characters"),
+            );
         }
-        positive("length overall (loa_m)", self.loa_m)?;
-        positive("beam (beam_m)", self.beam_m)?;
-        positive("draught (draught_m)", self.draught_m)?;
+        for (field, what, x) in [
+            ("loa_m", "length overall", self.loa_m),
+            ("beam_m", "beam", self.beam_m),
+            ("draught_m", "draught", self.draught_m),
+        ] {
+            if let Some(r) = positive(field, what, x) {
+                return Some(r);
+            }
+        }
         if self.beam_m >= self.loa_m {
-            return Err(RuleError::Value(format!(
-                "the custom vessel's beam (beam_m, {} m) must be less than its length overall \
-                 (loa_m, {} m)",
-                short(self.beam_m),
-                short(self.loa_m)
-            )));
+            return refuse(
+                "beam_m",
+                format!(
+                    "the custom vessel's beam (beam_m, {} m) must be less than its length \
+                     overall (loa_m, {} m)",
+                    short(self.beam_m),
+                    short(self.loa_m)
+                ),
+            );
         }
         match self.formation {
             Formation::Convoy => {
                 for (field, n) in [("n_abreast", self.n_abreast), ("n_in_line", self.n_in_line)] {
                     if !n.is_some_and(|n| n >= 1) {
-                        return Err(RuleError::Value(format!(
-                            "a custom convoy needs {field}: the number of barges, at least 1"
-                        )));
+                        return refuse(
+                            field,
+                            format!(
+                                "a custom convoy needs {field}: the number of barges, at least 1"
+                            ),
+                        );
                     }
                 }
             }
             Formation::Motor => {
-                if self.n_abreast.is_some() || self.n_in_line.is_some() {
-                    return Err(RuleError::Value(
+                if let Some(field) = [("n_abreast", self.n_abreast), ("n_in_line", self.n_in_line)]
+                    .into_iter()
+                    .find_map(|(f, n)| n.map(|_| f))
+                {
+                    return refuse(
+                        field,
                         "n_abreast and n_in_line are for a convoy only".into(),
-                    ));
+                    );
                 }
             }
         }
         if let Some(c) = &self.gb_class
             && !GB_CLASSES.contains(&c.as_str())
         {
-            return Err(RuleError::Value(format!(
-                "the custom vessel's gb_class must be one of {}, not `{c}`",
-                GB_CLASSES.join(", ")
-            )));
+            return refuse(
+                "gb_class",
+                format!(
+                    "the custom vessel's gb_class must be one of {}, not `{c}`",
+                    GB_CLASSES.join(", ")
+                ),
+            );
         }
-        if let Some(a) = self.air_draught_m {
-            positive("air draught (air_draught_m)", a)?;
+        if let Some(r) = self
+            .air_draught_m
+            .and_then(|a| positive("air_draught_m", "air draught", a))
+        {
+            return Some(r);
         }
-        if let Some(d) = self.deadweight_t {
-            positive("deadweight (deadweight_t)", d)?;
-        }
+        self.deadweight_t
+            .and_then(|d| positive("deadweight_t", "deadweight", d))
+    }
+
+    /// The warnings of a vessel that can be sized: outside every catalogue class, or an unusual
+    /// length-to-beam ratio.
+    pub fn warnings(&self) -> Vec<String> {
         let mut warnings = Vec::new();
         let dims = [
             ("length overall", self.loa_m, envelope(|v| v.loa_m)),
@@ -202,7 +249,7 @@ impl CustomVessel {
                  to {LB_RATIO_MAX}"
             ));
         }
-        Ok(warnings)
+        warnings
     }
 
     /// The vessel the engine sizes. Its class is the label; its family is [`CUSTOM_FAMILY`].
@@ -429,6 +476,80 @@ mod tests {
             w.iter().any(|w| w.contains("length-to-beam ratio (15.6)")),
             "{w:?}"
         );
+    }
+
+    /// The app shows a refusal next to its field (spec 0015 T2): each names the field it refuses.
+    #[test]
+    fn each_refusal_names_its_field() {
+        for (v, field) in [
+            (
+                CustomVessel {
+                    name: " ".into(),
+                    ..barge()
+                },
+                "name",
+            ),
+            (
+                CustomVessel {
+                    loa_m: 0.0,
+                    ..barge()
+                },
+                "loa_m",
+            ),
+            (
+                CustomVessel {
+                    beam_m: 200.0,
+                    ..barge()
+                },
+                "beam_m",
+            ),
+            (
+                CustomVessel {
+                    draught_m: -1.0,
+                    ..barge()
+                },
+                "draught_m",
+            ),
+            (
+                CustomVessel {
+                    formation: Formation::Convoy,
+                    n_in_line: Some(2),
+                    ..barge()
+                },
+                "n_abreast",
+            ),
+            (
+                CustomVessel {
+                    n_in_line: Some(2),
+                    ..barge()
+                },
+                "n_in_line",
+            ),
+            (
+                CustomVessel {
+                    gb_class: Some("X".into()),
+                    ..barge()
+                },
+                "gb_class",
+            ),
+            (
+                CustomVessel {
+                    air_draught_m: Some(0.0),
+                    ..barge()
+                },
+                "air_draught_m",
+            ),
+            (
+                CustomVessel {
+                    deadweight_t: Some(f64::NAN),
+                    ..barge()
+                },
+                "deadweight_t",
+            ),
+        ] {
+            assert_eq!(v.refusal().map(|r| r.field), Some(field));
+        }
+        assert_eq!(barge().refusal(), None);
     }
 
     #[test]

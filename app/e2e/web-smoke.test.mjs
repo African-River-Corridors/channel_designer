@@ -194,6 +194,53 @@ describe("OWD web smoke tests", () => {
     assert.equal(sized.beam_m, 15);
   });
 
+  it("chooses Custom vessel…, sees the fields filled from the class, edits the beam, sizes, and sees the label; a refused beam turns Size off", async () => {
+    const b = await start();
+    await b.url(`${origin}/owd/app`);
+    await loaded(b);
+    await (await tid(b, "open-example")).click();
+    await until(b, "the example", async () => (await text(b, "file-label")).includes("river-example.owd"));
+    const before = (await pageDoc(b)).stages.sizing.results;
+    await b.execute(() => {
+      const sel = document.querySelector("select[aria-label='Vessel class']");
+      sel.value = "__custom__";
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await until(b, "the custom vessel's fields", async () => exists(b, "custom-vessel"));
+    const value = (id) => b.execute((i) => document.querySelector(`[data-testid=custom-${i}]`).value, id);
+    // Filled from the class that was selected.
+    assert.equal(await value("name"), "CEMT-IV (custom)");
+    assert.equal(Number(await value("loa_m")), before.loa_m);
+    assert.equal(Number(await value("beam_m")), before.beam_m);
+    assert.equal(Number(await value("draught_m")), before.draught_m);
+    assert.equal(await value("formation"), "motor");
+    const type = (id, v) =>
+      b.execute(
+        (i, x) => {
+          const el = document.querySelector(`[data-testid=custom-${i}]`);
+          el.value = x;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+        },
+        id,
+        v,
+      );
+    const sizeOn = () => b.execute(() => !document.querySelector("[data-testid=custom-size]").disabled);
+    // A beam not less than the length is refused next to its field, and Size stays off.
+    await type("beam_m", "90");
+    await until(b, "the beam refused at its field", async () => exists(b, "custom-error-beam_m"));
+    assert.equal(await sizeOn(), false);
+    // A beam that can be right: Size turns on, and sizing gives the label.
+    await type("beam_m", "11");
+    await until(b, "Size to turn on", async () => (await sizeOn()) && !(await exists(b, "custom-error-beam_m")));
+    await (await tid(b, "custom-size")).click();
+    const label = `Custom: CEMT-IV (custom), ${before.loa_m} × 11 × ${before.draught_m} m`;
+    await until(b, "the design sized for the custom vessel", async () => (await pageDoc(b)).stages.sizing.results?.vessel_label === label);
+    const doc = await pageDoc(b);
+    assert.equal(doc.stages.sizing.settings.vessel_standard_id, null);
+    assert.equal(doc.stages.sizing.settings.custom_vessel.beam_m, 11);
+    assert.equal(await text(b, "shape-vessel"), label);
+  });
+
   it("picks the quality in the Rule Set picker, runs, shows the verdict, design basis and stretches, and a picked stretch on the map", async () => {
     // The map needs WebGL: headless Chrome gets it from SwiftShader, in software.
     const b = await start({ args: ["--headless=new", "--no-sandbox", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--window-size=1500,950"] });

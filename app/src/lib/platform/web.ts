@@ -264,6 +264,8 @@ export async function createWebPlatform(): Promise<Platform> {
     },
     set_rule_sets: (a) => change("set_rule_sets", JSON.stringify(a.ids), JSON.stringify(a.inputs)),
     set_vessel: (a) => change("set_vessel", a.vesselStandardId, a.draught),
+    set_custom_vessel: (a) => change("set_custom_vessel", JSON.stringify(a.fields)),
+    check_custom_vessel: (a) => json("check_custom_vessel", JSON.stringify(a.fields)),
     stretches_geojson: () => json("stretches_geojson"),
     run_stale: () => change("run_stale"),
     map_geometry: () => json("map_geometry"),

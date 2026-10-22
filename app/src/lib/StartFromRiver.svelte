@@ -595,13 +595,14 @@
             <thead><tr><th>Class</th><th>As it is</th><th>Width short</th><th>Radius short</th><th>Stretches</th><th></th></tr></thead>
             <tbody>
               {#each rs.classes as c}
-                <tr data-testid="fits-row-{c.vessel_standard_id}" data-fits={c.fits} class:shown={shownClass === c.vessel_standard_id} onclick={() => (shownClass = c.vessel_standard_id)}>
-                  <th>{c.class_name}</th>
+                {@const key = c.vessel_standard_id ?? "custom"}
+                <tr data-testid="fits-row-{key}" data-fits={c.fits} class:shown={shownClass === key} onclick={() => (shownClass = key)}>
+                  <th>{c.vessel_label ?? c.class_name}</th>
                   <td class:pass={c.fits} class:fail={!c.fits}>{yes(c.fits)}</td>
                   <td>{m1(c.worst_width_deficit_m)}</td>
                   <td>{m1(c.worst_radius_deficit_m)}</td>
                   <td>{c.stretch_count}</td>
-                  <td><button data-testid="use-vessel-{c.vessel_standard_id}" onclick={() => onUseVessel(rs.rule_set, rs.selection, c.vessel_standard_id)}>Use this vessel</button></td>
+                  <td><button data-testid="use-vessel-{key}" onclick={() => onUseVessel(rs.rule_set, rs.selection, key)}>Use this vessel</button></td>
                 </tr>
               {/each}
             </tbody>
