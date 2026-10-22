@@ -5,24 +5,29 @@
 
 use crate::Context;
 use crate::fmt::{km, m3, md, num, text, val};
-use crate::limits;
+use crate::{figures, limits, trace};
 use owd_format::design::export::failed_checks;
 use serde_json::{Value, json};
 
 /// The most stretches the screening report lists; the rest are in the quantity schedule.
 pub const STRETCH_CAP: usize = 200;
 
-/// The body and the appendices of the report.
-pub fn body(ctx: &Context) -> (Vec<Value>, Vec<Value>) {
+/// The body and the appendices of the report; the figures' bytes go into `assets`.
+pub fn body(ctx: &Context, assets: &mut Vec<(String, Vec<u8>)>) -> (Vec<Value>, Vec<Value>) {
     let body = vec![
-        reach(ctx),
+        reach(ctx, assets),
         sources(ctx),
         what_fits(ctx),
         stretches(ctx),
         design_basis(ctx),
         quantities(ctx),
+        section(
+            "long-section-section",
+            "Long section",
+            vec![figures::long_section(ctx, assets)],
+        ),
     ];
-    (body, Vec::new())
+    (body, trace::appendix(ctx).into_iter().collect())
 }
 
 fn section(id: &str, title: &str, body: Vec<Value>) -> Value {
@@ -53,7 +58,7 @@ fn table(
     json!({"type": "table", "id": id, "caption": caption, "columns": cols, "rows": rows})
 }
 
-fn reach(ctx: &Context) -> Value {
+fn reach(ctx: &Context, assets: &mut Vec<(String, Vec<u8>)>) -> Value {
     let d = ctx.doc;
     let mut text_ = format!(
         "This report screens **{}** for navigation. It is a screening: it ranks and sizes, and it is \
@@ -72,7 +77,11 @@ fn reach(ctx: &Context) -> Value {
     section(
         "reach",
         "The reach",
-        vec![limits::data_box(ctx), prose(text_)],
+        vec![
+            limits::data_box(ctx),
+            prose(text_),
+            figures::key_map(ctx, assets),
+        ],
     )
 }
 
