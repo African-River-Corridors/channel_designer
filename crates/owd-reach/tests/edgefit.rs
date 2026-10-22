@@ -97,6 +97,8 @@ fn mask_banks() -> MaskBanks {
         right,
         polygon,
         stretches: Vec::new(),
+        pixel_m: 30.0,
+        source: "jrc-gsw",
     }
 }
 
@@ -316,7 +318,16 @@ mod recorded {
         // Spec 0013: outside the stretches the bank checks repaired, which say so. The window opens
         // into a lagoon, whose mouth is an outward excursion of the bank and is cut; the repaired
         // stretches stay under a third of the centreline.
-        let repaired_m: f64 = fit.stretches.iter().filter(|s| matches!(s.kind, StretchKind::Repaired(_))).map(|s| s.to_m - s.from_m).sum();
+        // The length the repairs moved (flag-only checks left out), counted once where stretches overlap.
+        let mut moved_by: Vec<(f64, f64)> = fit.stretches.iter().filter(|s| matches!(s.kind, StretchKind::Repaired(k) if k.side || k.missing || k.jump || k.width_wide || k.excursion)).map(|s| (s.from_m, s.to_m)).collect();
+        moved_by.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let (mut repaired_m, mut reach) = (0.0, f64::MIN);
+        for (a, b) in moved_by {
+            if b > reach {
+                repaired_m += b - a.max(reach);
+                reach = b;
+            }
+        }
         let length = fit.centreline.windows(2).map(|w| ((w[1][0] - w[0][0]).powi(2) + (w[1][1] - w[0][1]).powi(2)).sqrt()).sum::<f64>();
         assert!(repaired_m * 3.0 < length, "{repaired_m} m of {length} m repaired: {:?}", fit.stretches);
         let cs: Vec<f64> = fit.centreline.windows(2).scan(0.0, |a, w| {
@@ -370,7 +381,7 @@ mod recorded {
     }
 
     const SNAPSHOT_TOTAL_SHIFT_M: f64 = 20_358.091;
-    const SNAPSHOT_STATIONS: (usize, usize) = (308, 434);
+    const SNAPSHOT_STATIONS: (usize, usize) = (293, 434);
 }
 
 mod recorded_tiles {

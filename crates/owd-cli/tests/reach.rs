@@ -270,6 +270,8 @@ fn banks_from_the_jrc_mask_go_into_the_document_with_the_notice_and_the_flags() 
         "--end",
         "-6.07,4.983",
         "--banks",
+        "--seed",
+        "jrc",
         "--jrc-tile",
         tile.to_str().unwrap(),
         "--overpass",
@@ -331,6 +333,8 @@ fn a_river_the_mask_cannot_see_or_a_missing_tile_exits_2_with_what_to_do() {
         "--end",
         "-5.98,5.0",
         "--banks",
+        "--seed",
+        "jrc",
         "--jrc-tile",
         tile.to_str().unwrap(),
         "--overpass",
@@ -351,6 +355,8 @@ fn a_river_the_mask_cannot_see_or_a_missing_tile_exits_2_with_what_to_do() {
         "--end",
         "-5.94,5.0",
         "--banks",
+        "--seed",
+        "jrc",
         "--jrc-tile",
         dir.join("nope.tif").to_str().unwrap(),
         "--overpass",
@@ -388,6 +394,7 @@ fn edge_fit_moves_the_mask_banks_onto_a_recorded_scene_and_records_the_scene() {
     let file = dir.join("reach.owd");
     let flags = |edge_fit: bool, max_cloud: Option<f64>| ReachFlags {
         banks: true,
+        seed: None,
         jrc_tile: Vec::new(),
         mask_threshold: None,
         edge_fit,
@@ -406,6 +413,17 @@ fn edge_fit_moves_the_mask_banks_onto_a_recorded_scene_and_records_the_scene() {
         date: Some("2024-03-01".into()),
         json: true,
     };
+    // The banks alone: seeded from the scene's water (spec 0013), the JRC tile as fallback and check.
+    if let Err(e) = reach_with(flags(false, None), &fetch, &jrc) {
+        panic!("{}", e.message);
+    }
+    let d = doc(&file);
+    let p = &d["provenance"]["left_bank"];
+    assert_eq!(p["source"], "sentinel2-l2a");
+    assert_eq!(p["settings"]["seed"], "sentinel2-l2a");
+    assert_eq!(p["settings"]["scenes"][0]["id"], "S2B_29NRF_20231223_0_L2A");
+    assert!(p["settings"]["jrc_agreement"].is_number(), "{p}");
+    assert!(p["notice"].as_str().unwrap().contains("EC JRC/Google"));
     if let Err(e) = reach_with(flags(true, None), &fetch, &jrc) {
         panic!("{}", e.message);
     }

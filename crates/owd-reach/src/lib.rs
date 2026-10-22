@@ -20,6 +20,7 @@ pub mod reach;
 pub mod river;
 pub mod route;
 pub mod search;
+pub mod seed;
 pub mod sentinel2;
 pub mod sources;
 pub mod sword;

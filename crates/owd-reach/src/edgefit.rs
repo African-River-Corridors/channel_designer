@@ -929,10 +929,11 @@ fn finish(
         }
     }
     // Spec 0013: check and repair the fitted banks, and make the centreline their mid-line.
+    // Read along the mask banks' centreline (already checked), not the fit's own midpoints.
     let checked = check_and_repair(
         &left,
         &right,
-        &centre,
+        &banks.centreline,
         &CheckParams::at_step(cfg.station_step_m),
     )?;
     let stretches = merge(
@@ -1027,6 +1028,8 @@ pub fn default_range(today: &str) -> Result<(String, String), ReachError> {
 #[derive(Debug, Clone)]
 pub struct Fitted {
     pub fit: EdgeFit,
+    /// The registry id of the mask banks' seed (`jrc-gsw` or `sentinel2-l2a`).
+    pub seed: &'static str,
     /// The scene of the first part that was fitted.
     pub scene: crate::sentinel2::Scene,
     /// The parts of the reach, along the mask centreline, each with the scene it was fitted on. One
@@ -1143,6 +1146,7 @@ pub fn fit_to_scene(
         let fit = fit_banks(banks, &imagery, params)?;
         return Ok(Fitted {
             fit,
+            seed: banks.source,
             scene: scene.clone(),
             parts: vec![Part {
                 from_m: 0.0,
@@ -1269,6 +1273,7 @@ pub fn fit_to_scene(
         OneBank { d, fixed, beyond }
     });
     Ok(Fitted {
+        seed: banks.source,
         fit: finish(banks, params, &geo, res)?,
         scene: first,
         parts,
@@ -1359,7 +1364,7 @@ pub fn record_edge_fit(
             "scene_date": p.scene.as_ref().map(|sc| sc.date.clone()),
             "note": p.note,
         })).collect::<Vec<_>>(),
-        "seed": "jrc-gsw",
+        "seed": f.seed,
         "search_m": q.max_shift_m + q.filter_half_m,
         "max_shift_m": q.max_shift_m,
         "max_step_m_per_station": q.max_step_m,

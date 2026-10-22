@@ -1632,6 +1632,8 @@ pub fn schema() -> Result {
 /// The arguments of `owd reach`.
 pub struct ReachFlags {
     pub banks: bool,
+    /// `s2` (the default) or `jrc`.
+    pub seed: Option<String>,
     pub jrc_tile: Vec<String>,
     pub mask_threshold: Option<f64>,
     pub edge_fit: bool,
@@ -1835,6 +1837,36 @@ pub fn reach_with(
         None => record_reach(&mut session, &planned, &date),
     }
     .map_err(|e| input_error(e.to_string()))?;
+    // The scenes to look at: for the Sentinel-2 seed and for the edge fit.
+    use owd_reach::edgefit::{SceneQuery, default_range};
+    use owd_reach::sentinel2::{DEFAULT_MAX_CLOUD_PCT, SEARCH_ENDPOINT, default_dry_months};
+    let max_cloud = flags.max_cloud.unwrap_or(DEFAULT_MAX_CLOUD_PCT);
+    if !(0.0..=100.0).contains(&max_cloud) {
+        return Err(input_error(
+            "--max-cloud must be a percentage from 0 to 100",
+        ));
+    }
+    let query = || -> core::result::Result<SceneQuery, Failure> {
+        let (from, to) = default_range(&date).map_err(|e| input_error(e.to_string()))?;
+        let line = planned.route.line();
+        Ok(SceneQuery {
+            endpoint: flags
+                .stac
+                .clone()
+                .unwrap_or_else(|| SEARCH_ENDPOINT.to_string()),
+            from,
+            to,
+            months: default_dry_months(line[line.len() / 2][1]),
+            max_cloud_pct: max_cloud,
+        })
+    };
+    let seed = flags.seed.as_deref().unwrap_or("s2");
+    if !matches!(seed, "s2" | "jrc") {
+        return Err(input_error(format!(
+            "--seed is `s2` or `jrc`, not `{seed}`"
+        )));
+    }
+    let mut seeded: Option<owd_reach::seed::S2Banks> = None;
     let banks = if flags.banks {
         use owd_reach::banks::{BankParams, banks_from_jrc, record_banks};
         let params = BankParams {
@@ -1848,40 +1880,34 @@ pub fn reach_with(
                 "--mask-threshold must be a percentage above 0 and up to 100",
             ));
         }
-        let b = banks_from_jrc(jrc, &planned.route.line(), &params)
+        if seed == "s2" {
+            use owd_reach::seed::{SeedParams, banks_from_s2, record_s2_banks};
+            let b = banks_from_s2(
+                fetch,
+                Some(jrc),
+                &planned.route.line(),
+                &params,
+                &query()?,
+                &SeedParams::default(),
+            )
             .map_err(|e| input_error(e.to_string()))?;
-        record_banks(&mut session, &b).map_err(|e| input_error(e.to_string()))?;
-        Some(b)
+            record_s2_banks(&mut session, &b).map_err(|e| input_error(e.to_string()))?;
+            let banks = b.banks.clone();
+            seeded = Some(b);
+            Some(banks)
+        } else {
+            let b = banks_from_jrc(jrc, &planned.route.line(), &params)
+                .map_err(|e| input_error(e.to_string()))?;
+            record_banks(&mut session, &b).map_err(|e| input_error(e.to_string()))?;
+            Some(b)
+        }
     } else {
         None
     };
     let fitted = match &banks {
         Some(b) if flags.edge_fit => {
-            use owd_reach::edgefit::{
-                FitParams, SceneQuery, default_range, fit_to_scene, record_edge_fit,
-            };
-            use owd_reach::sentinel2::{
-                DEFAULT_MAX_CLOUD_PCT, SEARCH_ENDPOINT, default_dry_months,
-            };
-            let max_cloud = flags.max_cloud.unwrap_or(DEFAULT_MAX_CLOUD_PCT);
-            if !(0.0..=100.0).contains(&max_cloud) {
-                return Err(input_error(
-                    "--max-cloud must be a percentage from 0 to 100",
-                ));
-            }
-            let (from, to) = default_range(&date).map_err(|e| input_error(e.to_string()))?;
-            let line = planned.route.line();
-            let q = SceneQuery {
-                endpoint: flags
-                    .stac
-                    .clone()
-                    .unwrap_or_else(|| SEARCH_ENDPOINT.to_string()),
-                from,
-                to,
-                months: default_dry_months(line[line.len() / 2][1]),
-                max_cloud_pct: max_cloud,
-            };
-            let f = fit_to_scene(fetch, b, &FitParams::default(), &q)
+            use owd_reach::edgefit::{FitParams, fit_to_scene, record_edge_fit};
+            let f = fit_to_scene(fetch, b, &FitParams::default(), &query()?)
                 .map_err(|e| input_error(e.to_string()))?;
             record_edge_fit(&mut session, &f).map_err(|e| input_error(e.to_string()))?;
             Some(f)
@@ -1933,7 +1959,38 @@ pub fn reach_with(
             "; {drawn} stretch(es) kept as drawn, with no waterway near (check them)"
         ));
     }
-    if let Some(b) = &banks {
+    if let Some(s) = &seeded {
+        let scenes: Vec<String> = s
+            .scenes()
+            .iter()
+            .map(|c| format!("{} ({})", c.id, c.date))
+            .collect();
+        human.push_str(&format!(
+            "\nbanks, polygon and centreline from Sentinel-2 water (MNDWI, split per scene, provisional) in {} scene(s): {}; {} station(s), {} low-confidence stretch(es) to check",
+            scenes.len(),
+            scenes.join(", "),
+            s.banks.widths.len(),
+            s.banks.stretches.len()
+        ));
+        match (s.jrc_agreement, &s.jrc_note) {
+            (Some(a), _) => human.push_str(&format!(
+                "\nthe JRC mask ({}%) agrees on the width within half at {:.0}% of the stations",
+                s.banks.params.threshold_pct,
+                a * 100.0
+            )),
+            (None, Some(n)) => human.push_str(&format!("\nno JRC fallback or cross-check: {n}")),
+            _ => {}
+        }
+        let mut years: Vec<String> = s.scenes().iter().map(|c| c.date[..4].to_string()).collect();
+        years.sort();
+        years.dedup();
+        for y in years {
+            human.push_str(&format!("\nContains modified Copernicus Sentinel data {y}"));
+        }
+        if s.jrc_note.is_none() {
+            human.push_str("\nSource: EC JRC/Google; Pekel et al. 2016, Nature 540, 418-422");
+        }
+    } else if let Some(b) = &banks {
         human.push_str(&format!(
             "\nbanks, polygon and centreline from the JRC water mask ({}% threshold, a provisional default): {} station(s), {} low-confidence stretch(es) to check",
             b.params.threshold_pct,
@@ -1960,6 +2017,13 @@ pub fn reach_with(
             &f.scene.date[..4]
         ));
     }
+    if let Some(b) = &banks
+        && b.stretches
+            .iter()
+            .any(|s| matches!(s.kind, owd_reach::banks::StretchKind::Repaired(k) if k.crossing))
+    {
+        human.push_str("\nwarning: the bank lines still cross in places after the repairs (flagged `crossing`): check them by eye with `owd qa-overlay`");
+    }
     human.push_str("\n© OpenStreetMap contributors (ODbL)");
     say(
         flags.file == "-",
@@ -1972,9 +2036,12 @@ pub fn reach_with(
             "start": planned.spec.start, "end": planned.spec.end,
             "river_search": found,
             "banks": banks.as_ref().map(|b| json!({
+                "seed": b.source,
                 "mask_threshold_pct": b.params.threshold_pct,
                 "stations": b.widths.len(),
                 "low_confidence_stretches": b.stretches.len(),
+                "scenes": seeded.as_ref().map(|s| s.scenes().iter().map(|c| c.id.clone()).collect::<Vec<_>>()),
+                "jrc_agreement": seeded.as_ref().and_then(|s| s.jrc_agreement),
             })),
             "edge_fit": fitted.as_ref().map(|f| json!({
                 "scene_id": f.scene.id,

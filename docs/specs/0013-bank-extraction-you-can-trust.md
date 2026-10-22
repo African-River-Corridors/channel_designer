@@ -106,28 +106,37 @@ person can check it by eye.
   connected to the route, so a lake beside the river is not read as river.
 - **`owd-reach::bankcheck` (new): checks and repairs,** on any pair of banks (mask, edge fit, or the
   user's own lines run through `owd check-banks`, see below). In this order:
-  The banks are read along a reference line: the seed centreline (the route, or the last centreline),
-  smoothed over about one median river width, so one inlet cannot drag it and it stays on the water
-  of a narrow, winding river.
-  1. **Own side.** Along the reference's normal, the left bank must lie at a positive offset and the
-     right bank at a negative one. A station that fails is repaired. A normal past the end of a bank
-     is not a fault.
+  The banks are read along a reference line, smoothed over about one median river width so one inlet
+  cannot drag it: on generated banks, the route moved onto the water by the running median of the
+  casts' offsets from it (a median, so a cast that found other water cannot throw it off); on the
+  edge fit, the mask banks' centreline; on a document, its centreline. The checks run in rounds, each
+  reading along the last round's centreline, until a round repairs nothing (three at most).
+  1. **Own side.** Along the reference's normal, the left bank must lie left of the right bank. Where
+     it does not, a bank has crossed to the other shore, and both are repaired there. A reference
+     that strays off a narrow river puts both banks on one side of it, in order: that is not a fault
+     (repairing it widened the river). A normal past the end of a bank is not a fault.
   2. **Lateral jump, outward.** Per bank, the offset may move outward by at most `max_jump_m`
      between stations (default 2 × the station step: a bank may run off at 63° at most). A station
      past the limit, and the run after it until the bank comes back within the limit of the line
      before the run, is repaired. This cuts spikes, inlets and tributary mouths. A run longer than
-     1 km, or one that runs to the end of the banks, is a real change of the river and is kept. A jump
-     inward narrows the river and is never cut: the width check flags it.
+     1 km, or one that touches either end of the banks, is a real change of the river and is kept. A
+     jump inward narrows the river and is never cut: the width check flags it.
+  2b. **Excursion, outward.** Per bank, an offset outward of the running median of the bank's own
+     offsets over 250 m either side, by more than a quarter of the local median width and at least
+     30 m, is repaired: a bay, a tributary mouth, or a cut across an island into another channel,
+     rising too gradually for the jump limit.
   3. **Width plausibility.** The width at a station must lie between 0.5 and 2 times the running
      median of the widths over `width_window_m` (default 500 m) either side. A wide station is
      repaired, on the side that moved most from its own running median. A narrow one is flagged
      (`width-narrow`) and kept, so a real throat is never widened away.
   4. **No crossing.** After the repairs, neither bank crosses itself or the other. A crossing left
-     means the check fails, loudly (an error), not a silent pass.
+     after the last round is flagged (`crossing`) and named by the command, never passed in silence.
+     It does not stop the run: on a real 144 km reach one bad place must not cost the whole study.
 
   A repair replaces the station's offset by a straight interpolation between the nearest good stations
   either side, then the join smoothing (below) applies. Every repaired station joins a low-confidence
-  stretch of kind `repaired`, which records which checks failed (`side`, `jump`, `width`).
+  stretch of kind `repaired`, which records which checks failed (`side`, `missing`, `jump`,
+`excursion`, `width-wide`; and the flag-only `width-narrow` and `crossing`).
 - **`owd-format::design::midline` (new): the centreline from the banks.** One function, used by the
   bank generator, the edge fit and the bank editor (`bank_edit.rs` today pairs the banks by arc-length
   share, which drifts where one bank is longer). It starts from a seed line, then three times: at
@@ -163,18 +172,22 @@ person can check it by eye.
 | Default | Value |
 |---|---|
 | Seed | Sentinel-2 water grid; JRC only where no scene sees the pixel |
-| Water index | MNDWI ≥ 0.0 is water |
-| Scenes per part | up to 3, ranked by clear share of the river corridor |
+| Water index | MNDWI, the 20 m SWIR sharpened to 10 m by the NIR; water from Otsu's split of the corridor's index per scene, within −0.3 to +0.2; 0.0 where the corridor is not two classes |
+| Parts and scenes | 5 km parts (500 m overlap); up to 3 scenes per part, ranked by the clear share of a 500 m corridor, among the 6 least cloudy |
 | Masked SCL classes | 0 (no data), 3 (cloud shadow), 8 and 9 (cloud), 10 (cirrus) |
 | JRC fallback threshold | 75 % occurrence (as spec 0012) |
 | Lateral jump limit | 2 × the station step, per station, outward only |
+| Excursion | outward of the 250 m running median by a quarter of the local width, at least 30 m |
+| Check rounds | at most 3 |
 | Width plausibility | 0.5 to 2 × the running median over ±500 m |
 | Mid-line | 3 iterations, at the banks' station step (20 m on the mask, 5 m after the edge fit) |
 | Edge fit | unchanged: ±40 m search, at most 30 m shift, at most 1.5 m change per 5 m |
 
-The MNDWI threshold of 0.0 is the textbook split (Xu 2006, Int. J. Remote Sensing 27(14)). On the
-Sassandra scene the MNDWI histogram has two clear modes, at about −0.55 (land) and +0.35 (water), with
-the trough near 0.
+MNDWI is Xu's (2006, Int. J. Remote Sensing 27(14)); 0.0 is its textbook split. On the Sassandra scene
+the index has two clear modes, about −0.55 (land) and +0.35 (water). With the SWIR at 20 m and a split
+of 0.0, a shore pixel that is half water reads as land and the banks fell 35 to 45 m inside the water
+measured on the scene (T3). Sharpening the SWIR to 10 m and splitting per scene (Otsu 1979, IEEE Trans.
+Syst. Man Cybern. 9(1)), which gives −0.25 there, brings the median width within 10 %.
 
 ### Licences and notices
 

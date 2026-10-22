@@ -232,6 +232,13 @@ fn window(origin: [f64; 2], min: [f64; 2], max: [f64; 2]) -> (f64, f64, usize, u
     (x0, y1, cols, rows, col0, row0)
 }
 
+/// The 10 m grid of the window [`read_imagery`] and [`read_clear`] read for a box: west and north
+/// edges, columns and rows. The same for every scene in one UTM zone.
+pub fn window_grid(min: [f64; 2], max: [f64; 2]) -> (f64, f64, usize, usize) {
+    let (x0, y1, cols, rows, _, _) = window([0.0, 0.0], min, max);
+    (x0, y1, cols, rows)
+}
+
 /// Which pixels of a scene's window are clear, from its scene classification alone (one 20 m band,
 /// a few range reads): enough to rank scenes by how much of a river they see, before reading a
 /// scene's other bands. The window is the one [`read_imagery`] reads for the same box. A scene with

@@ -78,6 +78,8 @@ pub enum StretchKind {
     AtShiftLimit,
     /// A bank check failed here (spec 0013): the bank was repaired, or (a narrow width alone) flagged.
     Repaired(crate::bankcheck::Checks),
+    /// No Sentinel-2 scene saw the bank clear: the JRC mask gave it (spec 0013).
+    JrcFallback,
 }
 
 impl StretchKind {
@@ -89,6 +91,7 @@ impl StretchKind {
             StretchKind::NoEdge => "no-edge",
             StretchKind::AtShiftLimit => "at-shift-limit",
             StretchKind::Repaired(_) => "repaired",
+            StretchKind::JrcFallback => "jrc-fallback",
         }
     }
 }
@@ -133,11 +136,72 @@ pub struct MaskBanks {
     /// Closed ring: left bank, then right bank back.
     pub polygon: Vec<[f64; 2]>,
     pub stretches: Vec<Stretch>,
+    /// The mask's pixel size in metres (30 for JRC, 10 for Sentinel-2): the minimum trusted width is
+    /// `params.min_width_px` of them.
+    pub pixel_m: f64,
+    /// The registry id of the seed: `jrc-gsw` or `sentinel2-l2a`.
+    pub source: &'static str,
+}
+
+impl MaskBanks {
+    /// The narrowest width trusted, in metres.
+    pub fn min_width_m(&self) -> f64 {
+        self.params.min_width_px * self.pixel_m
+    }
+}
+
+/// What bank lines are traced on: a water mask, read at points in the study's UTM zone.
+pub trait WaterSource {
+    /// How much a point is water, compared with [`WaterSource::threshold`].
+    fn level(&self, p: [f64; 2]) -> f64;
+    /// From this level a point is water.
+    fn threshold(&self) -> f64;
+    /// The mask's pixel size in metres.
+    fn pixel_m(&self) -> f64;
+    /// The registry id of the mask.
+    fn source(&self) -> &'static str;
+    /// Whether the state at a point came from the JRC fallback, not from the mask itself.
+    fn fallback(&self, _p: [f64; 2]) -> bool {
+        false
+    }
+    /// What to say when the mask has no water along a route.
+    fn no_water(&self) -> String;
+}
+
+/// The JRC occurrence as a [`WaterSource`]: percent of observations that saw water.
+pub(crate) struct JrcSource<'a> {
+    pub(crate) occ: &'a Occurrence,
+    pub(crate) grid: &'a GeoGrid,
+    pub(crate) threshold_pct: f64,
+}
+
+impl WaterSource for JrcSource<'_> {
+    fn level(&self, p: [f64; 2]) -> f64 {
+        let ll = self.grid.lonlat(p);
+        self.occ.sample(ll[0], ll[1])
+    }
+    fn threshold(&self) -> f64 {
+        self.threshold_pct
+    }
+    fn pixel_m(&self) -> f64 {
+        JRC_PIXEL_M
+    }
+    fn source(&self) -> &'static str {
+        "jrc-gsw"
+    }
+    fn no_water(&self) -> String {
+        format!(
+            "the JRC water mask has no water at {}% or more along this route. The river may be too \
+             narrow for a 30 m mask, or too rarely seen. Lower the threshold (a provisional default), \
+             or load bank lines of your own.",
+            self.threshold_pct
+        )
+    }
 }
 
 /// UTM to longitude and latitude, by bilinear interpolation of a coarse grid (one projection set-up,
 /// not one per sample). The grid is 250 m; the error of the interpolation is far below a millimetre.
-struct GeoGrid {
+pub(crate) struct GeoGrid {
     x0: f64,
     y0: f64,
     step: f64,
@@ -147,7 +211,7 @@ struct GeoGrid {
 }
 
 impl GeoGrid {
-    fn new(utm: Utm, min: [f64; 2], max: [f64; 2]) -> Result<GeoGrid, ReachError> {
+    pub(crate) fn new(utm: Utm, min: [f64; 2], max: [f64; 2]) -> Result<GeoGrid, ReachError> {
         let step = 250.0;
         let nx = ((max[0] - min[0]) / step).ceil() as usize + 2;
         let ny = ((max[1] - min[1]) / step).ceil() as usize + 2;
@@ -168,7 +232,7 @@ impl GeoGrid {
         })
     }
 
-    fn lonlat(&self, p: [f64; 2]) -> LonLat {
+    pub(crate) fn lonlat(&self, p: [f64; 2]) -> LonLat {
         let fx = ((p[0] - self.x0) / self.step).clamp(0.0, (self.nx - 1) as f64 - 1e-9);
         let fy = ((p[1] - self.y0) / self.step).clamp(0.0, (self.ny - 1) as f64 - 1e-9);
         let (i, j) = (fx.floor() as usize, fy.floor() as usize);
@@ -237,23 +301,23 @@ struct Cast {
     left: [f64; 2],
     right: [f64; 2],
     width: f64,
+    /// An edge of this cast came from the JRC fallback.
+    fallback: bool,
 }
 
 struct Mask<'a> {
-    occ: &'a Occurrence,
-    grid: &'a GeoGrid,
+    src: &'a dyn WaterSource,
     params: &'a BankParams,
 }
 
 impl Mask<'_> {
     fn level(&self, p: [f64; 2]) -> f64 {
-        let ll = self.grid.lonlat(p);
-        self.occ.sample(ll[0], ll[1])
+        self.src.level(p)
     }
 
     /// Distance along `dir` from `from` to where the water ends, by 5 m steps and a linear crossing.
     fn reach(&self, from: [f64; 2], dir: [f64; 2]) -> f64 {
-        let thr = self.params.threshold_pct;
+        let thr = self.src.threshold();
         let step = 5.0;
         let mut last_water = 0.0;
         let mut last_level = self.level(from);
@@ -281,7 +345,7 @@ impl Mask<'_> {
 
     /// Cast across the water at a station, or `None` where there is none within reach.
     fn cast(&self, p: [f64; 2], n: [f64; 2]) -> Option<Cast> {
-        let thr = self.params.threshold_pct;
+        let thr = self.src.threshold();
         let seed = if self.level(p) >= thr {
             Some(p)
         } else {
@@ -304,7 +368,13 @@ impl Mask<'_> {
         }?;
         let dl = self.reach(seed, n);
         let dr = self.reach(seed, [-n[0], -n[1]]);
+        // A bank whose edge the mask took from the JRC fallback (a pixel inside it, a pixel out).
+        let at = |d: f64| [seed[0] + n[0] * d, seed[1] + n[1] * d];
+        let fallback = [dl - 5.0, dl + 5.0, -dr + 5.0, -dr - 5.0]
+            .iter()
+            .any(|d| self.src.fallback(at(*d)));
         Some(Cast {
+            fallback,
             centre: [
                 seed[0] + n[0] * (dl - dr) / 2.0,
                 seed[1] + n[1] * (dl - dr) / 2.0,
@@ -336,6 +406,21 @@ pub fn banks_from_mask(
     occ: &Occurrence,
     params: &BankParams,
 ) -> Result<MaskBanks, ReachError> {
+    let (utm, xy, grid) = route_in_utm(route, params)?;
+    let src = JrcSource {
+        occ,
+        grid: &grid,
+        threshold_pct: params.threshold_pct,
+    };
+    banks_from_source(utm, &xy, &src, params)
+}
+
+/// The route in the UTM zone of its middle, and the grid that takes points back to longitude and
+/// latitude over its window.
+pub(crate) fn route_in_utm(
+    route: &[LonLat],
+    params: &BankParams,
+) -> Result<(Utm, Vec<[f64; 2]>, GeoGrid), ReachError> {
     if route.len() < 2 {
         return Err(ReachError::Input(
             "a route needs at least two points".into(),
@@ -353,14 +438,22 @@ pub fn banks_from_mask(
         }
     }
     let grid = GeoGrid::new(utm, [lo[0] - pad, lo[1] - pad], [hi[0] + pad, hi[1] + pad])?;
-    let mask = Mask {
-        occ,
-        grid: &grid,
-        params,
-    };
+    Ok((utm, xy, grid))
+}
 
-    let mut line = resample_xy(&xy, params.station_step_m);
+/// Make bank lines, a centreline and a river polygon along a route (`xy`, in `utm`) on any water
+/// mask.
+pub fn banks_from_source(
+    utm: Utm,
+    xy: &[[f64; 2]],
+    src: &dyn WaterSource,
+    params: &BankParams,
+) -> Result<MaskBanks, ReachError> {
+    let mask = Mask { src, params };
+
+    let mut line = resample_xy(xy, params.station_step_m);
     let mut casts: Vec<Option<Cast>> = Vec::new();
+    let mut reference: Vec<[f64; 2]> = line.clone();
     for pass in 0..2 {
         let n = normals(&line);
         casts = line
@@ -369,12 +462,39 @@ pub fn banks_from_mask(
             .map(|(p, n)| mask.cast(*p, *n))
             .collect();
         if pass == 0 {
-            // A better centreline: the middle of the water, smoothed, with the route where there is none.
+            // A better centreline for the second cast: the middle of the water, smoothed, with the
+            // route where there is none.
             let centres: Vec<[f64; 2]> = line
                 .iter()
                 .zip(&casts)
                 .map(|(p, c)| c.as_ref().map_or(*p, |c| c.centre))
                 .collect();
+            // And the line the checks read the banks along (spec 0013): the route moved to the
+            // middle of the water by the running median of the casts' offsets from it. A median, so
+            // that a cast that found other water cannot throw it off.
+            let off: Vec<Option<f64>> = line
+                .iter()
+                .zip(&n)
+                .zip(&casts)
+                .map(|((p, n), c)| {
+                    c.as_ref()
+                        .map(|c| (c.centre[0] - p[0]) * n[0] + (c.centre[1] - p[1]) * n[1])
+                })
+                .collect();
+            let k = (250.0 / params.station_step_m).round() as usize;
+            let moved: Vec<[f64; 2]> = line
+                .iter()
+                .zip(&n)
+                .enumerate()
+                .map(|(i, (p, nn))| {
+                    let (a, b) = (i.saturating_sub(k), (i + k).min(off.len() - 1));
+                    let mut v: Vec<f64> = off[a..=b].iter().flatten().copied().collect();
+                    v.sort_by(f64::total_cmp);
+                    let m = if v.is_empty() { 0.0 } else { v[v.len() / 2] };
+                    [p[0] + nn[0] * m, p[1] + nn[1] * m]
+                })
+                .collect();
+            reference = smooth(&moved, 2);
             line = smooth(&centres, 2);
         }
     }
@@ -385,22 +505,32 @@ pub fn banks_from_mask(
         chain.push(chain.last().unwrap() + dist(w[0], w[1]));
     }
     let half = params.station_step_m / 2.0;
-    let min_w = params.min_width_m();
+    let min_w = params.min_width_px * src.pixel_m();
+    // A stretch takes the most serious kind in it.
+    let rank = |k: StretchKind| match k {
+        StretchKind::NoWater => 3,
+        StretchKind::Narrow => 2,
+        _ => 1,
+    };
     let mut stretches: Vec<Stretch> = Vec::new();
     for (i, c) in casts.iter().enumerate() {
         let (kind, w) = match c {
             None => (Some(StretchKind::NoWater), 0.0),
             Some(c) if c.width < min_w => (Some(StretchKind::Narrow), c.width),
+            Some(c) if c.fallback => (Some(StretchKind::JrcFallback), c.width),
             Some(c) => (None, c.width),
         };
         let Some(kind) = kind else { continue };
         let (from, to) = ((chain[i] - half).max(0.0), chain[i] + half);
         match stretches.last_mut() {
-            Some(s) if from <= s.to_m + half => {
+            Some(s)
+                if from <= s.to_m + half
+                    && (s.kind == kind || rank(s.kind) > 1 && rank(kind) > 1) =>
+            {
                 s.to_m = to;
                 s.min_width_m = s.min_width_m.min(w);
-                if kind == StretchKind::NoWater {
-                    s.kind = StretchKind::NoWater;
+                if rank(kind) > rank(s.kind) {
+                    s.kind = kind;
                 }
             }
             _ => stretches.push(Stretch {
@@ -418,21 +548,19 @@ pub fn banks_from_mask(
         .filter_map(|(c, d)| c.as_ref().map(|c| (c, *d)))
         .collect();
     if found.len() < 2 {
-        return Err(ReachError::NoWater(format!(
-            "the JRC water mask has no water at {}% or more along this route. The river may be too \
-             narrow for a 30 m mask, or too rarely seen. Lower the threshold (a provisional default), \
-             or load bank lines of your own.",
-            params.threshold_pct
-        )));
+        return Err(ReachError::NoWater(src.no_water()));
     }
     let left: Vec<[f64; 2]> = found.iter().map(|(c, _)| c.left).collect();
     let right: Vec<[f64; 2]> = found.iter().map(|(c, _)| c.right).collect();
     let centre: Vec<[f64; 2]> = found.iter().map(|(c, _)| c.centre).collect();
-    // Spec 0013: check and repair the banks, and make the centreline their mid-line.
+    // Spec 0013: check and repair the banks, and make the centreline their mid-line. The checks read
+    // the banks along the route moved onto the water by a running median, not along the casts' own
+    // centres: a cast that found other water throws its centre far off.
+    let _ = centre;
     let checked = check_and_repair(
         &left,
         &right,
-        &centre,
+        &reference,
         &CheckParams::at_step(params.station_step_m),
     )?;
     let stretches = merge(
@@ -457,6 +585,8 @@ pub fn banks_from_mask(
         widths,
         polygon,
         stretches,
+        pixel_m: src.pixel_m(),
+        source: src.source(),
     })
 }
 
@@ -495,9 +625,9 @@ impl MaskBanks {
     /// The `low_confidence_width` value of the document.
     pub fn low_confidence_value(&self) -> Value {
         json!({
-            "min_width_m": self.params.min_width_m(),
+            "min_width_m": self.min_width_m(),
             "provisional": true,
-            "source": "jrc-gsw",
+            "source": self.source,
             "stretches": stretches_value(&self.stretches),
         })
     }
@@ -506,6 +636,26 @@ impl MaskBanks {
 /// Record the banks in a document: the four inputs, each marked `default` with the JRC notice and the
 /// settings it was made with (named provisional), and the low-confidence stretches.
 pub fn record_banks(session: &mut Session, banks: &MaskBanks) -> Result<(), ReachError> {
+    let settings = json!({
+        "mask_threshold_pct": banks.params.threshold_pct,
+        "min_trusted_width_m": banks.min_width_m(),
+        "station_step_m": banks.params.station_step_m,
+        "max_half_width_m": banks.params.max_half_width_m,
+        "gap_tolerance_m": banks.params.gap_tolerance_m,
+        "provisional": ["mask_threshold_pct", "min_trusted_width_m"],
+    });
+    let rec =
+        provenance_record("jrc-gsw", JRC_DATE, Mark::Default, true).map_err(ReachError::Input)?;
+    record_banks_as(session, banks, &with_settings(rec, settings))
+}
+
+/// Record banks in a document with the provenance record given (source, date, notice, settings):
+/// the four inputs, each with the record, and the low-confidence stretches.
+pub fn record_banks_as(
+    session: &mut Session,
+    banks: &MaskBanks,
+    record: &Value,
+) -> Result<(), ReachError> {
     let u = banks.utm;
     let line = |pts: &[[f64; 2]]| {
         utm_geojson(json!({"type": "LineString", "coordinates": coords(pts)}), u)
@@ -527,19 +677,9 @@ pub fn record_banks(session: &mut Session, banks: &MaskBanks) -> Result<(), Reac
             (Role::RiverPolygon, poly.as_str()),
         ])
         .map_err(|e| ReachError::Input(e.to_string()))?;
-    let settings = json!({
-        "mask_threshold_pct": banks.params.threshold_pct,
-        "min_trusted_width_m": banks.params.min_width_m(),
-        "station_step_m": banks.params.station_step_m,
-        "max_half_width_m": banks.params.max_half_width_m,
-        "gap_tolerance_m": banks.params.gap_tolerance_m,
-        "provisional": ["mask_threshold_pct", "min_trusted_width_m"],
-    });
-    let rec =
-        provenance_record("jrc-gsw", JRC_DATE, Mark::Default, true).map_err(ReachError::Input)?;
     for input in ["left_bank", "right_bank", "centreline", "river_polygon"] {
         session
-            .set_provenance(input, with_settings(rec.clone(), settings.clone()))
+            .set_provenance(input, record.clone())
             .map_err(|e| ReachError::Input(e.to_string()))?;
     }
     session

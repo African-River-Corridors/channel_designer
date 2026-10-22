@@ -1,0 +1,96 @@
+{
+ "scene": "S2B_29NQG_20250205_0_L2A",
+ "method": "See s2win_README.md: transects every 400 m across the hand-drawn trace, the water edge where the near-infrared reflectance (B08) crosses the midpoint between the water at the trace and the land around it; checked by eye on the true-colour image.",
+ "transects": [
+  {
+   "chainage_m": 200,
+   "x": 774037.7,
+   "y": 625724.9,
+   "nir_water": 0.048,
+   "nir_land": 0.3,
+   "left_m": 306.9,
+   "right_m": -143.9,
+   "width_m": 450.7
+  },
+  {
+   "chainage_m": 600,
+   "x": 773659.0,
+   "y": 625852.9,
+   "nir_water": 0.053,
+   "nir_land": 0.313,
+   "left_m": 108.4,
+   "right_m": -160.4,
+   "width_m": 268.8
+  },
+  {
+   "chainage_m": 1000,
+   "x": 773277.4,
+   "y": 625970.6,
+   "nir_water": 0.056,
+   "nir_land": 0.309,
+   "left_m": 90.1,
+   "right_m": -121.4,
+   "width_m": 211.5
+  },
+  {
+   "chainage_m": 1400,
+   "x": 772886.9,
+   "y": 626056.2,
+   "nir_water": 0.062,
+   "nir_land": 0.325,
+   "left_m": 87.3,
+   "right_m": -76.8,
+   "width_m": 164.1
+  },
+  {
+   "chainage_m": 1800,
+   "x": 772494.7,
+   "y": 626134.7,
+   "nir_water": 0.052,
+   "nir_land": 0.338,
+   "left_m": 97.6,
+   "right_m": -138.0,
+   "width_m": 235.6
+  },
+  {
+   "chainage_m": 2200,
+   "x": 772166.3,
+   "y": 626333.7,
+   "nir_water": 0.054,
+   "nir_land": 0.316,
+   "left_m": 86.0,
+   "right_m": -145.4,
+   "width_m": 231.4
+  },
+  {
+   "chainage_m": 2600,
+   "x": 771901.0,
+   "y": 626629.2,
+   "nir_water": 0.059,
+   "nir_land": 0.319,
+   "left_m": 61.0,
+   "right_m": -158.0,
+   "width_m": 219.0
+  },
+  {
+   "chainage_m": 3000,
+   "x": 771559.9,
+   "y": 626835.1,
+   "nir_water": 0.065,
+   "nir_land": 0.313,
+   "left_m": 76.0,
+   "right_m": -43.5,
+   "width_m": 119.5
+  },
+  {
+   "chainage_m": 3400,
+   "x": 771274.9,
+   "y": 627110.1,
+   "nir_water": 0.067,
+   "nir_land": 0.322,
+   "left_m": 44.6,
+   "right_m": -80.5,
+   "width_m": 125.2
+  }
+ ]
+}

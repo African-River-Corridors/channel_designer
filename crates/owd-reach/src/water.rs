@@ -6,7 +6,9 @@
 //! JRC mask.
 //!
 //! - **Water index.** MNDWI = (green - SWIR) / (green + SWIR) (Xu 2006, Int. J. Remote Sensing
-//!   27(14)); a clear pixel at or above the threshold is water. The scene classification (SCL) marks
+//!   27(14)), the 20 m SWIR sharpened to 10 m by the near-infrared; a clear pixel at or above the
+//!   threshold is water. The threshold is the split of the corridor's index into its two classes
+//!   (Otsu), within -0.3 to +0.2; where the corridor is not two classes, the default. The scene classification (SCL) marks
 //!   no data, cloud shadow, cloud and cirrus as not clear (`sentinel2`).
 //! - **Ranking.** Scenes are ranked by the share of the river corridor they see clear (the route
 //!   buffered by the largest half-width), not by their overall cloud: a scene with 5 % cloud can have
@@ -22,8 +24,8 @@ use owd_format::design::crs::Utm;
 
 type P2 = [f64; 2];
 
-/// MNDWI at or above this is water (provisional). On the Sassandra scene of spec 0013 the index has
-/// two modes, about -0.55 (land) and +0.35 (water), with the trough near 0.
+/// MNDWI at or above this is water where a corridor cannot be split (provisional). On the Sassandra
+/// scene of spec 0013 the index has two modes, about -0.55 (land) and +0.35 (water).
 pub const DEFAULT_MNDWI_THRESHOLD: f64 = 0.0;
 
 /// The most scenes a part's grid is made from (provisional).
@@ -57,6 +59,8 @@ pub struct SceneUse {
     pub corridor_clear: f64,
     /// The share of the corridor's pixels this scene classified (the ones no earlier scene saw).
     pub corridor_used: f64,
+    /// The MNDWI from which this scene's pixels were water.
+    pub mndwi_threshold: f64,
 }
 
 /// The water grid of a window.
@@ -109,18 +113,86 @@ impl WaterGrid {
 }
 
 /// MNDWI of every pixel of a window (`NaN` where the pixel is not clear).
+///
+/// The shortwave-infrared band is 20 m (repeated to 2 x 2 pixels by `sentinel2`). Used as it is, a
+/// shore pixel mixes water and land in its 20 m cell and the edge falls a pixel or two inside the
+/// water. So it is sharpened to 10 m by the near-infrared, which tells water from land the same way
+/// and is 10 m: each pixel's SWIR is scaled by its NIR over the mean NIR of its 20 m cell.
 pub fn mndwi(im: &Imagery) -> Vec<f32> {
-    let (g, s) = (&im.bands[0], &im.bands[3]);
+    let (g, n, s) = (&im.bands[0], &im.bands[2], &im.bands[3]);
+    let (cols, rows) = (im.cols, im.rows);
+    // The 20 m cells start at even columns and rows: `sentinel2` reads whole 20 m cells.
+    let cell_mean = |i: usize| -> f32 {
+        let (r, c) = (i / cols, i % cols);
+        let (r0, c0) = (r - r % 2, c - c % 2);
+        let mut sum = 0.0;
+        let mut k = 0.0;
+        for rr in r0..(r0 + 2).min(rows) {
+            for cc in c0..(c0 + 2).min(cols) {
+                sum += n[rr * cols + cc];
+                k += 1.0;
+            }
+        }
+        sum / k
+    };
     (0..g.len())
         .map(|i| {
-            let d = g[i] + s[i];
+            let m = cell_mean(i);
+            let swir = if m > 1e-4 { s[i] * n[i] / m } else { s[i] };
+            let d = g[i] + swir;
             if !im.valid[i] || d <= 0.0 {
                 f32::NAN
             } else {
-                (g[i] - s[i]) / d
+                (g[i] - swir) / d
             }
         })
         .collect()
+}
+
+/// The bounds of the split between water and land, and what a corridor must hold to be split.
+pub const SPLIT_RANGE: (f64, f64) = (-0.3, 0.2);
+const SPLIT_MIN_SHARE: f64 = 0.05;
+const SPLIT_MIN_GAP: f64 = 0.3;
+
+/// The split of a set of index values into two classes that differ most (Otsu 1979, IEEE Trans.
+/// Syst. Man Cybern. 9(1)), on bins of 0.01 from -1 to 1, clamped to [`SPLIT_RANGE`]. `None` when the
+/// values are not two classes: either holds under 5 % of them, or their means are under 0.3 apart
+/// (all water, or all land).
+pub fn otsu_split(values: &[f32]) -> Option<f64> {
+    const BINS: usize = 200;
+    let mut hist = [0usize; BINS];
+    let mut n = 0usize;
+    for v in values.iter().filter(|v| v.is_finite()) {
+        let b = (((f64::from(*v) + 1.0) / 2.0 * BINS as f64).floor() as isize)
+            .clamp(0, BINS as isize - 1);
+        hist[b as usize] += 1;
+        n += 1;
+    }
+    if n == 0 {
+        return None;
+    }
+    let centre = |b: usize| -1.0 + (b as f64 + 0.5) * 2.0 / BINS as f64;
+    let total: f64 = (0..BINS).map(|b| hist[b] as f64 * centre(b)).sum();
+    let (mut w0, mut s0) = (0.0, 0.0);
+    let mut best: Option<(f64, usize, f64, f64, f64)> = None;
+    for b in 0..BINS - 1 {
+        w0 += hist[b] as f64;
+        s0 += hist[b] as f64 * centre(b);
+        let w1 = n as f64 - w0;
+        if w0 == 0.0 || w1 == 0.0 {
+            continue;
+        }
+        let (m0, m1) = (s0 / w0, (total - s0) / w1);
+        let between = w0 * w1 * (m0 - m1).powi(2);
+        if best.is_none_or(|x| between > x.0) {
+            best = Some((between, b, w0 / n as f64, m0, m1));
+        }
+    }
+    let (_, b, share, m0, m1) = best?;
+    if share < SPLIT_MIN_SHARE || 1.0 - share < SPLIT_MIN_SHARE || m1 - m0 < SPLIT_MIN_GAP {
+        return None;
+    }
+    Some((-1.0 + (b + 1) as f64 * 2.0 / BINS as f64).clamp(SPLIT_RANGE.0, SPLIT_RANGE.1))
 }
 
 /// The pixels of a window within `half_width` metres of a line (UTM, the window's zone).
@@ -202,7 +274,8 @@ pub struct SceneWindow<'a> {
 
 /// The water grid of a window from scenes on the same 10 m grid (one UTM zone, the same window),
 /// along a route line `line` with the corridor `half_width` metres either side. The scenes are ranked
-/// here; at most `max_scenes` are used. `jrc`, when given, says whether a point is water by the JRC
+/// here; at most `max_scenes` are used. Each scene's pixels are water from the [`otsu_split`] of its
+/// clear corridor pixels, or from `threshold` where the corridor is not two classes. `jrc`, when given, says whether a point is water by the JRC
 /// mask (`None` outside its window), for the pixels no scene sees.
 pub fn compose(
     scenes: &[SceneWindow],
@@ -244,6 +317,13 @@ pub fn compose(
     let mut used: Vec<SceneUse> = Vec::new();
     for &k in order.iter().take(max_scenes) {
         let idx = mndwi(scenes[k].imagery);
+        let in_corridor: Vec<f32> = idx
+            .iter()
+            .zip(&corr)
+            .filter(|(_, c)| **c)
+            .map(|(v, _)| *v)
+            .collect();
+        let threshold = otsu_split(&in_corridor).unwrap_or(threshold);
         let mut n_used = 0usize;
         let slot = used.len() as u8;
         for i in 0..cols * rows {
@@ -275,6 +355,7 @@ pub fn compose(
             date: scenes[k].date.to_string(),
             cloud_pct: scenes[k].cloud_pct,
             corridor_clear: clear[k],
+            mndwi_threshold: threshold,
             corridor_used: n_used as f64 / in_corr,
         });
         if state

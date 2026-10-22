@@ -250,12 +250,12 @@
             "properties": {
               "from_m": { "type": "number" },
               "to_m": { "type": "number" },
-              "kind": { "enum": ["narrow", "no-water", "no-edge", "at-shift-limit", "repaired"] },
+              "kind": { "enum": ["narrow", "no-water", "no-edge", "at-shift-limit", "repaired", "jrc-fallback"] },
               "min_width_m": { "type": "number", "minimum": 0 },
               "checks": {
-                "description": "Spec 0013, kind `repaired`: the bank checks that failed. `side`, `missing`, `jump` and `width-wide` were repaired; `width-narrow` is flagged and the banks kept.",
+                "description": "Spec 0013, kind `repaired`: the bank checks that failed. `side`, `missing`, `jump`, `excursion` and `width-wide` were repaired; `width-narrow` and `crossing` (the banks still cross after the repairs) are flagged and the banks kept.",
                 "type": "array",
-                "items": { "enum": ["side", "missing", "jump", "width-wide", "width-narrow"] }
+                "items": { "enum": ["side", "missing", "jump", "width-wide", "width-narrow", "excursion", "crossing"] }
               }
             }
           }

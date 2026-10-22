@@ -16,8 +16,9 @@ type Pt = [f64; 2];
 /// The passes of the mid-line.
 pub const MIDLINE_PASSES: usize = 3;
 
-/// The farthest a station looks for a bank along its normal, each way, in metres.
-pub const MAX_RAY_M: f64 = 5_000.0;
+/// The farthest a station looks for a bank along its normal, each way, in metres (the bank search
+/// of the mask reaches 1.5 km).
+pub const MAX_RAY_M: f64 = 2_000.0;
 
 fn dist(a: Pt, b: Pt) -> f64 {
     libm::hypot(b[0] - a[0], b[1] - a[1])
@@ -125,15 +126,20 @@ impl<'a> SegIndex<'a> {
         let nx = ((hi[0] - lo[0]) / cell).floor() as usize + 1;
         let ny = ((hi[1] - lo[1]) / cell).floor() as usize + 1;
         let mut cells = vec![Vec::new(); nx * ny];
+        // Each segment goes in exactly the cells it passes through (a grid walk), not in every cell
+        // of its box: a long diagonal segment would otherwise fill a whole square of cells.
         for (i, w) in line.windows(2).enumerate() {
             let (a, b) = (w[0], w[1]);
-            let cx = |x: f64| (((x - lo[0]) / cell).floor() as usize).min(nx - 1);
-            let cy = |y: f64| (((y - lo[1]) / cell).floor() as usize).min(ny - 1);
-            for gy in cy(a[1].min(b[1]))..=cy(a[1].max(b[1])) {
-                for gx in cx(a[0].min(b[0]))..=cx(a[0].max(b[0])) {
-                    cells[gy * nx + gx].push(i as u32);
-                }
-            }
+            let len = dist(a, b);
+            let d = if len > 0.0 {
+                [(b[0] - a[0]) / len, (b[1] - a[1]) / len]
+            } else {
+                [1.0, 0.0]
+            };
+            grid_walk([lo[0], lo[1]], cell, nx, ny, a, d, len, |c, _| {
+                cells[c].push(i as u32);
+                true
+            });
         }
         SegIndex {
             line,
@@ -146,59 +152,50 @@ impl<'a> SegIndex<'a> {
         }
     }
 
-    /// The segment ids in the cells a ray from `p` along `d` passes, up to `max_t` each way.
-    fn candidates(&self, p: Pt, d: Pt, max_t: f64, out: &mut Vec<u32>) {
-        out.clear();
-        let steps = (max_t / (self.cell * 0.5)).ceil() as i64;
-        let mut last = usize::MAX;
-        for k in -steps..=steps {
-            let t = k as f64 * self.cell * 0.5;
-            let (x, y) = (p[0] + d[0] * t, p[1] + d[1] * t);
-            let (fx, fy) = ((x - self.x0) / self.cell, (y - self.y0) / self.cell);
-            // The cell and its neighbours: a ray between two sample points can clip a corner.
-            for (ox, oy) in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)] {
-                let (gx, gy) = (fx.floor() as i64 + ox, fy.floor() as i64 + oy);
-                if gx < 0 || gy < 0 || gx >= self.nx as i64 || gy >= self.ny as i64 {
-                    continue;
-                }
-                let c = gy as usize * self.nx + gx as usize;
-                if c == last && (ox, oy) == (0, 0) {
-                    continue;
-                }
-                out.extend_from_slice(&self.cells[c]);
-            }
-            last = (fy.floor().max(0.0) as usize) * self.nx + fx.floor().max(0.0) as usize;
-        }
-        out.sort_unstable();
-        out.dedup();
-    }
-
     /// The signed distances along `d` (a unit vector) from `p` to the first crossing with the line
-    /// ahead (positive) and behind (negative), within `max_t` either way.
+    /// ahead (positive) and behind (negative), within `max_t` either way. Each way walks the grid
+    /// out from `p` and stops once a crossing is nearer than the next cell.
     pub fn hits(&self, p: Pt, d: Pt, max_t: f64, buf: &mut Vec<u32>) -> (Option<f64>, Option<f64>) {
-        self.candidates(p, d, max_t, buf);
-        let (mut ahead, mut behind): (Option<f64>, Option<f64>) = (None, None);
-        for &i in buf.iter() {
-            let (a, b) = (self.line[i as usize], self.line[i as usize + 1]);
-            let e = [b[0] - a[0], b[1] - a[1]];
-            let den = d[0] * e[1] - d[1] * e[0];
-            if den.abs() < 1e-12 {
-                continue;
-            }
-            let w = [a[0] - p[0], a[1] - p[1]];
-            let t = (w[0] * e[1] - w[1] * e[0]) / den;
-            let u = (w[0] * d[1] - w[1] * d[0]) / den;
-            if !(-1e-9..=1.0 + 1e-9).contains(&u) || t.abs() > max_t {
-                continue;
-            }
-            if t >= 0.0 {
-                if ahead.is_none_or(|v| t < v) {
-                    ahead = Some(t);
-                }
-            } else if behind.is_none_or(|v| t > v) {
-                behind = Some(t);
-            }
-        }
+        let mut one_way = |sign: f64| -> Option<f64> {
+            let dir = [d[0] * sign, d[1] * sign];
+            let mut best: Option<f64> = None;
+            buf.clear();
+            grid_walk(
+                [self.x0, self.y0],
+                self.cell,
+                self.nx,
+                self.ny,
+                p,
+                dir,
+                max_t,
+                |c, t_in| {
+                    if best.is_some_and(|b| b < t_in) {
+                        return false;
+                    }
+                    for &i in &self.cells[c] {
+                        let (a, b) = (self.line[i as usize], self.line[i as usize + 1]);
+                        let e = [b[0] - a[0], b[1] - a[1]];
+                        let den = dir[0] * e[1] - dir[1] * e[0];
+                        if den.abs() < 1e-12 {
+                            continue;
+                        }
+                        let w = [a[0] - p[0], a[1] - p[1]];
+                        let t = (w[0] * e[1] - w[1] * e[0]) / den;
+                        let u = (w[0] * dir[1] - w[1] * dir[0]) / den;
+                        if (-1e-9..=1.0 + 1e-9).contains(&u)
+                            && (0.0..=max_t).contains(&t)
+                            && best.is_none_or(|v| t < v)
+                        {
+                            best = Some(t);
+                        }
+                    }
+                    true
+                },
+            );
+            best
+        };
+        let ahead = one_way(1.0);
+        let behind = one_way(-1.0).map(|t| -t);
         (ahead, behind)
     }
 
@@ -207,6 +204,69 @@ impl<'a> SegIndex<'a> {
         match self.hits(p, d, max_t, buf) {
             (Some(a), Some(b)) => Some(if a <= -b { a } else { b }),
             (a, b) => a.or(b),
+        }
+    }
+}
+
+/// Walk the cells of a grid (origin `lo`, square `cell`, `nx` by `ny`) that a ray from `p` along the
+/// unit vector `d` passes, up to `max_t`, in order, calling `visit(cell index, distance where the ray
+/// enters it)`; `visit` returning false stops the walk. Cells outside the grid are skipped.
+#[allow(clippy::too_many_arguments)]
+fn grid_walk(
+    lo: Pt,
+    cell: f64,
+    nx: usize,
+    ny: usize,
+    p: Pt,
+    d: Pt,
+    max_t: f64,
+    mut visit: impl FnMut(usize, f64) -> bool,
+) {
+    let fx = (p[0] - lo[0]) / cell;
+    let fy = (p[1] - lo[1]) / cell;
+    let (mut ix, mut iy) = (fx.floor() as i64, fy.floor() as i64);
+    let step = |v: f64| if v > 0.0 { 1i64 } else { -1 };
+    let (sx, sy) = (step(d[0]), step(d[1]));
+    let inf = f64::INFINITY;
+    let next = |f: f64, i: i64, s: i64, dv: f64| -> f64 {
+        if dv.abs() < 1e-15 {
+            inf
+        } else {
+            let edge = if s > 0 { (i + 1) as f64 } else { i as f64 };
+            (edge - f) * cell / dv
+        }
+    };
+    let (mut tx, mut ty) = (next(fx, ix, sx, d[0]), next(fy, iy, sy, d[1]));
+    let (dx, dy) = (
+        if d[0].abs() < 1e-15 {
+            inf
+        } else {
+            cell / d[0].abs()
+        },
+        if d[1].abs() < 1e-15 {
+            inf
+        } else {
+            cell / d[1].abs()
+        },
+    );
+    let mut t_in = 0.0;
+    loop {
+        if ix >= 0 && iy >= 0 && (ix as usize) < nx && (iy as usize) < ny {
+            if !visit(iy as usize * nx + ix as usize, t_in) {
+                return;
+            }
+        }
+        if tx < ty {
+            t_in = tx;
+            tx += dx;
+            ix += sx;
+        } else {
+            t_in = ty;
+            ty += dy;
+            iy += sy;
+        }
+        if t_in > max_t {
+            return;
         }
     }
 }
