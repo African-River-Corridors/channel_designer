@@ -640,16 +640,23 @@ fn cancel_run(state: State<Shared>) -> Result<bool, String> {
 }
 
 /// Fetch a Copernicus DEM for the reach with `owd fetch-dem`, beside the saved design, then
-/// reload the design from the file. The design must be saved first: the tiles go next to it.
+/// reload the design from the file. The study is saved first: the tiles go next to it.
 #[tauri::command]
 async fn fetch_dem(app: AppHandle, window: Window, state: State<'_, Shared>) -> Reply {
+    // The study is saved first, never asked about (#322): in its folder in the projects folder if
+    // it has no file yet.
     let path = {
-        let guard = lock(&state)?;
-        guard.refuse_unsaved_fetch()?;
+        let mut guard = lock(&state)?;
+        guard.refuse_while_running()?;
+        if guard.path().is_none() {
+            autosave_new(&mut guard, None)?;
+        } else if guard.is_dirty() {
+            autosave(&mut guard)?;
+        }
         guard
             .path()
             .map(Path::to_path_buf)
-            .ok_or("save the design first: the DEM tiles are written next to it")?
+            .ok_or("the study could not be saved")?
     };
     let doc = path.to_string_lossy().into_owned();
     let mirror = test_answer("dem-mirror.txt").flatten();
@@ -715,6 +722,95 @@ fn reach_endpoints() -> owd_shell::reach::ReachEndpoints {
         at.overpass = u;
     }
     at
+}
+
+// --- The projects folder (#322) ---------------------------------------------------------------
+
+/// Where studies are saved: `OWD_PROJECTS_DIR`, else `~/Documents/Open Waterway Designer`. A debug
+/// build reads `projects.txt` from the test folder.
+fn projects_dir() -> Result<PathBuf, String> {
+    if let Some(Some(p)) = test_answer("projects.txt") {
+        return Ok(PathBuf::from(p));
+    }
+    if let Some(p) = std::env::var_os("OWD_PROJECTS_DIR") {
+        return Ok(PathBuf::from(p));
+    }
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .ok_or("there is no home folder for the projects folder: set OWD_PROJECTS_DIR")?;
+    Ok(PathBuf::from(home).join(owd_shell::projects::DEFAULT_PROJECTS))
+}
+
+/// The file of the study about to be replaced, when the new one may take its folder: a study saved
+/// in the projects folder that holds nothing but its reach, alone in its folder. A reach cut again
+/// out of the same river keeps its folder and name.
+fn handed_over(guard: &AppState) -> Option<PathBuf> {
+    let file = guard.path()?;
+    let dir = file.parent()?;
+    if dir.parent()? != projects_dir().ok()? || !guard.reach_route_only() || guard.is_dirty() {
+        return None;
+    }
+    (std::fs::read_dir(dir).ok()?.count() == 1).then(|| file.to_path_buf())
+}
+
+/// Write the study where it is saved, if it is saved.
+fn autosave(guard: &mut AppState) -> Result<(), String> {
+    let Some(path) = guard.path().map(Path::to_path_buf) else {
+        return Ok(());
+    };
+    let text = guard.save_text_for(&path);
+    write_file(&path, &text)?;
+    guard.saved(&path);
+    Ok(())
+}
+
+/// Save a new study at once, in its own folder in the projects folder, named for the minute it
+/// started (local time) and its river: `2026-10-22 1435 Rhine`, with a suffix when the name is
+/// taken (#322). A study of the same river that held only its reach hands its folder over.
+fn autosave_new(guard: &mut AppState, previous: Option<PathBuf>) -> Result<(), String> {
+    let river = guard.study_river();
+    let projects = projects_dir()?;
+    std::fs::create_dir_all(&projects)
+        .map_err(|e| format!("cannot create {}: {e}", projects.display()))?;
+    let same_river = |dir: &Path| {
+        dir.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .is_some_and(|n| {
+                let n = n.split(" (").next().unwrap_or(&n).to_string();
+                n.ends_with(&format!(" {}", owd_shell::projects::safe_name(&river)))
+            })
+    };
+    let reused = previous.as_deref().and_then(|old| {
+        let dir = old.parent()?;
+        same_river(dir).then(|| {
+            let _ = std::fs::remove_file(old);
+            dir.to_path_buf()
+        })
+    });
+    let folder = match reused {
+        Some(dir) => dir,
+        None => {
+            let started = chrono::Local::now().format("%Y-%m-%d %H%M").to_string();
+            let name = owd_shell::projects::study_folder_name(&started, &river);
+            let mut folder = projects.join(&name);
+            let mut n = 2;
+            while folder.exists() {
+                folder = projects.join(format!("{name} ({n})"));
+                n += 1;
+            }
+            folder
+        }
+    };
+    std::fs::create_dir_all(&folder)
+        .map_err(|e| format!("cannot create {}: {e}", folder.display()))?;
+    let stem = folder
+        .file_name()
+        .map_or_else(|| "study".to_string(), |n| n.to_string_lossy().into_owned());
+    let path = folder.join(format!("{stem}.{SAVE_EXTENSION}"));
+    let text = guard.save_text_for(&path);
+    write_file(&path, &text)?;
+    guard.saved(&path);
+    Ok(())
 }
 
 /// Bumped by Cancel: a reach step that began before it is not kept.
@@ -787,7 +883,9 @@ async fn reach_route(
     })
     .await?;
     let mut guard = lock(&state)?;
+    let previous = handed_over(&guard);
     guard.start_reach(plan, &today())?;
+    autosave_new(&mut guard, previous)?;
     finish(&window, &guard)
 }
 
@@ -828,7 +926,9 @@ async fn reach_river(
     })
     .await?;
     let mut guard = lock(&state)?;
+    let previous = handed_over(&guard);
     guard.start_river(river, search.as_deref(), &today())?;
+    autosave_new(&mut guard, previous)?;
     finish(&window, &guard)
 }
 
@@ -847,7 +947,9 @@ fn reach_cut(
         return Ok(serde_json::Value::Null);
     }
     let mut guard = lock(&state)?;
+    let previous = handed_over(&guard);
     guard.reach_cut(start, end, &via, &today())?;
+    autosave_new(&mut guard, previous)?;
     finish(&window, &guard)
 }
 
@@ -911,6 +1013,7 @@ async fn reach_step(
     let job = watched(&app, move |f| job.run(f, &at, &date)).await?;
     let mut guard = lock(&state)?;
     guard.keep_reach(job)?;
+    autosave(&mut guard)?;
     finish(&window, &guard)
 }
 

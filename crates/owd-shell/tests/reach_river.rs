@@ -206,3 +206,22 @@ fn an_opened_study_routed_from_points_is_planned_again_from_its_points() {
         .unwrap();
     assert_eq!(opened.snapshot()["reach_view"]["route"], before);
 }
+
+#[test]
+fn a_study_from_a_river_is_named_for_its_river() {
+    let f = fetch();
+    let river = read_river(&f, &endpoints(), "relation/3328713", &[]).unwrap();
+    let mut s = AppState::new_design("t", "2026-10-22");
+    s.start_river(river, Some("osm-photon"), "2026-10-22")
+        .unwrap();
+    assert_eq!(s.study_river(), "Ankobra River");
+    assert_eq!(
+        owd_shell::projects::study_folder_name("2026-10-22 1435", &s.study_river()),
+        "2026-10-22 1435 Ankobra River"
+    );
+    // A reach routed from points, with no river named, takes the study's title.
+    assert_eq!(
+        AppState::new_design("Reach study", "2026-10-22").study_river(),
+        "Reach study"
+    );
+}

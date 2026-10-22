@@ -20,6 +20,7 @@ custom-protocol = ["tauri/custom-protocol"]
 
 [dependencies]
 base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 owd-core.workspace = true
 owd-cli = { path = "../../crates/owd-cli" }
 owd-format.workspace = true
