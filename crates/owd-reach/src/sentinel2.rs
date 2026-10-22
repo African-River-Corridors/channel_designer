@@ -34,6 +34,8 @@ pub struct Scene {
     pub nir: String,
     pub swir: String,
     pub scl: Option<String>,
+    /// Blue (B02), for the true-colour picture (spec 0013).
+    pub blue: Option<String>,
 }
 
 /// The most cloud, in percent of the scene, for a scene to be used (provisional).
@@ -113,6 +115,7 @@ pub fn parse_scenes(body: &[u8]) -> Result<Vec<Scene>, ReachError> {
             nir,
             swir,
             scl: href("scl"),
+            blue: href("blue"),
         });
     }
     Ok(out)
@@ -196,6 +199,71 @@ fn scl_unusable(v: u8) -> bool {
     matches!(v, 0 | 3 | 8 | 9 | 10)
 }
 
+/// The 10 m window of a scene's grid that covers `min` to `max`, in whole 20 m cells so the 20 m
+/// bands line up: its west and north edges, size, and first column and row on the 10 m grid.
+fn window(origin: [f64; 2], min: [f64; 2], max: [f64; 2]) -> (f64, f64, usize, usize, i64, i64) {
+    let px = 10.0;
+    let (x0, y1) = (
+        (min[0] / 20.0).floor() * 20.0,
+        (max[1] / 20.0).ceil() * 20.0,
+    );
+    let cols = (((max[0] - x0) / px).ceil() as usize + 1).next_multiple_of(2);
+    let rows = (((y1 - min[1]) / px).ceil() as usize + 1).next_multiple_of(2);
+    let col0 = ((x0 - origin[0]) / px).round() as i64;
+    let row0 = ((origin[1] - y1) / px).round() as i64;
+    (x0, y1, cols, rows, col0, row0)
+}
+
+/// Which pixels of a scene's window are clear, from its scene classification alone (one 20 m band,
+/// a few range reads): enough to rank scenes by how much of a river they see, before reading a
+/// scene's other bands. The window is the one [`read_imagery`] reads for the same box. A scene with
+/// no classification band counts as all clear.
+pub fn read_clear(
+    fetch: &dyn Fetch,
+    scene: &Scene,
+    min: [f64; 2],
+    max: [f64; 2],
+) -> Result<Vec<bool>, ReachError> {
+    let Some(url) = &scene.scl else {
+        let (.., cols, rows, _, _) = window([0.0, 0.0], min, max);
+        return Ok(vec![true; cols * rows]);
+    };
+    let t = TiledTiff::open(fetch, url)?;
+    // The 20 m grid's origin is the 10 m grid's origin.
+    let (_, _, cols, rows, col0, row0) = window(t.origin, min, max);
+    let (c20, r20) = (col0.div_euclid(2), row0.div_euclid(2));
+    let (w20, h20) = (cols / 2 + 1, rows / 2 + 1);
+    let raw = t.read_window(fetch, c20, r20, w20, h20)?;
+    let mut out = vec![false; cols * rows];
+    for r in 0..rows {
+        for c in 0..cols {
+            let (rr, cc) = (
+                ((row0 + r as i64).div_euclid(2) - r20) as usize,
+                ((col0 + c as i64).div_euclid(2) - c20) as usize,
+            );
+            out[r * cols + c] = !scl_unusable(raw[rr * w20 + cc]);
+        }
+    }
+    Ok(out)
+}
+
+/// The blue reflectance (B02) on the grid of a window already read, for the true-colour picture.
+pub fn read_blue(fetch: &dyn Fetch, scene: &Scene, im: &Imagery) -> Result<Vec<f32>, ReachError> {
+    let url = scene
+        .blue
+        .as_ref()
+        .ok_or_else(|| ReachError::Parse(format!("{}: the scene has no blue band", scene.id)))?;
+    let t = TiledTiff::open(fetch, url)?;
+    let col0 = ((im.x0 - t.origin[0]) / im.px).round() as i64;
+    let row0 = ((t.origin[1] - im.y1) / im.px).round() as i64;
+    let dn = t.read_window16(fetch, col0, row0, im.cols, im.rows)?;
+    let offset = if scene.offset_applied { 0.0 } else { 1000.0 };
+    Ok(dn
+        .iter()
+        .map(|v| ((f32::from(*v) - offset) / 10_000.0).max(0.0))
+        .collect())
+}
+
 /// Read the window of a scene that covers `[min_x, min_y, max_x, max_y]` metres in the scene's UTM zone.
 pub fn read_imagery(
     fetch: &dyn Fetch,
@@ -225,14 +293,7 @@ pub fn read_imagery(
         )));
     }
     // Whole 20 m cells, so the 20 m bands line up with the 10 m grid.
-    let (x0, y1) = (
-        (min[0] / 20.0).floor() * 20.0,
-        (max[1] / 20.0).ceil() * 20.0,
-    );
-    let cols = (((max[0] - x0) / px).ceil() as usize + 1).next_multiple_of(2);
-    let rows = (((y1 - min[1]) / px).ceil() as usize + 1).next_multiple_of(2);
-    let col0 = ((x0 - g.origin[0]) / px).round() as i64;
-    let row0 = ((g.origin[1] - y1) / px).round() as i64;
+    let (x0, y1, cols, rows, col0, row0) = window(g.origin, min, max);
     let read10 = |url: &str| -> Result<Vec<u16>, ReachError> {
         let t = TiledTiff::open(fetch, url)?;
         if (t.origin[0] - g.origin[0]).abs() > 1e-6 || (t.origin[1] - g.origin[1]).abs() > 1e-6 {
@@ -345,6 +406,22 @@ mod tests {
         assert!(pick_scene(&s, &default_dry_months(5.0), 0.001, None).is_none());
         assert!(pick_scene(&s, &[6, 7, 8], 100.0, None).is_none());
         assert_eq!(default_dry_months(-12.0), vec![6, 7, 8]);
+    }
+
+    #[test]
+    fn the_blue_band_is_read_from_the_item_when_it_has_one() {
+        let item = r#"{"features":[{"id":"x","bbox":[0,0,1,1],"properties":{"datetime":"2025-01-26T10:00:00Z","eo:cloud_cover":3.0},
+            "assets":{"green":{"href":"g/B03.tif"},"red":{"href":"r/B04.tif"},"nir":{"href":"n/B08.tif"},
+                      "swir16":{"href":"s/B11.tif"},"blue":{"href":"b/B02.tif"}}}]}"#;
+        let s = parse_scenes(item.as_bytes()).unwrap();
+        assert_eq!(s[0].blue.as_deref(), Some("b/B02.tif"));
+        // The recorded answer has no blue asset: none, and nothing else changes.
+        assert!(
+            parse_scenes(STAC.as_bytes())
+                .unwrap()
+                .iter()
+                .all(|s| s.blue.is_none())
+        );
     }
 
     #[test]

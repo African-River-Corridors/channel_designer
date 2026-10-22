@@ -365,6 +365,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The Sentinel-2 water grid (`owd_reach::water`, spec 0013 T2, ADR 0011): water and land from a
+  scene's MNDWI (water at 0.0 or more, provisional), with the scene classification masking cloud,
+  shadow, cirrus and no data; scenes ranked by the share of the river corridor they see clear, up to
+  three filling each other's gaps, and the JRC mask filling what none sees, each pixel saying where it
+  came from. `sentinel2::read_clear` reads a scene's classification alone to rank it; `read_blue` and
+  `Scene::blue` give the blue band for the true-colour picture. Nothing uses the grid yet (T3 does).
 - `owd.alignment.fairway.fairway_fit`: the Python wrapper of the corridor solve (poses, must-follow
   segments, any `FitParams` field by name).
 - No-cut zones on the least-cost route: `optimise_route(..., no_cut=[NoCutZone(from_m, to_m, bank)],

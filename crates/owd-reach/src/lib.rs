@@ -21,6 +21,7 @@ pub mod sentinel2;
 pub mod sources;
 pub mod sword;
 pub mod tiff;
+pub mod water;
 pub mod zip;
 
 pub use error::ReachError;
