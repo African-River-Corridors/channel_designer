@@ -442,6 +442,26 @@ impl Session {
             .collect())
     }
 
+    /// The reports of the design (spec 0014, ticket 6), as `[[name, bytes], ...]`, with the bytes
+    /// `owd report` writes. `ask` is the JSON `{kind, format, revision?, status?, prepared?, date}`.
+    pub fn report_files(&self, option: Option<String>, ask: &str) -> Js<js_sys::Array> {
+        let ask: serde_json::Value = ok(serde_json::from_str(ask).map_err(|e| e.to_string()))?;
+        let ask = ok(owd_shell::report::ReportAsk::from_json(
+            &ask,
+            &format!("Open Waterway Designer {} (web)", env!("CARGO_PKG_VERSION")),
+        ))?;
+        let files = ok(self.state.report_job(option.as_deref(), ask).files())?;
+        Ok(files
+            .into_iter()
+            .map(|(name, bytes)| {
+                let pair = js_sys::Array::new();
+                pair.push(&JsValue::from_str(&name));
+                pair.push(&js_sys::Uint8Array::from(bytes.as_slice()));
+                JsValue::from(pair)
+            })
+            .collect())
+    }
+
     /// The QA overlay of the study's banks (spec 0013): `[[name, bytes], ...]` for the PNG and the
     /// KMZ, the scenes read through `fetch`, as the desktop's export writes them.
     pub fn qa_overlay(

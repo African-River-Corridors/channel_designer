@@ -41,7 +41,7 @@ jobs:
         if: github.event_name == 'pull_request'
         with:
           # The desktop app and what it builds from: its own code, the crates it links (owd-cli pulls in
-          # owd-reach), the example files its smoke test opens, the toolchain and this workflow.
+          # owd-reach and owd-report), the example files its smoke test opens, the toolchain and this workflow.
           # Any change under app/ runs the app jobs (app-e2e found a real bug in #268).
           filters: |
             app:
@@ -51,6 +51,7 @@ jobs:
               - "crates/owd-cli/**"
               - "crates/owd-shell/**"
               - "crates/owd-reach/**"
+              - "crates/owd-report/**"
               - "examples/**"
               - "Cargo.toml"
               - "Cargo.lock"
@@ -63,6 +64,7 @@ jobs:
               - "crates/owd-cli/**"
               - "crates/owd-shell/**"
               - "crates/owd-reach/**"
+              - "crates/owd-report/**"
               - "crates/owd-web/**"
               - "examples/**"
               - "tools/build_web.sh"

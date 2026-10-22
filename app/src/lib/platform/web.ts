@@ -269,6 +269,17 @@ export async function createWebPlatform(): Promise<Platform> {
       for (const [name, bytes] of pdfs) download(name, bytes as BlobPart, "application/pdf");
       return pdfs.length ? `${pdfs.length} PDF${pdfs.length === 1 ? "" : "s"}` : null;
     },
+    export_report: async (a) => {
+      // each report file, as `owd report` names it; the browser saves them as downloads
+      const files = await host.rpc<[string, Uint8Array][]>("report_files", a.option ?? undefined, JSON.stringify(a.ask));
+      const types: Record<string, string> = {
+        pdf: "application/pdf",
+        html: "text/html",
+        docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      };
+      for (const [name, bytes] of files) download(name, bytes as BlobPart, types[name.split(".").pop() ?? ""] ?? "application/octet-stream");
+      return files.length ? files.map(([name]) => name).join(", ") : null;
+    },
     export_qa_overlay: async (a) => {
       // the QA overlay's PNG and KMZ (spec 0013), drawn in the worker from the scenes; saved as downloads
       const files = await host.rpc<[string, Uint8Array][]>("qa_overlay", a.fromKm ?? undefined, a.toKm ?? undefined, reachAt);

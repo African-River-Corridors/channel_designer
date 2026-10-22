@@ -379,6 +379,19 @@ export type SheetPage = { number: string; title: string; svg: string; warnings: 
 export const sheets = (option: string) => invoke<SheetPage[]>("sheets", { option });
 /** Write each sheet's PDF of an option; the folder (desktop) or what was saved (web), or null on cancel. */
 export const exportSheets = (option: string) => invoke<string | null>("export_sheets", { option });
+/** What a report asks for (spec 0014): one kind or `all`, one format or `all`, and document control. */
+export type ReportAsk = {
+  kind: "screening" | "quantities" | "sections" | "run" | "all";
+  format: "pdf" | "html" | "docx" | "all";
+  revision: string;
+  status: string;
+  prepared: string;
+  /** ISO 8601, today. */
+  date: string;
+};
+/** Write the reports of the design, from the same builder as `owd report`; the folder (desktop) or
+ * what was saved (web), or null on cancel. */
+export const exportReport = (option: string | null, ask: ReportAsk) => invoke<string | null>("export_report", { option, ask });
 /** The QA overlay of the study's banks over the Sentinel-2 image (spec 0013): a PNG and a KMZ, saved to a
  * folder the user picks (desktop) or as downloads (web). `fromKm`/`toKm` cut the stretch. null on cancel. */
 export const exportQaOverlay = (fromKm?: number, toKm?: number) =>

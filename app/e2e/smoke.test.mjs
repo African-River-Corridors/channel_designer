@@ -178,7 +178,7 @@ describe("Open Waterway Designer app smoke test", () => {
   });
 
   beforeEach(() => {
-    for (const f of ["open.txt", "save.txt", "discard.txt", "load.txt", "export.txt", "sheets.txt", "qa.txt", "jrc.txt", "reach-endpoints.json"]) forget(f);
+    for (const f of ["open.txt", "save.txt", "discard.txt", "load.txt", "export.txt", "sheets.txt", "report.txt", "qa.txt", "jrc.txt", "reach-endpoints.json"]) forget(f);
   });
 
   it("shows the screening label on its status line from the start", async () => {
@@ -539,6 +539,15 @@ describe("Open Waterway Designer app smoke test", () => {
     for (const f of fs.readdirSync(dir).filter((f) => f.endsWith(".pdf"))) {
       assert.equal(fs.readFileSync(path.join(dir, f)).subarray(0, 5).toString(), "%PDF-", f);
     }
+    // The Report button (spec 0014): the screening report as PDF, named as owd report names it.
+    const reports = path.join(WORK, "reports");
+    answer("report.txt", reports);
+    await (await browser.$("[data-testid=report-toggle]")).click();
+    await (await browser.$("[data-testid=export-report]")).click();
+    await until("the report to be written", async () => fs.existsSync(reports) && fs.readdirSync(reports).some((f) => f.endsWith("-sr.pdf")), 180000);
+    const report = fs.readdirSync(reports).find((f) => f.endsWith("-sr.pdf"));
+    assert.match(report, /^owd-.+-sr\.pdf$/);
+    assert.equal(fs.readFileSync(path.join(reports, report)).subarray(0, 5).toString(), "%PDF-");
     await (await browser.$("[data-testid=sheets-toggle]")).click();
     await until("the map to return", async () => !(await (await browser.$("[data-testid=sheets-view]")).isExisting()));
   });

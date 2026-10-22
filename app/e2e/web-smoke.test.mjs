@@ -149,6 +149,19 @@ describe("OWD web smoke tests", () => {
     await until(b, "the restored design", async () => (await exists(b, "file-label")) && (await text(b, "file-label")).includes("river-example.owd"));
   });
 
+  it("writes the screening report as a PDF download from the Report button (spec 0014)", async () => {
+    const b = await start();
+    await b.url(`${origin}/owd/app`);
+    await loaded(b);
+    await (await tid(b, "open-example")).click();
+    await until(b, "the option table", async () => (await b.$$("[data-testid=option-row]")).length === 1);
+    await (await tid(b, "sheets-toggle")).click();
+    await (await tid(b, "report-toggle")).click();
+    await (await tid(b, "export-report")).click();
+    await until(b, "the report", async () => (await exists(b, "notice")) && /Report written: owd-.+-sr\.pdf/.test(await text(b, "notice")), 240000);
+    assert.equal(await exists(b, "error"), false);
+  });
+
   it("picks the quality in the Rule Set picker, runs, shows the verdict, design basis and stretches, and a picked stretch on the map", async () => {
     // The map needs WebGL: headless Chrome gets it from SwiftShader, in software.
     const b = await start({ args: ["--headless=new", "--no-sandbox", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--window-size=1500,950"] });
