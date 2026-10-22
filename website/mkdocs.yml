@@ -58,6 +58,7 @@ nav:
       - Codifying a rule: codification.md
   - Roadmap: roadmap.md
   - Glossary: glossary.md
+  - Worked example, the Sassandra: examples/sassandra.md
   - Known issues: known-issues.md
   - Style guide: style-guide.md
   - Decisions: adr/
