@@ -107,6 +107,124 @@ pub fn interpolate_normalized(line: &[Pt], fraction: f64) -> Option<Pt> {
     interpolate(line, fraction * length(line))
 }
 
+/// [`project`] for many points on one long line: the same answer to the last bit, found through a
+/// grid of the line's segments instead of a scan of all of them. A point's nearest segment is
+/// searched in rings of cells around it, until no unread cell can hold a closer segment; among
+/// segments at the same distance the first wins, as in [`project`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProjectIndex {
+    line: Vec<Pt>,
+    /// The chainage where each segment starts, summed in order as [`project`] sums it.
+    start: Vec<f64>,
+    origin: Pt,
+    cell: f64,
+    cols: usize,
+    rows: usize,
+    /// For each cell, row-major, the segments whose box meets it, in order.
+    cells: Vec<Vec<usize>>,
+}
+
+impl ProjectIndex {
+    pub fn new(line: &[Pt]) -> ProjectIndex {
+        let mut start = Vec::with_capacity(line.len().saturating_sub(1));
+        let mut at = 0.0;
+        for w in line.windows(2) {
+            start.push(at);
+            at += dist(w[0], w[1]);
+        }
+        let (mut lo, mut hi) = ([f64::MAX; 2], [f64::MIN; 2]);
+        for p in line {
+            for k in 0..2 {
+                lo[k] = lo[k].min(p[k]);
+                hi[k] = hi[k].max(p[k]);
+            }
+        }
+        // About as many cells as segments, at least 1 m across.
+        let span = (hi[0] - lo[0]).max(hi[1] - lo[1]).max(1.0);
+        let n = start.len().max(1) as f64;
+        let cell = (span / n.sqrt()).max(1.0);
+        let cols = ((hi[0] - lo[0]) / cell).floor() as usize + 1;
+        let rows = ((hi[1] - lo[1]) / cell).floor() as usize + 1;
+        let mut cells = vec![Vec::new(); if line.len() < 2 { 0 } else { cols * rows }];
+        for (i, w) in line.windows(2).enumerate() {
+            let c0 = ((w[0][0].min(w[1][0]) - lo[0]) / cell).floor() as usize;
+            let c1 = ((w[0][0].max(w[1][0]) - lo[0]) / cell).floor() as usize;
+            let r0 = ((w[0][1].min(w[1][1]) - lo[1]) / cell).floor() as usize;
+            let r1 = ((w[0][1].max(w[1][1]) - lo[1]) / cell).floor() as usize;
+            for r in r0..=r1.min(rows - 1) {
+                for c in c0..=c1.min(cols - 1) {
+                    cells[r * cols + c].push(i);
+                }
+            }
+        }
+        ProjectIndex {
+            line: line.to_vec(),
+            start,
+            origin: lo,
+            cell,
+            cols,
+            rows,
+            cells,
+        }
+    }
+
+    /// The chainage of `p` on the line, as [`project`] gives it.
+    pub fn project(&self, p: Pt) -> f64 {
+        if self.line.len() < 2 || !(p[0].is_finite() && p[1].is_finite()) {
+            return project(&self.line, p);
+        }
+        let fc = ((p[0] - self.origin[0]) / self.cell).floor();
+        let fr = ((p[1] - self.origin[1]) / self.cell).floor();
+        // The distance from `p` to the nearest edge of its own cell, so that every cell outside
+        // ring `k` lies farther than `k * cell - edge`.
+        let (pc, pr) = (fc as i64, fr as i64);
+        let mut best: Option<(f64, usize)> = None;
+        let far = self.cols.max(self.rows) as i64 + (pc.abs()).max(pr.abs()) + 1;
+        let mut k: i64 = 0;
+        loop {
+            for r in pr - k..=pr + k {
+                for c in pc - k..=pc + k {
+                    if (r - pr).abs() != k && (c - pc).abs() != k {
+                        continue;
+                    }
+                    if r < 0 || c < 0 || r >= self.rows as i64 || c >= self.cols as i64 {
+                        continue;
+                    }
+                    for &i in &self.cells[r as usize * self.cols + c as usize] {
+                        let d = point_segment_distance(p, self.line[i], self.line[i + 1]);
+                        if best.is_none_or(|(bd, bi)| d < bd || (d == bd && i < bi)) {
+                            best = Some((d, i));
+                        }
+                    }
+                }
+            }
+            // Every unread cell lies at least `k * cell` from `p`'s own cell; a segment there is
+            // at least that far from `p`. Stop only when the best is strictly closer, so a tie with
+            // an earlier segment farther out is still found.
+            if best.is_some_and(|(bd, _)| bd < k as f64 * self.cell) {
+                break;
+            }
+            if k > far {
+                break;
+            }
+            k += 1;
+        }
+        let Some((_, i)) = best else {
+            return project(&self.line, p);
+        };
+        let (a, b) = (self.line[i], self.line[i + 1]);
+        let seg_len = dist(a, b);
+        let proj = projection_factor(a, b, p);
+        if proj <= 0.0 {
+            self.start[i]
+        } else if proj <= 1.0 {
+            self.start[i] + proj * seg_len
+        } else {
+            self.start[i] + seg_len
+        }
+    }
+}
+
 /// shapely `line.project(point)` (`LengthIndexOfPoint::indexOfFromStart`): the length along the
 /// line of the point nearest `p`. The first nearest segment wins a tie.
 pub fn project(line: &[Pt], p: Pt) -> f64 {
@@ -309,5 +427,68 @@ mod tests {
             line_intersection(&[[0.0, 0.0], [20.0, 0.0]], &[[10.0, 0.0], [30.0, 0.0]]);
         assert!(pts.is_empty());
         assert_eq!(lines, vec![vec![[10.0, 0.0], [20.0, 0.0]]]);
+    }
+}
+
+#[cfg(test)]
+mod project_index_tests {
+    //! Label: property (the index gives what the scan gives, to the last bit)
+    use super::*;
+
+    #[test]
+    fn the_index_projects_every_point_to_the_chainage_the_scan_gives() {
+        let mut x: u64 = 11;
+        let mut next = || {
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (x >> 11) as f64 / (1u64 << 53) as f64
+        };
+        for case in 0..60 {
+            // A wandering river line, sometimes with repeated points and a sharp turn back.
+            let n = 2 + (next() * 400.0) as usize;
+            let mut line = vec![[500_000.0, 600_000.0]];
+            let mut heading: f64 = next() * std::f64::consts::TAU;
+            for i in 1..n {
+                heading += (next() - 0.5) * if case % 5 == 0 { 3.0 } else { 0.6 };
+                let step = if i % 37 == 0 {
+                    0.0
+                } else {
+                    5.0 + next() * 200.0
+                };
+                let last = line[line.len() - 1];
+                line.push([
+                    last[0] + step * libm::cos(heading),
+                    last[1] + step * libm::sin(heading),
+                ]);
+            }
+            let index = ProjectIndex::new(&line);
+            for _ in 0..300 {
+                let a = line[(next() * (n as f64)) as usize % n];
+                let spread = if next() < 0.2 { 20_000.0 } else { 600.0 };
+                let p = [
+                    a[0] + (next() - 0.5) * spread,
+                    a[1] + (next() - 0.5) * spread,
+                ];
+                assert_eq!(
+                    index.project(p).to_bits(),
+                    project(&line, p).to_bits(),
+                    "case {case}, {p:?}"
+                );
+            }
+            // A vertex itself, where two segments tie.
+            for v in line.iter().take(20) {
+                assert_eq!(index.project(*v).to_bits(), project(&line, *v).to_bits());
+            }
+        }
+        assert_eq!(
+            ProjectIndex::new(&[[0.0, 0.0]]).project([1.0, 1.0]),
+            project(&[[0.0, 0.0]], [1.0, 1.0])
+        );
+        let l = [[0.0, 0.0], [10.0, 0.0]];
+        assert_eq!(
+            ProjectIndex::new(&l).project([f64::NAN, 1.0]).to_bits(),
+            project(&l, [f64::NAN, 1.0]).to_bits()
+        );
     }
 }

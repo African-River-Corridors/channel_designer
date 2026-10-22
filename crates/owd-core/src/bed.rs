@@ -156,6 +156,8 @@ pub struct BedModel {
     table: Vec<[f64; 2]>,
     centreline: Vec<Pt>,
     sections: Vec<Section>,
+    /// The centreline for projecting many points onto it fast (the same answers as a scan).
+    index: linear::ProjectIndex,
 }
 
 impl BedModel {
@@ -228,6 +230,7 @@ impl BedModel {
             table: table.to_vec(),
             centreline: centreline.to_vec(),
             sections,
+            index: linear::ProjectIndex::new(centreline),
         })
     }
 
@@ -270,7 +273,7 @@ impl BedModel {
     /// centreline than the bank on its side. (Water the centreline's cross-sections do not reach,
     /// such as a bay, is read from the DEM.)
     pub fn depth_below_water_at(&self, p: Pt) -> Option<f64> {
-        let s = linear::project(&self.centreline, p);
+        let s = self.index.project(p);
         let (a, b, t) = self.between(s);
         let normal = if t < 0.5 { a.normal } else { b.normal };
         let at = [
@@ -291,7 +294,7 @@ impl BedModel {
 
     /// The river chainage of `p`, as the water level reads it.
     pub fn chainage_of(&self, p: Pt) -> f64 {
-        linear::project(&self.centreline, p)
+        self.index.project(p)
     }
 }
 

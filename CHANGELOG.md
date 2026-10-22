@@ -39,6 +39,13 @@ versions follow [Semantic Versioning](https://semver.org/).
   classes) the full answer took 44 minutes, one class after another. The classes now run in parallel, each on its
   own copy of the design, and the answer is written back in the same order: it is the same answer, byte for byte.
   In the browser they still run one after another.
+- **The full `fits` answer is fast on a long river (spec 0012, #267).** On the Sassandra (a 178 km centreline, 12
+  classes) the full answer took 44 minutes. It now takes under 3, with the same answer to the last bit:
+  - the classes run in parallel, each on its own copy of the design, and the answer is written back in the same
+    order (in the browser they still run one after another);
+  - the bed model finds each point's chainage through a grid of the centreline's segments
+    (`owd_core::geom::linear::ProjectIndex`) instead of scanning every segment. It gives what the scan gives, to
+    the last bit; the volumes read the same bed model, and are faster too.
 - **Orthophoto and EOxCloudless imagery on plan sheets (spec 0004, T6).** Plan sheets can now be drawn over
   other backdrops.
   - `owd draw --orthophoto FILE` draws them over the user's orthophoto: an 8 bit RGB GeoTIFF in WGS84 or the
