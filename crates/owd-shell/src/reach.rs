@@ -26,6 +26,7 @@ use std::sync::Arc;
 pub struct ReachEndpoints {
     pub overpass: String,
     pub photon: String,
+    pub nominatim: String,
     pub stac: String,
     pub sword_record: String,
     pub hydrocron: String,
@@ -36,6 +37,7 @@ impl Default for ReachEndpoints {
         ReachEndpoints {
             overpass: DEFAULT_ENDPOINT.to_string(),
             photon: owd_reach::search::PHOTON_ENDPOINT.to_string(),
+            nominatim: owd_reach::search::NOMINATIM_ENDPOINT.to_string(),
             stac: owd_reach::sentinel2::SEARCH_ENDPOINT.to_string(),
             sword_record: owd_reach::sword::RECORD_API.to_string(),
             hydrocron: owd_reach::level::HYDROCRON_ENDPOINT.to_string(),
@@ -51,6 +53,7 @@ impl ReachEndpoints {
         ReachEndpoints {
             overpass: s("overpass", d.overpass),
             photon: s("photon", d.photon),
+            nominatim: s("nominatim", d.nominatim),
             stac: s("stac", d.stac),
             sword_record: s("sword_record", d.sword_record),
             hydrocron: s("hydrocron", d.hydrocron),
@@ -62,8 +65,9 @@ impl ReachEndpoints {
 #[derive(Debug, Default, Clone)]
 pub struct ReachMemo {
     plan: Option<Planned>,
-    /// The whole river the user chose from the search, to cut reaches out of with no new request.
-    river: Option<WholeRiver>,
+    /// The whole river the user chose from the search, to cut reaches out of with no new request,
+    /// and the search it came from (`osm-photon` or `osm-nominatim`).
+    river: Option<(WholeRiver, Option<String>)>,
     banks: Option<MaskBanks>,
     /// JRC tiles the user gave, by file name.
     tiles: Vec<(String, Arc<Vec<u8>>)>,
@@ -223,16 +227,30 @@ pub fn hit_value(h: &RiverHit) -> Value {
 }
 
 /// The rivers and canals for a text (spec 0012, T13), as a JSON list, best first. Under three
-/// letters it asks nothing. Network work only: it changes no state.
+/// letters it asks nothing. `once` asks Nominatim, one request, for when Photon fails; otherwise
+/// Photon, as the user types. Network work only: it changes no state.
 pub fn search_rivers(
     fetch: &dyn Fetch,
     at: &ReachEndpoints,
     text: &str,
     country: Option<&str>,
+    once: bool,
 ) -> Result<Value, String> {
-    let hits = RiverSearch::with_endpoint(fetch, &at.photon)
-        .search(text, country.filter(|c| !c.trim().is_empty()))
-        .map_err(err)?;
+    let country = country.filter(|c| !c.trim().is_empty());
+    let s = RiverSearch::with_endpoint(fetch, &at.photon);
+    let hits = if once {
+        s.search_once(&at.nominatim, text, country)
+    } else {
+        s.search(text, country)
+    }
+    .map_err(|e| match e {
+        owd_reach::ReachError::Fetch(_) | owd_reach::ReachError::Parse(_) if !once => {
+            "The river search (Photon) is not answering, or is busy. Press Enter to search \
+             OpenStreetMap's Nominatim once."
+                .to_string()
+        }
+        e => err(e),
+    })?;
     Ok(Value::Array(hits.iter().map(hit_value).collect()))
 }
 
@@ -290,9 +308,15 @@ impl AppState {
 
     /// Start a new study from a whole river the user chose from the search: Start at the mouth, End
     /// at the upstream end. The river is kept, so [`AppState::reach_cut`] needs no new request.
-    pub fn start_river(&mut self, river: WholeRiver, date: &str) -> Result<(), String> {
+    /// `search` is the source the user found it with (`osm-photon` or `osm-nominatim`).
+    pub fn start_river(
+        &mut self,
+        river: WholeRiver,
+        search: Option<&str>,
+        date: &str,
+    ) -> Result<(), String> {
         let plan = river.planned();
-        self.start_reach_with(plan, Some(river), date)
+        self.start_reach_with(plan, Some((river, search.map(str::to_string))), date)
     }
 
     /// Cut a reach out of the river chosen from the search: the route along its own ways from
@@ -310,7 +334,7 @@ impl AppState {
             .river
             .clone()
             .ok_or("choose a river from the search first")?;
-        let plan = river.cut(start, end, via).map_err(err)?;
+        let plan = river.0.cut(start, end, via).map_err(err)?;
         self.start_reach_with(plan, Some(river), date)
     }
 
@@ -333,7 +357,7 @@ impl AppState {
     fn start_reach_with(
         &mut self,
         plan: Planned,
-        river: Option<WholeRiver>,
+        river: Option<(WholeRiver, Option<String>)>,
         date: &str,
     ) -> Result<(), String> {
         self.refuse_while_running()?;
@@ -345,7 +369,9 @@ impl AppState {
         let tiles = std::mem::take(&mut self.reach_memo_mut().tiles);
         let mut next = AppState::new_design(&title, date);
         let recorded = match &river {
-            Some(r) => record_river_reach(next.session_mut(), &plan, r.osm, true, date),
+            Some((r, search)) => {
+                record_river_reach(next.session_mut(), &plan, r.osm, search.as_deref(), date)
+            }
             None => record_reach(next.session_mut(), &plan, date),
         };
         if let Err(e) = recorded {
@@ -471,7 +497,7 @@ impl AppState {
             "has_mask_banks": memo.banks.is_some(),
             "start": plan.spec.start,
             "end": plan.spec.end,
-            "river": memo.river.as_ref().map(|r| json!({
+            "river": memo.river.as_ref().map(|(r, _)| json!({
                 "osm_id": r.osm.to_string(),
                 "name": r.name,
                 "length_m": r.route.length_m,

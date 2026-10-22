@@ -603,14 +603,22 @@ fn run_stale(window: Window, state: State<Shared>) -> Reply {
 // --- Start from a river (spec 0012, T10) -------------------------------------------------------
 
 /// Where the reach sources are. A debug build reads `reach-endpoints.json` from the test folder,
-/// so the smoke test can point them at recorded answers.
+/// so the smoke test can point them at recorded answers. `OWD_PHOTON_URL` and `OWD_NOMINATIM_URL`
+/// name another river search server (for example a Photon of your own).
 fn reach_endpoints() -> owd_shell::reach::ReachEndpoints {
-    test_answer("reach-endpoints.json")
+    let mut at = test_answer("reach-endpoints.json")
         .flatten()
         .and_then(|path| std::fs::read_to_string(path).ok())
         .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
         .map(|v| owd_shell::reach::ReachEndpoints::from_json(&v))
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if let Ok(u) = std::env::var("OWD_PHOTON_URL") {
+        at.photon = u;
+    }
+    if let Ok(u) = std::env::var("OWD_NOMINATIM_URL") {
+        at.nominatim = u;
+    }
+    at
 }
 
 /// Bumped by Cancel: a reach step that began before it is not kept.
@@ -650,7 +658,7 @@ async fn reach_route(
 
 /// The rivers and canals whose name starts with or matches a text (spec 0012, T13).
 #[tauri::command]
-async fn reach_search(text: String, country: Option<String>) -> Reply {
+async fn reach_search(text: String, country: Option<String>, once: Option<bool>) -> Reply {
     let at = reach_endpoints();
     tauri::async_runtime::spawn_blocking(move || {
         owd_shell::reach::search_rivers(
@@ -658,6 +666,7 @@ async fn reach_search(text: String, country: Option<String>) -> Reply {
             &at,
             &text,
             country.as_deref(),
+            once.unwrap_or(false),
         )
     })
     .await
@@ -673,6 +682,7 @@ async fn reach_river(
     state: State<'_, Shared>,
     osm_id: String,
     also: Vec<String>,
+    search: Option<String>,
 ) -> Reply {
     if !confirm_discard(&app, &state)? {
         return Ok(serde_json::Value::Null);
@@ -684,7 +694,7 @@ async fn reach_river(
     .await
     .map_err(|e| e.to_string())??;
     let mut guard = lock(&state)?;
-    guard.start_river(river, &today())?;
+    guard.start_river(river, search.as_deref(), &today())?;
     finish(&window, &guard)
 }
 

@@ -461,6 +461,7 @@ fn edge_fit_moves_the_mask_banks_onto_a_recorded_scene_and_records_the_scene() {
 /// is kept, so a test can see what was asked.
 fn serve_photon() -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
     const ANK: &str = include_str!("../../../examples/reach/photon_ank.json");
+    const NOM: &str = include_str!("../../../examples/reach/nominatim_ankobra.json");
     let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let log = seen.clone();
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -476,10 +477,19 @@ fn serve_photon() -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
             let ua_ok = req
                 .to_lowercase()
                 .contains("user-agent: open-waterway-designer/");
-            let resp = if ua_ok && first.contains("q=Ank&") {
+            let body = if !ua_ok {
+                None
+            } else if first.contains("/search?q=Ankobra&") {
+                Some(NOM)
+            } else if first.contains("q=Ank&") {
+                Some(ANK)
+            } else {
+                None
+            };
+            let resp = if let Some(b) = body {
                 format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{ANK}",
-                    ANK.len()
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{b}",
+                    b.len()
                 )
             } else {
                 "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
@@ -559,6 +569,28 @@ fn a_search_server_error_exits_2_with_a_plain_message() {
     assert_eq!(o.status.code(), Some(2));
     let err = String::from_utf8_lossy(&o.stderr);
     assert!(err.contains("cannot fetch"), "{err}");
+    assert!(err.contains("try `--nominatim`"), "{err}");
+    // Nominatim, one request, finds the river among a village and a residential area.
+    let nom = server.replace("/api/", "/search");
+    let o = run(&[
+        "reach",
+        "--search",
+        "Ankobra",
+        "--nominatim",
+        "--search-endpoint",
+        &nom,
+        "--json",
+    ]);
+    assert_eq!(
+        o.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let v: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!(v["source"], "osm-nominatim");
+    assert_eq!(v["rivers"].as_array().unwrap().len(), 1);
+    assert_eq!(v["rivers"][0]["osm_id"], "relation/3328713");
 }
 
 /// Serve the recorded Ankobra relation (`examples/reach/overpass_ankobra.json`, recorded from

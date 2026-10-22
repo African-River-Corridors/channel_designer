@@ -238,6 +238,7 @@ impl Session {
         &self,
         text: &str,
         country: &str,
+        once: bool,
         at: &str,
         fetch: js_sys::Function,
     ) -> Js<String> {
@@ -247,16 +248,18 @@ impl Session {
             &at,
             text,
             Some(country),
+            once,
         ))?;
         Ok(hits.to_string())
     }
 
     /// Start a new study from a whole river chosen from the search. `also` is a JSON list of more
-    /// OSM ways of the same river, as the search gives them.
+    /// OSM ways of the same river, as the search gives them; `search` the source it was found with.
     pub fn reach_river(
         &mut self,
         osm_id: &str,
         also: &str,
+        search: &str,
         at: &str,
         fetch: js_sys::Function,
     ) -> Js<String> {
@@ -270,7 +273,8 @@ impl Session {
             &also,
         ))?;
         let date = today();
-        self.edit(|s| s.start_river(river, &date))
+        let search = Some(search).filter(|s| !s.is_empty());
+        self.edit(|s| s.start_river(river, search, &date))
     }
 
     /// Cut a reach out of the chosen river. `points` as for `reach_route`.

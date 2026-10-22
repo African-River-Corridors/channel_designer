@@ -404,10 +404,11 @@ export interface RiverHit {
   also: string[];
   bbox: [number, number, number, number];
 }
-/** The rivers and canals whose name starts with or matches a text (at least 3 letters). */
-export const reachSearch = (text: string, country: string) => invoke<RiverHit[]>("reach_search", { text, country: country.trim() || null });
+/** The rivers and canals whose name starts with or matches a text (at least 3 letters): Photon as the
+ * user types, or Nominatim once (`once`) when Photon fails. */
+export const reachSearch = (text: string, country: string, once = false) => invoke<RiverHit[]>("reach_search", { text, country: country.trim() || null, once });
 /** Start a new study from a whole river chosen from the search. null when the user keeps an unsaved design. */
-export const reachRiver = (osmId: string, also: string[]) => invoke<Snapshot | null>("reach_river", { osmId, also });
+export const reachRiver = (osmId: string, also: string[], search: string) => invoke<Snapshot | null>("reach_river", { osmId, also, search });
 /** Cut a reach out of the chosen river. null when the user keeps an unsaved design. */
 export const reachCut = (start: LonLat, end: LonLat, via: LonLat[]) => invoke<Snapshot | null>("reach_cut", { start, end, via });
 export const reachAddTile = (file?: File) => invoke<Snapshot | null>("reach_add_tile", { file: file ?? null });

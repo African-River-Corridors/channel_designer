@@ -37,7 +37,7 @@ fn fetch() -> ReplayFetch {
 #[test]
 fn ank_lists_the_ankobra_and_short_text_asks_nothing() {
     let f = fetch();
-    let hits = search_rivers(&f, &endpoints(), "Ank", None).unwrap();
+    let hits = search_rivers(&f, &endpoints(), "Ank", None, false).unwrap();
     let ank = hits
         .as_array()
         .unwrap()
@@ -46,7 +46,7 @@ fn ank_lists_the_ankobra_and_short_text_asks_nothing() {
         .expect("listed");
     assert_eq!(ank["label"], "Ankobra River \u{2014} Western Region, Ghana");
     assert_eq!(
-        search_rivers(&f, &endpoints(), "An", None).unwrap(),
+        search_rivers(&f, &endpoints(), "An", None, false).unwrap(),
         json!([])
     );
     assert_eq!(f.requests().len(), 1);
@@ -57,7 +57,8 @@ fn choosing_a_river_starts_a_study_at_its_mouth_and_a_cut_needs_no_new_request()
     let f = fetch();
     let river = read_river(&f, &endpoints(), "relation/3328713", &[]).unwrap();
     let mut s = AppState::new_design("t", "2026-10-22");
-    s.start_river(river, "2026-10-22").unwrap();
+    s.start_river(river, Some("osm-photon"), "2026-10-22")
+        .unwrap();
     let snap = s.snapshot();
     let view = &snap["reach_view"];
     assert_eq!(view["start"], json!([-2.2688538, 4.8983929]));
@@ -88,6 +89,37 @@ fn choosing_a_river_starts_a_study_at_its_mouth_and_a_cut_needs_no_new_request()
     assert_eq!(cut["end"], json!(mid));
     assert_eq!(cut["river"]["length_m"].as_f64().unwrap(), whole);
     assert_eq!(f.requests().len(), asked);
+}
+
+#[test]
+fn when_photon_fails_it_says_so_and_nominatim_answers_once() {
+    let f = ReplayFetch::new().with_response_containing(
+        "nominatim.example/search?q=Ankobra&",
+        ex("nominatim_ankobra.json"),
+    );
+    let at = ReachEndpoints {
+        nominatim: "https://nominatim.example/search".into(),
+        ..endpoints()
+    };
+    let e = search_rivers(&f, &at, "Ankobra", None, false).unwrap_err();
+    assert!(e.contains("Photon) is not answering"), "{e}");
+    assert!(e.contains("Press Enter"), "{e}");
+    let hits = search_rivers(&f, &at, "Ankobra", None, true).unwrap();
+    assert_eq!(hits[0]["osm_id"], "relation/3328713");
+    let mut s = AppState::new_design("t", "2026-10-22");
+    let river = read_river(
+        &ReplayFetch::new()
+            .with_response_containing("rel%283328713%29", ex("overpass_ankobra.json")),
+        &at,
+        "relation/3328713",
+        &[],
+    )
+    .unwrap();
+    s.start_river(river, Some("osm-nominatim"), "2026-10-22")
+        .unwrap();
+    let p = &s.snapshot()["document"]["provenance"]["route"]["settings"];
+    assert_eq!(p["river_search"]["source"], "osm-nominatim");
+    assert_eq!(p["osm_id"], "relation/3328713");
 }
 
 #[test]

@@ -43,6 +43,10 @@
   let listOpen = $state(false);
   let active = $state(-1);
   let searching = $state(false);
+  /** Why the search as you type failed; then Enter asks Nominatim once. */
+  let failed = $state<string | null>(null);
+  /** The source of the hits shown: Photon as you type, or Nominatim once. */
+  let hitSource = $state("osm-photon");
   /** The hit the user chose; cleared when they type again. */
   let chosen = $state<RiverHit | null>(null);
   /** Answers by country and text, and river lengths by OSM id once known: a repeat asks nothing. */
@@ -99,33 +103,61 @@
     const key = `${country.trim().toUpperCase()}|${text.toLowerCase()}`;
     const mine = ++asked;
     let found = answers.get(key);
+    let why: string | null = null;
     if (!found) {
       searching = true;
       try {
         found = await api.reachSearch(text, country);
         answers.set(key, found);
       } catch (e) {
-        if (mine === asked) onError(String(e));
+        why = String(e);
         found = [];
       } finally {
         if (mine === asked) searching = false;
       }
     }
     if (mine !== asked) return; // a later key won
+    failed = why;
+    hitSource = "osm-photon";
     hits = found;
     active = found.length ? 0 : -1;
     listOpen = true;
+  }
+  /** Nominatim, one request, when the user presses Enter after the search as you type failed. */
+  async function searchOnce() {
+    const text = river.trim();
+    if (text.length < MIN_CHARS) return;
+    const mine = ++asked;
+    searching = true;
+    try {
+      const found = await api.reachSearch(text, country, true);
+      if (mine !== asked) return;
+      failed = null;
+      hitSource = "osm-nominatim";
+      hits = found;
+      active = found.length ? 0 : -1;
+      listOpen = true;
+    } catch (e) {
+      if (mine === asked) failed = `The river search (Nominatim) did not answer either: ${String(e)}`;
+    } finally {
+      if (mine === asked) searching = false;
+    }
   }
   async function choose(h: RiverHit) {
     chosen = h;
     river = h.label;
     listOpen = false;
     working = true;
-    const ok = await act(() => api.reachRiver(h.osm_id, h.also));
+    const ok = await act(() => api.reachRiver(h.osm_id, h.also, hitSource));
     working = false;
     if (ok && map) map.fitBounds([[h.bbox[0], h.bbox[1]], [h.bbox[2], h.bbox[3]]], { padding: 40, duration: 0 });
   }
   function keys(e: KeyboardEvent) {
+    if (e.key === "Enter" && failed && !chosen) {
+      e.preventDefault();
+      searchOnce();
+      return;
+    }
     if (!listOpen || hits.length === 0) return;
     if (e.key === "ArrowDown") active = (active + 1) % hits.length;
     else if (e.key === "ArrowUp") active = (active - 1 + hits.length) % hits.length;
@@ -353,6 +385,8 @@
         <input class="cc" data-testid="reach-country" bind:value={country} oninput={typed} maxlength="2" placeholder="Any" title="Country code, optional (for example GH)" aria-label="Country code (optional), for example GH" />
       </label>
       {#if listOpen}
+        <div class="dropdown">
+        {#if failed}<p class="failed" role="alert" data-testid="reach-search-failed">{failed}</p>{/if}
         <ul class="hits" id="reach-river-list" role="listbox" data-testid="reach-hits">
           {#each hits as h, i}
             {@const len = lengths.get(h.osm_id)}
@@ -363,10 +397,11 @@
               </button>
             </li>
           {:else}
-            <li class="none" data-testid="reach-no-hits">No river or canal found.</li>
+            {#if !failed}<li class="none" data-testid="reach-no-hits">No river or canal found.</li>{/if}
           {/each}
-          <li class="credit">© OpenStreetMap contributors · search by Photon</li>
         </ul>
+        <p class="credit" data-testid="reach-search-credit">© OpenStreetMap contributors (ODbL) · search by {hitSource === "osm-nominatim" ? "Nominatim" : "Photon"}</p>
+        </div>
       {/if}
       {#if searching}<p class="help" role="status">Searching…</p>{/if}
     </div>
@@ -504,10 +539,12 @@
   .search { position: relative; display: flex; flex-direction: column; gap: var(--sp-1); }
   .search input.cc { flex: 0 0 3.5em; min-width: 0; text-transform: uppercase; }
   .search input.cc::placeholder { text-transform: none; }
-  .hits { position: absolute; top: 100%; left: 0; right: 0; z-index: 5; margin: 2px 0 0; padding: 0; list-style: none; background: var(--surface); border: var(--lw-thin) solid var(--rule); max-height: 18em; overflow-y: auto; box-shadow: 0 4px 12px rgb(0 0 0 / 0.25); }
+  .dropdown { position: absolute; top: 100%; left: 0; right: 0; z-index: 5; margin-top: 2px; background: var(--surface); border: var(--lw-thin) solid var(--rule); box-shadow: 0 4px 12px rgb(0 0 0 / 0.25); }
+  .hits { margin: 0; padding: 0; list-style: none; max-height: 16em; overflow-y: auto; }
+  .dropdown .failed { margin: 0; padding: 4px var(--sp-2); background: var(--warn-soft); color: var(--warn); }
   .hits li button { display: flex; justify-content: space-between; gap: var(--sp-2); width: 100%; text-align: left; border: 0; border-radius: 0; background: none; padding: 4px var(--sp-2); }
   .hits li.active button, .hits li button:hover { background: var(--accent); color: var(--accent-ink); }
   .hits .meta { color: inherit; opacity: 0.7; white-space: nowrap; }
-  .hits .none, .hits .credit { padding: 4px var(--sp-2); color: var(--ink-3); }
-  .hits .credit { font-size: var(--fs-11, 11px); border-top: var(--lw-thin) solid var(--rule); }
+  .hits .none, .dropdown .credit { padding: 4px var(--sp-2); color: var(--ink-3); }
+  .dropdown .credit { margin: 0; font-size: var(--fs-11, 11px); border-top: var(--lw-thin) solid var(--rule); }
 </style>

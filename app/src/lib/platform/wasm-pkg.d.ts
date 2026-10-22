@@ -27,8 +27,8 @@ declare module "*/wasm-pkg/owd_web.js" {
     export_geojson(): string;
     export_csv(): string;
     reach_route(river: string, points: string, at: string, fetch?: (url: string, start: number, len: number) => Uint8Array): string;
-    reach_search(text: string, country: string, at: string, fetch?: (url: string, start: number, len: number) => Uint8Array): string;
-    reach_river(osm_id: string, also: string, at: string, fetch?: (url: string, start: number, len: number) => Uint8Array): string;
+    reach_search(text: string, country: string, once: boolean, at: string, fetch?: (url: string, start: number, len: number) => Uint8Array): string;
+    reach_river(osm_id: string, also: string, search: string, at: string, fetch?: (url: string, start: number, len: number) => Uint8Array): string;
     reach_cut(points: string): string;
     reach_route_only(): boolean;
     reach_add_tile(name: string, bytes: Uint8Array): string;

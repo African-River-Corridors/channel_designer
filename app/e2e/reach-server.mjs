@@ -16,6 +16,7 @@ export function endpoints(origin) {
   return {
     overpass: `${origin}/overpass/api/interpreter`,
     photon: `${origin}/photon/api/`,
+    nominatim: `${origin}/nominatim/search`,
     stac: `${origin}/stac/search`,
     sword_record: `${origin}/zenodo/record`,
     hydrocron: `${origin}/hydrocron/timeseries`,
@@ -30,8 +31,14 @@ function answer(url, origin) {
   if (p === "/photon/api/") {
     const q = url.searchParams.get("q") ?? "";
     searches.push(q);
+    // "Ankobra" stands for Photon failing: a busy server.
+    if (q === "Ankobra") return { status: 503, body: Buffer.from("busy"), type: "text/plain" };
     if (q.toLowerCase().startsWith("ank")) return { body: read("photon_ank.json"), type: "application/json" };
     return { body: Buffer.from(JSON.stringify({ type: "FeatureCollection", features: [] })), type: "application/json" };
+  }
+  if (p === "/nominatim/search") {
+    searches.push(`nominatim:${url.searchParams.get("q") ?? ""}`);
+    return { body: read("nominatim_ankobra.json"), type: "application/json" };
   }
   if (p === "/overpass/api/interpreter" && (url.searchParams.get("data") ?? "").includes("rel(3328713)")) return { body: read("overpass_ankobra.json"), type: "application/json" };
   if (p === "/overpass/api/interpreter") return { body: read("synthetic/sassandra_arm.json"), type: "application/json" };

@@ -1715,12 +1715,14 @@ pub fn reach(flags: ReachFlags) -> Result {
 pub fn reach_search(
     text: &str,
     country: Option<&str>,
+    nominatim: bool,
     endpoint: Option<&str>,
     json: bool,
 ) -> Result {
     reach_search_with(
         text,
         country,
+        nominatim,
         endpoint,
         json,
         &crate::reach_fetch::HttpFetch,
@@ -1731,20 +1733,33 @@ pub fn reach_search(
 pub fn reach_search_with(
     text: &str,
     country: Option<&str>,
+    nominatim: bool,
     endpoint: Option<&str>,
     json: bool,
     fetch: &dyn owd_reach::Fetch,
 ) -> Result {
-    use owd_reach::search::{MIN_CHARS, PHOTON_ENDPOINT, RiverSearch};
+    use owd_reach::search::{MIN_CHARS, NOMINATIM_ENDPOINT, PHOTON_ENDPOINT, RiverSearch};
     if text.trim().chars().count() < MIN_CHARS {
         return Err(input_error(format!(
             "give at least {MIN_CHARS} letters of the river's name"
         )));
     }
-    let s = RiverSearch::with_endpoint(fetch, endpoint.unwrap_or(PHOTON_ENDPOINT));
-    let hits = s
-        .search(text, country)
-        .map_err(|e| input_error(e.to_string()))?;
+    let (source, hits) = if nominatim {
+        let s = RiverSearch::new(fetch);
+        let hits = s.search_once(endpoint.unwrap_or(NOMINATIM_ENDPOINT), text, country);
+        (
+            "osm-nominatim",
+            hits.map_err(|e| input_error(e.to_string()))?,
+        )
+    } else {
+        let s = RiverSearch::with_endpoint(fetch, endpoint.unwrap_or(PHOTON_ENDPOINT));
+        let hits = s.search(text, country).map_err(|e| {
+            input_error(format!(
+                "{e}\nThe river search (Photon) is not answering: try `--nominatim` (one request)."
+            ))
+        })?;
+        ("osm-photon", hits)
+    };
     let mut human = String::new();
     if hits.is_empty() {
         human.push_str(&format!("no river or canal found for \"{}\"", text.trim()));
@@ -1752,7 +1767,10 @@ pub fn reach_search_with(
     for h in &hits {
         human.push_str(&format!("{:<18} {}\n", h.osm.to_string(), h.label()));
     }
-    human.push_str("\nMake a study of one with `owd reach FILE --osm-id ID`.\n\u{a9} OpenStreetMap contributors (ODbL); search by Photon");
+    human.push_str(&format!(
+        "\nMake a study of one with `owd reach FILE --osm-id ID`.\n\u{a9} OpenStreetMap contributors (ODbL); search by {}",
+        if nominatim { "Nominatim" } else { "Photon" }
+    ));
     let list: Vec<Value> = hits
         .iter()
         .map(|h| {
@@ -1767,7 +1785,7 @@ pub fn reach_search_with(
         false,
         json,
         human.trim_end(),
-        json!({"ok": true, "source": "osm-photon", "rivers": list}),
+        json!({"ok": true, "source": source, "rivers": list}),
     );
     Ok(())
 }
@@ -1833,7 +1851,7 @@ pub fn reach_with(
     }
     let mut session = Session::new(&title, &date);
     match osm {
-        Some(o) => owd_reach::river::record_river_reach(&mut session, &planned, o, false, &date),
+        Some(o) => owd_reach::river::record_river_reach(&mut session, &planned, o, None, &date),
         None => record_reach(&mut session, &planned, &date),
     }
     .map_err(|e| input_error(e.to_string()))?;

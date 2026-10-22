@@ -98,6 +98,7 @@ after(async () => {
 const PUBLIC_HOSTS = [
   "overpass-api.de",
   "photon.komoot.io",
+  "nominatim.openstreetmap.org",
   "earth-search.aws.element84.com",
   "sentinel-cogs.s3.us-west-2.amazonaws.com",
   "zenodo.org",
@@ -274,6 +275,30 @@ describe("OWD web smoke tests", () => {
     await (await tid(b, "reach-route")).click();
     await until(b, "the shorter reach", async () => Number((await text(b, "reach-length")).match(/([\d.]+) km/)[1]) < whole);
     assert.equal(searches.length, asked);
+  });
+
+  it("says plainly when the river search fails, and Enter asks Nominatim once", async () => {
+    const b = await start();
+    await b.url(`${origin}/owd/app`);
+    await loaded(b);
+    await b.execute(async (at) => window.__owdPlatform.call("set_reach_endpoints", { endpoints: at }), endpoints(reach.origin));
+    await (await tid(b, "start-from-river")).click();
+    const before = searches.length;
+    const box = await tid(b, "reach-river");
+    await box.setValue("Ankobra");
+    await until(b, "the failure", async () => exists(b, "reach-search-failed"));
+    assert.match(await text(b, "reach-search-failed"), /Photon\) is not answering.*Press Enter/s);
+    assert.match(await text(b, "reach-search-credit"), /OpenStreetMap contributors \(ODbL\)/);
+    await b.keys("Enter");
+    const ankobra = '[data-testid="reach-hit"][data-osm="relation/3328713"]';
+    await until(b, "the Nominatim list", async () => (await b.$(ankobra)).isExisting());
+    assert.match(await text(b, "reach-search-credit"), /Nominatim/);
+    assert.deepEqual(searches.slice(before), ["Ankobra", "nominatim:Ankobra"], "Photon once, then Nominatim once");
+    await (await b.$(`${ankobra} button`)).click();
+    await until(b, "the whole river", async () => (await exists(b, "reach-length")) && /km/.test(await text(b, "reach-length")));
+    const route = (await pageDoc(b)).provenance.route;
+    assert.equal(route.settings.river_search.source, "osm-nominatim");
+    assert.equal(route.settings.osm_id, "relation/3328713");
   });
 
   it("starts a study from a river: route, inputs with badges, a depth, the class table, and Use this vessel", async () => {
