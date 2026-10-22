@@ -40,6 +40,8 @@ function answer(url, origin) {
     if (q.toLowerCase().startsWith("ank")) return { body: read("photon_ank.json"), type: "application/json" };
     return { body: Buffer.from(JSON.stringify({ type: "FeatureCollection", features: [] })), type: "application/json" };
   }
+  // A busy Overpass server, for the mirror fallback (#319).
+  if (p === "/down/api/interpreter") return { status: 502, body: Buffer.from("busy"), type: "text/plain" };
   if (p === "/nominatim/search") {
     searches.push(`nominatim:${url.searchParams.get("q") ?? ""}`);
     return { body: read("nominatim_ankobra.json"), type: "application/json" };
