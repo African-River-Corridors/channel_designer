@@ -429,6 +429,7 @@
     <button class="primary" data-testid="reach-route" disabled={working} onclick={route}>Find the route</button>
     {#if view?.route}
       <p data-testid="reach-length">Route: {((view.length_m ?? 0) / 1000).toFixed(1)} km{view.as_drawn ? `, ${view.as_drawn} stretch(es) kept as drawn (check them)` : ""}</p>
+      {#if view.route_notes?.length}<p class="help" data-testid="reach-route-notes">Overpass: {view.route_notes.join("; ")}.</p>{/if}
     {/if}
   </section>
 

@@ -154,6 +154,9 @@ export interface ReachView {
   jrc_tiles: { name: string; url: string; given: boolean }[];
   dem_tiles: { name: string; url: string }[];
   has_mask_banks: boolean;
+  /** The Overpass server that answered, and what happened when the first did not (#319). */
+  route_server?: string | null;
+  route_notes?: string[];
   /** The reach's start and end as the session recorded them. */
   start?: LonLat;
   end?: LonLat;

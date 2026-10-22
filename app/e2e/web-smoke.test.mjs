@@ -97,6 +97,8 @@ after(async () => {
 /** The public hosts the web build may name: the open-data sources (spec 0012), the basemap, and links. */
 const PUBLIC_HOSTS = [
   "overpass-api.de",
+  "overpass.kumi.systems", // public Overpass mirrors, asked when the main server fails (#319)
+  "overpass.private.coffee",
   "photon.komoot.io",
   "nominatim.openstreetmap.org",
   "earth-search.aws.element84.com",
@@ -247,7 +249,9 @@ describe("OWD web smoke tests", () => {
     const b = await start({ args: ["--headless=new", "--no-sandbox", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--window-size=1500,950"] });
     await b.url(`${origin}/owd/app`);
     await loaded(b);
-    await b.execute(async (at) => window.__owdPlatform.call("set_reach_endpoints", { endpoints: at }), endpoints(reach.origin));
+    // The first Overpass server is busy (502): the next one answers, and the panel says so (#319).
+    const at = { ...endpoints(reach.origin), overpass: `${reach.origin}/down/api/interpreter,${endpoints(reach.origin).overpass}` };
+    await b.execute(async (at) => window.__owdPlatform.call("set_reach_endpoints", { endpoints: at }), at);
     await (await tid(b, "start-from-river")).click();
     const before = searches.length;
     // Typed key by key: one request, after the pause, for "Ank" (none for "A" or "An").
@@ -263,6 +267,7 @@ describe("OWD web smoke tests", () => {
     await (await b.$(`${ankobra} button`)).click();
     await until(b, "the whole river", async () => (await exists(b, "reach-length")) && /km/.test(await text(b, "reach-length")));
     assert.equal(await (await tid(b, "reach-start")).getValue(), "-2.26885, 4.89839", "Start is the mouth");
+    assert.match(await text(b, "reach-route-notes"), /Overpass: 127\.0\.0\.1:\d+ failed \(.*502.*\); 127\.0\.0\.1:\d+ answered/);
     assert.equal(await (await tid(b, "reach-end")).getValue(), "-2.13492, 5.72949", "End is the upstream end");
     const whole = Number((await text(b, "reach-length")).match(/([\d.]+) km/)[1]);
     const route = (await pageDoc(b)).provenance.route;

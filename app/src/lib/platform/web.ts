@@ -174,12 +174,13 @@ export async function createWebPlatform(): Promise<Platform> {
   }
 
   /** Where the reach sources are: empty is the public services; a test points them at recordings.
-   * `?photon=URL` and `?nominatim=URL` on the page name another river search server. */
+   * `?photon=URL` and `?nominatim=URL` on the page name another river search server, and
+   * `?overpass=URL,URL` the Overpass servers, asked in that order (#319). */
   let reachAt = (() => {
     try {
       const q = new URLSearchParams(window.location.search);
       const at: Record<string, string> = {};
-      for (const k of ["photon", "nominatim"]) if (q.get(k)) at[k] = q.get(k)!;
+      for (const k of ["photon", "nominatim", "overpass"]) if (q.get(k)) at[k] = q.get(k)!;
       return Object.keys(at).length ? JSON.stringify(at) : "";
     } catch {
       return "";

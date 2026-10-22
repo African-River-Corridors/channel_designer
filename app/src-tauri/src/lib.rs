@@ -640,7 +640,8 @@ fn run_stale(window: Window, state: State<Shared>) -> Reply {
 
 /// Where the reach sources are. A debug build reads `reach-endpoints.json` from the test folder,
 /// so the smoke test can point them at recorded answers. `OWD_PHOTON_URL` and `OWD_NOMINATIM_URL`
-/// name another river search server (for example a Photon of your own).
+/// name another river search server (for example a Photon of your own); `OWD_OVERPASS_URLS` the
+/// Overpass servers, separated by commas, asked in that order (#319).
 fn reach_endpoints() -> owd_shell::reach::ReachEndpoints {
     let mut at = test_answer("reach-endpoints.json")
         .flatten()
@@ -653,6 +654,9 @@ fn reach_endpoints() -> owd_shell::reach::ReachEndpoints {
     }
     if let Ok(u) = std::env::var("OWD_NOMINATIM_URL") {
         at.nominatim = u;
+    }
+    if let Ok(u) = std::env::var("OWD_OVERPASS_URLS") {
+        at.overpass = u;
     }
     at
 }
