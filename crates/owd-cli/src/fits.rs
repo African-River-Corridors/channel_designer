@@ -19,6 +19,15 @@ fn table(results: &Value) -> String {
         results["label"].as_str().unwrap_or(""),
         results["length_m"].as_f64().unwrap_or(f64::NAN)
     );
+    // The line the radius was read on. An answer made before the key was kept read the centreline.
+    let line = results["plan_line"].as_str().unwrap_or("centreline");
+    out.push_str(&match line {
+        "fairway" => "Plan line: fairway (each class's fairway fit, ADR 0007).\n".to_string(),
+        l => format!("Plan line: {l}.\n"),
+    });
+    if let Some(n) = results["plan_line_note"].as_str() {
+        out.push_str(&format!("Note: {n}.\n"));
+    }
     for rs in results["rule_sets"].as_array().into_iter().flatten() {
         out.push_str(&format!("\n{}\n", rs["rule_set"].as_str().unwrap_or("?")));
         out.push_str(&format!(
@@ -43,6 +52,9 @@ fn table(results: &Value) -> String {
             ));
             if let Some(v) = c["verdict"].as_str() {
                 out.push_str(&format!("    verdict: {v}\n"));
+            }
+            if let Some(n) = c["plan_line_note"].as_str() {
+                out.push_str(&format!("    plan line: {n}\n"));
             }
             for s in c["constraint_stretches"].as_array().into_iter().flatten() {
                 out.push_str(&format!(

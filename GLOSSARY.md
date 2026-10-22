@@ -63,6 +63,11 @@ The step that fits a smooth design line inside navigable water between fixed pos
 than R_min where the water allows: a minimum-curvature corridor solve (ADR 0007). It is a rung of
 the water-aware rolling circle and the whole of a leg join, not a method of its own.
 
+**Plan line**:
+The line the full answer of `fits` reads the river's own radius on: each class's fairway fit (the
+default, ADR 0013) or the river centreline. A plan-only answer reads the centreline.
+_Avoid_: radius line
+
 **Infeasible stretch**:
 A stretch of a design line where no line that meets R_min fits inside navigable water. It is
 reported with its chainage, position and reason, and the option carries a failed check.

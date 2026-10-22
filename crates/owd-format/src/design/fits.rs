@@ -58,15 +58,36 @@ use serde_json::{Value, json};
 /// The label of a full answer: what it read, and what it assumed.
 pub const FULL_LABEL: &str = "width, radius and depth; depth assumed, not measured";
 
-/// The line the full answer reads the river's own radius on.
+/// The line the full answer reads the river's own radius on (ADR 0013).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PlanLine {
-    /// The river centreline (the default).
-    #[default]
+    /// The river centreline. It is drawn from the bank lines, and each wiggle of it reads as a
+    /// tight bend.
     Centreline,
-    /// A fairway fit (ADR 0007) for each class: the smoothest line a channel of that class can
-    /// take in the water, seeded from the river centreline.
+    /// A fairway fit (ADR 0007) for each class (the default): the smoothest line a channel of that
+    /// class can take in the water, seeded from the river centreline.
+    #[default]
     Fairway,
+}
+
+/// Why a plan-only answer asked for the fairway reads the centreline instead.
+pub const PLAN_ONLY_PLAN_LINE_NOTE: &str = "the fairway fit runs only for the full answer (a DEM, \
+     a bed model and a water level): this plan-only answer reads the radius on the centreline";
+
+/// The line one class's radius is read on: its fairway fit, or, when the fit could not run, the
+/// centreline (`None`) with a note that says why.
+fn fairway_or_centreline(
+    fit: Result<Vec<[f64; 2]>, String>,
+) -> (Option<Vec<[f64; 2]>>, Option<String>) {
+    match fit {
+        Ok(line) => (Some(line), None),
+        Err(e) => (
+            None,
+            Some(format!(
+                "the fairway fit could not run ({e}): the radius is read on the centreline"
+            )),
+        ),
+    }
 }
 
 impl PlanLine {
@@ -233,12 +254,13 @@ impl Session {
         choices: Option<&[String]>,
         terrain: Option<SyncTerrain>,
     ) -> Result<(), DesignError> {
-        self.run_fits_on(choices, terrain, PlanLine::Centreline)
+        self.run_fits_on(choices, terrain, PlanLine::default())
     }
 
     /// [`Session::run_fits_with`], with the full answer reading the river's own radius on
-    /// `plan_line`. The choice is kept in the answer's settings (only when it is not the default),
-    /// so changing it makes the answer stale.
+    /// `plan_line`. The choice is kept in the answer's settings, so changing it makes the answer
+    /// stale. The answer says which line it read (`plan_line`), and why when that is not the one
+    /// asked for (`plan_line_note`): a plan-only answer always reads the centreline.
     pub fn run_fits_on(
         &mut self,
         choices: Option<&[String]>,
@@ -278,11 +300,13 @@ impl Session {
             terrain.filter(|_| self.bed_model_value().is_some() && self.water_profile().is_some())
         {
             self.add_full(&mut results, &line, t, true, plan_line)?;
+        } else {
+            results["plan_line"] = json!(PlanLine::Centreline.name());
+            if plan_line == PlanLine::Fairway {
+                results["plan_line_note"] = json!(PLAN_ONLY_PLAN_LINE_NOTE);
+            }
         }
-        let mut settings = json!({"rule_sets": ids});
-        if plan_line != PlanLine::Centreline {
-            settings["plan_line"] = json!(plan_line.name());
-        }
+        let mut settings = json!({"rule_sets": ids, "plan_line": plan_line.name()});
         if all_classes {
             settings["all_classes"] = json!(true);
         }
@@ -298,7 +322,8 @@ impl Session {
     }
 
     /// Make a plan-only answer full: screen each class along the river centreline by the spec 0007
-    /// path, on a copy of the design sized for that class.
+    /// path, on a copy of the design sized for that class, with the river's radius read on
+    /// `plan_line`. Each row says which line it read.
     fn add_full(
         &self,
         results: &mut Value,
@@ -338,64 +363,76 @@ impl Session {
                     .collect::<Vec<_>>()
             })
             .collect();
-        let screen = |id: &str, class: &str| -> Result<Value, DesignError> {
-            // The old name's selection, as the plan-only answer sizes it: the reaches of the
-            // document do not apply; CN-reduced is one claimed canal reach over the whole line.
-            let (set, input, value) =
-                old_name_choice(id).map_err(|e| DesignError::Input(e.raw_message().into()))?;
-            let mut sized = self.clone();
-            if let Some(o) = sized.doc["inputs"].as_object_mut() {
-                o.remove("waterway_reaches");
-            }
-            if id == "CN-reduced" {
-                sized.add_waterway_reach(0.0, None, "canal", true)?;
-            }
-            sized.set_rule_sets(&[set], &[(input, value)])?;
-            match self.custom_vessel().filter(|_| class.is_empty()) {
-                Some(c) => {
-                    sized.set_custom_vessel(&c)?;
+        let screen =
+            |id: &str, class: &str| -> Result<(Value, PlanLine, Option<String>), DesignError> {
+                // The old name's selection, as the plan-only answer sizes it: the reaches of the
+                // document do not apply; CN-reduced is one claimed canal reach over the whole line.
+                let (set, input, value) =
+                    old_name_choice(id).map_err(|e| DesignError::Input(e.raw_message().into()))?;
+                let mut sized = self.clone();
+                if let Some(o) = sized.doc["inputs"].as_object_mut() {
+                    o.remove("waterway_reaches");
                 }
-                None => sized.set_vessel(class, None)?,
-            }
-            let plan = sized.section_plan(&json!({}))?;
-            let walk = sized.option_sections(&plan, &option, terrain)?;
-            match plan_line {
-                PlanLine::Centreline => {
-                    sized.screening_value(&option, &walk, &plan.river, &plan.centre)
+                if id == "CN-reduced" {
+                    sized.add_waterway_reach(0.0, None, "canal", true)?;
                 }
-                PlanLine::Fairway => {
-                    // The class's own fairway: its R_min and bottom width, in the river's water,
-                    // with the alignment stage's defaults (no clearance, no smoothing).
-                    use owd_core::alignment::fairway_fit::{
-                        FitParams, Fixed, fairway_fit_in_water,
-                    };
-                    let shape = sized.sized_shape()?;
-                    let fit = fairway_fit_in_water(
-                        &plan.centre,
-                        &plan.river,
-                        &shape,
-                        0.0,
-                        0.0,
-                        &Fixed::default(),
-                        &FitParams::new(shape.min_bend_radius_m),
-                    )
-                    .map_err(|e| {
-                        DesignError::Input(format!("the fairway fit for {class}: {}", e.message))
-                    })?;
-                    sized.screening_value_on(
-                        &option,
-                        &walk,
-                        &plan.river,
-                        &plan.centre,
-                        Some(&fit.line),
-                    )
+                sized.set_rule_sets(&[set], &[(input, value)])?;
+                match self.custom_vessel().filter(|_| class.is_empty()) {
+                    Some(c) => {
+                        sized.set_custom_vessel(&c)?;
+                    }
+                    None => sized.set_vessel(class, None)?,
                 }
-            }
-        };
+                let plan = sized.section_plan(&json!({}))?;
+                let walk = sized.option_sections(&plan, &option, terrain)?;
+                let on_centre = || sized.screening_value(&option, &walk, &plan.river, &plan.centre);
+                match plan_line {
+                    PlanLine::Centreline => Ok((on_centre()?, PlanLine::Centreline, None)),
+                    PlanLine::Fairway => {
+                        // The class's own fairway: its R_min and bottom width, in the river's water,
+                        // with the alignment stage's defaults (no clearance, no smoothing).
+                        use owd_core::alignment::fairway_fit::{
+                            FitParams, Fixed, fairway_fit_in_water,
+                        };
+                        let shape = sized.sized_shape()?;
+                        let fit = fairway_fit_in_water(
+                            &plan.centre,
+                            &plan.river,
+                            &shape,
+                            0.0,
+                            0.0,
+                            &Fixed::default(),
+                            &FitParams::new(shape.min_bend_radius_m),
+                        )
+                        .map(|f| f.line)
+                        .map_err(|e| e.message);
+                        match fairway_or_centreline(fit) {
+                            (Some(line), _) => Ok((
+                                sized.screening_value_on(
+                                    &option,
+                                    &walk,
+                                    &plan.river,
+                                    &plan.centre,
+                                    Some(&line),
+                                )?,
+                                PlanLine::Fairway,
+                                None,
+                            )),
+                            (None, note) => Ok((on_centre()?, PlanLine::Centreline, note)),
+                        }
+                    }
+                }
+            };
         let answers = run_all(&jobs, |(_, _, id, class)| screen(id, class), parallel);
+        let mut fell_back = 0;
         for ((i, j, _, _), screening) in jobs.iter().zip(answers) {
-            let screening = screening?;
+            let (screening, used, line_note) = screening?;
             let c = &mut results["rule_sets"][*i]["classes"][*j];
+            c["plan_line"] = json!(used.name());
+            if let Some(n) = line_note {
+                c["plan_line_note"] = json!(n);
+                fell_back += 1;
+            }
             let as_is = screening["verdict"] == "navigable-as-is";
             c["fits"] = json!(as_is);
             c["verdict"] = screening["verdict"].clone();
@@ -416,8 +453,13 @@ impl Session {
             rs["largest_fitting"] = largest.unwrap_or(Value::Null);
         }
         results["mode"] = json!("full");
-        if plan_line != PlanLine::Centreline {
-            results["plan_line"] = json!(plan_line.name());
+        results["plan_line"] = json!(plan_line.name());
+        if fell_back > 0 {
+            results["plan_line_note"] = json!(format!(
+                "the fairway fit could not run for {fell_back} of {} rows: their radius is read on \
+                 the centreline (see each row's plan_line_note)",
+                jobs.len()
+            ));
         }
         results["label"] = json!(FULL_LABEL);
         results["notice"] = json!(super::screening::SCREENING_NOTICE);
@@ -431,6 +473,17 @@ mod tests {
     //! Label: property
     use super::*;
     use crate::design::Role;
+
+    #[test]
+    fn a_fairway_fit_that_cannot_run_falls_back_to_the_centreline_with_a_note() {
+        let line = vec![[0.0, 0.0], [1.0, 0.0]];
+        assert_eq!(fairway_or_centreline(Ok(line.clone())), (Some(line), None));
+        let (line, note) = fairway_or_centreline(Err("r_min must be finite and positive.".into()));
+        assert!(line.is_none());
+        let note = note.unwrap();
+        assert!(note.contains("r_min must be"), "{note}");
+        assert!(note.contains("read on the centreline"), "{note}");
+    }
 
     #[test]
     fn the_answers_come_back_in_the_jobs_order_whatever_order_they_finish_in() {

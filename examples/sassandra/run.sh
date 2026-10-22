@@ -32,16 +32,16 @@ DOC=sassandra.owd
 # 4. The depth people who use the river give: 3 m at low water in the dry season, assumed, not measured.
 "$OWD" bed "$DOC" --depth 3 --season dry --json > bed.json
 
-# 5. The full answer: width, radius and depth, with the spec 0007 verdict per class.
+# 5. The full answer: width, radius and depth, with the spec 0007 verdict per class. The river's radius is
+#    read on each class's fairway fit (ADR 0007), the default plan line (ADR 0013).
 "$OWD" fits "$DOC" --json > fits-full.json
 "$OWD" fits "$DOC" --show > fits-full.txt
 
-# 6. The same full answer with the river's radius read on each class's fairway fit (ADR 0007) instead of
-#    the river centreline, an opt-in: the centreline drawn from the banks wiggles at the scale of its
-#    stations, and every wiggle reads as a tight bend. Which is the default is still to be chosen.
-cp "$DOC" sassandra-fairway.owd
-"$OWD" fits sassandra-fairway.owd --plan-line fairway --json > fits-full-fairway.json
-"$OWD" fits sassandra-fairway.owd --show > fits-full-fairway.txt
+# 6. The same full answer with the radius read on the river centreline instead, to compare: the centreline
+#    drawn from the banks wiggles at the scale of its stations, and every wiggle reads as a tight bend.
+cp "$DOC" sassandra-centreline.owd
+"$OWD" fits sassandra-centreline.owd --plan-line centreline --json > fits-full-centreline.json
+"$OWD" fits sassandra-centreline.owd --show > fits-full-centreline.txt
 
 # 7. The reports (spec 0014): all four, as PDF, HTML and Word. The study stops at the fits answer, so it has no
 #    design line option: the quantity schedule and the section pack say so.

@@ -245,20 +245,10 @@ fn radius_stretches(s: &Session) -> usize {
 #[test]
 fn on_the_fairway_the_river_radius_is_the_water_s_not_the_wiggle_of_its_centreline() {
     use owd_format::design::fits::PlanLine;
-    // Label: property. The default reads the centreline: its 3 m zigzag is a run of tight bends.
-    let mut centre = wiggly();
-    centre.run_fits_with(None, Some(&land)).unwrap();
-    assert!(radius_stretches(&centre) > 0);
-    let r = &centre.document()["fits"];
-    assert!(
-        r["settings"].get("plan_line").is_none() && r["results"].get("plan_line").is_none(),
-        "the default writes nothing new"
-    );
-    // Opted in: each class's fairway fit in the straight water has no tight bend.
+    // Label: property. The default reads each class's fairway fit (ADR 0013): in the straight
+    // water it has no tight bend.
     let mut fairway = wiggly();
-    fairway
-        .run_fits_on(None, Some(&land), PlanLine::Fairway)
-        .unwrap();
+    fairway.run_fits_with(None, Some(&land)).unwrap();
     assert_eq!(
         radius_stretches(&fairway),
         0,
@@ -268,6 +258,19 @@ fn on_the_fairway_the_river_radius_is_the_water_s_not_the_wiggle_of_its_centreli
     let r = &fairway.document()["fits"];
     assert_eq!(r["settings"]["plan_line"], "fairway");
     assert_eq!(r["results"]["plan_line"], "fairway");
+    assert!(r["results"].get("plan_line_note").is_none());
+    for c in rows(&fairway) {
+        assert_eq!(c["plan_line"], "fairway", "{c}");
+    }
+    // Asked for: the centreline, whose 3 m zigzag is a run of tight bends. The answer says so.
+    let mut centre = wiggly();
+    centre
+        .run_fits_on(None, Some(&land), PlanLine::Centreline)
+        .unwrap();
+    assert!(radius_stretches(&centre) > 0);
+    let r = &centre.document()["fits"];
+    assert_eq!(r["settings"]["plan_line"], "centreline");
+    assert_eq!(r["results"]["plan_line"], "centreline");
     // Width and depth are read as before: the same stretches of those kinds either way.
     let others = |s: &Session| -> Vec<String> {
         rows(s)
@@ -279,4 +282,29 @@ fn on_the_fairway_the_river_radius_is_the_water_s_not_the_wiggle_of_its_centreli
     };
     assert_eq!(others(&centre), others(&fairway));
     assert!(PlanLine::parse("bank").is_err());
+    assert_eq!(PlanLine::default(), PlanLine::Fairway);
+}
+
+#[test]
+fn a_plan_only_answer_reads_the_centreline_and_says_why() {
+    // Label: property. With no bed model the fairway cannot run: the answer falls back to the
+    // centreline and says so, in the answer and in each row.
+    let mut s = wiggly();
+    s.clear_bed_model();
+    s.run_fits_with(None, Some(&land)).unwrap();
+    let r = &s.document()["fits"];
+    assert_ne!(r["results"]["mode"], "full", "{}", r["results"]);
+    assert_eq!(r["settings"]["plan_line"], "fairway");
+    assert_eq!(r["results"]["plan_line"], "centreline");
+    let note = r["results"]["plan_line_note"].as_str().unwrap();
+    assert!(
+        note.contains("fairway") && note.contains("centreline"),
+        "{note}"
+    );
+    let radius = rows(&s)
+        .iter()
+        .flat_map(|c| c["stretches"].as_array().unwrap().clone())
+        .filter(|x| x["kind"] == "radius")
+        .count();
+    assert!(radius > 0, "the centreline's zigzag");
 }
