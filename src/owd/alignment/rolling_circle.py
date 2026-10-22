@@ -15,7 +15,9 @@ Tangent exits (from 0.3.0, issue #5): circle, then straight, as in a Dubins path
 keeps R_min past the touch; the line leaves it along a straight tangent to the circle that
 meets the old line at a vertex with the old line's heading. When no such vertex exists (the
 old line curves away first, or ends), that circle keeps the crossing exit of before 0.3.0 and
-its record says ``tangent_exit: False``. The exact rule is in the Rust core
+its record says ``tangent_exit: False`` (pass 1 only: from pass 2 on, such a circle is not
+spliced). Tangent entries (#283): each arc starts at a vertex of the line, on a circle tangent
+to the segment into that vertex. The exact rules are in the Rust core
 (``crates/owd-core/src/alignment/rolling_circle.rs``, module doc).
 
 Pure geometry in a projected CRS (metres). Each spliced circle is returned as a record.
