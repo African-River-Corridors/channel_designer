@@ -934,7 +934,11 @@ fn finish(
         &left,
         &right,
         &banks.centreline,
-        &CheckParams::at_step(cfg.station_step_m),
+        &CheckParams {
+            // A repair keeps to the fit's own step limit (spec 0013, T4).
+            max_step_m: Some(cfg.max_step_m),
+            ..CheckParams::at_step(cfg.station_step_m)
+        },
     )?;
     let stretches = merge(
         rechain(&stretches, &centre, &checked.centreline),
@@ -1022,6 +1026,19 @@ pub fn default_range(today: &str) -> Result<(String, String), ReachError> {
         .and_then(|y| y.parse().ok())
         .ok_or_else(|| ReachError::Input(format!("`{today}` is not a date (YYYY-MM-DD)")))?;
     Ok((format!("{}{}", year - 2, &today[4..]), today.to_string()))
+}
+
+/// The weight of a part at chainage `c` where parts overlap (spec 0013): 1 inside the part, falling
+/// to 0 at its ends along half a cosine over `overlap`, so a blend of two parts has no kink where
+/// either begins or ends. A small floor keeps a station that only one part covers.
+pub(crate) fn blend_weight(c: f64, from: f64, to: f64, overlap: f64) -> f64 {
+    let edge = (c - from).min(to - c).max(0.0);
+    let w = if overlap <= 0.0 || edge >= overlap {
+        1.0
+    } else {
+        0.5 - 0.5 * (std::f64::consts::PI * edge / overlap).cos()
+    };
+    w + 1e-3
 }
 
 /// A fit and the scene it used.
@@ -1228,7 +1245,7 @@ pub fn fit_to_scene(
     };
 
     // Blend the parts' shifts station by station, each weighted by how far inside its part the
-    // station is; a station no part fitted keeps its mask bank. Then the slope limit, through every
+    // station is, along a cosine over the overlap; a station no part fitted keeps its mask bank. Then the slope limit, through every
     // kept station, along the whole bank.
     let res = [0, 1].map(|b| {
         let n = geo[b].0.len();
@@ -1246,7 +1263,7 @@ pub fn fit_to_scene(
                 if res[b].fixed[j] {
                     continue;
                 }
-                let w = (c - part.from_m).min(part.to_m - c).max(0.0) + 1e-3;
+                let w = blend_weight(c, part.from_m, part.to_m, params.overlap_m);
                 sum += w * res[b].d[j];
                 wsum += w;
                 if w > best.0 {
@@ -1386,6 +1403,29 @@ pub fn record_edge_fit(
 mod join_tests {
     //! Label: property
     use super::*;
+
+    #[test]
+    fn the_blend_weight_rises_smoothly_over_the_overlap_and_is_flat_at_both_ends() {
+        let (from, to, ov) = (1_000.0, 16_000.0, 2_000.0);
+        let w = |c: f64| blend_weight(c, from, to, ov);
+        assert!((w(from) - 1e-3).abs() < 1e-12 && (w(to) - 1e-3).abs() < 1e-12);
+        assert!(
+            (w(from + ov) - (1.0 + 1e-3)).abs() < 1e-12
+                && (w(8_000.0) - (1.0 + 1e-3)).abs() < 1e-12
+        );
+        // Rising, symmetric, and with no kink: the slope is nought where the ramp meets either end.
+        let mut last = w(from);
+        for k in 1..=200 {
+            let c = from + ov * k as f64 / 200.0;
+            assert!(w(c) >= last);
+            last = w(c);
+            assert!((w(c) - w(to - (c - from))).abs() < 1e-12);
+        }
+        let slope = |c: f64| (w(c + 0.01) - w(c - 0.01)) / 0.02;
+        assert!(slope(from + 0.02).abs() < 1e-6 && slope(from + ov - 0.02).abs() < 1e-6);
+        // Without an overlap every station weighs the same.
+        assert_eq!(blend_weight(1_200.0, from, to, 0.0), 1.0 + 1e-3);
+    }
 
     #[test]
     fn the_slope_limit_holds_after_a_join_and_kept_stations_stay_at_zero() {
