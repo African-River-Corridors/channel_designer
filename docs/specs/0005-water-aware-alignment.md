@@ -199,8 +199,9 @@ After #37 there is no Python reference. The oracle for this spec is (Q6):
   lists every re-route case whose `radius_ok` changes.
 - **No-water regression:** with no water polygon, the rolling circle and re-route give results equal
   to the last port release, on every existing case. From 0.3.0 rolled lines use tangent exits (circle,
-  then straight, with a vertex at least every metre on the arc; issue #5), so no-water rolling-circle
-  results differ from the port release by that change only.
+  then straight, with a vertex at least every metre on the arc; issue #5) and tangent entries (at a
+  vertex, tangent to the segment into it; later passes never add a crossing exit; issue #283), so
+  no-water rolling-circle results differ from the port release by those changes only.
 - **A check that can fail:** each property check is shown to fail once, on a corrupted input (a line
   pushed onto land, a corner left in), before it is trusted.
 

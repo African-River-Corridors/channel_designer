@@ -6,8 +6,14 @@
 //! line from the tangent point by the circle arc and a tangent exit (below), and resume from where
 //! the exit joins the old line.
 //!
-//! **Tangent exit (from 0.3.0, issue #5): circle, then straight, as in a Dubins path.** The entry is
-//! tangent (the circle is placed tangent to the line). The arc keeps radius `min_radius` past the
+//! **Tangent entry (issue #283).** The tangent point T is a vertex of the line: the last vertex at
+//! or before the sample. The circle is tangent at T to the segment into T (from the last vertex the
+//! splice keeps before T). The splice replaces the line from T, so the line's heading is continuous
+//! at T, and the old line's corner at T goes with the replaced part. As for the exit, only vertices
+//! are joins. Before #283 the circle was placed at the sample, tangent to the direction read on the
+//! resample, which could differ from the line's own heading by most of a degree.
+//!
+//! **Tangent exit (from 0.3.0, issue #5): circle, then straight, as in a Dubins path.** The arc keeps radius `min_radius` past the
 //! touch, and the line leaves the circle along a straight that is tangent to the circle and meets the
 //! old line at a join point Q with the old line's heading. The rule:
 //!
@@ -24,6 +30,9 @@
 //!   within `EXIT_HEADING_TOL_RAD` (0.25 degree). Otherwise the circle **falls back** to the
 //!   crossing exit of before 0.3.0: the arc ends at the touch. The circle's record says which exit
 //!   it took (`tangent_exit`). A fallback never fails.
+//! - The fallback is for pass 1 only (#283). From pass 2 on, a circle with no tangent exit is not
+//!   spliced, and the roll moves on to the next sample: later passes refine the line and never add a
+//!   kink. So every circle of pass 2 or later has `tangent_exit: true`.
 //! - The arc has a vertex at least every `ARC_MAX_SEGMENT_M` (1 m), so it reads its own radius on a
 //!   short chord too. Before 0.3.0 it had 32 segments whatever its length.
 //!
@@ -228,6 +237,56 @@ pub fn place_circle_at_point(
     Ok((centre, libm::atan2(tangent[1], tangent[0])))
 }
 
+/// A tangent entry (module doc): the arc starts at `tangent_point` (T, a vertex of the line at
+/// `tangent_distance`), on a circle with centre `centre` that is tangent to the segment into T.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TangentEntry {
+    pub tangent_point: Pt,
+    pub tangent_distance: f64,
+    pub centre: Pt,
+}
+
+/// The tangent entry for the sample at chainage `sample_distance` on `line` (module doc), or `None`
+/// when the vertex T is the line's start (no segment comes into it). `side` is `"left"` or
+/// `"right"`, as for `place_circle_at_point`.
+pub fn find_tangent_entry(
+    line: &[Pt],
+    sample_distance: f64,
+    radius: f64,
+    side: &str,
+) -> Option<TangentEntry> {
+    if line.len() < 2 || radius.is_nan() || radius <= 0.0 || !sample_distance.is_finite() {
+        return None;
+    }
+    let chainages = cumulative_chainages(line);
+    // T: the last vertex at or before the sample.
+    let t = searchsorted_right(&chainages, sample_distance + SPLICE_TOL_M).checked_sub(1)?;
+    let tangent_point = line[t];
+    let tangent_distance = chainages[t];
+    // P: the last vertex the splice keeps before T (`replace_segment_with_arc`), so P to T is the
+    // segment into T on the spliced line.
+    let p = searchsorted_left(&chainages, tangent_distance - SPLICE_TOL_M).checked_sub(1)?;
+    let (dx, dy) = (tangent_point[0] - line[p][0], tangent_point[1] - line[p][1]);
+    let norm = (dx * dx + dy * dy).sqrt();
+    if norm.is_nan() || norm == 0.0 {
+        return None;
+    }
+    // The unit normal towards the circle's side.
+    let normal = if side == "right" {
+        [dy / norm, -dx / norm]
+    } else {
+        [-dy / norm, dx / norm]
+    };
+    Some(TangentEntry {
+        tangent_point,
+        tangent_distance,
+        centre: [
+            tangent_point[0] + normal[0] * radius,
+            tangent_point[1] + normal[1] * radius,
+        ],
+    })
+}
+
 /// The start angle and the signed sweep (rad) of the arc from `start_point` to `end_point` about
 /// `centre`, turning to `side`.
 fn arc_sweep(centre: Pt, start_point: Pt, end_point: Pt, side: &str) -> (f64, f64) {
@@ -328,6 +387,9 @@ fn clip(x: f64, lo: f64, hi: f64) -> f64 {
     x.max(lo).min(hi)
 }
 
+/// The distance (m) within which `replace_segment_with_arc` takes two points as one.
+const SPLICE_TOL_M: f64 = 1e-9;
+
 /// Splice `arc_points` into `line` between `start_distance` and `end_distance`.
 pub fn replace_segment_with_arc(
     line: &[Pt],
@@ -340,7 +402,7 @@ pub fn replace_segment_with_arc(
     }
     let chainages = cumulative_chainages(line);
     let total = chainages[chainages.len() - 1];
-    let tol = 1e-9;
+    let tol = SPLICE_TOL_M;
     let start_distance = clip(start_distance, 0.0, total);
     let end_distance = clip(end_distance, 0.0, total);
     if end_distance - start_distance <= tol {
@@ -590,15 +652,22 @@ pub fn rolling_circle(
     for pass_index in 0..passes.max(0) {
         for side in sides {
             let (mut samples, mut chainages) = resampled(&line)?;
+            if side != "left" && side != "right" {
+                // `place_circle_at_point` refuses any other side, so no circle is placed.
+                continue;
+            }
             let mut idx = start_index(&chainages);
             while idx + 1 < samples.len() {
-                let Ok((centre, _)) = place_circle_at_point(&samples, idx as i64, min_radius, side)
+                let sample_distance = linear::project(&line, samples[idx]);
+                let Some(TangentEntry {
+                    tangent_point,
+                    tangent_distance,
+                    centre,
+                }) = find_tangent_entry(&line, sample_distance, min_radius, side)
                 else {
                     idx += 1;
                     continue;
                 };
-                let tangent_point = samples[idx];
-                let tangent_distance = linear::project(&line, tangent_point);
                 let Some(contact) = find_forward_circle_contact(
                     &line,
                     tangent_point,
@@ -618,6 +687,11 @@ pub fn rolling_circle(
                     side,
                     contact.contact_chainage,
                 );
+                // Later passes refine the line and never add a kink: no tangent exit, no splice.
+                if exit.is_none() && pass_index > 0 {
+                    idx += 1;
+                    continue;
+                }
                 // Tangent exit: arc to E, straight to Q. Fallback: arc to the touch, as before 0.3.0.
                 let (exit_point, join_point, join_chainage) = match exit {
                     Some(e) => (e.exit_point, e.join_point, e.join_chainage),
@@ -707,6 +781,25 @@ mod tests {
         wrap_angle(heading(p, b) - heading(a, p))
     }
 
+    /// The heading step (rad, signed) at the entry of `c` on `line`: the circle's own heading at its
+    /// tangent point minus the heading of the line's segment into that point. `None` when the
+    /// tangent point is no longer a vertex of `line` (a later circle replaced it).
+    fn entry_kink(line: &[Pt], c: &Circle) -> Option<f64> {
+        let i = line.iter().position(|&p| p == c.tangent_point)?;
+        let prev = line[..i].iter().rev().find(|&&p| p != c.tangent_point)?;
+        let r = [
+            c.tangent_point[0] - c.centre[0],
+            c.tangent_point[1] - c.centre[1],
+        ];
+        let along = if c.side == "right" {
+            [r[1], -r[0]]
+        } else {
+            [-r[1], r[0]]
+        };
+        let circle_heading = libm::atan2(along[1], along[0]);
+        Some(wrap_angle(circle_heading - heading(*prev, c.tangent_point)))
+    }
+
     /// Heading continuity at the exit joins. At every exit join still on the final line (the arc's
     /// end E and the join Q), the heading change across it on 10 m chords is no more than a circle
     /// of R_min turns over the same chords, plus 0.25 degree. Before 0.3.0 (the crossing exit) this
@@ -748,25 +841,87 @@ mod tests {
         }
     }
 
+    /// Heading continuity at the arc entries (#283). At every entry still on the final line, the
+    /// circle's heading at its tangent point equals the heading of the line's segment into that
+    /// point, to 1e-6 rad, at rolling steps of 10 m and 25 m and R_min 255 m and 300 m. Before #283
+    /// the circle was placed tangent to the direction read on the resample, and this failed: the
+    /// worst entry kinks were 0.56 deg (step 10 m, R_min 300 m), 0.57 deg (25 m, 300 m), 0.88 deg
+    /// (10 m, 255 m) and 0.89 deg (25 m, 255 m).
+    #[test]
+    fn every_arc_entry_on_the_synthetic_river_is_tangent() {
+        let g = river();
+        for step in [10.0, 25.0] {
+            for r_min in [255.0, 300.0] {
+                let res = rolling_circle(&g, r_min, step, 2, &sides(), None, None).unwrap();
+                let mut entries = 0;
+                let mut worst = 0.0f64;
+                for c in &res.circles {
+                    let Some(kink) = entry_kink(&res.centreline, c) else {
+                        continue; // a later circle replaced this entry
+                    };
+                    entries += 1;
+                    worst = worst.max(kink.abs());
+                }
+                assert!(
+                    worst <= 1e-6,
+                    "step {step}, R_min {r_min}: an entry kinks {:.4} deg",
+                    worst.to_degrees()
+                );
+                assert!(
+                    entries >= 12,
+                    "step {step}, R_min {r_min}: only {entries} entries on the final line"
+                );
+            }
+        }
+    }
+
+    /// Later passes never add a crossing exit (#283): every circle of pass 2 or later took the
+    /// tangent exit, at R_min 255 m and 300 m and rolling steps of 10 m and 25 m. Without the
+    /// guard, with the vertex entry, this failed: 4 pass-2 circles fell back to the crossing exit at
+    /// a 25 m step and R_min 300 m (none in the other three cases), and their kinks read 265.6 m on
+    /// a 10 m resample.
+    #[test]
+    fn later_passes_never_add_a_crossing_exit() {
+        let g = river();
+        let mut fell_back = Vec::new();
+        for step in [10.0, 25.0] {
+            for r_min in [255.0, 300.0] {
+                let res = rolling_circle(&g, r_min, step, 2, &sides(), None, None).unwrap();
+                let n = res
+                    .circles
+                    .iter()
+                    .filter(|c| c.pass >= 2 && !c.tangent_exit)
+                    .count();
+                if n > 0 {
+                    fell_back.push(format!("step {step}, R_min {r_min}: {n}"));
+                }
+            }
+        }
+        assert!(fell_back.is_empty(), "pass-2 crossing exits: {fell_back:?}");
+    }
+
     /// R_min held on short chords, read as `docs/known-issues.md` reads them: the line resampled
-    /// every 10 m and every 25 m, three consecutive points. Before 0.3.0, at R_min 300 m and a 10 m
-    /// step, these read 111 m and 288 m. The tolerance is `RADIUS_TOL` (2 %), the reading tolerance
+    /// every 10 m and every 25 m, three consecutive points, at rolling steps of 10 m and 25 m. Before
+    /// 0.3.0, at R_min 300 m and a 10 m step, these read 111 m and 288 m. Before #283, at a 25 m step,
+    /// the 10 m resample read 280 m (R_min 300 m) and 227 m (R_min 255 m). The tolerance is `RADIUS_TOL` (2 %), the reading tolerance
     /// of `radius_ok`.
     #[test]
     fn rolled_lines_hold_r_min_on_10_and_25_m_resamples() {
         let g = river();
         for r_min in [255.0, 300.0] {
-            let res = rolling_circle(&g, r_min, 10.0, 2, &sides(), None, None).unwrap();
-            for chord in [10.0, 25.0] {
-                let pts = resample_line(&res.centreline, chord).unwrap();
-                let (rad, at) = min_radius_of_line(&pts);
-                assert!(
-                    rad >= (1.0 - RADIUS_TOL) * r_min,
-                    "R_min {r_min}, {chord} m resample: {rad} at {:?}",
-                    pts[at]
-                );
+            for step in [10.0, 25.0] {
+                let res = rolling_circle(&g, r_min, step, 2, &sides(), None, None).unwrap();
+                for chord in [10.0, 25.0] {
+                    let pts = resample_line(&res.centreline, chord).unwrap();
+                    let (rad, at) = min_radius_of_line(&pts);
+                    assert!(
+                        rad >= (1.0 - RADIUS_TOL) * r_min,
+                        "R_min {r_min}, step {step}, {chord} m resample: {rad} at {:?}",
+                        pts[at]
+                    );
+                }
+                assert!(res.radius_ok, "{}", res.measured_min_radius_m);
             }
-            assert!(res.radius_ok, "{}", res.measured_min_radius_m);
         }
     }
 

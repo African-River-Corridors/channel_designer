@@ -1,30 +1,38 @@
 # Known issues
 
-## Fixed: rolling-circle exits left a short kink
+## Fixed: rolling-circle exits and entries left a short kink
 
-**Module:** `owd.alignment.rolling_circle` (issue #5)
+**Module:** `owd.alignment.rolling_circle` (issues #5 and #283)
 
 Up to 0.2.0 each spliced arc joined the old line where the circle *crossed* it, so each exit
 had a short kink. From 0.3.0 the rolling circle uses tangent exits: circle, then straight, as
-in a Dubins path. See the `CHANGELOG.md` entry under 0.3.0 (Unreleased until it ships) and the
-rule in the module doc of `crates/owd-core/src/alignment/rolling_circle.rs`.
+in a Dubins path (#5). The entries are tangent too (#283): each arc starts at a vertex of the
+line, on a circle tangent to the segment into that vertex. Before, the circle was placed at the
+resample point, tangent to the direction read on the resample, up to 0.9° off the line's own
+heading. See the `CHANGELOG.md` entries under 0.3.0 (Unreleased until it ships) and the rules in
+the module doc of `crates/owd-core/src/alignment/rolling_circle.rs`.
 
-On the package's synthetic river (`synthetic.synthetic_river()`), minimum three-point radius of
-the result resampled at three spacings:
+On the package's synthetic river (`synthetic.synthetic_river()`), two passes, minimum
+three-point radius of the result resampled at three spacings. "Exits" is after #5 only;
+"now" is after #283:
 
 | R_min, rolling step | 10 m resample | 25 m resample | 50 m resample |
 |---|---|---|---|
 | 300 m, 10 m (was) | 111 m | 288 m | 297 m |
-| 300 m, 10 m (now) | 295 m | 300 m | 300 m |
+| 300 m, 10 m (exits) | 295 m | 300 m | 300 m |
+| 300 m, 10 m (now) | 300 m | 300 m | 300 m |
 | 300 m, 25 m (was) | 55 m | 165 m | 296 m |
-| 300 m, 25 m (now) | 280 m | 299 m | 300 m |
+| 300 m, 25 m (exits) | 280 m | 299 m | 300 m |
+| 300 m, 25 m (now) | 300 m | 300 m | 300 m |
 | 255 m, 10 m (was) | 227 m | 250 m | 254 m |
-| 255 m, 10 m (now) | 254 m | 254 m | 255 m |
+| 255 m, 10 m (exits) | 254 m | 254 m | 255 m |
+| 255 m, 10 m (now) | 255 m | 255 m | 255 m |
+| 255 m, 25 m (exits) | 227 m | 255 m | 255 m |
+| 255 m, 25 m (now) | 255 m | 255 m | 255 m |
 
-What is left at a 25 m step is at the arc *entries*, not the exits: the circle is placed tangent
-to the line's direction read on the 25 m resample, which can differ from the line's own heading
-by a fraction of a degree. A circle whose straight cannot meet the old line (the line curves
-away first, or ends) keeps the old crossing exit; its record says `tangent_exit: False`.
+A circle whose straight cannot meet the old line (the line curves away first, or ends) keeps
+the old crossing exit on pass 1; its record says `tangent_exit: False`. From pass 2 on, such a
+circle is not spliced, so later passes never add a crossing exit.
 
 ## R_min is reported, not guaranteed
 

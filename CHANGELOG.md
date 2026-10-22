@@ -36,6 +36,13 @@ versions follow [Semantic Versioning](https://semver.org/).
   fallback); `contact_point` and `end_chainage_m` are now where the splice joins the old line. On the synthetic
   river at R_min 300 m and a 10 m step, the minimum radius on a 10 m resample goes from 111 m to 295 m
   (`docs/known-issues.md`).
+- **Rolling-circle tangent entries (#283).** Each arc now starts at a vertex of the line, on a circle tangent to
+  the segment into that vertex, so the heading is continuous at the entry. Before, the circle was placed at the
+  resample point, tangent to the direction read on the resample, which was up to 0.9° off the line's own heading.
+  From pass 2 on, a circle with no tangent exit is no longer spliced (the roll moves on to the next sample), so
+  later passes never add a crossing exit; pass 1 keeps the flagged fallback. On the synthetic river at a 25 m
+  rolling step, the minimum radius on a 10 m resample goes from 280 m to 300 m at R_min 300 m, and from 227 m to
+  255 m at R_min 255 m (`docs/known-issues.md`).
 - **The Sassandra worked example (spec 0012, T12).** `examples/sassandra/run.sh` makes a study of the Sassandra,
   Côte d'Ivoire, from the sea to the Soubré dam, from a river name and two points, with open data fetched at run
   time. It gives the plan-only answer, then the full answer with an assumed 3 m depth, on both plan lines. The docs
@@ -466,6 +473,13 @@ pull request that moves the result.
   the arc's vertex every metre), and it is 0.11 m shorter. The re-route, which starts from the rolled line, saves
   2.440 % (was 2.444 %) and its minimum radius rises from 254.0 to 254.8 m. Volumes move by less than 0.05 %:
   least-cost dredge 512,936 m3 (was 513,163), rolling-circle total 1,504,641 m3 (was 1,504,620).
+- **Rolling-circle tangent entries (#283).** What moved: every rolled line again, and so everything built on one.
+  Why: each arc now starts at a vertex, tangent to the segment into it, not at the resample point tangent to the
+  resampled direction; and a later-pass circle with no tangent exit is not spliced. Which way, in the quickstart
+  (R_min 255 m): the rolled line's measured minimum radius rises from 254.37 to 254.97 m, it has 16 arcs (was 17)
+  and 2,625 vertices (was 2,514), and it is 0.17 m longer. The re-route saves 2.441 % (was 2.440 %); its minimum
+  radius falls from 254.76 to 254.50 m, still within the 2 % reading tolerance. Volumes move by less than 0.15 %:
+  rolling-circle total 1,506,028 m3 (was 1,504,641), least-cost total 1,289,766 m3 (was 1,289,958).
 
 ## 0.2.0
 
