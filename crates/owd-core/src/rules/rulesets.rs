@@ -92,7 +92,10 @@ pub fn classify_bend(e_m: f64, room_m: f64, tol_m: f64) -> &'static str {
 pub struct ChannelShape {
     /// The selected sets, as `id@version` joined with ` + `.
     pub rule_sets: String,
+    /// The class's catalogue id, or a custom vessel's label (`Custom: My barge, 140 × 29 × 4.7 m`).
     pub vessel_standard_id: String,
+    /// True for a custom vessel (spec 0015 T1).
+    pub custom: bool,
     pub loa_m: f64,
     pub beam_m: f64,
     pub draught_m: f64,
@@ -154,6 +157,49 @@ pub fn channel_shape_for(
 ) -> Result<ChannelShape, RuleError> {
     let v = super::classes::class(vessel_standard_id)?;
     let vessel = vessel_for(vessel_standard_id, draught_m)?; // sized on the LONG end of the class
+    shape_for_vessel(selection, vessel, &v.standard_id, &v.source, false, vec![])
+}
+
+/// The selection a custom vessel is sized under: its typed GB class as the `gb_class` set input,
+/// unless the selection already types one.
+pub fn custom_selection(selection: &Selection, custom: &super::custom::CustomVessel) -> Selection {
+    let mut s = selection.clone();
+    if let Some(c) = &custom.gb_class
+        && !s.inputs.iter().any(|(k, _)| k == engine::GB_CLASS)
+    {
+        s.inputs.push((engine::GB_CLASS.into(), c.clone()));
+    }
+    s
+}
+
+/// The channel a selection of Rule Sets requires for a custom vessel (spec 0015 T1). The vessel is
+/// checked first: a bad dimension is refused, and an unusual one is a warning on the shape.
+pub fn channel_shape_for_custom(
+    selection: &Selection,
+    custom: &super::custom::CustomVessel,
+) -> Result<ChannelShape, RuleError> {
+    let warnings = custom.check()?;
+    let selection = custom_selection(selection, custom);
+    shape_for_vessel(
+        &selection,
+        custom.vessel(),
+        &custom.label(),
+        "user-entered dimensions, not a catalogue class",
+        true,
+        warnings,
+    )
+}
+
+/// The shape for an engine vessel: `id` names it (a class id or a custom label), `source` says
+/// where its figures come from, and `first_warnings` come before the engine's warnings.
+fn shape_for_vessel(
+    selection: &Selection,
+    vessel: Vessel,
+    id: &str,
+    vessel_source: &str,
+    custom: bool,
+    first_warnings: Vec<String>,
+) -> Result<ChannelShape, RuleError> {
     let sized = engine::size(selection, &vessel).map_err(|e| {
         // GB 50139's Rules cover motor vessels and pushed convoys with a GB class. A catalogue
         // class may be neither (spec 0015 T0): say so in words, not as a missing Measure.
@@ -178,9 +224,8 @@ pub fn channel_shape_for(
         };
         match why {
             Some(why) if gb_only => RuleError::Value(format!(
-                "GB 50139 cannot size a channel for {}: {why}. Select PIANC WG 141 too, or pick \
-                 another class.",
-                v.standard_id
+                "GB 50139 cannot size a channel for {id}: {why}. Select PIANC WG 141 too, or pick \
+                 another class."
             )),
             _ => e,
         }
@@ -189,19 +234,23 @@ pub fn channel_shape_for(
     let keys: Vec<String> = selection.sets.iter().map(|s| s.key()).collect();
     Ok(ChannelShape {
         rule_sets: keys.join(" + "),
-        vessel_standard_id: v.standard_id.clone(),
+        vessel_standard_id: id.to_string(),
+        custom,
         loa_m: vessel.loa_m,
         beam_m: vessel.beam_m,
         draught_m: vessel.draught_m,
-        formation: v.formation.clone(),
+        formation: vessel.formation.clone(),
         bottom_width_straight_m: sized.bottom_width_straight_m,
         min_bend_radius_m: sized.min_bend_radius_m,
         design_depth_m: sized.design_depth_m,
         bend_widening_at_rmin_m: sized.bend_widening_at_rmin_m,
         bottom_width_at_rmin_m: sized.bottom_width_straight_m + sized.bend_widening_at_rmin_m,
         width_basis: width_basis(selection, &check).into(),
-        source: format!("Rule Sets {}; vessel {}", keys.join(", "), v.source),
-        warnings: engine_warnings(selection, &vessel, &sized, &check),
+        source: format!("Rule Sets {}; vessel {}", keys.join(", "), vessel_source),
+        warnings: first_warnings
+            .into_iter()
+            .chain(engine_warnings(selection, &vessel, &sized, &check))
+            .collect(),
         engine: (
             Arc::new(selection.narrowed_to(engine::BEND_WIDENING, &vessel)),
             vessel,

@@ -34,6 +34,7 @@ pub fn full_catalogue() -> Catalogue {
 }
 
 pub mod classes;
+pub mod custom;
 pub mod design;
 pub mod engine;
 pub mod methods;
