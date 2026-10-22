@@ -5,8 +5,16 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
-- **The default water level never rises downstream across a SWOT–DEM join (#280).** A DEM-filled stretch was
+- **The default water level never rises downstream, across SWOT–DEM joins too (#280).** A DEM-filled stretch was
   made never rising only within itself, so where it met a lower SWOT level just upstream, the level jumped up
+  going downstream (about 2.5 m at km 16.4 on the Sassandra). `owd water-level` now makes the whole profile never
+  rise downstream, and SWOT outranks the DEM:
+  1. A SWOT level above the SWOT level upstream of it is lowered to it (within SWOT's noise, as in a tidal estuary).
+  2. A DEM level above the SWOT level upstream of it is lowered to it.
+  3. A DEM level below the SWOT level downstream of it is raised to it.
+
+  Each changed level is listed under `adjusted` in the water-level provenance (chainage, source, `lowered` or
+  `raised`, the level before and after, and why), and the command counts them.
   going downstream (about 2.5 m at km 16.4 on the Sassandra). `owd water-level` now lowers each DEM level that
   sits above the level just upstream of it to that level. SWOT levels are kept as observed. Each lowered level
   is listed under `lowered` in the water-level provenance (chainage, the level before and after), and the

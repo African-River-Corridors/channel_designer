@@ -9,8 +9,11 @@
 //!    reach: the DEM water surface sampled on the centreline, made to never rise downstream (the
 //!    closest such profile in least squares: pool adjacent violators). Which way is downstream comes
 //!    from SWORD's distance to the outlet, else from the DEM.
-//! 4. Where a DEM level sits above the level just upstream of it, across a join with a SWOT level,
-//!    it is lowered to that level, and the provenance records it (#280).
+//! 4. The whole profile never rises downstream, and SWOT outranks the DEM (#280). A SWOT level above
+//!    the SWOT level upstream of it is lowered to it (within SWOT's noise, as in a tidal estuary).
+//!    Then each DEM level is kept between its SWOT neighbours: lowered to the one upstream if it is
+//!    above it, raised to the one downstream if it is below it. Every change is recorded in the
+//!    provenance.
 //!
 //! Datum: SWOT's `wse` is the height above the EGM2008 geoid that comes with each observation
 //! (`geoid_hght`, the geoid's height above the WGS84 ellipsoid). The Copernicus GLO-30 DEM is in
@@ -228,15 +231,30 @@ pub struct Stretch {
     pub why: Option<String>,
 }
 
-/// A level lowered so the whole profile never rises downstream (#280).
+/// A level changed so the whole profile never rises downstream (#280).
 #[derive(Debug, Clone, PartialEq)]
-pub struct Lowered {
+pub struct Adjusted {
     /// Where on the river centreline.
     pub chainage_m: f64,
     /// The level its source gave.
     pub was_m: f64,
-    /// The level it was lowered to: the level just upstream of it.
+    /// The level it was changed to.
     pub now_m: f64,
+    /// `swot` or `dem`.
+    pub source: &'static str,
+    /// Why, in words.
+    pub why: &'static str,
+}
+
+impl Adjusted {
+    /// `lowered` or `raised`.
+    pub fn direction(&self) -> &'static str {
+        if self.now_m < self.was_m {
+            "lowered"
+        } else {
+            "raised"
+        }
+    }
 }
 
 /// The default level.
@@ -253,9 +271,8 @@ pub struct LevelProfile {
     pub datum: Datum,
     /// The dates of the first and last SWOT observation used (`YYYY-MM-DD`), if any.
     pub swot_dates: Option<(String, String)>,
-    /// The levels lowered so the whole profile never rises downstream, across the joins of SWOT and
-    /// DEM stretches.
-    pub lowered: Vec<Lowered>,
+    /// The levels changed so the whole profile never rises downstream, by chainage.
+    pub adjusted: Vec<Adjusted>,
 }
 
 /// A SWORD reach placed on the centreline.
@@ -303,37 +320,74 @@ fn place<'a>(
     Ok(out)
 }
 
-/// Lower each DEM level that sits above the level just upstream of it, so the profile never rises
-/// downstream across the joins of SWOT and DEM stretches as well as within them (#280). A DEM
-/// stretch is made never rising on its own, so this only bites where it meets the level upstream of
-/// it. SWOT levels are kept as observed. `points` are by chainage; `dem` holds the chainages of the
-/// DEM levels.
-fn clamp_dem_joins(
+/// Why a SWOT level above the SWOT level upstream of it is lowered.
+pub const WHY_SWOT_LOWERED: &str = "above the SWOT level upstream of it, within SWOT's noise (as in a tidal estuary): the level never rises downstream";
+/// Why a DEM level above the level upstream of it is lowered.
+pub const WHY_DEM_LOWERED: &str =
+    "above the SWOT level upstream of it, which outranks the DEM: the level never rises downstream";
+/// Why a DEM level below the level downstream of it is raised.
+pub const WHY_DEM_RAISED: &str = "below the SWOT level downstream of it, which outranks the DEM: the level never rises downstream";
+
+/// Make the whole profile never rise downstream, across the joins of SWOT and DEM stretches as well
+/// as within them (#280). SWOT outranks the DEM, so SWOT levels are kept wherever they can be:
+///
+/// 1. A SWOT level above the SWOT level upstream of it is lowered to it. Only SWOT can settle a rise
+///    between two SWOT levels, and it does not depend on the DEM.
+/// 2. Each DEM level is then kept between its SWOT neighbours: not above the one upstream, not below
+///    the one downstream. Step 1 makes the upstream one the higher, and a DEM stretch already never
+///    rises within itself, so clamping each point keeps it never rising.
+///
+/// `points` are by chainage; `dem` holds the chainages of the DEM levels.
+fn never_rising_across_joins(
     points: &mut [(f64, f64)],
     dem: &[f64],
     downstream_is_increasing: bool,
-) -> Vec<Lowered> {
+) -> Vec<Adjusted> {
     let mut order: Vec<usize> = (0..points.len()).collect();
     if !downstream_is_increasing {
         order.reverse();
     }
-    let mut lowered = Vec::new();
-    let mut upstream = f64::INFINITY;
-    for i in order {
-        let (s, v) = points[i];
-        let is_dem = dem.contains(&s);
-        if is_dem && v > upstream {
-            points[i].1 = upstream;
-            lowered.push(Lowered {
-                chainage_m: s,
-                was_m: v,
-                now_m: upstream,
+    let from_dem: Vec<bool> = points.iter().map(|p| dem.contains(&p.0)).collect();
+    let is_dem = |i: usize| from_dem[i];
+    let swot: Vec<usize> = order.iter().copied().filter(|&i| !is_dem(i)).collect();
+    let mut adjusted = Vec::new();
+    let mut change =
+        |points: &mut [(f64, f64)], i: usize, now: f64, source: &'static str, why: &'static str| {
+            adjusted.push(Adjusted {
+                chainage_m: points[i].0,
+                was_m: points[i].1,
+                now_m: now,
+                source,
+                why,
             });
+            points[i].1 = now;
+        };
+    // 1. SWOT to SWOT.
+    for w in swot.windows(2) {
+        let (up, down) = (points[w[0]].1, points[w[1]].1);
+        if down > up {
+            change(points, w[1], up, "swot", WHY_SWOT_LOWERED);
         }
-        upstream = points[i].1;
     }
-    lowered.sort_by(|a, b| a.chainage_m.total_cmp(&b.chainage_m));
-    lowered
+    // 2. Each DEM level between its SWOT neighbours, in downstream order.
+    let mut upper = f64::INFINITY;
+    let mut next = 0;
+    for &i in &order {
+        if !is_dem(i) {
+            upper = points[i].1;
+            next += 1;
+            continue;
+        }
+        let lower = swot.get(next).map_or(f64::NEG_INFINITY, |&j| points[j].1);
+        let v = points[i].1;
+        if v > upper {
+            change(points, i, upper, "dem", WHY_DEM_LOWERED);
+        } else if v < lower {
+            change(points, i, lower, "dem", WHY_DEM_RAISED);
+        }
+    }
+    adjusted.sort_by(|a, b| a.chainage_m.total_cmp(&b.chainage_m));
+    adjusted
 }
 
 /// What the level needs from outside: the observations of a reach, and the DEM water surface.
@@ -507,7 +561,7 @@ pub fn default_level(
         ));
     }
     points.sort_by(|a, b| a.0.total_cmp(&b.0));
-    let lowered = clamp_dem_joins(&mut points, &dem_at_points, downstream_is_increasing);
+    let adjusted = never_rising_across_joins(&mut points, &dem_at_points, downstream_is_increasing);
     stretches.sort_by(|a, b| a.from_m.total_cmp(&b.from_m));
     dates.sort();
     Ok(LevelProfile {
@@ -518,7 +572,7 @@ pub fn default_level(
         params: *params,
         datum,
         swot_dates: (!dates.is_empty()).then(|| (dates[0].clone(), dates[dates.len() - 1].clone())),
-        lowered,
+        adjusted,
     })
 }
 
@@ -621,9 +675,9 @@ pub fn record_level(
             }
             v
         }).collect::<Vec<_>>(),
-        "lowered": level.lowered.iter().map(|w| json!({
-            "chainage_m": w.chainage_m, "was_m": w.was_m, "now_m": w.now_m, "source": "dem",
-            "why": "above the level just upstream of it: the level never rises downstream",
+        "adjusted": level.adjusted.iter().map(|a| json!({
+            "chainage_m": a.chainage_m, "source": a.source, "direction": a.direction(),
+            "was_m": a.was_m, "now_m": a.now_m, "why": a.why,
         })).collect::<Vec<_>>(),
         "provisional": ["percentile", "min_swot_width_m"],
     });
