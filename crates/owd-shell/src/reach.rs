@@ -657,7 +657,11 @@ impl AppState {
                     .map(|st| json!({"kind": st["kind"], "from": ll(&st["start"]), "to": ll(&st["end"])}))
                     .collect();
                 classes.insert(
-                    c["vessel_standard_id"].as_str().unwrap_or("").to_string(),
+                    // The custom vessel's row has no class id (spec 0015 T1).
+                    c["vessel_standard_id"]
+                        .as_str()
+                        .unwrap_or("custom")
+                        .to_string(),
                     json!(list),
                 );
             }

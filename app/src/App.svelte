@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import * as api from "./lib/api";
-  import type { Choices, CrossSection as CrossSectionData, FitsSelection, Hillshade, InputRole, LongSection as LongSectionData, MapGeometry, OptionTable, RunMethod, Snapshot, StageName, StretchCollection } from "./lib/api";
+  import type { Choices, CrossSection as CrossSectionData, CustomFields, FitsSelection, Hillshade, InputRole, LongSection as LongSectionData, MapGeometry, OptionTable, RunMethod, Snapshot, StageName, StretchCollection } from "./lib/api";
   import CrossSection from "./lib/CrossSection.svelte";
   import LongSection from "./lib/LongSection.svelte";
   import BottomPanel from "./lib/BottomPanel.svelte";
@@ -163,6 +163,11 @@
     queued = () => api.setVessel(vessel, draught);
     clearTimeout(pending);
     pending = setTimeout(() => flush(), PAUSE_MS);
+  }
+
+  /** "Size" on the custom vessel's fields: a single press, sent at once after any queued edit. */
+  async function onCustomVessel(fields: CustomFields) {
+    await fileAction(() => api.setCustomVessel(fields));
   }
 
   /** A Rule Set or set input is a single pick, not typing: send it at once, after any queued edit. */
@@ -349,6 +354,9 @@
     };
   }
 
+  /** The key of the custom vessel's row in the "what fits" answer, which has no class id. */
+  const CUSTOM_ROW = "custom";
+
   /** "Use this vessel": choose the answer's Rule Set and size the channel for the class, then back to today's flow (alignment, then volumes). */
   async function useVessel(choice: string, selection: FitsSelection | null, vesselStandardId: string) {
     await flush();
@@ -358,11 +366,15 @@
       if (!chosen) return;
       snap = chosen;
     }
-    const next = await guard(() => api.setVessel(vesselStandardId, ""));
+    // The custom vessel's row (spec 0015) sizes the design's own custom vessel again.
+    const stored = snap?.document.stages.sizing.settings?.custom_vessel;
+    const custom = vesselStandardId === CUSTOM_ROW && stored;
+    const next = await guard(() => (custom ? api.setCustomVessel(api.customFields(custom)) : api.setVessel(vesselStandardId, "")));
     if (!next) return;
     snap = next;
     reachView = false;
-    notice = `Vessel set: ${vesselStandardId} under ${choice}. Next: run the alignment, then the volumes.`;
+    const named = custom ? (next.document.stages.sizing.results?.vessel_label ?? "the custom vessel") : vesselStandardId;
+    notice = `Vessel set: ${named} under ${choice}. Next: run the alignment, then the volumes.`;
   }
 
   let theme = $state<ThemeChoice>(currentTheme());
@@ -425,7 +437,7 @@
       {#if reachView}
         <StartFromRiver {map} {snap} onSnap={(next) => openDocDone(next)} onError={(m) => (error = m)} onUseVessel={useVessel} bind:picker={reachPicker} />
       {:else}
-        <LeftPanel {snap} {choices} {onRuleSets} {onVessel} {busy} {samples} {dropTarget} onRun={run} onCancel={cancel} onLoad={(r) => load(r)} onFetch={fetchDem} onWater={water} />
+        <LeftPanel {snap} {choices} {onRuleSets} {onVessel} {onCustomVessel} {busy} {samples} {dropTarget} onRun={run} onCancel={cancel} onLoad={(r) => load(r)} onFetch={fetchDem} onWater={water} />
       {/if}
     </section>
     <div class="handle v" role="separator" aria-orientation="vertical" onpointerdown={drag("x")}></div>

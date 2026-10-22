@@ -1,12 +1,14 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import type { Choices, ChoiceSource, RuleSetChoice, SetInputChoice, Snapshot } from "./api";
+  import { checkCustomVessel, customFields } from "./api";
+  import type { Choices, ChoiceSource, CustomCheck, CustomFields, RuleSetChoice, SetInputChoice, Snapshot } from "./api";
 
   let {
     snap,
     choices,
     onRuleSets,
     onVessel,
+    onCustomVessel,
   }: {
     snap: Snapshot | null;
     choices: Choices | null;
@@ -14,7 +16,12 @@
     onRuleSets: (ids: string[], inputs: Record<string, string>) => void;
     /** Send the vessel class and the draught as typed (empty: the vessel class's own). */
     onVessel: (vessel: string, draught: string) => void;
+    /** Size for a custom vessel, from its fields as typed (spec 0015). */
+    onCustomVessel: (fields: CustomFields) => void;
   } = $props();
+
+  /** The picker's last entry: a vessel of the user's own (spec 0015). */
+  const CUSTOM = "__custom__";
 
   let settings = $derived(snap?.document.stages.sizing.settings ?? null);
   let shape = $derived(snap?.document.stages.sizing.results ?? null);
@@ -28,13 +35,21 @@
   let draught = $state("");
   /** What the vessel search matches: the id, the name, the family or the region. */
   let vesselSearch = $state("");
+  /** The custom vessel's fields as typed, while "Custom vessel…" is chosen. */
+  let custom = $state<CustomFields | null>(null);
+  /** The check of the typed fields: a refusal turns the Size button off; a warning does not. */
+  let check = $state<CustomCheck | null>(null);
+  let checking = $state(false);
 
   // Take the choices from the document whenever it changes (open, new, a sent choice).
   $effect(() => {
     const stored = settings?.rule_sets?.filter((s) => s.id !== OWD).map((s) => s.id) ?? [];
     sets = stored.length ? stored : [choices?.rule_sets[0]?.id ?? ""].filter(Boolean);
     values = Object.fromEntries((settings?.set_inputs ?? []).map((i) => [i.name, i.value]));
-    vessel = settings?.vessel_standard_id ?? choices?.vessels[0]?.id ?? "";
+    const storedCustom = settings?.custom_vessel;
+    vessel = storedCustom ? CUSTOM : (settings?.vessel_standard_id ?? choices?.vessels[0]?.id ?? "");
+    custom = storedCustom ? customFields(storedCustom) : null;
+    check = null;
     const doc = settings?.draught_m;
     // Not tracked: typing alone must not rerun this, only a new document.
     const typed = untrack(() => draught).trim();
@@ -120,7 +135,59 @@
     onRuleSets(sameAsStored() ? [] : [...sets], typedInputs(i.name));
   }
   function sendVessel() {
+    if (vessel === CUSTOM) return;
     onVessel(vessel, draught);
+  }
+
+  /** "Custom vessel…": the fields, filled from the class that was selected. Nothing is sent yet. */
+  function chooseVessel(next: string) {
+    if (next !== CUSTOM) {
+      custom = null;
+      vessel = next;
+      sendVessel();
+      return;
+    }
+    // Chosen again (a second change event): keep the fields as typed.
+    if (vessel === CUSTOM && custom) return;
+    const from = choices?.vessels.find((v) => v.id === vessel) ?? choices?.vessels[0];
+    vessel = CUSTOM;
+    const t = (x: number | null | undefined) => (x == null || !Number.isFinite(x) ? "" : String(x));
+    custom = {
+      name: from ? `${from.id} (custom)` : "Custom vessel",
+      loa_m: t(from?.loa_m?.[1]),
+      beam_m: t(from?.beam_m),
+      draught_m: draught.trim() || t(from?.draught_nominal_m),
+      formation: from?.formation === "pushed_convoy" ? "convoy" : "motor",
+      n_abreast: "", n_in_line: "", gb_class: "", air_draught_m: "", deadweight_t: "",
+    };
+    recheck();
+  }
+
+  let checkTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Check the fields a moment after the last key, so the refusal follows the typing. */
+  function recheck() {
+    clearTimeout(checkTimer);
+    checking = true;
+    checkTimer = setTimeout(async () => {
+      const fields = custom;
+      if (!fields) return;
+      try {
+        check = await checkCustomVessel({ ...fields });
+      } finally {
+        checking = false;
+      }
+    }, 150);
+  }
+  function setField(k: keyof CustomFields, v: string) {
+    if (!custom) return;
+    custom = { ...custom, [k]: v };
+    recheck();
+  }
+  const refusedOn = (k: keyof CustomFields) => (check?.refusal?.field === k ? check.refusal.message : null);
+  let gbSelected = $derived(sets.some((id) => id.startsWith("gb50139")));
+  let canSize = $derived(!!custom && !checking && !!check && !check.refusal);
+  function sizeCustom() {
+    if (custom && canSize) onCustomVessel({ ...custom });
   }
 
   const SHAPE: Record<ChoiceSource, string> = { default: "◇", typed: "■" };
@@ -134,6 +201,53 @@
   {:else}
     <span class="mark none" data-testid="source-{what}" data-source="">not sent yet</span>
   {/if}
+{/snippet}
+
+{#snippet field(k: keyof CustomFields, label: string, mode: "text" | "decimal" | "numeric", f: CustomFields)}
+  <label>
+    {label}
+    <input aria-label={label} data-testid="custom-{k}" inputmode={mode === "text" ? undefined : mode} value={f[k]}
+      aria-invalid={refusedOn(k) ? "true" : undefined} oninput={(e) => setField(k, e.currentTarget.value)} />
+    {#if refusedOn(k)}<span class="refused" role="alert" data-testid="custom-error-{k}">{refusedOn(k)}</span>{/if}
+  </label>
+{/snippet}
+
+{#snippet customForm(f: CustomFields)}
+  <fieldset class="custom" data-testid="custom-vessel">
+    <legend>Custom vessel</legend>
+    {@render field("name", "Name", "text", f)}
+    {@render field("loa_m", "Length overall (m)", "decimal", f)}
+    {@render field("beam_m", "Beam (m)", "decimal", f)}
+    {@render field("draught_m", "Draught (m)", "decimal", f)}
+    <label>
+      Formation
+      <select aria-label="Formation" data-testid="custom-formation" value={f.formation} onchange={(e) => setField("formation", e.currentTarget.value)}>
+        <option value="motor">motor vessel</option>
+        <option value="convoy">pushed convoy</option>
+      </select>
+      {#if refusedOn("formation")}<span class="refused" role="alert" data-testid="custom-error-formation">{refusedOn("formation")}</span>{/if}
+    </label>
+    {#if f.formation === "convoy"}
+      {@render field("n_abreast", "Barges abreast", "numeric", f)}
+      {@render field("n_in_line", "Barges in line", "numeric", f)}
+    {/if}
+    {#if gbSelected}
+      <label>
+        GB 50139 class
+        <select aria-label="GB 50139 class" data-testid="custom-gb_class" value={f.gb_class} onchange={(e) => setField("gb_class", e.currentTarget.value)}>
+          <option value="">none (width and depth not evaluated)</option>
+          {#each ["I", "II", "III", "IV", "V", "VI", "VII"] as c}<option value={c}>{c}</option>{/each}
+        </select>
+      </label>
+    {/if}
+    <details>
+      <summary>More</summary>
+      {@render field("air_draught_m", "Air draught (m, stored only)", "decimal", f)}
+      {@render field("deadweight_t", "Deadweight (t, stored only)", "decimal", f)}
+    </details>
+    <button class="primary" data-testid="custom-size" disabled={!canSize} onclick={sizeCustom}>Size</button>
+    {#each check?.warnings ?? [] as w}<p class="warn" data-testid="custom-warning">{w}</p>{/each}
+  </fieldset>
 {/snippet}
 
 <section aria-label="Rule Sets and vessel">
@@ -181,19 +295,24 @@
   <label>
     Vessel class
     <input type="search" aria-label="Search vessel classes" data-testid="vessel-search" placeholder="search: id, name, family or region" bind:value={vesselSearch} />
-    <select aria-label="Vessel class" bind:value={vessel} onchange={sendVessel}>
+    <select aria-label="Vessel class" value={vessel} onchange={(e) => chooseVessel(e.currentTarget.value)}>
       {#each vesselGroups as [family, vs] (family)}
         <optgroup label={family}>
           {#each vs as v (v.id)}<option value={v.id}>{v.label}</option>{/each}
         </optgroup>
       {/each}
+      <option value={CUSTOM} data-testid="custom-vessel-option">Custom vessel…</option>
     </select>
     {#if vesselSearch.trim()}<span class="dim" data-testid="vessel-search-count">{vesselCount} of {choices?.vessels.length ?? 0} classes</span>{/if}
   </label>
-  <label>
-    Draught (m)
-    <input aria-label="Draught" inputmode="decimal" placeholder="vessel default" bind:value={draught} oninput={sendVessel} />
-  </label>
+  {#if custom}
+    {@render customForm(custom)}
+  {:else}
+    <label>
+      Draught (m)
+      <input aria-label="Draught" inputmode="decimal" placeholder="vessel default" bind:value={draught} oninput={sendVessel} />
+    </label>
+  {/if}
 
   {#if shape}
     <table class="shape" data-testid="channel-shape">
@@ -203,7 +322,7 @@
         <tr><th>Bottom width</th><td data-testid="bottom-width">{fmt(shape.bottom_width_straight_m)} m</td></tr>
         <tr><th>Minimum bend radius</th><td data-testid="min-radius">{fmt(shape.min_bend_radius_m, 0)} m</td></tr>
         <tr><th>Design depth</th><td data-testid="design-depth">{fmt(shape.design_depth_m, 2)} m</td></tr>
-        <tr><th>Vessel</th><td>{fmt(shape.loa_m)} x {fmt(shape.beam_m)} m, draught {fmt(shape.draught_m, 2)} m</td></tr>
+        <tr><th>Vessel</th><td data-testid="shape-vessel">{#if shape.vessel_label}{shape.vessel_label}{:else}{fmt(shape.loa_m)} x {fmt(shape.beam_m)} m, draught {fmt(shape.draught_m, 2)} m{/if}</td></tr>
       </tbody>
     </table>
     {#each shape.warnings as w}<p class="warn">{w}</p>{/each}
@@ -271,5 +390,8 @@
   .warn::before { content: "! "; font-weight: 700; }
   .notice { margin: var(--sp-2) 0 0; padding: var(--sp-1) var(--sp-2); font-size: var(--fs-12); color: var(--warn); background: var(--warn-soft); }
   .dim { color: var(--ink-3); }
+  .refused { color: var(--fail); font-size: var(--fs-12); }
+  input[aria-invalid="true"] { border-color: var(--fail); }
+  details summary { font-size: var(--fs-12); color: var(--ink-2); cursor: pointer; margin: var(--sp-1) 0; }
   fieldset .dim { margin: var(--sp-1) 0 0; font-size: var(--fs-12); }
 </style>
