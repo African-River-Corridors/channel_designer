@@ -27,7 +27,7 @@ fn pts(v: &Value) -> Vec<Pt> {
 /// older file: the message says to rebuild the design.
 #[test]
 fn a_pre_0005_document_is_refused_with_a_message_to_rebuild() {
-    let text = include_str!("data/pre-0005.cdesign");
+    let text = include_str!("data/pre-0005.owd");
     let old: Value = serde_json::from_str(text).unwrap();
     assert_eq!(old["format_version"], 1);
     let e = Session::open(text).unwrap_err().to_string();

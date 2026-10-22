@@ -5,6 +5,9 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **Removed: the old-name shims (spec 0006, T10).** `import channel_designer`, the `cdesign` command and the
+  ability to open `.cdesign` files are gone; use `import owd`, `owd` and `.owd`. A `.cdesign` file now gives an
+  error that says to rename it to `.owd` (the content is the same).
 - **The old `Ruleset` path is gone (spec 0007, T8 part 1).** Channel sizing goes through the Rule Sets only. Removed
   from Rust: `Ruleset`, `RulesetRegistry`, `global_rulesets`, `channel_shape(registry, ruleset_id, …)` and the
   parity-only code; the engine path's numbers are now pinned by a snapshot the old code wrote

@@ -108,6 +108,7 @@ pub(crate) fn write(path: &str, text: &str) -> Result {
 }
 
 pub(crate) fn open(path: &str) -> core::result::Result<Session, Failure> {
+    owd_format::design::check_file_name(path).map_err(from_design)?;
     Session::open(&read(path)?).map_err(from_design)
 }
 
@@ -222,11 +223,9 @@ pub fn new(file: &str, title: &str, date: Option<&str>, json_mode: bool) -> Resu
     if title.trim().is_empty() {
         return Err(input_error("the title must not be empty"));
     }
+    owd_format::design::check_file_name(file).map_err(from_design)?;
     let s = Session::new(title, &date);
     write(file, &s.to_text())?;
-    if file.ends_with(".cdesign") {
-        eprintln!("owd: warning: .cdesign is the old extension; new files use .owd");
-    }
     say(
         file == "-",
         json_mode,
@@ -1523,6 +1522,7 @@ pub fn run(doc: &str, files: &[String], output: &Option<String>, json_mode: bool
 }
 
 pub fn validate(doc: &str, json_mode: bool) -> Result {
+    owd_format::design::check_file_name(doc).map_err(from_design)?;
     let text = read(doc)?;
     let errors = match Session::open(&text) {
         Ok(_) => Vec::new(),

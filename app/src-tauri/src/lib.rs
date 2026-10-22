@@ -79,9 +79,9 @@ fn confirm_discard(app: &AppHandle, state: &Shared) -> Result<bool, String> {
 }
 
 /// Ask for a file to open. `None` when the user cancels.
-/// What the open dialog offers: `.owd`, and `.cdesign`, the extension before the rename (spec 0006).
-/// A `.cdesign` file has the same contents.
-const OPEN_EXTENSIONS: [&str; 2] = ["owd", "cdesign"];
+/// What the open dialog offers. A file with another name that is still picked is opened by
+/// `AppState::open`, which refuses the old extension with a message to rename the file (spec 0006).
+const OPEN_EXTENSIONS: [&str; 1] = ["owd"];
 /// What a save writes.
 const SAVE_EXTENSION: &str = "owd";
 
@@ -731,7 +731,8 @@ mod tests {
     use super::{OPEN_EXTENSIONS, SAVE_EXTENSION};
 
     /// Spec 0006: the app is Open Waterway Designer, with its own bundle identifier. The old
-    /// identifier would give the app a second data folder, so no file may keep it.
+    /// identifier would give the app a second data folder; the leftover-names check
+    /// (`tools/old_names.py`) keeps it, and the old name, out of every file.
     #[test]
     fn the_bundle_config_holds_the_new_name_and_identifier() {
         let text = include_str!("../tauri.conf.json");
@@ -742,16 +743,11 @@ mod tests {
             "org.africanrivercorridors.openwaterwaydesigner"
         );
         assert_eq!(conf["app"]["windows"][0]["title"], "Open Waterway Designer");
-        assert!(
-            !text.contains("channeldesigner"),
-            "the old identifier is gone"
-        );
-        assert!(!text.contains("Channel Designer"), "the old name is gone");
     }
 
     #[test]
-    fn the_dialogs_open_owd_and_cdesign_and_save_owd() {
-        assert_eq!(OPEN_EXTENSIONS, ["owd", "cdesign"]);
+    fn the_dialogs_open_and_save_owd_only() {
+        assert_eq!(OPEN_EXTENSIONS, ["owd"]);
         assert_eq!(SAVE_EXTENSION, "owd");
     }
 }

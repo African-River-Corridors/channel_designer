@@ -3,9 +3,9 @@
     python tools/old_names.py
 
 The tool was called `channel_designer` until 2026-10-21 (command `cdesign`, file extension `.cdesign`,
-crates `cd-*`, app "Channel Designer"). Its names are now `owd` / Open Waterway Designer. For one release
-the old names still work, so a few files must keep them: the shims and their tests, the legacy fixture,
-history. This script fails when an old name shows up anywhere else.
+crates `cd-*`, app "Channel Designer"). Its names are now `owd` / Open Waterway Designer. The old names
+no longer work (spec 0006, T10), so only a few files may keep them: history, and the error that tells
+the owner of a `.cdesign` file to rename it. This script fails when an old name shows up anywhere else.
 
 It reads every file git knows (tracked, or new and not ignored) and looks for the old names. A file
 may hold them only if `tools/old_names_allowlist.txt` says so, with a reason. The old repo URL

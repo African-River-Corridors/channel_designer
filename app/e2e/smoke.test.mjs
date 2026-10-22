@@ -294,6 +294,15 @@ describe("Open Waterway Designer app smoke test", () => {
     await until("volumes to go stale", async () => (await text("status-volumes")) === "stale");
     assert.equal(await text("status-alignment"), "stale");
   });
+  it("refuses a .cdesign file with a message to rename it to .owd", async () => {
+    // The old name of the design file is no longer read (spec 0006, T10); the content is the same.
+    const file = path.join(WORK, "old-name.cdesign");
+    fs.copyFileSync(EXAMPLE, file);
+    answer("open.txt", file);
+    await click("Open");
+    await until("the refusal to be shown", async () => ((await (await browser.$("[data-testid=error]")).getText()) ?? "").includes("rename it to `.owd`"));
+    assert.doesNotMatch(await fileLabel(), /old-name/);
+  });
   it("sorts a failing option first with a red mark and its numbers, and selecting a row selects the option on the map", async () => {
     // Two options in the document, the passing one first. The failing one reads 222 m against R_min 330 m.
     const option = (id, name, ok, measured, y) => ({
@@ -304,9 +313,9 @@ describe("Open Waterway Designer app smoke test", () => {
     });
     const doc = JSON.parse(fs.readFileSync(EXAMPLE, "utf8"));
     doc.options = [option("rolling-circle", "Rolling circle", true, 340, 600000), option("reroute", "Least-cost re-route", false, 222, 600150)];
-    const file = path.join(WORK, "two-options.cdesign");
+    const file = path.join(WORK, "two-options.owd");
     fs.writeFileSync(file, JSON.stringify(doc, null, 2));
-    await open(file, "two-options.cdesign");
+    await open(file, "two-options.owd");
     await until("the table to fill", async () => (await browser.$$("[data-testid=option-row]")).length === 2);
     const rows = await browser.execute(() =>
       [...document.querySelectorAll("[data-testid=option-row]")].map((r) => ({

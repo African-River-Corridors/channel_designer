@@ -15,11 +15,6 @@ path = "src/lib.rs"
 name = "owd"
 path = "src/main.rs"
 
-# The old name, an alias of `owd` for one release (spec 0006).
-[[bin]]
-name = "cdesign"
-path = "src/bin/cdesign.rs"
-
 [dependencies]
 owd-format = { workspace = true, features = ["imagery"] }
 owd-reach.workspace = true

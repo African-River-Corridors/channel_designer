@@ -121,6 +121,21 @@ impl core::fmt::Display for DesignError {
 
 impl std::error::Error for DesignError {}
 
+/// Refuse a design file named with the old extension, `.cdesign` (spec 0006, T10). Its content is a
+/// `.owd` file's, but the old name is no longer read: the message says to rename the file. Every
+/// caller that opens or creates a design by file name checks the name here first.
+pub fn check_file_name(name: &str) -> Result<(), DesignError> {
+    let old = std::path::Path::new(name)
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("cdesign"));
+    if old {
+        return Err(DesignError::Input(format!(
+            "{name}: `.cdesign` is the old name of the design file: rename it to `.owd` (the content is the same)"
+        )));
+    }
+    Ok(())
+}
+
 /// The state of a channel design.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Status {
@@ -199,7 +214,7 @@ impl Session {
         }
     }
 
-    /// Parse and validate `.owd` text (a `.cdesign` file has the same contents).
+    /// Parse and validate `.owd` text.
     pub fn open(text: &str) -> Result<Session, DesignError> {
         let doc: Value = serde_json::from_str(text)
             .map_err(|e| DesignError::Input(format!("the file is not valid JSON: {e}")))?;
@@ -630,6 +645,18 @@ mod tests {
         assert_eq!(date_from_unix(951_782_400), "2000-02-29"); // a leap day
         assert_eq!(date_from_unix(1_792_000_000), "2026-10-14");
         assert_eq!(date_from_unix(4_107_542_400), "2100-03-01"); // 2100 is not a leap year
+    }
+
+    #[test]
+    fn a_cdesign_file_name_is_refused_with_a_message_to_rename_it_to_owd() {
+        for name in ["x.cdesign", "dir/river.CDesign"] {
+            let e = check_file_name(name).unwrap_err().to_string();
+            assert!(e.starts_with(name), "{e}");
+            assert!(e.contains("rename it to `.owd`"), "{e}");
+        }
+        for name in ["x.owd", "-", "cdesign", "x.cdesign.owd", "notes.txt"] {
+            assert!(check_file_name(name).is_ok(), "{name}");
+        }
     }
 
     fn with_sizing_fresh() -> Session {

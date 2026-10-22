@@ -2,7 +2,7 @@
 
 Navigation channel design for inland waterways, as code. Give it a river and a vessel class;
 it sizes the channel to a named standard, finds an alignment that the vessel can sail, and
-measures the cut and dredge volumes.
+measures the cut and dredge volumes. Formerly `channel_designer`.
 
 > **Screening tool.** Not for construction. No design warranty. Check every number against the
 > standard and your own design basis before you rely on it.
@@ -65,21 +65,6 @@ Optional extras:
 | `[dev]` | pytest | running the tests |
 
 The `[drawings]` extra is gone: drawings are part of the package now (spec 0004).
-
-## Renamed from channel_designer
-
-The tool was called `channel_designer`. It is now Open Waterway Designer (OWD). For one release
-the old names still work, and then they go:
-
-| Was | Is now | Old name works until |
-|---|---|---|
-| `import channel_designer` | `import owd` (the old import gives a `DeprecationWarning`) | the release after this rename |
-| `cdesign` command | `owd` (`cdesign` is an alias that prints a note) | the release after this rename |
-| `.cdesign` file | `.owd` (a `.cdesign` file opens; saves write `.owd`) | the release after this rename |
-| `channel_designer` on pip | `open-waterway-designer` | not published before the rename |
-| app "Channel Designer" | "Open Waterway Designer" (new bundle identifier) | not applicable |
-
-Results do not change with the rename. The CHANGELOG says what to do to move over.
 
 ## Worked example
 

@@ -124,7 +124,9 @@ impl AppState {
 
     /// Open `.owd` text that was read from `path`. `dem_bytes` is the DEM file the document
     /// names, if the shell found it next to the document.
+    /// A path with the old file extension is refused with a message to rename it (spec 0006).
     pub fn open(path: &Path, text: &str, dem_bytes: Option<&[u8]>) -> Result<AppState, String> {
+        owd_format::design::check_file_name(&path.to_string_lossy()).map_err(message)?;
         let session = Session::open(text).map_err(message)?;
         let warnings = session.dem_warning(dem_bytes).into_iter().collect();
         let dem_file = session
