@@ -51,6 +51,24 @@ pub fn default_dry_months(lat: f64) -> Vec<u32> {
     }
 }
 
+/// The request for one scene by its id, from the search endpoint (`.../v1/search` gives
+/// `.../v1/collections/sentinel-2-l2a/items/<id>`).
+pub fn item_url(search_endpoint: &str, id: &str) -> String {
+    let base = search_endpoint.trim_end_matches('/');
+    let base = base.strip_suffix("/search").unwrap_or(base);
+    format!("{base}/collections/sentinel-2-l2a/items/{id}")
+}
+
+/// The scene of a single STAC item (the answer to [`item_url`]).
+pub fn parse_item(body: &[u8]) -> Result<Scene, ReachError> {
+    let mut wrapped = b"{\"features\":[".to_vec();
+    wrapped.extend_from_slice(body);
+    wrapped.extend_from_slice(b"]}");
+    parse_scenes(&wrapped)?.into_iter().next().ok_or_else(|| {
+        ReachError::Parse("the STAC item has no green, red, NIR or SWIR band".into())
+    })
+}
+
 /// The search request for scenes over a box `[west, south, east, north]` between two dates
 /// (`YYYY-MM-DD`), with at most `max_cloud_pct` cloud. The cloud limit goes to the server: over two
 /// years a box can match hundreds of scenes, more than one page holds, and the clear ones must not

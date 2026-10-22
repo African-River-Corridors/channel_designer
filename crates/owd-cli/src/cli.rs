@@ -451,6 +451,35 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Draw the banks, the centreline and the low-confidence stretches over the Sentinel-2 true-colour
+    /// image of the scenes the banks came from, as a PNG (with a legend) and a KMZ, to check a reach
+    /// by eye (spec 0013). Needs the network. At most 30 km across: draw a long reach in parts.
+    QaOverlay {
+        /// The channel design.
+        doc: String,
+        /// The PNG to write.
+        #[arg(long, value_name = "FILE")]
+        png: String,
+        /// Also write a KMZ for Google Earth.
+        #[arg(long, value_name = "FILE")]
+        kmz: Option<String>,
+        /// Start at this chainage of the centreline, in km.
+        #[arg(long, value_name = "KM")]
+        from_km: Option<f64>,
+        /// End at this chainage of the centreline, in km.
+        #[arg(long, value_name = "KM")]
+        to_km: Option<f64>,
+        /// Draw on this scene (a Sentinel-2 L2A id) instead of the ones the document names. Repeat
+        /// for more: later scenes fill where earlier ones have no data.
+        #[arg(long, value_name = "ID")]
+        scene: Vec<String>,
+        /// The STAC search endpoint (default: Earth Search).
+        #[arg(long, value_name = "URL")]
+        stac: Option<String>,
+        /// Print a machine-readable result as JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Say what vessel class fits the river as it is: for every class, under each ruleset, whether
     /// it fits by width and radius, and the stretches that stop it. Width and radius only, no depth.
     /// The answer is kept in the document and shows as stale when the banks change; it never
@@ -640,6 +669,25 @@ pub fn main() -> ExitCode {
             json: out.json,
         }),
         Command::CheckBanks { doc, json } => crate::check_banks::check_banks(&doc, json),
+        Command::QaOverlay {
+            doc,
+            png,
+            kmz,
+            from_km,
+            to_km,
+            scene,
+            stac,
+            json,
+        } => crate::qa_overlay::qa_overlay(crate::qa_overlay::OverlayFlags {
+            doc,
+            png,
+            kmz,
+            from_km,
+            to_km,
+            scene,
+            stac,
+            json,
+        }),
         Command::Fits {
             doc,
             ruleset,
