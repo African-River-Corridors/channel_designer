@@ -212,6 +212,215 @@ pub fn cross_section(p: Pt, n: Pt, water: &[Polygon]) -> (f64, f64) {
     (pos, neg)
 }
 
+/// [`cross_section`] for many stations in one water: the same distances, found through a grid of
+/// the rings' segments. The ray is walked through the grid cell by cell, each way from `p`, and a
+/// way stops once the next cell starts farther than its nearest hit so far (with a metre to spare,
+/// so a hit is never missed for a rounding in the cell walk): every segment that could be nearest
+/// has then been read, with the very formula [`cross_section`] reads it with.
+pub struct WaterIndex<'a> {
+    water: &'a [Polygon],
+    inside: crate::geom::overlay::PolygonIndex,
+    segs: Vec<(Pt, Pt)>,
+    origin: Pt,
+    cell: f64,
+    cols: i64,
+    rows: i64,
+    cells: Vec<Vec<u32>>,
+}
+
+impl<'a> WaterIndex<'a> {
+    pub fn new(water: &'a [Polygon]) -> WaterIndex<'a> {
+        let segs: Vec<(Pt, Pt)> = water
+            .iter()
+            .flat_map(|poly| core::iter::once(&poly.exterior).chain(&poly.holes))
+            .flat_map(|ring| ring.windows(2).map(|w| (w[0], w[1])))
+            .collect();
+        let (mut lo, mut hi) = ([f64::MAX; 2], [f64::MIN; 2]);
+        for (a, b) in &segs {
+            for q in [a, b] {
+                for k in 0..2 {
+                    lo[k] = lo[k].min(q[k]);
+                    hi[k] = hi[k].max(q[k]);
+                }
+            }
+        }
+        let span = (hi[0] - lo[0]).max(hi[1] - lo[1]).max(1.0);
+        let cell = (span / (segs.len().max(1) as f64).sqrt()).max(1.0);
+        let cols = ((hi[0] - lo[0]) / cell).floor() as i64 + 1;
+        let rows = ((hi[1] - lo[1]) / cell).floor() as i64 + 1;
+        let mut cells = vec![
+            Vec::new();
+            if segs.is_empty() {
+                0
+            } else {
+                (cols * rows) as usize
+            }
+        ];
+        for (i, (a, b)) in segs.iter().enumerate() {
+            let c0 = ((a[0].min(b[0]) - lo[0]) / cell).floor() as i64;
+            let c1 = ((a[0].max(b[0]) - lo[0]) / cell).floor() as i64;
+            let r0 = ((a[1].min(b[1]) - lo[1]) / cell).floor() as i64;
+            let r1 = ((a[1].max(b[1]) - lo[1]) / cell).floor() as i64;
+            for r in r0..=r1.min(rows - 1) {
+                for c in c0..=c1.min(cols - 1) {
+                    cells[(r * cols + c) as usize].push(i as u32);
+                }
+            }
+        }
+        WaterIndex {
+            water,
+            inside: crate::geom::overlay::PolygonIndex::new(water),
+            segs,
+            origin: lo,
+            cell,
+            cols,
+            rows,
+            cells,
+        }
+    }
+
+    /// The hit of the ray `p + u n` on segment `i`, as [`cross_section`] computes it.
+    fn hit(&self, i: usize, p: Pt, n: Pt) -> Option<f64> {
+        let (a, b) = self.segs[i];
+        let d = [b[0] - a[0], b[1] - a[1]];
+        let den = n[0] * d[1] - n[1] * d[0];
+        if den == 0.0 {
+            return None;
+        }
+        let ap = [a[0] - p[0], a[1] - p[1]];
+        let u = (ap[0] * d[1] - ap[1] * d[0]) / den;
+        let v = (ap[0] * n[1] - ap[1] * n[0]) / den;
+        (0.0..=1.0).contains(&v).then_some(u)
+    }
+
+    /// [`water_width_at`].
+    pub(crate) fn width_at(&self, c: &Chained, s: f64) -> f64 {
+        let t = c.direction(s, STATION_STEP_M / 2.0);
+        let (l, r) = self.cross_section(c.at(s), [-t[1], t[0]]);
+        l + r
+    }
+
+    /// [`cross_section`].
+    pub fn cross_section(&self, p: Pt, n: Pt) -> (f64, f64) {
+        if !self.inside.contains_xy(p) {
+            return (0.0, 0.0);
+        }
+        if !(n[0].is_finite() && n[1].is_finite()) || n == [0.0, 0.0] || self.segs.is_empty() {
+            return cross_section(p, n, self.water);
+        }
+        let (mut pos, mut neg) = (f64::INFINITY, f64::INFINITY);
+        let mut seen = vec![false; self.segs.len()];
+        for dir in [1.0, -1.0] {
+            let m = [n[0] * dir, n[1] * dir];
+            // Amanatides-Woo: the cells the ray from `p` along `m` passes through, in order.
+            let fx = (p[0] - self.origin[0]) / self.cell;
+            let fy = (p[1] - self.origin[1]) / self.cell;
+            let (mut cx, mut cy) = (fx.floor() as i64, fy.floor() as i64);
+            let step_x: i64 = if m[0] > 0.0 { 1 } else { -1 };
+            let step_y: i64 = if m[1] > 0.0 { 1 } else { -1 };
+            let next = |f: f64, c: i64, md: f64, st: i64| {
+                if md == 0.0 {
+                    f64::INFINITY
+                } else {
+                    let edge = if st > 0 { (c + 1) as f64 } else { c as f64 };
+                    (edge - f) * self.cell / md
+                }
+            };
+            let mut t_x = next(fx, cx, m[0], step_x);
+            let mut t_y = next(fy, cy, m[1], step_y);
+            let dt_x = if m[0] == 0.0 {
+                f64::INFINITY
+            } else {
+                self.cell / m[0].abs()
+            };
+            let dt_y = if m[1] == 0.0 {
+                f64::INFINITY
+            } else {
+                self.cell / m[1].abs()
+            };
+            let mut t_enter = 0.0;
+            loop {
+                let best = if dir > 0.0 { pos } else { neg };
+                if t_enter > best + 1.0 {
+                    break;
+                }
+                if cx >= 0 && cy >= 0 && cx < self.cols && cy < self.rows {
+                    for &i in &self.cells[(cy * self.cols + cx) as usize] {
+                        let i = i as usize;
+                        if seen[i] {
+                            continue;
+                        }
+                        seen[i] = true;
+                        if let Some(u) = self.hit(i, p, n) {
+                            if u >= 0.0 {
+                                pos = pos.min(u);
+                            } else {
+                                neg = neg.min(-u);
+                            }
+                        }
+                    }
+                } else {
+                    // Outside the grid and moving away from it: nothing more to read.
+                    let away_x = (cx < 0 && step_x < 0)
+                        || (cx >= self.cols && step_x > 0)
+                        || m[0] == 0.0 && (cx < 0 || cx >= self.cols);
+                    let away_y = (cy < 0 && step_y < 0)
+                        || (cy >= self.rows && step_y > 0)
+                        || m[1] == 0.0 && (cy < 0 || cy >= self.rows);
+                    if away_x || away_y {
+                        break;
+                    }
+                }
+                if t_x < t_y {
+                    t_enter = t_x;
+                    t_x += dt_x;
+                    cx += step_x;
+                } else {
+                    t_enter = t_y;
+                    t_y += dt_y;
+                    cy += step_y;
+                }
+            }
+        }
+        (pos, neg)
+    }
+}
+
+/// [`local_radius_on`] for many chainages of one line: the line chained once.
+pub struct RadiusOn<'a>(Chained<'a>);
+
+impl<'a> RadiusOn<'a> {
+    pub fn new(line: &'a [Pt]) -> RadiusOn<'a> {
+        RadiusOn(Chained::new(line))
+    }
+
+    /// [`local_radius_on`] at chainage `s`, read on `chord_m`.
+    pub fn at(&self, s: f64, chord_m: f64) -> f64 {
+        self.0.local_radius(s, chord_m)
+    }
+}
+
+/// The width of the water across a line at its stations, for many stations: [`water_width_on`],
+/// with the line chained once and the water indexed once.
+pub struct WaterWidth<'a> {
+    line: Chained<'a>,
+    water: WaterIndex<'a>,
+}
+
+impl<'a> WaterWidth<'a> {
+    pub fn new(line: &'a [Pt], water: &'a [Polygon]) -> WaterWidth<'a> {
+        WaterWidth {
+            line: Chained::new(line),
+            water: WaterIndex::new(water),
+        }
+    }
+
+    /// [`water_width_on`] at chainage `s`.
+    pub fn at(&self, s: f64) -> f64 {
+        self.water.width_at(&self.line, s)
+    }
+}
+
 /// The width of the water across `line` at chainage `s` (m): the cross-section at right angles
 /// to the line. Zero when the station is not in the water.
 pub(crate) fn water_width_at(c: &Chained, s: f64, water: &[Polygon]) -> f64 {
@@ -254,9 +463,10 @@ pub fn width_check(
     }
     let c = Chained::new(line);
     let len = c.length();
+    let index = WaterIndex::new(water);
     let status = |s: f64| -> Option<StretchReason> {
         let r = c.local_radius(s, chord_m);
-        if water_width_at(&c, s, water) < shape.bottom_width_at_m(r) {
+        if index.width_at(&c, s) < shape.bottom_width_at_m(r) {
             Some(StretchReason::TooNarrow)
         } else if !radius_ok(r, r_min) {
             Some(StretchReason::RMinNotPossible)
@@ -485,5 +695,101 @@ mod tests {
         };
         assert!(arc(r - 0.5).iter().all(|p| contains_xy(&nav, *p)));
         assert!(!arc(r + 0.5).iter().all(|p| contains_xy(&nav, *p)));
+    }
+}
+
+#[cfg(test)]
+mod index_tests {
+    //! Label: property (the indexes give what the scans give, to the last bit)
+    use super::*;
+    use crate::geom::overlay::{PolygonIndex, locate_all};
+
+    /// A river-like polygon: banks either side of a wandering line, with a hole (an island) and
+    /// a run of horizontal edges.
+    fn river(next: &mut impl FnMut() -> f64, n: usize) -> Polygon {
+        let (mut left, mut right) = (Vec::new(), Vec::new());
+        let (mut x, mut y, mut h): (f64, f64, f64) = (0.0, 0.0, 0.3);
+        for i in 0..n {
+            h += (next() - 0.5) * 0.5;
+            x += 40.0 * libm::cos(h);
+            y += 40.0 * libm::sin(h);
+            let w = 80.0 + next() * 200.0;
+            let (nx, ny) = (-libm::sin(h), libm::cos(h));
+            // Every 15th pair at a round height, so horizontal edges and exact ties occur.
+            let yy = if i % 15 == 0 { y.round() } else { y };
+            left.push([x + nx * w, yy + ny * w]);
+            right.push([x - nx * w, yy - ny * w]);
+        }
+        let mut ring = left.clone();
+        ring.extend(right.into_iter().rev());
+        ring.push(ring[0]);
+        let c = left[n / 2];
+        let island = vec![
+            [c[0] - 30.0, c[1] - 30.0],
+            [c[0] - 10.0, c[1] - 30.0],
+            [c[0] - 10.0, c[1] - 10.0],
+            [c[0] - 30.0, c[1] - 10.0],
+            [c[0] - 30.0, c[1] - 30.0],
+        ];
+        Polygon {
+            exterior: ring,
+            holes: vec![island],
+        }
+    }
+
+    #[test]
+    fn the_indexes_locate_and_cross_as_the_scans_do() {
+        let mut x: u64 = 3;
+        let mut next = || {
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (x >> 11) as f64 / (1u64 << 53) as f64
+        };
+        for case in 0..25 {
+            let n = 10 + (next() * 300.0) as usize;
+            let water = vec![river(&mut next, n)];
+            let idx = PolygonIndex::new(&water);
+            let wi = WaterIndex::new(&water);
+            let ring = water[0].exterior.clone();
+            for k in 0..600 {
+                let p = if k % 10 == 0 {
+                    // On a vertex, or on a horizontal level of one.
+                    let v = ring[(next() * ring.len() as f64) as usize % ring.len()];
+                    if k % 20 == 0 {
+                        v
+                    } else {
+                        [v[0] + (next() - 0.5) * 50.0, v[1]]
+                    }
+                } else {
+                    let v = ring[(next() * ring.len() as f64) as usize % ring.len()];
+                    [v[0] + (next() - 0.5) * 600.0, v[1] + (next() - 0.5) * 600.0]
+                };
+                assert_eq!(
+                    idx.locate_all(p),
+                    locate_all(p, &water),
+                    "case {case}, {p:?}"
+                );
+                let a = next() * std::f64::consts::TAU;
+                let dir = [libm::cos(a), libm::sin(a)];
+                let (u, v) = wi.cross_section(p, dir);
+                let (u0, v0) = cross_section(p, dir, &water);
+                assert_eq!(
+                    (u.to_bits(), v.to_bits()),
+                    (u0.to_bits(), v0.to_bits()),
+                    "case {case}, {p:?} {dir:?}"
+                );
+                // Axis-aligned rays too.
+                for d in [[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0], [0.0, -1.0]] {
+                    let (u, v) = wi.cross_section(p, d);
+                    let (u0, v0) = cross_section(p, d, &water);
+                    assert_eq!(
+                        (u.to_bits(), v.to_bits()),
+                        (u0.to_bits(), v0.to_bits()),
+                        "case {case}, {p:?} {d:?}"
+                    );
+                }
+            }
+        }
     }
 }
