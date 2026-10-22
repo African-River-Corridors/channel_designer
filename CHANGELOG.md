@@ -35,6 +35,10 @@ versions follow [Semantic Versioning](https://semver.org/).
   scene, and gives the notice once per year of imagery. The scene search now asks the server for the cloud limit:
   over two years a box could match hundreds of scenes, more than the one page read, and the clearest could be missed.
   A reach of 15 km or less is fitted exactly as before.
+- **The full `fits` answer runs its classes at once (spec 0012, #267).** On the Sassandra (a 178 km centreline, 12
+  classes) the full answer took 44 minutes, one class after another. The classes now run in parallel, each on its
+  own copy of the design, and the answer is written back in the same order: it is the same answer, byte for byte.
+  In the browser they still run one after another.
 - **Orthophoto and EOxCloudless imagery on plan sheets (spec 0004, T6).** Plan sheets can now be drawn over
   other backdrops.
   - `owd draw --orthophoto FILE` draws them over the user's orthophoto: an 8 bit RGB GeoTIFF in WGS84 or the

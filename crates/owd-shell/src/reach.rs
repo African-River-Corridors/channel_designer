@@ -315,7 +315,7 @@ impl AppState {
             None,
             sampler
                 .as_ref()
-                .map(|f| f as &dyn Fn(&[f64], &[f64]) -> Vec<f64>),
+                .map(|f| f as &(dyn Fn(&[f64], &[f64]) -> Vec<f64> + Sync)),
         )
         .map_err(err)?;
         self.replace_session(s);

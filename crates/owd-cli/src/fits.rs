@@ -126,7 +126,7 @@ pub fn fits(
             (!rulesets.is_empty()).then_some(rulesets),
             sampler
                 .as_ref()
-                .map(|s| s as &dyn Fn(&[f64], &[f64]) -> Vec<f64>),
+                .map(|s| s as &(dyn Fn(&[f64], &[f64]) -> Vec<f64> + Sync)),
         )
         .map_err(from_design)?;
     let dest = destination(doc, output);

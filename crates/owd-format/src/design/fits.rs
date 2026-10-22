@@ -6,7 +6,49 @@
 //! the banks, the centreline or the project CRS makes it stale, and only an explicit run
 //! (`owd fits`) replaces it. Its status is worked out on load from its recorded dependency hash.
 
-use super::alignment::Terrain;
+/// A DEM sampler that the classes of a full answer can share across threads.
+pub type SyncTerrain<'a> = &'a (dyn Fn(&[f64], &[f64]) -> Vec<f64> + Sync);
+
+/// Run `f` on every job and give the answers in the jobs' order: on as many threads as the machine
+/// has when `parallel` (native), or one after another (always in wasm, which has no threads here).
+fn run_all<J: Sync, T: Send>(jobs: &[J], f: impl Fn(&J) -> T + Sync, parallel: bool) -> Vec<T> {
+    #[cfg(not(target_arch = "wasm32"))]
+    if parallel {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let threads = std::thread::available_parallelism()
+            .map_or(1, |n| n.get())
+            .min(jobs.len().max(1));
+        let next = AtomicUsize::new(0);
+        let done: Vec<std::sync::Mutex<Option<T>>> =
+            jobs.iter().map(|_| std::sync::Mutex::new(None)).collect();
+        std::thread::scope(|scope| {
+            for _ in 0..threads {
+                scope.spawn(|| {
+                    loop {
+                        let k = next.fetch_add(1, Ordering::Relaxed);
+                        let Some(job) = jobs.get(k) else { break };
+                        let answer = f(job);
+                        *done[k].lock().expect("no worker panicked") = Some(answer);
+                    }
+                });
+            }
+        });
+        done.into_iter()
+            .map(|m| {
+                m.into_inner()
+                    .expect("no worker panicked")
+                    .expect("every job ran")
+            })
+            .collect()
+    } else {
+        jobs.iter().map(f).collect()
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = parallel;
+        jobs.iter().map(f).collect()
+    }
+}
 use super::hash::hash_value;
 use super::session::{DesignError, ENGINE_VERSION, Session, StageStatus};
 use owd_core::fits::{ClassFit, Fits, PLAN_ONLY_LABEL, plan_only_fits};
@@ -131,7 +173,7 @@ impl Session {
     pub fn run_fits_with(
         &mut self,
         rulesets: Option<&[String]>,
-        terrain: Option<Terrain>,
+        terrain: Option<SyncTerrain>,
     ) -> Result<(), DesignError> {
         let ids: Vec<String> = match rulesets {
             Some(r) if !r.is_empty() => r.to_vec(),
@@ -151,7 +193,7 @@ impl Session {
         if let Some(t) =
             terrain.filter(|_| self.bed_model_value().is_some() && self.water_profile().is_some())
         {
-            self.add_full(&mut results, &line, t)?;
+            self.add_full(&mut results, &line, t, true)?;
         }
         self.doc["fits"] = json!({
             "settings": {"rulesets": ids},
@@ -170,7 +212,8 @@ impl Session {
         &self,
         results: &mut Value,
         centre: &[[f64; 2]],
-        terrain: Terrain,
+        terrain: SyncTerrain,
+        parallel: bool,
     ) -> Result<(), DesignError> {
         let option = json!({
             "id": "river",
@@ -180,38 +223,136 @@ impl Session {
             "checks": {"radius_ok": true},
         });
         let note = self.depth_note().unwrap_or("");
+        // One job per class under each ruleset. Each runs on its own copy of the design, so the
+        // jobs share nothing but read-only inputs and can run at once; the answer is written back
+        // in the same order whatever order they finish in.
+        let jobs: Vec<(usize, usize, String, String)> = results["rulesets"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .enumerate()
+            .flat_map(|(i, rs)| {
+                let id = rs["ruleset_id"].as_str().unwrap_or_default().to_string();
+                rs["classes"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .enumerate()
+                    .map(move |(j, c)| {
+                        let class = c["vessel_standard_id"].as_str().unwrap_or_default();
+                        (i, j, id.clone(), class.to_string())
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        let screen = |id: &str, class: &str| -> Result<Value, DesignError> {
+            let mut sized = self.clone();
+            sized.set_sizing(id, class, None)?;
+            let plan = sized.section_plan(&json!({}))?;
+            let walk = sized.option_sections(&plan, &option, terrain)?;
+            sized.screening_value(&option, &walk, &plan.river, &plan.centre)
+        };
+        let answers = run_all(&jobs, |(_, _, id, class)| screen(id, class), parallel);
+        for ((i, j, _, _), screening) in jobs.iter().zip(answers) {
+            let screening = screening?;
+            let c = &mut results["rulesets"][*i]["classes"][*j];
+            let as_is = screening["verdict"] == "navigable-as-is";
+            c["fits"] = json!(as_is);
+            c["verdict"] = screening["verdict"].clone();
+            c["constraint_stretches"] = screening["constraint_stretches"].clone();
+            c["blocking_not_evaluated"] = screening["blocking_not_evaluated"].clone();
+            c["stretch_count"] = json!(c["constraint_stretches"].as_array().map_or(0, Vec::len));
+            c["label"] = json!(FULL_LABEL);
+            c["depth_basis"] = json!(note);
+        }
         for rs in results["rulesets"].as_array_mut().into_iter().flatten() {
-            let id = rs["ruleset_id"].as_str().unwrap_or_default().to_string();
-            let mut largest: Option<String> = None;
-            for c in rs["classes"].as_array_mut().into_iter().flatten() {
-                let class = c["vessel_standard_id"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_string();
-                let mut sized = self.clone();
-                sized.set_sizing(&id, &class, None)?;
-                let plan = sized.section_plan(&json!({}))?;
-                let walk = sized.option_sections(&plan, &option, terrain)?;
-                let screening = sized.screening_value(&option, &walk, &plan.river, &plan.centre)?;
-                let as_is = screening["verdict"] == "navigable-as-is";
-                c["fits"] = json!(as_is);
-                c["verdict"] = screening["verdict"].clone();
-                c["constraint_stretches"] = screening["constraint_stretches"].clone();
-                c["blocking_not_evaluated"] = screening["blocking_not_evaluated"].clone();
-                c["stretch_count"] =
-                    json!(c["constraint_stretches"].as_array().map_or(0, Vec::len));
-                c["label"] = json!(FULL_LABEL);
-                c["depth_basis"] = json!(note);
-                if as_is {
-                    largest = Some(class);
-                }
-            }
-            rs["largest_fitting"] = json!(largest);
+            let largest = rs["classes"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .rev()
+                .find(|c| c["fits"] == true)
+                .map(|c| c["vessel_standard_id"].clone());
+            rs["largest_fitting"] = largest.unwrap_or(Value::Null);
         }
         results["mode"] = json!("full");
         results["label"] = json!(FULL_LABEL);
         results["notice"] = json!(super::screening::SCREENING_NOTICE);
         results["rules_notice"] = json!(super::screening::UNVERIFIED_NOTICE);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Label: property
+    use super::*;
+    use crate::design::Role;
+
+    #[test]
+    fn the_answers_come_back_in_the_jobs_order_whatever_order_they_finish_in() {
+        let jobs: Vec<u64> = (0..40).collect();
+        // Later jobs finish first.
+        let slow = |k: &u64| {
+            std::thread::sleep(std::time::Duration::from_millis(40 - *k));
+            k * k
+        };
+        assert_eq!(
+            run_all(&jobs, slow, true),
+            jobs.iter().map(|k| k * k).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn the_classes_run_at_once_give_the_answer_they_give_one_after_another() {
+        const UTM30: &str =
+            r#""crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:EPSG::32630"}}"#;
+        let at = |x: f64, y: f64| [x + 500_000.0, y + 600_000.0];
+        let mut s = Session::new("t", "2026-10-22");
+        let polygon = format!(
+            r#"{{"type":"Polygon",{UTM30},"coordinates":[{}]}}"#,
+            json!([
+                at(0.0, -150.0),
+                at(2000.0, -150.0),
+                at(2000.0, 150.0),
+                at(0.0, 150.0),
+                at(0.0, -150.0)
+            ])
+        );
+        // A bend, so the width and radius parts of the walk are not trivial.
+        let centre = format!(
+            r#"{{"type":"LineString",{UTM30},"coordinates":{}}}"#,
+            json!([
+                at(0.0, 0.0),
+                at(800.0, 0.0),
+                at(1000.0, 40.0),
+                at(1200.0, 0.0),
+                at(2000.0, 0.0)
+            ])
+        );
+        s.import(&[
+            (Role::RiverPolygon, polygon.as_str()),
+            (Role::Centreline, centre.as_str()),
+        ])
+        .unwrap();
+        s.set_water_profile(&[[0.0, 10.0]]).unwrap();
+        s.set_bed_model(
+            &[[0.0, 4.0], [900.0, 1.8], [1100.0, 4.0]],
+            Some("dry"),
+            "2026-10-22",
+        )
+        .unwrap();
+        let land = |xs: &[f64], _: &[f64]| vec![12.0; xs.len()];
+        let line = s.river_centreline().unwrap();
+        let base = {
+            let mut probe = s.clone();
+            probe.run_fits(None).unwrap();
+            probe.doc["fits"]["results"].clone()
+        };
+        let (mut a, mut b) = (base.clone(), base);
+        s.add_full(&mut a, &line, &land, true).unwrap();
+        s.add_full(&mut b, &line, &land, false).unwrap();
+        assert_eq!(a.to_string(), b.to_string());
+        assert_eq!(a["mode"], "full");
     }
 }
