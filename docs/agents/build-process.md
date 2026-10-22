@@ -48,7 +48,7 @@ their inputs change, so a skipped job never blocks a merge:
 
 | Job | On a pull request | On main | Other |
 |---|---|---|---|
-| CI `test`, `release-guard`, `drawing-crosscheck` | always | always | weekly, by hand |
+| CI `test` (needs `gate-lint`, `gate-rust` ×3, `gate-python`), `release-guard`, `drawing-crosscheck` | always | always | weekly, by hand |
 | CI `app-linux`, `app-e2e` | `app/**`, the crates the app links, `examples/**`, Cargo files, toolchain, `ci.yml` | always | weekly, by hand |
 | CI `web-parity`, `web-app` | the same, plus `crates/owd-web/**` and the web tools | always | weekly, by hand |
 | App bundles (3 jobs) | `app/**`, the crates the app links, Cargo files, toolchain | the same paths | by hand |
@@ -57,6 +57,12 @@ their inputs change, so a skipped job never blocks a merge:
 | Design impact | always | – | – |
 | CodeQL (`codeql.yml`) | never | always | weekly, by hand |
 | Nightly (every slow test) | its own files | – | daily, by hand |
+
+The required `test` check is a small job that needs the parts of the gate, which run in parallel:
+`gate-lint` (fmt, clippy, old names), `gate-rust` (the Rust tests in 3 nextest hash partitions, the
+doctests in the first) and `gate-python` (pytest). It fails unless every part passed. Each part runs
+`tools/gates.sh` with `GATES_STEPS` (and `GATES_PARTITION`); with neither set the script runs the whole
+gate, as before.
 
 A failed scheduled run (the nightly, the weekly CI run, CodeQL) opens an issue titled "Scheduled run
 failed: <workflow>", or comments on the open one (`scheduled-failure.yml`). `tests/test_workflows.py`
