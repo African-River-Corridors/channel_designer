@@ -242,14 +242,114 @@ fn the_exaggeration_is_stated_on_the_sheet_in_words() {
     }
 }
 
+/// The level axis: the drawn level labels, lowest first, and their step.
+fn level_labels(vp: &Value) -> (Vec<f64>, f64) {
+    let mut z: Vec<f64> = vp["entities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["id"].as_str().unwrap().starts_with("ls-zlabel-"))
+        .map(|e| e["anchor_m"][1].as_f64().unwrap())
+        .collect();
+    z.sort_by(f64::total_cmp);
+    let step = z[1] - z[0];
+    (z, step)
+}
+
+/// The lowest and the highest drawn level of the series.
+fn level_range(s: &Value) -> (f64, f64) {
+    let levels: Vec<f64> = ["bed_m", "water_level_m", "design_invert_m"]
+        .iter()
+        .flat_map(|k| s[*k].as_array().unwrap().iter().filter_map(Value::as_f64))
+        .collect();
+    (
+        levels.iter().copied().fold(f64::MAX, f64::min),
+        levels.iter().copied().fold(f64::MIN, f64::max),
+    )
+}
+
+/// The plot box of the long section, in model metres: (x0, x1, z0, z1).
+fn plot_box(vp: &Value) -> (f64, f64, f64, f64) {
+    let e = vp["entities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["id"] == "ls-plot")
+        .unwrap();
+    let p = e["points_m"].as_array().unwrap();
+    let xs: Vec<f64> = p.iter().map(|q| q[0].as_f64().unwrap()).collect();
+    let zs: Vec<f64> = p.iter().map(|q| q[1].as_f64().unwrap()).collect();
+    let lo = |v: &[f64]| v.iter().copied().fold(f64::MAX, f64::min);
+    let hi = |v: &[f64]| v.iter().copied().fold(f64::MIN, f64::max);
+    (lo(&xs), hi(&xs), lo(&zs), hi(&zs))
+}
+
 #[test]
-fn auto_picks_a_factor_whose_vertical_scale_is_an_allowed_ratio() {
+fn the_axes_end_at_the_data() {
+    let s = series();
+    let p = Style::builtin().long_section();
+    let chainage: Vec<f64> = s["chainage_m"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_f64().unwrap())
+        .collect();
+    let (first, last) = (chainage[0], chainage[chainage.len() - 1]);
+    let sheet = &long_section()[0];
+    let vp = viewport(sheet);
+    // the levels: from the grid line at or below the lowest level less the style's room, to the
+    // grid line at or above the highest level plus its room, and no further
+    let (zmin, zmax) = level_range(&s);
+    let (labels, step) = level_labels(vp);
+    let (lo, hi) = (labels[0], labels[labels.len() - 1]);
+    assert_eq!(
+        lo,
+        ((zmin - p.below_invert_m) / step).floor() * step,
+        "{labels:?}"
+    );
+    assert_eq!(
+        hi,
+        ((zmax + p.above_ground_m) / step).ceil() * step,
+        "{labels:?}"
+    );
+    assert!(lo < zmin && hi > zmax, "the levels sit inside the axis");
+    // the plot box is the axes: the first station to the last, the lowest label to the highest
+    let (bx0, bx1, bz0, bz1) = plot_box(vp);
+    assert_eq!((bx0, bx1), (first, last));
+    assert_eq!((bz0, bz1), (lo, hi));
+    // no chainage label past either end of the line
+    for e in vp["entities"].as_array().unwrap() {
+        let id = e["id"].as_str().unwrap();
+        if id.starts_with("ls-clabel-") || id.starts_with("ls-ctick-") {
+            let x = e["anchor_m"][0]
+                .as_f64()
+                .or_else(|| e["from_m"][0].as_f64())
+                .unwrap();
+            assert!(x >= first - 1e-9 && x <= last + 1e-9, "{id} at {x}");
+        }
+    }
+    assert_eq!(check::long_section(std::slice::from_ref(sheet), &s), []);
+}
+
+#[test]
+fn the_dxf_windows_do_not_overlap() {
+    for sheet in long_section() {
+        let out = drawing::render(&sheet).unwrap();
+        assert!(
+            out.warnings.iter().all(|w| !w.contains("15.4.9")),
+            "{:?}",
+            out.warnings
+        );
+    }
+}
+
+#[test]
+fn auto_picks_the_largest_allowed_factor_whose_levels_fit_the_share() {
     let vp = viewport(&long_section()[0]).clone();
     let n = vp["scale"].as_u64().unwrap();
     let e = vp["vertical_exaggeration"].as_u64().unwrap();
     assert!(n.is_multiple_of(e));
     assert!(allowed(n) && allowed(n / e), "1:{n}, vertical 1:{}", n / e);
-    // the smallest such factor that fills half the plot: one step smaller fills less than half
     let p = Style::builtin().long_section();
     let frame_h = vp["frame"]["height_mm"].as_f64().unwrap();
     let plot_h = frame_h - p.band_top_mm - p.band_bottom_mm;
@@ -258,25 +358,21 @@ fn auto_picks_a_factor_whose_vertical_scale_is_an_allowed_ratio() {
     let kv = frame_h / window_h;
     let k = 1000.0 / n as f64;
     assert!((kv - k * e as f64).abs() < 1e-9 * kv);
-    let smaller = (2..e)
-        .rev()
-        .find(|f| n.is_multiple_of(*f) && allowed(n / f));
-    let s = series();
-    let levels: Vec<f64> = ["bed_m", "water_level_m", "design_invert_m"]
-        .iter()
-        .flat_map(|k| s[*k].as_array().unwrap().iter().filter_map(Value::as_f64))
-        .collect();
-    let range = levels.iter().copied().fold(f64::MIN, f64::max)
-        - levels.iter().copied().fold(f64::MAX, f64::min)
-        + p.below_invert_m
-        + p.above_ground_m;
-    assert!(range * k * e as f64 >= p.auto_min_fill * plot_h);
-    assert!(range * k * e as f64 <= plot_h);
-    if let Some(f) = smaller {
-        assert!(
-            range * k * (f as f64) < p.auto_min_fill * plot_h,
-            "×{f} would do"
-        );
+    // the drawn levels fit the share of the plot height
+    let (_, _, bz0, bz1) = plot_box(&vp);
+    assert!((bz1 - bz0) * kv <= p.auto_max_fill * plot_h + 1e-9);
+    // and the next larger allowed factor does not: its axis, on its own level grid, is taller
+    let (zmin, zmax) = level_range(&series());
+    let larger = (e + 1..=n).find(|f| n.is_multiple_of(*f) && allowed(n / f));
+    if let Some(f) = larger {
+        let kv = k * f as f64;
+        let step = [1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0]
+            .into_iter()
+            .find(|m| m * kv >= p.level_pitch_mm)
+            .unwrap();
+        let lo = ((zmin - p.below_invert_m) / step).floor() * step;
+        let hi = ((zmax + p.above_ground_m) / step).ceil() * step;
+        assert!((hi - lo) * kv > p.auto_max_fill * plot_h, "×{f} would fit");
     }
 }
 
@@ -331,9 +427,38 @@ fn a_long_line_splits_over_sheets_at_one_scale() {
     let sheets = drawn(style);
     assert!(sheets.len() >= 2, "{} sheets", sheets.len());
     assert_eq!(check::long_section(&sheets, &series()), []);
+    let s = series();
+    let p = Style::builtin().long_section();
+    let chainage: Vec<f64> = s["chainage_m"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_f64().unwrap())
+        .collect();
     for sheet in &sheets {
-        assert_eq!(viewport(sheet)["scale"], 500);
+        let vp = viewport(sheet);
+        assert_eq!(vp["scale"], 500);
         drawing::render(sheet).unwrap_or_else(|e| panic!("{e}"));
+        // each sheet's level axis fits the levels of its own stations
+        let (x0, x1, _, _) = plot_box(vp);
+        let on = |i: usize| chainage[i] >= x0 - 1e-9 && chainage[i] <= x1 + 1e-9;
+        let levels: Vec<f64> = ["bed_m", "water_level_m", "design_invert_m"]
+            .iter()
+            .flat_map(|k| {
+                let v = s[*k].as_array().unwrap();
+                (0..v.len())
+                    .filter(|&i| on(i))
+                    .filter_map(move |i| v[i].as_f64())
+            })
+            .collect();
+        let zmin = levels.iter().copied().fold(f64::MAX, f64::min);
+        let zmax = levels.iter().copied().fold(f64::MIN, f64::max);
+        let (labels, step) = level_labels(vp);
+        assert_eq!(labels[0], ((zmin - p.below_invert_m) / step).floor() * step);
+        assert_eq!(
+            labels[labels.len() - 1],
+            ((zmax + p.above_ground_m) / step).ceil() * step
+        );
     }
 }
 

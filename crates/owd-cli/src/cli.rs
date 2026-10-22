@@ -398,7 +398,7 @@ enum Command {
         #[arg(long, value_name = "N")]
         scale: Option<u32>,
         /// Override the style: the long section's vertical exaggeration, a whole number of 2 or more,
-        /// or `auto` (the default: the smallest factor that makes the depth readable).
+        /// or `auto` (the default: the largest allowed factor whose levels fit the sheet).
         #[arg(long, value_name = "N")]
         vertical_exaggeration: Option<String>,
         /// Draw the plan sheets over this orthophoto (an 8 bit RGB GeoTIFF in WGS84 or the design's UTM

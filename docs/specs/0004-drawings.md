@@ -149,8 +149,9 @@ Every ticket ships in the next release.
   their own.
 - **Long section.** The bed on the design line, the water level and the design bed along chainage, from the
   same series as the app's long-section view, with a chainage axis and a level axis. Drawn with a vertical
-  exaggeration (standard 1.2, clause 7.3.6): the style's whole number, or by default the smallest factor whose
-  levels fill half the plot height with an allowed vertical ratio. The sheet states the factor in words.
+  exaggeration (standard 1.2, clause 7.3.6): the style's whole number, or by default the largest factor with an
+  allowed vertical ratio whose level axis fits within 80 % of the plot height (changed by #303; it was the
+  smallest that filled half). The axes end at the data. The sheet states the factor in words.
 
 ### CLI
 

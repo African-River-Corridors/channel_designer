@@ -9,9 +9,14 @@
 //!
 //! The scale. The horizontal scale is the first of the style's `scales` at which the whole line
 //! fits the plot at one sheet; when none does, the last, and the line is split over sheets at it.
-//! The vertical exaggeration `E` is the style's whole number, or, with `"auto"`, the smallest `E`
-//! of 2 or more whose levels fill at least `auto_min_fill` of the plot height, with `N / E` a ratio
-//! of the standard (clause 7.3.6.2). Levels that already fill it get no exaggeration.
+//! The vertical exaggeration `E` is the style's whole number, or, with `"auto"`, the largest `E`
+//! of 2 or more whose level axis fits within `auto_max_fill` of the plot height, with `N / E` a
+//! ratio of the standard (clause 7.3.6.2). Levels that no such `E` fits get no exaggeration.
+//!
+//! The axes fit the data. The level axis runs from the level grid line at or below the lowest level
+//! less `below_invert_m` to the one at or above the highest level plus `above_ground_m`; the
+//! chainage axis from the sheet's first station to its last. On a line split over sheets, the scale and
+//! the factor are the whole line's, and each sheet's level axis fits that sheet's own levels.
 
 use super::furniture::{self, Area, Titles, clean};
 use super::gallery::chainage_text;
@@ -24,7 +29,7 @@ use serde_json::{Value, json};
 /// The vertical exaggeration the style asks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Exaggeration {
-    /// The smallest factor that makes the depth readable (see the module notes).
+    /// The largest factor whose levels fit the plot (see the module notes).
     Auto,
     /// This factor, a whole number of 2 or more.
     Factor(u32),
@@ -38,8 +43,8 @@ pub struct LongSectionParams {
     /// The horizontal scales to try, largest scale first (denominators of the standard's ratios).
     pub scales: Vec<u32>,
     pub exaggeration: Exaggeration,
-    /// With `Exaggeration::Auto`: the least share of the plot height that the levels must fill.
-    pub auto_min_fill: f64,
+    /// With `Exaggeration::Auto`: the most of the plot height that the level axis may fill.
+    pub auto_max_fill: f64,
     /// Room under the lowest level, and above the highest, in metres.
     pub below_invert_m: f64,
     pub above_ground_m: f64,
@@ -134,6 +139,16 @@ pub(super) fn factor_note(n: u32, e: u32) -> String {
     }
 }
 
+/// The level axis at `kv` millimetres per metre: its lowest and highest grid lines and its step.
+fn level_axis(zmin: f64, zmax: f64, kv: f64, p: &LongSectionParams) -> (f64, f64, f64) {
+    let step = nice_step(p.level_pitch_mm / kv);
+    (
+        ((zmin - p.below_invert_m) / step).floor() * step,
+        ((zmax + p.above_ground_m) / step).ceil() * step,
+        step,
+    )
+}
+
 /// The paper room of the plot: the frame less its bands.
 fn plot_size(frame: Area, p: &LongSectionParams) -> (f64, f64) {
     (
@@ -144,15 +159,13 @@ fn plot_size(frame: Area, p: &LongSectionParams) -> (f64, f64) {
 
 /// The horizontal scale, the factor, and whether the line must be split over sheets.
 ///
-/// The scale is the first of `scales` at which the line's length and its level range both fit the
+/// The scale is the first of `scales` at which the line's length and its level axis both fit the
 /// plot (at the factor, when the style fixes one); if none holds the length, the last that holds the
-/// levels, and the line is split. With `Auto`, the factor is then the smallest `E >= 2` with an
-/// allowed `N / E` whose level range fills at least `auto_min_fill` of the plot height and still
-/// fits it; if none reaches that share, the largest that fits; and 1 when the levels at one scale
-/// already fill it.
+/// levels, and the line is split. With `Auto`, the factor is then the largest `E >= 2` with an
+/// allowed `N / E` whose level axis fits within `auto_max_fill` of the plot height; 1 if none does.
 pub(super) fn choose(
     length_m: f64,
-    range_m: f64,
+    (zmin, zmax): (f64, f64),
     plot_w: f64,
     plot_h: f64,
     p: &LongSectionParams,
@@ -162,13 +175,17 @@ pub(super) fn choose(
         Exaggeration::Auto => 1,
         Exaggeration::Factor(e) => e,
     };
-    let height_fits = |n: u32| range_m * 1000.0 / f64::from(n) * f64::from(fixed) <= plot_h + 1e-9;
+    let drawn_h = |n: u32, e: u32| {
+        let kv = 1000.0 / f64::from(n) * f64::from(e);
+        let (lo, hi, _) = level_axis(zmin, zmax, kv, p);
+        (hi - lo) * kv
+    };
     let usable: Vec<u32> = p
         .scales
         .iter()
         .copied()
         .filter(|&n| fixed == 1 || vertical_denominator(n, fixed, &allowed).is_some())
-        .filter(|&n| height_fits(n))
+        .filter(|&n| drawn_h(n, fixed) <= plot_h + 1e-9)
         .collect();
     let Some(&last) = usable.last() else {
         return Err(DrawError::Input(match p.exaggeration {
@@ -192,27 +209,11 @@ pub(super) fn choose(
     };
     let e = match p.exaggeration {
         Exaggeration::Factor(e) => e,
-        Exaggeration::Auto => {
-            let k = 1000.0 / f64::from(n);
-            let want = p.auto_min_fill * plot_h;
-            if range_m * k >= want {
-                1
-            } else {
-                // the factors of N whose vertical scale is a ratio, smallest first
-                let mut best = 1;
-                for e in (2..=n).filter(|e| vertical_denominator(n, *e, &allowed).is_some()) {
-                    let drawn = range_m * k * f64::from(e);
-                    if drawn > plot_h + 1e-9 {
-                        break;
-                    }
-                    best = e;
-                    if drawn >= want {
-                        break;
-                    }
-                }
-                best
-            }
-        }
+        Exaggeration::Auto => (2..=n)
+            .rev()
+            .filter(|&e| vertical_denominator(n, e, &allowed).is_some())
+            .find(|&e| drawn_h(n, e) <= p.auto_max_fill * plot_h + 1e-9)
+            .unwrap_or(1),
     };
     Ok((n, e, split))
 }
@@ -263,6 +264,8 @@ struct Frame {
     /// The model window.
     x0: f64,
     y0: f64,
+    /// The level axis: its lowest and highest grid lines and its step.
+    z_axis: (f64, f64, f64),
 }
 
 impl Frame {
@@ -271,6 +274,9 @@ impl Frame {
     }
     fn my(&self, py: f64) -> f64 {
         self.y0 + (self.area.h - py) / self.kv
+    }
+    fn py(&self, z: f64) -> f64 {
+        self.area.h - (z - self.y0) * self.kv
     }
 }
 
@@ -319,10 +325,11 @@ fn viewport(
     let mut out: Vec<Value> = Vec::new();
     let (w_mm, h_mm) = (f.area.w, f.area.h);
     let (px0, px1) = (p.band_left_mm, w_mm - p.band_right_mm);
-    let (py0, py1) = (p.band_top_mm, h_mm - p.band_bottom_mm);
-    // the plot box, on paper and in the model
-    let (cx0, cx1) = (f.mx(px0), f.mx(px1));
-    let (cz0, cz1) = (f.my(py1), f.my(py0));
+    // the plot box: the sheet's first station to its last, the level axis's lowest grid line to its
+    // highest
+    let (cx0, cx1) = (s.chainage[first], s.chainage[last]);
+    let (cz0, cz1, z_step) = f.z_axis;
+    let py1 = f.py(cz0);
     out.push(json!({
         "type": "polyline", "layer": "OBJECT", "id": "ls-plot", "closed": true,
         "points_m": [pt(cx0, cz0), pt(cx1, cz0), pt(cx1, cz1), pt(cx0, cz1)],
@@ -352,9 +359,9 @@ fn viewport(
     }
 
     // the level axis on the left of the plot, the chainage axis under it
-    let z_step = nice_step(p.level_pitch_mm / f.kv);
-    let mut z = (cz0 / z_step).ceil() * z_step;
-    while z <= cz1 + 1e-9 {
+    let z_count = ((cz1 - cz0) / z_step).round() as i64;
+    for i in 0..=z_count {
+        let z = cz0 + i as f64 * z_step;
         let id = id_number(z);
         out.push(json!({
             "type": "line", "layer": "GRID", "id": format!("ls-ztick-{id}"),
@@ -369,11 +376,10 @@ fn viewport(
             "right",
             "middle",
         ));
-        z += z_step;
     }
     let c_step = nice_step(p.chainage_pitch_mm / f.k);
     let mut c = (cx0.max(0.0) / c_step).ceil() * c_step;
-    while c <= cx1 + 1e-9 {
+    while c <= cx1 {
         let id = id_number(c);
         out.push(json!({
             "type": "line", "layer": "GRID", "id": format!("ls-ctick-{id}"),
@@ -432,9 +438,12 @@ fn viewport(
 }
 
 /// The key viewport: what each line is. It has no scale bar: the long section's own carries both.
-fn key_viewport(area: Area, k: f64, scale: u32, p: &LongSectionParams) -> Value {
+/// Its model window ends a key's width left of `ls_x0`, the long section's window, so the two never
+/// overlap in the DXF's model space (clause 15.4.9).
+fn key_viewport(area: Area, k: f64, scale: u32, ls_x0: f64, p: &LongSectionParams) -> Value {
     let (wm, hm) = (area.w / k, area.h / k);
-    let mx = |px: f64| px / k;
+    let x0 = ls_x0 - 2.0 * wm;
+    let mx = |px: f64| x0 + px / k;
     let my = |py: f64| (area.h - py) / k;
     let mut e: Vec<Value> = vec![text(
         "key-heading",
@@ -479,7 +488,7 @@ fn key_viewport(area: Area, k: f64, scale: u32, p: &LongSectionParams) -> Value 
     json!({
         "id": "key",
         "frame": {"x_mm": area.x, "y_mm": area.y, "width_mm": area.w, "height_mm": area.h},
-        "window": {"xmin_m": 0, "ymin_m": 0, "xmax_m": wm, "ymax_m": hm},
+        "window": {"xmin_m": x0, "ymin_m": 0, "xmax_m": x0 + wm, "ymax_m": hm},
         "scale": scale,
         "entities": e,
     })
@@ -503,21 +512,25 @@ pub(super) fn build(
             "option `{option_id}` has fewer than two stations to draw a long section"
         )));
     }
-    // the level range of the whole line, so every sheet of it has the same levels
-    let levels: Vec<f64> = s
-        .bed
-        .iter()
-        .chain(&s.invert)
-        .chain(if p.water { &s.wl[..] } else { &[] })
-        .filter_map(|v| v.filter(|v| v.is_finite()))
-        .collect();
-    if levels.is_empty() {
+    // the lowest and the highest level drawn at the stations `lo..=hi`
+    let level_range = |lo: usize, hi: usize| -> Option<(f64, f64)> {
+        let wl: &[Option<f64>] = if p.water { &s.wl } else { &[] };
+        let levels = [&s.bed[..], &s.invert[..], wl]
+            .into_iter()
+            .flat_map(|v| v.iter().take(hi + 1).skip(lo))
+            .filter_map(|v| v.filter(|v| v.is_finite()));
+        levels.fold(None, |r, z| match r {
+            None => Some((z, z)),
+            Some((a, b)) => Some((f64::min(a, z), f64::max(b, z))),
+        })
+    };
+    // the scale and the factor are chosen on the whole line, so every sheet of it has the same;
+    // each sheet's level axis then fits its own levels
+    let Some((zmin, zmax)) = level_range(0, s.chainage.len() - 1) else {
         return Err(DrawError::Missing(format!(
             "option `{option_id}` has no levels to draw"
         )));
-    }
-    let zmin = levels.iter().copied().fold(f64::INFINITY, f64::min) - p.below_invert_m;
-    let zmax = levels.iter().copied().fold(f64::NEG_INFINITY, f64::max) + p.above_ground_m;
+    };
     let (c_first, c_last) = (s.chainage[0], s.chainage[s.chainage.len() - 1]);
 
     let notes_len = 5;
@@ -535,7 +548,7 @@ pub(super) fn build(
             p.sheet_size
         )));
     }
-    let (n, e, split) = choose(c_last - c_first, zmax - zmin, plot_w, plot_h, p)?;
+    let (n, e, split) = choose(c_last - c_first, (zmin, zmax), plot_w, plot_h, p)?;
     let k = 1000.0 / f64::from(n);
     let kv = k * f64::from(e);
 
@@ -596,17 +609,20 @@ pub(super) fn build(
     let mut out = Vec::new();
     for (si, &(lo, hi)) in ranges.iter().enumerate() {
         let stations: Vec<usize> = (lo..=hi).collect();
-        // the window: the sheet's chainage from the plot's left edge, the levels centred in it
-        let slack = plot_h - (zmax - zmin) * kv;
+        // the window: the sheet's chainage from the plot's left edge, the level axis centred in it
+        let (lo_z, hi_z) = level_range(lo, hi).unwrap_or((zmin, zmax));
+        let z_axis = level_axis(lo_z, hi_z, kv, p);
+        let slack = plot_h - (z_axis.1 - z_axis.0) * kv;
         let f = Frame {
             area: frame_area,
             k,
             kv,
             x0: s.chainage[lo] - p.band_left_mm / k,
-            y0: zmin - (p.band_bottom_mm + slack / 2.0) / kv,
+            y0: z_axis.0 - (p.band_bottom_mm + slack / 2.0) / kv,
+            z_axis,
         };
         let mut viewports = vec![viewport(&f, &s, &stations, (lo, hi), n, e, p)];
-        viewports.push(key_viewport(layout.key, k, n, p));
+        viewports.push(key_viewport(layout.key, k, n, f.x0, p));
         let number = furniture::drawing_number(&code, SheetKind::LongSection.code(), si + 1);
         let titles = Titles {
             design: clean(title),
@@ -664,27 +680,38 @@ mod tests {
     }
 
     #[test]
-    fn auto_picks_the_smallest_allowed_factor_that_fills_the_share() {
+    fn auto_picks_the_largest_allowed_factor_whose_axis_fits_the_share() {
         let p = params(Exaggeration::Auto);
-        // 3000 m on a 700 mm plot: 1:5000 holds it (600 mm). 10 m of levels at 1:5000 is 2 mm;
-        // half of a 400 mm plot is 200 mm, so E = 100 (1:50, 200 mm) is the first that fills it.
-        let (n, e, split) = choose(3000.0, 10.0, 700.0, 400.0, &p).unwrap();
+        // 3000 m on a 700 mm plot: 1:5000 holds it (600 mm). Levels 0.2 to 9.6 m, with 0.5 m of
+        // room each side: at E = 100 (1:50, 20 mm a metre) the grid is 1 m and the axis -1 to +11,
+        // 240 mm, within 80 % of a 400 mm plot (320 mm). The next allowed factor, E = 200 (1:25),
+        // draws the same 12 m at 40 mm a metre, 480 mm, which does not fit. So E = 100.
+        let (n, e, split) = choose(3000.0, (0.2, 9.6), 700.0, 400.0, &p).unwrap();
         assert_eq!((n, split), (5000, false));
         assert_eq!(e, 100);
         assert!(vertical_denominator(n, e, &ratios(2)).is_some());
-        // levels that already fill the plot get no exaggeration
-        let (_, e, _) = choose(3000.0, 1500.0, 700.0, 400.0, &p).unwrap();
+        // levels that no factor fits within the share get no exaggeration
+        let (_, e, _) = choose(3000.0, (0.0, 1500.0), 700.0, 400.0, &p).unwrap();
         assert_eq!(e, 1);
+    }
+
+    #[test]
+    fn the_level_axis_ends_on_grid_lines_just_past_the_levels() {
+        let p = params(Exaggeration::Auto);
+        // 20 mm a metre: a 10 mm pitch gives a 1 m grid
+        assert_eq!(level_axis(-3.3, 0.0, 20.0, &p), (-4.0, 1.0, 1.0));
+        // 2 mm a metre: a 5 m grid
+        assert_eq!(level_axis(12.0, 31.0, 2.0, &p), (10.0, 35.0, 5.0));
     }
 
     #[test]
     fn a_fixed_factor_skips_scales_where_n_over_e_is_not_a_ratio() {
         let p = params(Exaggeration::Factor(4));
         // 1:5000 / 4 = 1:1250 is a house ratio; 1:1000 / 4 = 1:250 too
-        let (n, e, _) = choose(500.0, 10.0, 700.0, 400.0, &p).unwrap();
+        let (n, e, _) = choose(500.0, (0.0, 10.0), 700.0, 400.0, &p).unwrap();
         assert_eq!((n, e), (1000, 4));
         let p = params(Exaggeration::Factor(3));
-        let err = choose(500.0, 10.0, 700.0, 400.0, &p)
+        let err = choose(500.0, (0.0, 10.0), 700.0, 400.0, &p)
             .unwrap_err()
             .to_string();
         assert!(err.contains("vertical exaggeration ×3"), "{err}");
