@@ -397,14 +397,18 @@ fn splice_runs(
             reference[i][1] + nrm[i][1] * o,
         ]
     };
-    let nearest = |p: P2| {
-        (0..orig.len())
+    // The nearest vertex to `p` at or after `start`, among the next few thousand: the walk goes along
+    // the bank, so a search from where the last splice ended keeps it linear, and a bank that passes
+    // near itself further on cannot be matched there.
+    let nearest = |p: P2, start: usize| {
+        let end = (start + 4_000).min(orig.len());
+        (start.min(end.saturating_sub(1))..end)
             .min_by(|a, b| {
                 let da = (orig[*a][0] - p[0]).powi(2) + (orig[*a][1] - p[1]).powi(2);
                 let db = (orig[*b][0] - p[0]).powi(2) + (orig[*b][1] - p[1]).powi(2);
                 da.total_cmp(&db)
             })
-            .unwrap_or(0)
+            .unwrap_or(start)
     };
     let n = bad.len();
     let mut out: Vec<P2> = Vec::with_capacity(orig.len());
@@ -421,19 +425,20 @@ fn splice_runs(
         }
         // Good stations either side of the run i..j, and their points on the original bank.
         let ia = if i == 0 {
-            0
+            from
         } else {
-            nearest(at(i - 1, raw[i - 1].unwrap_or(fixed[i - 1])))
+            nearest(at(i - 1, raw[i - 1].unwrap_or(fixed[i - 1])), from)
         };
         let ib = if j == n {
             orig.len() - 1
         } else {
-            nearest(at(j, raw[j].unwrap_or(fixed[j])))
+            nearest(at(j, raw[j].unwrap_or(fixed[j])), ia)
         };
-        if ia < from || ib < ia {
-            // The bank does not run with the reference here: rebuild it all from the offsets.
-            let pts: Vec<P2> = (0..n).map(|k| at(k, fixed[k])).collect();
-            return cut_loops(&pts, 64);
+        if ib < ia {
+            // The bank does not run with the reference here: leave this run as it is. Its stations
+            // are flagged all the same.
+            i = j;
+            continue;
         }
         out.extend_from_slice(&orig[from..=ia]);
         out.extend((i..j).map(|k| at(k, fixed[k])));
@@ -443,7 +448,39 @@ fn splice_runs(
     if from < orig.len() {
         out.extend_from_slice(&orig[from..]);
     }
-    cut_loops(&out, 64)
+    // A loop of an offset line at a tight bend can span a few hundred stations.
+    cut_loops(&out, 512)
+}
+
+/// The part of a bank that lies alongside the centreline: leading and trailing vertices that lie past
+/// the centreline's first or last point, along its direction there, by more than the river's width at
+/// that end (at least 100 m), are dropped. A bank may follow a shore a little past the end (a lagoon,
+/// a mouth); one that runs off farther is a cast that found other water. At least two are kept.
+fn trim_to_centreline(bank: &[P2], centre: &[P2], ends: (f64, f64)) -> Vec<P2> {
+    if bank.len() < 3 || centre.len() < 2 {
+        return bank.to_vec();
+    }
+    let cs = owd_format::design::midline::arc(centre);
+    let len = cs[cs.len() - 1];
+    let beyond = |p: P2, end: P2, next: P2| {
+        // Past the end along the centreline's direction there.
+        let d = [end[0] - next[0], end[1] - next[1]];
+        let l = (d[0] * d[0] + d[1] * d[1]).sqrt().max(1e-9);
+        ((p[0] - end[0]) * d[0] + (p[1] - end[1]) * d[1]) / l
+    };
+    let (c0, c1) = (centre[0], centre[1]);
+    let (z0, z1) = (centre[centre.len() - 1], centre[centre.len() - 2]);
+    let _ = len;
+    let (lim0, lim1) = (ends.0.max(100.0), ends.1.max(100.0));
+    let mut a = 0;
+    while a + 2 < bank.len() && beyond(bank[a], c0, c1) > lim0 {
+        a += 1;
+    }
+    let mut b = bank.len() - 1;
+    while b > a + 1 && beyond(bank[b], z0, z1) > lim1 {
+        b -= 1;
+    }
+    bank[a..=b].to_vec()
 }
 
 /// Whether two lines cross each other.
@@ -614,9 +651,8 @@ fn repairs(c: &Checked) -> bool {
 }
 
 /// Check the banks, repair them, and rebuild the centreline as their mid-line. `seed` is any rough
-/// centreline (the last one, or the route). Each round reads the banks along the last round's
-/// centreline, so a fault one reading missed the next one finds; the rounds stop when one repairs
-/// nothing, at most [`MAX_ROUNDS`]. A crossing left after the last round is flagged (`crossing`),
+/// centreline (the last one, or the route). Each round reads the repaired banks again, along the same
+/// seed, so a fault a repair uncovered the next one finds; the rounds stop when one repairs nothing, at most [`MAX_ROUNDS`]. A crossing left after the last round is flagged (`crossing`),
 /// never passed in silence. The stretches are every round's.
 pub fn check_and_repair(
     left: &[P2],
@@ -629,7 +665,9 @@ pub fn check_and_repair(
         if !repairs(&c) && !crossed {
             break;
         }
-        let (mut next, x) = check_once(&c.left, &c.right, &c.centreline, p)?;
+        // Every round reads the banks along the seed, never along its own last centreline: a round
+        // that went wrong must not make the next one's reference worse.
+        let (mut next, x) = check_once(&c.left, &c.right, seed, p)?;
         let earlier = rechain(&c.stretches, &c.centreline, &next.centreline);
         next.stretches = merge(earlier, next.stretches);
         c = next;
@@ -750,6 +788,16 @@ fn check_once(
     } else {
         (centreline, widths)
     };
+    // And the banks end where the centreline does: a bank running on past either end (a cast that
+    // found other water at the first or last station) is met by no normal, so no check sees it.
+    let ends = (
+        widths.first().copied().unwrap_or(0.0),
+        widths.last().copied().unwrap_or(0.0),
+    );
+    let (left2, right2) = (
+        trim_to_centreline(&left2, &centreline, ends),
+        trim_to_centreline(&right2, &centreline, ends),
+    );
     let rs = owd_format::design::midline::arc(&reference);
     let failed: Vec<(f64, Checks)> = checks
         .iter()
