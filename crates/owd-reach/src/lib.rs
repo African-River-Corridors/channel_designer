@@ -13,6 +13,7 @@ pub mod fetch;
 pub mod geo;
 pub mod jrc;
 pub mod level;
+pub mod overlay;
 pub mod overpass;
 pub mod provenance;
 pub mod reach;

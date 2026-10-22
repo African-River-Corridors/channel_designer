@@ -8,4 +8,5 @@ pub mod commands;
 pub mod fetch;
 pub mod fits;
 pub mod level;
+pub mod qa_overlay;
 pub mod reach_fetch;

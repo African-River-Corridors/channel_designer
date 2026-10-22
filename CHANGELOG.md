@@ -365,6 +365,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `owd qa-overlay DOC --png FILE [--kmz FILE] [--from-km A --to-km B] [--scene ID]` (spec 0013 T5): the
+  bank lines, the centreline and the low-confidence stretches over the Sentinel-2 true-colour image of
+  the scenes the banks came from, with a legend of the scenes and notices, and a KMZ for Google Earth
+  (the image placed by its four corners, the lines as KML). Up to 30 km across at a time; small windows
+  are drawn at up to 4 picture pixels per 10 m. The drawing is `owd_reach::overlay` (pure, so the app
+  can use it too, #295).
 - The Sentinel-2 water grid (`owd_reach::water`, spec 0013 T2, ADR 0011): water and land from a
   scene's MNDWI (water at 0.0 or more, provisional), with the scene classification masking cloud,
   shadow, cirrus and no data; scenes ranked by the share of the river corridor they see clear, up to

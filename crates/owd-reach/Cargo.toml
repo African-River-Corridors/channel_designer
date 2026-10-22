@@ -15,6 +15,9 @@ serde_json.workspace = true
 weezl = "0.1"
 # DEFLATE for the Sentinel-2 COGs.
 miniz_oxide = "0.8"
+# The QA overlay (spec 0013): its PNG (as owd-format) and the 8 x 8 font of its legend (public domain glyphs, MIT).
+png = "0.18"
+font8x8 = "0.3"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
