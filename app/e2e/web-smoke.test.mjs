@@ -344,6 +344,8 @@ describe("OWD web smoke tests", () => {
     // The first Overpass server is busy (502): the next one answers, and the panel says so (#319).
     const at = { ...endpoints(reach.origin), overpass: `${reach.origin}/down/api/interpreter,${endpoints(reach.origin).overpass}` };
     await b.execute(async (at) => window.__owdPlatform.call("set_reach_endpoints", { endpoints: at }), at);
+    // DEBUG (temporary, #391): catch what the page throws.
+    await b.execute(() => { window.__errs = []; addEventListener("error", (e) => window.__errs.push("error: " + e.message)); addEventListener("unhandledrejection", (e) => window.__errs.push("rejection: " + String(e.reason?.stack ?? e.reason))); const ce = console.error; console.error = (...a) => { window.__errs.push("console: " + a.map(String).join(" ")); ce(...a); }; });
     await (await tid(b, "start-from-river")).click();
     const before = searches.length;
     // Typed key by key: one request, after the pause, for "Ank" (none for "A" or "An").
@@ -357,7 +359,13 @@ describe("OWD web smoke tests", () => {
       await b.saveScreenshot(path.join(SHOTS, "web-river-search.png"));
     }
     await (await b.$(`${ankobra} button`)).click();
-    await until(b, "the whole river", async () => (await exists(b, "reach-length")) && /km/.test(await text(b, "reach-length")));
+    try {
+      await until(b, "the whole river", async () => (await exists(b, "reach-length")) && /km/.test(await text(b, "reach-length")));
+    } catch (e) {
+      console.log("DEBUG errors:", JSON.stringify(await b.execute(() => window.__errs)));
+      console.log("DEBUG panel:", (await (await tid(b, "start-from-river")).getText()).slice(0, 1500));
+      throw e;
+    }
     assert.equal(await (await tid(b, "reach-start")).getValue(), "-2.26885, 4.89839", "Start is the mouth");
     assert.match(await text(b, "reach-route-notes"), /Overpass: 127\.0\.0\.1:\d+ failed \(.*502.*\); 127\.0\.0\.1:\d+ answered/);
     assert.equal(await (await tid(b, "reach-end")).getValue(), "-2.13492, 5.72949", "End is the upstream end");
