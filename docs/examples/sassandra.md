@@ -13,11 +13,14 @@ two points, and one depth from people who know the river.
 bash examples/sassandra/run.sh
 ```
 
-It needs the network and takes about 20 minutes, most of it the route (Overpass) and the edge fit. Everything
-is fetched at run time into `sassandra-study/`; nothing is bundled. The script:
+It needs the network and takes about 40 minutes, most of it the reach step (the route from Overpass and the
+Sentinel-2 scenes of the edge fit). Everything is fetched at run time into `sassandra-study/`; nothing is
+bundled. The script:
 
-1. `owd reach` plans the route on the OpenStreetMap waterways (144 km, six ways). It makes the bank lines from
-   the JRC water mask, then moves them onto dry-season Sentinel-2 scenes, tile by tile.
+1. `owd reach` plans the route on the OpenStreetMap waterways (144 km, six ways). It seeds the bank lines from
+   the water seen in dry-season Sentinel-2 scenes (spec 0013), checks and repairs them, then moves them onto
+   the scenes' edges, tile by tile. On this river its bank checks warn that the banks still cross (see
+   "Limits"), so it exits 1. The study is written all the same, and the script goes on.
 2. `owd fetch-dem` gets the Copernicus GLO-30 DEM. `owd water-level` sets the low-water level from SWORD and
    SWOT, with the DEM where they give none.
 3. `owd fits` gives the plan-only answer: width and radius, no depth. It reads the radius on the
@@ -50,8 +53,8 @@ On this window the median width is 199 m from the seed and 202 m after the edge 
 open water measured on the scene across nine transects. The JRC mask alone gives 112 m. No station has
 both banks on one side, and the centreline is within 1 m of the banks' mid-line at the 95th percentile.
 
-> The whole-river numbers below are from the spec 0012 run, with banks from the JRC mask. They are
-> regenerated on the spec 0013 seed in a follow-up.
+The whole-river numbers below are from a run of `bash examples/sassandra/run.sh` on the spec 0013 seed,
+with main at `7609e40`, on 2026-10-22 to 23 (reach 36 min, the rest 3 min).
 
 ## The answer
 
@@ -59,20 +62,20 @@ Under PIANC WG 141 quality B, **no vessel class fits the Sassandra as it is.** E
 `navigable-with-works`: it can use the river after works. The table gives each class's constraint stretches
 (where the river falls short) by kind.
 
-| Class | Needs depth (m) | Plan only: fits? | Full, centreline: verdict, stretches (width / depth / radius) | Full, fairway (the default): verdict, stretches (width / depth / radius) |
+| Class | Needs depth (m) | Plan only: fits? | Full, fairway (the default): verdict, stretches (width / depth / radius) | Full, centreline: verdict, stretches (width / depth / radius) |
 |---|---|---|---|---|
-| CEMT_IV | 3.25 | no | navigable-with-works: 228 / 1 / 1009 | navigable-with-works: 228 / 1 / 148 |
-| CN_IV_motor | 2.08 | no | navigable-with-works: 194 / 4 / 894 | navigable-with-works: 194 / 4 / 163 |
-| CN_III_motor | 2.6 | no | navigable-with-works: 230 / 10 / 1009 | navigable-with-works: 230 / 10 / 146 |
-| CEMT_Va | 4.55 | no | navigable-with-works: 307 / 1 / 1080 | navigable-with-works: 307 / 1 / 119 |
-| CEMT_Vb | 4.55 | no | navigable-with-works: 555 / 1 / 1060 | navigable-with-works: 555 / 1 / 151 |
-| CN_II_motor | 3.38 | no | navigable-with-works: 277 / 1 / 1031 | navigable-with-works: 277 / 1 / 150 |
-| CN_I_motor | 4.16 | no | navigable-with-works: 286 / 1 / 1048 | navigable-with-works: 286 / 1 / 150 |
-| CEMT_VIa_motor_NL2011 | 5.2 | no | navigable-with-works: 406 / 1 / 1119 | navigable-with-works: 406 / 1 / 158 |
-| CN_III_convoy_2ab | 2.6 | no | navigable-with-works: 523 / 10 / 1093 | navigable-with-works: 523 / 10 / 148 |
-| CEMT_VIa | 4.55 | no | navigable-with-works: 341 / 1 / 1080 | navigable-with-works: 341 / 1 / 151 |
-| CN_II_convoy_2ab | 3.38 | no | navigable-with-works: 575 / 1 / 1061 | navigable-with-works: 575 / 1 / 186 |
-| CN_I_convoy_2ab | 4.55 | no | navigable-with-works: 649 / 1 / 1000 | navigable-with-works: 649 / 1 / 197 |
+| CEMT-IV | 3.25 | no | navigable-with-works: 55 / 1 / 5 | navigable-with-works: 55 / 1 / 667 |
+| CN-IV-MOTOR | 2.08 | no | navigable-with-works: 49 / 2 / 11 | navigable-with-works: 49 / 2 / 572 |
+| CN-III-MOTOR | 2.6 | no | navigable-with-works: 54 / 3 / 3 | navigable-with-works: 54 / 3 / 667 |
+| CEMT-Va | 3.44 | no | navigable-with-works: 79 / 1 / 10 | navigable-with-works: 79 / 1 / 788 |
+| CEMT-Vb | 4.55 | no | navigable-with-works: 237 / 1 / 25 | navigable-with-works: 237 / 1 / 820 |
+| CN-II-MOTOR | 3.38 | no | navigable-with-works: 58 / 1 / 11 | navigable-with-works: 58 / 1 / 705 |
+| CN-I-MOTOR | 4.16 | no | navigable-with-works: 70 / 1 / 16 | navigable-with-works: 70 / 1 / 732 |
+| RWS-M12 | 5.2 | no | navigable-with-works: 134 / 1 / 15 | navigable-with-works: 134 / 1 / 837 |
+| CN-III-CONVOY-2x2 | 2.6 | no | navigable-with-works: 230 / 3 / 22 | navigable-with-works: 230 / 3 / 830 |
+| CEMT-VIa | 4.55 | no | navigable-with-works: 114 / 1 / 16 | navigable-with-works: 114 / 1 / 788 |
+| CN-II-CONVOY-2x2 | 3.38 | no | navigable-with-works: 296 / 1 / 19 | navigable-with-works: 296 / 1 / 821 |
+| CN-I-CONVOY-2x2 | 4.55 | no | navigable-with-works: 368 / 1 / 18 | navigable-with-works: 368 / 1 / 812 |
 
 "Needs depth" is the class's design depth under the rule set. Where it is over the assumed 3 m, the whole river
 is one depth stretch (works: dredge). Where it is 3 m or less, the few depth stretches left are single
@@ -81,11 +84,11 @@ stations (see "Limits").
 ### Two plan lines
 
 The radius columns differ by plan line:
-- **On each class's fairway fit (the default):** about 150 radius stretches per class.
-- **On the river centreline (`--plan-line centreline`):** about 1,000.
+- **On each class's fairway fit (the default):** 3 to 25 radius stretches per class.
+- **On the river centreline (`--plan-line centreline`):** 572 to 837.
 
 The centreline is drawn from the bank lines, and it wiggles at the scale of its 5 m stations. Each wiggle
-reads as a tight bend, so most of those 1,000 are not the river. The fairway fit (ADR 0007) is the smoothest
+reads as a tight bend, so most of those hundreds are not the river. The fairway fit (ADR 0007) is the smoothest
 line a channel of that class can take in the water. The radius stretches left on it are mostly where the
 water itself forces a bend, but some may be where the fit is infeasible. The width and depth stretches are
 the same on both lines.
@@ -100,8 +103,9 @@ carries these notices, and every export carries them too:
 
 - © OpenStreetMap contributors (the route);
 - Source: EC JRC/Google, Pekel et al. 2016 (the water mask);
-- Contains modified Copernicus Sentinel data 2024 and 2025 (the bank lines: scenes S2A_29NRF_20241222,
-  S2B_29NQF_20250205 and S2B_29NQG_20250126);
+- Contains modified Copernicus Sentinel data 2024 and 2025 (the bank lines: six scenes,
+  S2A_29NRF_20241222, S2B_29NRF_20250205, S2C_29NRF_20251217, S2B_29NQF_20250205, S2B_29NQG_20250126 and
+  S2B_29NQG_20250205);
 - SWOT data from NASA and CNES, served by PO.DAAC Hydrocron, and SWORD v17c, CC BY 4.0 (the water level,
   from 10 SWORD reaches, observations from July 2023 to October 2026);
 - Produced using Copernicus WorldDEM-30 (the DEM).
@@ -112,6 +116,7 @@ These are not yet calibrated against a surveyed reach. Each is named so in the s
 
 | Default | Value | Used here |
 |---|---|---|
+| Bank seed | the water seen in dry-season Sentinel-2 (spec 0013) | as default; it agrees with the JRC mask on 56 % of the water |
 | Water mask threshold (JRC occurrence) | 75 % | **30 %**: at 75 % the mask sees almost no water on this cloudy reach |
 | Low-confidence width | under 3 mask pixels (90 m); under 30 m after the edge fit | as default |
 | Edge fit | ±40 m search, at most 30 m shift, at most 1.5 m change per 5 m | as default, in parts of 15 km |
@@ -121,13 +126,18 @@ These are not yet calibrated against a surveyed reach. Each is named so in the s
 
 ## Limits
 
-- **The water mask.** The JRC mask needs a 30 % threshold here. This reach is cloudy so often that water
-  rarely reaches 75 % occurrence. Even at 30 %, 322 stretches are narrower than three 30 m mask pixels.
-- **The edge fit.**
-  - 416 stretches are `at-shift-limit`: the water runs on past the 30 m limit, so the bank moved 30 m and the
-    edge lies farther.
-  - 157 are `no-edge`: no clear edge, so the mask bank is kept.
-  - The bank lines are closer to the water than the mask's, not surveyed.
+- **The banks.** The centreline is 150.7 km for the 144.0 km route (1.05 times). 649 stretches are
+  low-confidence width:
+  - 357 `repaired`: a check failed there and the bank was rebuilt. The checks behind the repairs:
+    width-narrow 159, jump 104, excursion 79, width-wide 30, **crossing 23**, side 11, missing 4.
+  - 191 `no-edge`: no clear edge, so the seed bank is kept.
+  - 92 `at-shift-limit`: the water runs on past the 30 m limit, so the bank moved 30 m and the edge lies
+    farther.
+  - 9 `narrow`: under 30 m wide.
+- **The banks still cross.** After the repairs, the left and right banks cross at 24 places, between km 24
+  and km 109 of the centreline. `owd reach` warns `banks_cross` and exits 1; the study is still written, and
+  the script goes on. The width stretches near those places read banks that are wrong there. Fixing the
+  crossings is a follow-up.
 - **The depth is one assumed number.** Most classes need more than 3 m, so the whole river is one depth
   stretch for them. At a few stations the edge-fitted centreline leaves the water the bed model covers. There
   the DEM surface (which sits above the water) is read instead, and the depth found there is negative.
@@ -148,8 +158,8 @@ The four reports of the study, from step 7, as PDF:
   vessel is chosen and `owd size`, `owd align` and `owd volumes` have run.
 - [Run report](sassandra-reports/owd-sassandra-rr.pdf): the versions, the stages and the hashes.
 
-They were made from a run on the spec 0013 bank code. Read them with the bank limits: the centreline is
-178.7 km for the 144 km route (1.24 times), and 647 stretches are low-confidence width. The first page of each
+They were made from the same run. Read them with the bank limits: the centreline is 150.7 km for the 144 km
+route (1.05 times), 649 stretches are low-confidence width, and the banks cross at 24 places. The first page of each
 report says so in its "Data and limits" box. Run `bash examples/sassandra/run.sh` to make them again.
 
 ## In the app
