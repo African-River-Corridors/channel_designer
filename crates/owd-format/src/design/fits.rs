@@ -188,12 +188,17 @@ impl Session {
         // A full answer also read the bed, the water and the DEM; a plan-only one did not, and its
         // hash stays what it was.
         let full = (self.doc["fits"]["results"]["mode"] == "full").then(|| {
-            json!({
+            let mut f = json!({
                 "bed_model": inp["bed_model"],
                 "water_level": inp["water_level"],
                 "dem": inp["dem"]["sha256"],
                 "sizing": self.doc["stages"]["sizing"]["settings"]["rule_sets"],
-            })
+            });
+            // The assumed bed is centred on a fresh reference line (#398).
+            if let Some(a) = self.bed_axis_hash() {
+                f["bed_axis"] = a;
+            }
+            f
         });
         let mut dep = json!({
             "full": full,

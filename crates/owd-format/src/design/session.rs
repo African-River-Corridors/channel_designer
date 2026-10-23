@@ -409,15 +409,27 @@ impl Session {
             {
                 inputs.remove("bed_model");
             }
-            // No stage reads the reference line (spec 0016): storing it leaves them fresh.
+            // No stage reads the reference line (spec 0016): storing it leaves them fresh. The
+            // volumes read the assumed bed, which is centred on it (#398).
             if let Some(inputs) = dep["inputs"].as_object_mut() {
                 inputs.remove("reference_line");
+            }
+            if stage == Stage::Volumes
+                && self.bed_model_value().is_some()
+                && let Some(a) = self.bed_axis_hash()
+            {
+                dep["bed_axis"] = a;
             }
         }
         if matches!(stage, Stage::Optimise | Stage::Volumes) {
             dep["options"] = self.doc["options"].clone();
         }
         hash_value(&dep)
+    }
+
+    /// The hash of what `stage` depends on now: a stage is fresh while it equals the one recorded.
+    pub fn stage_hash(&self, stage: Stage) -> String {
+        self.dependency_hash(stage)
     }
 
     pub fn stage_status(&self, stage: Stage) -> StageStatus {

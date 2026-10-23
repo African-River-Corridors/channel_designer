@@ -138,10 +138,13 @@ pub fn parabola(offset_m: f64, half_width_m: f64) -> f64 {
     (1.0 - t * t).max(0.0)
 }
 
-/// One cross-section of the water, read at a station of the centreline.
+/// One cross-section of the water, read at a station of the axis (the centreline, unless set).
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Section {
+    /// Along the axis.
     chainage_m: f64,
+    /// Along the river centreline, where the station lies on it: the depth table's chainage.
+    river_m: f64,
     at: Pt,
     /// The unit normal, to the left of the direction of the centreline.
     normal: Pt,
@@ -158,6 +161,8 @@ pub struct BedModel {
     sections: Vec<Section>,
     /// The centreline for projecting many points onto it fast (the same answers as a scan).
     index: linear::ProjectIndex,
+    /// The axis the parabola is centred on, for projecting onto it.
+    axis_index: linear::ProjectIndex,
 }
 
 impl BedModel {
@@ -166,6 +171,18 @@ impl BedModel {
     pub fn new(
         table: &[[f64; 2]],
         centreline: &[Pt],
+        water: &[Polygon],
+    ) -> Result<BedModel, PyError> {
+        Self::with_axis(table, centreline, centreline, water)
+    }
+
+    /// [`BedModel::new`], with the parabola centred on `axis` (such as the reference line of spec
+    /// 0016) instead of the centreline. The depth table and the water level still read the river
+    /// chainage: each cross-section of the axis reads the table where it lies on `centreline`.
+    pub fn with_axis(
+        table: &[[f64; 2]],
+        centreline: &[Pt],
+        axis: &[Pt],
         water: &[Polygon],
     ) -> Result<BedModel, PyError> {
         if table.is_empty() {
@@ -187,13 +204,15 @@ impl BedModel {
                 "the chainages of the depth table must not decrease.",
             ));
         }
-        if centreline.len() < 2 {
+        if centreline.len() < 2 || axis.len() < 2 {
             return Err(PyError::value(
                 "the river centreline needs at least two points.",
             ));
         }
         let index = EdgeIndex::new(water);
-        let c = Chained::new(centreline);
+        let river = linear::ProjectIndex::new(centreline);
+        let same = axis == centreline;
+        let c = Chained::new(axis);
         let len = c.length();
         let n = (len / BED_STATION_M).ceil().max(1.0) as usize;
         let mut sections: Vec<Section> = (0..=n)
@@ -205,6 +224,7 @@ impl BedModel {
                 let (left_m, right_m) = index.half_widths(at, normal);
                 Section {
                     chainage_m: s,
+                    river_m: if same { s } else { river.project(at) },
                     at,
                     normal,
                     left_m,
@@ -230,7 +250,12 @@ impl BedModel {
             table: table.to_vec(),
             centreline: centreline.to_vec(),
             sections,
-            index: linear::ProjectIndex::new(centreline),
+            axis_index: if same {
+                river.clone()
+            } else {
+                linear::ProjectIndex::new(axis)
+            },
+            index: river,
         })
     }
 
@@ -261,19 +286,21 @@ impl BedModel {
         (a, b, t)
     }
 
-    /// The depth of the bed below the water at the place `offset_m` to the left of the centreline
-    /// at `chainage_m` (negative: to the right): `depth x shape`. Zero at the banks and beyond.
+    /// The depth of the bed below the water at the place `offset_m` to the left of the axis at
+    /// `chainage_m` along it (negative: to the right): `depth x shape`, the depth read at the
+    /// river chainage there. Zero at the banks and beyond.
     pub fn depth_below_water_m(&self, chainage_m: f64, offset_m: f64) -> f64 {
         let (left, right) = self.half_widths_m(chainage_m);
         let half = if offset_m >= 0.0 { left } else { right };
-        self.depth_m(chainage_m) * parabola(offset_m, half)
+        let (a, b, t) = self.between(chainage_m);
+        self.depth_m(a.river_m + (b.river_m - a.river_m) * t) * parabola(offset_m, half)
     }
 
     /// The depth below the water at `p`, or `None` when `p` is not in the water: farther from the
     /// centreline than the bank on its side. (Water the centreline's cross-sections do not reach,
     /// such as a bay, is read from the DEM.)
     pub fn depth_below_water_at(&self, p: Pt) -> Option<f64> {
-        let s = self.index.project(p);
+        let s = self.axis_index.project(p);
         let (a, b, t) = self.between(s);
         let normal = if t < 0.5 { a.normal } else { b.normal };
         let at = [
@@ -402,6 +429,46 @@ mod tests {
             s += 37.0;
         }
         assert!(checked > 1000);
+    }
+
+    /// A centreline that zigzags 20 m either side of the middle of a straight channel, every 40 m.
+    fn zigzag() -> Vec<Pt> {
+        (0..=25)
+            .map(|i| [40.0 * i as f64, if i % 2 == 0 { 20.0 } else { -20.0 }])
+            .collect()
+    }
+
+    #[test]
+    fn on_an_axis_the_parabola_is_deepest_on_the_axis_not_on_the_centreline() {
+        // Spec 0016 follow-up (#398): 100 m wide, 3 m deep. On the zigzag centreline the middle of
+        // the channel reads as little as 1 - (20/50)^2 = 0.84 of the depth; on the straight axis
+        // it reads the full depth.
+        let (axis, water) = straight(100.0);
+        let jumpy = BedModel::new(&[[0.0, 3.0]], &zigzag(), &water).unwrap();
+        let bed = BedModel::with_axis(&[[0.0, 3.0]], &zigzag(), &axis, &water).unwrap();
+        let wl = 10.0;
+        for x in [120.0, 200.0, 520.0, 760.0] {
+            let d = wl - bed.bed_elevation([x, 0.0], wl).unwrap();
+            assert!((d - 3.0).abs() < 1e-9, "at {x}: {d}");
+            let j = wl - jumpy.bed_elevation([x, 0.0], wl).unwrap();
+            assert!(j < 2.95, "the zigzag reads {j} at {x}: a weak test");
+            // The bank still meets the water.
+            assert!(bed.bed_elevation([x, 49.999], wl).unwrap() > wl - 0.01);
+        }
+    }
+
+    #[test]
+    fn on_an_axis_the_table_and_the_level_still_read_the_river_chainage() {
+        // The axis starts 200 m into the river; the table deepens along the river.
+        let (_, water) = straight(100.0);
+        let river: Vec<Pt> = vec![[-50.0, 0.0], [1050.0, 0.0]];
+        let axis: Vec<Pt> = vec![[150.0, 0.0], [1000.0, 0.0]];
+        let bed = BedModel::with_axis(&[[0.0, 2.0], [1100.0, 4.2]], &river, &axis, &water).unwrap();
+        let wl = 10.0;
+        // At x = 500 the river chainage is 550, so the table reads 2 + 2.2 * 550/1100 = 3.1.
+        let d = wl - bed.bed_elevation([500.0, 0.0], wl).unwrap();
+        assert!((d - 3.1).abs() < 1e-9, "{d}");
+        assert!((bed.chainage_of([500.0, 0.0]) - 550.0).abs() < 1e-9);
     }
 
     #[test]

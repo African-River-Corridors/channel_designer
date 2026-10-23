@@ -164,3 +164,76 @@ fn the_default_plan_line_is_the_reference_line() {
     assert_eq!(s.fits_result().unwrap()["plan_line"], "reference");
     assert_eq!(s.document()["fits"]["settings"]["plan_line"], "reference");
 }
+
+/// A straight river 200 m wide with straight banks and a centreline that zigzags 30 m either side
+/// of the middle every 60 m; water at 10 m, an assumed bed of 3 m.
+fn zigzag_study() -> Session {
+    let at = |x: f64, y: f64| [x + 500_000.0, y + 600_000.0];
+    let left: Vec<[f64; 2]> = (0..=60).map(|i| at(50.0 * i as f64, 100.0)).collect();
+    let right: Vec<[f64; 2]> = (0..=60).map(|i| at(50.0 * i as f64, -100.0)).collect();
+    let centre: Vec<[f64; 2]> = (0..=50)
+        .map(|i| at(60.0 * i as f64, if i % 2 == 0 { 30.0 } else { -30.0 }))
+        .collect();
+    let mut ring = right.clone();
+    ring.extend(left.iter().rev());
+    ring.push(ring[0]);
+    let polygon = format!(
+        r#"{{"type":"Polygon",{UTM30},"coordinates":[{}]}}"#,
+        json!(ring)
+    );
+    let mut s = Session::new("Zigzag", "2026-10-23");
+    let (l, r, c) = (line(&left), line(&right), line(&centre));
+    s.import(&[
+        (Role::RiverPolygon, polygon.as_str()),
+        (Role::Centreline, c.as_str()),
+        (Role::LeftBank, l.as_str()),
+        (Role::RightBank, r.as_str()),
+    ])
+    .unwrap();
+    s.set_water_profile(&[[0.0, 10.0]]).unwrap();
+    s.set_bed_model(&[[0.0, 3.0], [4000.0, 3.0]], Some("dry"), "2026-10-23")
+        .unwrap();
+    s
+}
+
+#[test]
+fn the_assumed_bed_is_deepest_on_the_reference_line_not_on_a_jumpy_centreline() {
+    // #398: on the zigzag centreline's parabola, the middle of the river reads as little as
+    // 1 - (30/100)^2 = 0.91 of 3 m, under the 2.6 m of CN-III-MOTOR; on the reference line, which
+    // runs down the middle, it reads the full 3 m.
+    let terrain = |xs: &[f64], _ys: &[f64]| vec![12.0; xs.len()];
+    let choices = ["PIANC-B".to_string()];
+    let mut s = zigzag_study();
+    s.run_fits_on(Some(&choices), Some(&terrain), PlanLine::Reference)
+        .unwrap();
+    let r = s.fits_result().unwrap();
+    let row = r["rule_sets"][0]["classes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["vessel_standard_id"] == "CN-III-MOTOR")
+        .unwrap();
+    let depth: Vec<&Value> = row["constraint_stretches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|st| st["kind"] == "depth")
+        .collect();
+    assert!(depth.is_empty(), "{depth:?}");
+}
+
+#[test]
+fn with_a_bed_model_a_new_reference_line_makes_the_volumes_stale() {
+    use owd_format::design::Stage;
+    let mut s = zigzag_study();
+    let before = s.document().clone();
+    let h0 = s.stage_hash(Stage::Volumes);
+    s.run_reference_line().unwrap();
+    assert_ne!(s.stage_hash(Stage::Volumes), h0);
+    // Without a bed model, the reference line does not touch the volumes.
+    let mut t = Session::open(&serde_json::to_string(&before).unwrap()).unwrap();
+    t.clear_bed_model();
+    let h1 = t.stage_hash(Stage::Volumes);
+    t.run_reference_line().unwrap();
+    assert_eq!(t.stage_hash(Stage::Volumes), h1);
+}
