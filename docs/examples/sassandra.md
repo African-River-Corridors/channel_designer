@@ -100,9 +100,7 @@ The centreline is drawn from the bank lines, and it wiggles at the scale of its 
 reads as a tight bend, so most of its radius stretches are not the river. The fairway fit (ADR 0007) is
 the smoothest line a channel of one class can take in the water. The reference line (spec 0016) is one
 smooth line in the water for every vessel: the smoothed mid-line of the banks, refitted in the water. Width
-and depth are read along the plan line too. The depth can read shallower on the reference line than on the
-centreline for the classes that need less than the 3 m assumed, where the bed model is deepest on the
-centreline (see "Limits").
+and depth are read along the plan line too. The assumed bed is deepest on the reference line (#398).
 
 The answer says which line it read: `Plan line: reference` in the table, `plan_line` in the JSON.
 
@@ -153,8 +151,8 @@ These are not yet calibrated against a surveyed reach. Each is named so in the s
   the DEM surface (which sits above the water) is read instead, and the depth found there is negative.
   These show as single-station depth stretches.
 - **The plan line** is the reference line (above), in the plan-only answer and the full one. The bed
-  model's parabola is deepest on the centreline, not on the reference line, so the depth read on the
-  reference line is shallower where the two lines part.
+  model's parabola is centred on the reference line (#398), and the depth table and water level still read
+  the centreline's chainage.
 - **Width:** the width stretches use the banks as found, with the limits above.
 - **Air draught, rapids and rock** are out of scope (#12, #13). The Soubré dam is the end of the reach.
 
