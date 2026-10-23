@@ -24,6 +24,8 @@ jobs:
         run: |
           v=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
           test "v$v" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} != version v$v"; exit 1; }
+      - name: PyPI can take the package (from 0.4)
+        run: python tools/pypi_ready.py
 
   # One abi3 wheel per platform (the same build as wheels.yml), so `pip install` needs no compiler.
   wheels:
