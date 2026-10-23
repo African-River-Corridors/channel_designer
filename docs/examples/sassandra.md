@@ -141,7 +141,7 @@ These are not yet calibrated against a surveyed reach. Each is named so in the s
 - **The banks still cross.** After the repairs, the left and right banks cross at 24 places, between km 24
   and km 109 of the centreline. `owd reach` warns `banks_cross` and exits 1; the study is still written, and
   the script goes on. The width stretches near those places read banks that are wrong there. Fixing the
-  crossings is a follow-up.
+  crossings is a follow-up (#410).
 - **The depth is one assumed number.** Most classes need more than 3 m, so the whole river is one depth
   stretch for them. At a few stations the edge-fitted centreline leaves the water the bed model covers. There
   the DEM surface (which sits above the water) is read instead, and the depth found there is negative.
