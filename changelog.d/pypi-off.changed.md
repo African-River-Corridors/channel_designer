@@ -1,1 +1,0 @@
-- **Releases go to GitHub, not PyPI, until v0.4.** A version tag now attaches the wheels and the sdist to a GitHub release. PyPI publishing is skipped before v0.4, because PyPI refuses the git dependency on vessel-designer.

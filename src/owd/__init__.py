@@ -16,6 +16,6 @@ Three calculation layers, an optional optimiser layer and drawings:
 
 Screening tool: not for construction, no design warranty.
 """
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 from ._draw import draw  # noqa: E402,F401  (imports the Rust core only when called)
