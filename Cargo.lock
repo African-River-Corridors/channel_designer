@@ -3656,7 +3656,7 @@ dependencies = [
 
 [[package]]
 name = "owd-app"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -3672,7 +3672,7 @@ dependencies = [
 
 [[package]]
 name = "owd-cli"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "arc-rules",
  "clap",
@@ -3692,7 +3692,7 @@ dependencies = [
 
 [[package]]
 name = "owd-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "arc-rules",
  "clarabel",
@@ -3705,7 +3705,7 @@ dependencies = [
 
 [[package]]
 name = "owd-format"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "arc-rules",
  "libm",
@@ -3722,7 +3722,7 @@ dependencies = [
 
 [[package]]
 name = "owd-py"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "owd-format",
  "pyo3",
@@ -3731,7 +3731,7 @@ dependencies = [
 
 [[package]]
 name = "owd-reach"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "font8x8",
  "miniz_oxide 0.8.9",
@@ -3745,7 +3745,7 @@ dependencies = [
 
 [[package]]
 name = "owd-report"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "lopdf",
  "ord",
@@ -3757,7 +3757,7 @@ dependencies = [
 
 [[package]]
 name = "owd-shell"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "owd-cli",
  "owd-core",
@@ -3769,7 +3769,7 @@ dependencies = [
 
 [[package]]
 name = "owd-web"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "base64 0.22.1",
  "js-sys",
@@ -7680,7 +7680,7 @@ checksum = "9440ea3e5aeabb0ac63af70daf835274065238cdd0cec83418f417eae38bacee"
 
 [[package]]
 name = "xtask"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "serde_json",
 ]

@@ -7,7 +7,7 @@ members = ["crates/owd-core", "crates/owd-format", "crates/owd-cli", "crates/owd
 default-members = ["crates/owd-core", "crates/owd-format", "crates/owd-cli", "crates/owd-shell", "crates/owd-reach", "crates/owd-report", "xtask"]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 rust-version = "1.99"
 license = "Apache-2.0"
