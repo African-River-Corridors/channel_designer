@@ -1,8 +1,9 @@
 name: Release
 
-# Publishes to PyPI when a version tag (v*) is pushed. Uses PyPI trusted publishing:
-# no password or token is stored anywhere. The PyPI project must list this repo,
-# this workflow file (release.yml) and the environment "pypi" as a trusted publisher.
+# On a version tag (v*): builds the wheels and the sdist, and attaches them to a GitHub release.
+# PyPI publishing is off until v0.4 (maintainer's decision, 2026-10-23): the package depends on
+# vessel-designer from git, which PyPI refuses. From v0.4 the `publish` job runs again, through
+# PyPI trusted publishing (no token stored; the publisher is this repo, release.yml, environment "pypi").
 
 on:
   push:
@@ -60,7 +61,31 @@ jobs:
           name: sdist
           path: dist/
 
+  github-release:
+    needs: [wheels, sdist]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "{wheel-*,sdist}"
+          path: dist/
+          merge-multiple: true
+      - name: Attach the files to the GitHub release (create it if missing)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber -R "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" dist/* --title "Open Waterway Designer ${TAG#v}" --generate-notes -R "$GITHUB_REPOSITORY"
+          fi
+
   publish:
+    # Off until v0.4: PyPI refuses the git dependency on vessel-designer.
+    if: ${{ !startsWith(github.ref_name, 'v0.0') && !startsWith(github.ref_name, 'v0.1') && !startsWith(github.ref_name, 'v0.2') && !startsWith(github.ref_name, 'v0.3') }}
     needs: [wheels, sdist]
     runs-on: ubuntu-latest
     environment: pypi
