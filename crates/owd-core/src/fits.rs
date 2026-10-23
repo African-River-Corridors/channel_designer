@@ -13,7 +13,7 @@
 
 use crate::alignment::PyError;
 use crate::alignment::navigable::{
-    Chained, STATION_STEP_M, StretchReason, water_width_at, width_check,
+    Chained, STATION_STEP_M, StretchReason, kind_checks, water_width_at,
 };
 use crate::alignment::radius_check::default_check_chord;
 use crate::geom::{Polygon, Pt};
@@ -235,7 +235,8 @@ pub(crate) fn class_fit(
 ) -> Result<ClassFit, PyError> {
     let r_min = shape.min_bend_radius_m;
     let chord = default_check_chord(r_min);
-    let found = width_check(c.line, water, shape, r_min, chord)?;
+    // Each kind in its own right: a radius stretch is not hidden under a width stretch (#365).
+    let found = kind_checks(c.line, water, shape, r_min, chord)?;
     let stretches: Vec<FitStretch> = found
         .iter()
         .map(|st| {
@@ -316,6 +317,25 @@ mod tests {
     //! exactly when its straight width is over 60 m. The bend has radius 400 m, so a class is
     //! stopped by it when its R_min is over 400 m (PIANC-B: 3 x LOA, CEMT IV 255 m).
     use super::*;
+
+    #[test]
+    fn a_radius_stretch_under_a_width_stretch_is_reported_too() {
+        // Label: property (#365). A tight bend in narrow water: each kind in its own right.
+        let (line, water) = crate::alignment::navigable::tests::tight_bend_in_narrow_water();
+        let f = plan_only_fits_of(&line, &[water], &["PIANC-B"], false).unwrap();
+        let row = f.rule_sets[0]
+            .rows
+            .iter()
+            .find(|r| r.vessel_standard_id == "CEMT-IV")
+            .unwrap();
+        let kinds: Vec<FitKind> = row.stretches.iter().map(|s| s.kind).collect();
+        assert!(kinds.contains(&FitKind::Width), "{kinds:?}");
+        assert!(kinds.contains(&FitKind::Radius), "{kinds:?}");
+        assert!(
+            row.worst_radius_deficit_m > 100.0,
+            "R_min 255 m on a 100 m bend"
+        );
+    }
 
     const THROAT_M: f64 = 60.0;
     const BEND_R_M: f64 = 400.0;

@@ -462,7 +462,6 @@ pub fn width_check(
         return Err(PyError::value("the line needs at least two points."));
     }
     let c = Chained::new(line);
-    let len = c.length();
     let index = WaterIndex::new(water);
     let status = |s: f64| -> Option<StretchReason> {
         let r = c.local_radius(s, chord_m);
@@ -474,6 +473,46 @@ pub fn width_check(
             None
         }
     };
+    Ok(runs(&c, status))
+}
+
+/// [`width_check`] with each kind read in its own right (#365): the `too_narrow` stretches (the
+/// water narrower than the bend-widened bottom width) and the `r_min_not_possible` ones (the local
+/// radius under R_min), which may overlap, sorted by start. [`width_check`] reports a station that
+/// fails both as `too_narrow` only, which hides the radius under the width.
+pub fn kind_checks(
+    line: &[Pt],
+    water: &[Polygon],
+    shape: &ChannelShape,
+    r_min: f64,
+    chord_m: f64,
+) -> Result<Vec<Stretch>, PyError> {
+    if !(chord_m.is_finite() && chord_m > 0.0) {
+        return Err(PyError::value("chord_m must be finite and positive."));
+    }
+    if line.len() < 2 {
+        return Err(PyError::value("the line needs at least two points."));
+    }
+    let c = Chained::new(line);
+    let index = WaterIndex::new(water);
+    let narrow = |s: f64| {
+        let r = c.local_radius(s, chord_m);
+        (index.width_at(&c, s) < shape.bottom_width_at_m(r)).then_some(StretchReason::TooNarrow)
+    };
+    let tight = |s: f64| {
+        (!radius_ok(c.local_radius(s, chord_m), r_min)).then_some(StretchReason::RMinNotPossible)
+    };
+    let mut out = runs(&c, narrow);
+    out.extend(runs(&c, tight));
+    out.sort_by(|a, b| a.start_chainage_m.total_cmp(&b.start_chainage_m));
+    Ok(out)
+}
+
+/// The runs of failing stations along `c` (every `STATION_STEP_M`, and the end), by `status`, as
+/// stretches; each end is found to `EDGE_TOL_M` between the last passing and the first failing
+/// station.
+fn runs(c: &Chained, status: impl Fn(f64) -> Option<StretchReason>) -> Vec<Stretch> {
+    let len = c.length();
     let n = (len / STATION_STEP_M).ceil() as usize;
     let stations: Vec<f64> = (0..=n)
         .map(|i| (i as f64 * STATION_STEP_M).min(len))
@@ -498,7 +537,7 @@ pub fn width_check(
         {
             let at = edge(ps, s);
             if let Some((start, reason)) = open_run.take() {
-                out.push(stretch(&c, start, at, reason));
+                out.push(stretch(c, start, at, reason));
             }
             if let Some(r) = st {
                 open_run = Some((at, r));
@@ -511,9 +550,9 @@ pub fn width_check(
         prev = Some((s, st));
     }
     if let Some((start, reason)) = open_run {
-        out.push(stretch(&c, start, len, reason));
+        out.push(stretch(c, start, len, reason));
     }
-    Ok(out)
+    out
 }
 
 fn stretch(c: &Chained, start: f64, end: f64, reason: StretchReason) -> Stretch {
@@ -545,7 +584,7 @@ pub fn inside_outside_stretches(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     //! Label: sourced - hand calculation (fixture answers in `synthetic::fixtures`; PIANC-B with
     //! CEMT IV gives R_min 255 m and a 30.4 m straight bottom width, spec 0005 worked example)
     use super::*;
@@ -642,6 +681,71 @@ mod tests {
         assert_eq!(out[0].reason, StretchReason::RMinNotPossible);
         // The arc runs from chainage 500 to 500 + 50π.
         assert!(out[0].start_chainage_m > 450.0 && out[0].end_chainage_m < 700.0);
+    }
+
+    /// A 100 m radius quarter circle between straight legs, and a band of water 20 m wide along it.
+    pub(crate) fn tight_bend_in_narrow_water() -> (Vec<Pt>, Polygon) {
+        let mut line: Vec<Pt> = (0..=60)
+            .map(|i| {
+                let th = core::f64::consts::FRAC_PI_2 * i as f64 / 60.0;
+                [100.0 * libm::sin(th), 100.0 * (1.0 - libm::cos(th))]
+            })
+            .collect();
+        line.insert(0, [-500.0, 0.0]);
+        line.push([100.0, 600.0]);
+        // Offset each vertex 10 m to either side, along the normal of its neighbours.
+        let side = |k: f64| -> Vec<Pt> {
+            (0..line.len())
+                .map(|i| {
+                    let a = line[i.saturating_sub(1)];
+                    let b = line[(i + 1).min(line.len() - 1)];
+                    let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+                    let n = libm::hypot(dx, dy);
+                    [line[i][0] - k * dy / n, line[i][1] + k * dx / n]
+                })
+                .collect()
+        };
+        let mut ring = side(10.0);
+        ring.extend(side(-10.0).into_iter().rev());
+        ring.push(ring[0]);
+        (
+            line,
+            Polygon {
+                exterior: ring,
+                holes: vec![],
+            },
+        )
+    }
+
+    #[test]
+    fn in_narrow_water_a_tight_bend_is_too_narrow_and_too_tight_when_each_is_read_alone() {
+        let (line, water) = tight_bend_in_narrow_water();
+        let water = [water];
+        // The combined check reports the station once, as too narrow (the alignment reads this).
+        let both = width_check(&line, &water, &shape(), 255.0, 85.0).unwrap();
+        assert!(
+            both.iter().all(|s| s.reason == StretchReason::TooNarrow),
+            "{both:?}"
+        );
+        // Read alone, each kind has its own stretches (#365): the bend is also under R_min.
+        let each = kind_checks(&line, &water, &shape(), 255.0, 85.0).unwrap();
+        let narrow: Vec<_> = each
+            .iter()
+            .filter(|s| s.reason == StretchReason::TooNarrow)
+            .collect();
+        let tight: Vec<_> = each
+            .iter()
+            .filter(|s| s.reason == StretchReason::RMinNotPossible)
+            .collect();
+        assert_eq!(narrow.len(), both.len(), "{each:?}");
+        assert_eq!(tight.len(), 1, "{each:?}");
+        // The arc runs from chainage 500 to 500 + 50π.
+        assert!(tight[0].start_chainage_m > 450.0 && tight[0].end_chainage_m < 700.0);
+        // Sorted by start.
+        assert!(
+            each.windows(2)
+                .all(|w| w[0].start_chainage_m <= w[1].start_chainage_m)
+        );
     }
 
     #[test]
