@@ -1,0 +1,1 @@
+- **Release check and agent docs.** `tools/pypi_ready.py` fails the release check from 0.4 when a dependency is given by URL, which PyPI refuses. New `docs/agents/lanes.md` (how a build lane works) and `docs/agents/releasing.md` (cut a release branch so main keeps merging). The changelog README states the slug rule.

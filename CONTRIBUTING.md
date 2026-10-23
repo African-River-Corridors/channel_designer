@@ -90,6 +90,10 @@ fragments.
 Every pull request from outside the maintainers needs approval from a code owner
 (see `.github/CODEOWNERS`) before it merges.
 
+## Agent build lanes and releases
+
+Agents building this repo follow `docs/agents/lanes.md`; releases follow `docs/agents/releasing.md`.
+
 ## Licence of contributions
 
 This project is licensed under Apache-2.0. Unless you say otherwise, any contribution you

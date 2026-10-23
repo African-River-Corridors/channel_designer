@@ -5,7 +5,8 @@ never conflict over the changelog.
 
 Name the file `<id>.<kind>.md`:
 
-- `<id>` is the issue or pull request number, such as `294`. Use a short slug if there is neither.
+- `<id>` is the issue or pull request number, such as `294`. Use a short slug if there is neither: letters,
+  digits, `-`, `_` and `+` only, with no dots (`pypi-off`, not `pypi-off-until-0.4`).
 - `<kind>` is one of `added`, `changed`, `deprecated`, `removed`, `fixed`, `security` or `design-impact`.
 
 Write one entry in Markdown: a bullet (`- **Title.** What changed and why.`) or plain text. No headings.
