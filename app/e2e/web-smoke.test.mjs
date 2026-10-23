@@ -13,7 +13,7 @@ import { remote } from "webdriverio";
 import { serve } from "./web-server.mjs";
 import { reportEngineHost } from "./report-engine-hosts.mjs";
 import { catalogueHost } from "./catalogue-hosts.mjs";
-import { endpoints, searches, serveReach, slow } from "./reach-server.mjs";
+import { endpoints, hits, searches, serveReach, slow } from "./reach-server.mjs";
 import { compare } from "../../tools/web_parity_compare.mjs";
 
 const here = import.meta.dirname;
@@ -363,7 +363,9 @@ describe("OWD web smoke tests", () => {
       await until(b, "the whole river", async () => (await exists(b, "reach-length")) && /km/.test(await text(b, "reach-length")));
     } catch (e) {
       console.log("DEBUG errors:", JSON.stringify(await b.execute(() => window.__errs)));
-      console.log("DEBUG panel:", (await (await tid(b, "start-from-river")).getText()).slice(0, 1500));
+      console.log("DEBUG panel:", await b.execute(() => (document.querySelector(".reach")?.innerText ?? "no .reach").slice(0, 2000)));
+      console.log("DEBUG hits:", JSON.stringify(hits.slice(-40)));
+      console.log("DEBUG searches:", JSON.stringify(searches));
       throw e;
     }
     assert.equal(await (await tid(b, "reach-start")).getValue(), "-2.26885, 4.89839", "Start is the mouth");
