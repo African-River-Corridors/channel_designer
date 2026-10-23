@@ -85,6 +85,12 @@ catalogue (`--vessel CEMT-VIb-motor`), or for a vessel of your own: `owd size de
 Designs are document format 0.4; a format 0.3 file (the number 3) opens and is saved as 0.4, and an older file is
 refused and must be rebuilt. See [docs/rules/channel-rules.md](docs/rules/channel-rules.md).
 
+`owd fits` reads the river on the reference line: one smooth line in the water, made from the banks, that belongs
+to no vessel (ADR 0014). `owd envelope design.owd --png envelope.png` gives the largest vessel the river allows: a
+series of single-hull sizes from 10 × 2 m to 50 × 10 m at a 2 m draught under PIANC WG 141 quality C, each with its
+own fairway fit, and the largest size that passes each kilometre (`--sizes`, `--draught`, `--rule-set`, `--json`,
+`--csv`).
+
 ### Drawings
 
 After the volumes stage, `owd draw design.owd --out sheets/` writes, for each sheet, the drawing document, the

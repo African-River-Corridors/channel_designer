@@ -619,6 +619,34 @@ enum Command {
         #[command(flatten)]
         out: Out,
     },
+    /// The largest vessel the river allows (spec 0016): a sweep of single-hull motor vessels, each
+    /// with its own fairway fit seeded from the reference line, read for width and radius. Gives
+    /// the largest size that passes the whole reach and each kilometre. Kept in the document;
+    /// stale when the banks change; never reruns by itself.
+    Envelope {
+        /// The channel design. `-` is stdin.
+        doc: String,
+        /// The series, as `LENGTHxBEAM` in metres (default: 10x2,20x4,30x6,40x8,50x10).
+        #[arg(long, value_name = "SIZES")]
+        sizes: Option<String>,
+        /// The draught of every size, in metres (default 2).
+        #[arg(long, value_name = "M")]
+        draught: Option<f64>,
+        /// The ruleset, for example PIANC-B (default PIANC-C).
+        #[arg(long, value_name = "RULESET")]
+        rule_set: Option<String>,
+        /// Print the sweep the document holds, and say if it is stale, without running.
+        #[arg(long)]
+        show: bool,
+        /// Print the per-kilometre strip as CSV instead of the table.
+        #[arg(long)]
+        csv: bool,
+        /// Also write a PNG chart: each size along the river, and the per-kilometre strip.
+        #[arg(long, value_name = "FILE")]
+        png: Option<String>,
+        #[command(flatten)]
+        out: Out,
+    },
     /// Mark reaches of the river as canal, impounded river or free-flowing river (spec 0007), so
     /// Rules written for one kind apply only there. Chainage is along the river centreline.
     Waterway {
@@ -848,6 +876,26 @@ pub fn main() -> ExitCode {
             show,
             plan_line.as_deref(),
             all,
+            &out.output,
+            out.json,
+        ),
+        Command::Envelope {
+            doc,
+            sizes,
+            draught,
+            rule_set,
+            show,
+            csv,
+            png,
+            out,
+        } => crate::envelope::envelope(
+            &doc,
+            sizes.as_deref(),
+            draught,
+            rule_set.as_deref(),
+            show,
+            csv,
+            png.as_deref(),
             &out.output,
             out.json,
         ),
