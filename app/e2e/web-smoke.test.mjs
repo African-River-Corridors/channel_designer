@@ -486,21 +486,6 @@ describe("OWD web smoke tests", () => {
     await until(b, "the depth", async () => (await (await tid(b, "mark-bed")).getAttribute("data-mark")) === "user");
     await (await tid(b, "fits-run")).click();
     await until(b, "the class table", async () => (await b.$$("[data-testid^=fits-row-]")).length > 3);
-    // Spec 0016 T4: the largest vessel, through the shell (in wasm): the series table, the chart, and
-    // the per-km strip on the map, as the study keeps them.
-    await (await tid(b, "envelope-run")).click();
-    await until(b, "the series table", async () => (await b.$$("[data-testid=envelope-row]")).length === 5, 120000);
-    const env = (await pageDoc(b)).stages.envelope.results;
-    assert.equal(await text(b, "envelope-largest"), env.largest ? env.largest.label : "no size of the series");
-    for (const z of env.sizes) {
-      const r = await b.$(`[data-testid=envelope-row][data-size="${z.label}"]`);
-      assert.equal(await r.getAttribute("data-passes"), String(z.passes), z.label);
-      assert.match(await r.getText(), z.passes ? /✓ passes/ : /✕ blocked/, "in words and a shape, not colour alone");
-    }
-    assert.ok(await (await tid(b, "envelope-chart")).isExisting(), "the chart");
-    assert.match(await text(b, "envelope-caveat"), /banks/);
-    assert.ok(env.per_km.length > 0, "a reach of a km or more");
-    await until(b, "the strip on the map", async () => Number(await (await tid(b, "envelope-panel")).getAttribute("data-strip-drawn")) === env.per_km.length);
     const row = (await b.$$("[data-testid^=fits-row-]"))[0];
     const vessel = (await row.getAttribute("data-testid")).replace("fits-row-", "");
     assert.match(await row.getText(), /✓ fits|✕ does not fit/, "the row says in words and a shape whether it fits");

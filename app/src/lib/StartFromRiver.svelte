@@ -7,7 +7,7 @@
   import type * as GeoJSON from "geojson";
   import * as api from "./api";
   import { docPart } from "./api";
-  import type { EnvelopeResult, FitsResult, FitsSelection, LonLat, Provenance, ProvenanceInput, ReachStepName, RiverHit, Snapshot } from "./api";
+  import type { FitsResult, FitsSelection, LonLat, Provenance, ProvenanceInput, ReachStepName, RiverHit, Snapshot } from "./api";
   import type { ReachProgress } from "./platform/types";
   import MarkBadge from "./MarkBadge.svelte";
   import { platform } from "./platform";
@@ -120,12 +120,6 @@
   const holding = $derived(!!view?.river && !letGo);
   const provenance = $derived(snap?.document.provenance ?? {});
   const fits = $derived(docPart<FitsResult>(snap, "fits", "results"));
-  // The largest vessel the river allows (spec 0016): the sweep the study keeps, and its strip.
-  const envelope = $derived(docPart<EnvelopeResult>(snap, "stages", "envelope", "results"));
-  const strip = $derived(view?.envelope_strip ?? []);
-  let showStrip = $state(true);
-  /** How many km of the strip the map holds now (for the tests: the map itself is a canvas). */
-  let stripDrawn = $state(0);
   const lowConfidence = $derived(docPart<{ stretches: { kind: string }[] }>(snap, "low_confidence_width")?.stretches ?? []);
   const INPUTS: { id: ProvenanceInput; label: string }[] = [
     { id: "route", label: "Route" },
@@ -361,9 +355,6 @@
     m.addLayer({ id: "reach-river", type: "line", source: "reach", filter: ["==", ["get", "kind"], "river"], paint: { "line-color": ink, "line-width": 1.5, "line-opacity": 0.45 } });
     m.addLayer({ id: "reach-route", type: "line", source: "reach", filter: ["==", ["get", "kind"], "route"], paint: { "line-color": ink, "line-width": 2, "line-dasharray": [3, 2] } });
     m.addLayer({ id: "reach-stretch", type: "line", source: "reach", filter: ["==", ["get", "kind"], "stretch"], paint: { "line-color": token("fail"), "line-width": 6, "line-opacity": 0.8 } });
-    // The largest size that passes each km: from the smallest of the series (warn, `t` 0) to the
-    // largest (pass, `t` 1), and fail where none passes (`t` -1). The panel says the same in words.
-    m.addLayer({ id: "reach-envelope", type: "line", source: "reach", filter: ["==", ["get", "kind"], "envelope"], paint: { "line-color": ["case", ["<", ["get", "t"], 0], token("fail"), ["interpolate", ["linear"], ["get", "t"], 0, token("warn"), 1, token("pass")]], "line-width": 7, "line-opacity": 0.85 } });
     m.addLayer({ id: "reach-points", type: "circle", source: "reach", filter: ["==", ["get", "kind"], "point"], paint: { "circle-radius": 6, "circle-color": token("cream"), "circle-stroke-color": ink, "circle-stroke-width": 2 } });
   }
 
@@ -384,12 +375,6 @@
     for (const s of (rs && shownClass ? view?.fits_stretches[rs]?.[shownClass] : undefined) ?? []) {
       if (s.from && s.to) features.push({ type: "Feature", properties: { kind: "stretch" }, geometry: { type: "LineString", coordinates: [s.from, s.to] } });
     }
-    if (showStrip) {
-      for (const k of strip) {
-        if (k.line.length >= 2) features.push({ type: "Feature", properties: { kind: "envelope", t: k.rank == null ? -1 : k.rank / Math.max(1, k.sizes - 1), largest: k.largest ?? "none" }, geometry: { type: "LineString", coordinates: k.line } });
-      }
-    }
-    stripDrawn = showStrip ? strip.filter((k) => k.line.length >= 2).length : 0;
     const draw = () => {
       addLayers(m);
       (m.getSource("reach") as maplibregl.GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features });
@@ -625,67 +610,6 @@
         {/each}
       {/if}
     </section>
-
-    <section aria-label="Largest vessel" data-testid="envelope-panel" data-strip-drawn={stripDrawn}>
-      <h3>7. Largest vessel</h3>
-      <p class="help">A series of single-hull motor vessels, 10 × 2 m to 50 × 10 m, each fitted on the reference line: the largest the river allows as it is, for the whole reach and for each kilometre.</p>
-      <button class="primary" data-testid="envelope-run" disabled={working} onclick={() => act(api.runEnvelope)}>Find the largest vessel</button>
-      {#if envelope}
-        <p class="help" data-testid="envelope-label">{envelope.notice}. {envelope.label}; {envelope.rule_set}, draught {envelope.draught_m} m.{snap?.envelope_status === "stale" ? " — stale: the river changed since; run it again." : ""}</p>
-        <p class="note" data-testid="envelope-caveat">{envelope.bank_caveat[0].toUpperCase()}{envelope.bank_caveat.slice(1)}.</p>
-        {#if envelope.plan_line_note}<p class="note">{envelope.plan_line_note}</p>{/if}
-        <h4>Whole reach: <span data-testid="envelope-largest">{envelope.largest?.label ?? "no size of the series"}</span></h4>
-        <table class="fits" data-testid="envelope-table">
-          <thead><tr><th>Size</th><th>R min</th><th>Bottom width</th><th>Whole reach</th><th>Blocked stretches</th></tr></thead>
-          <tbody>
-            {#each envelope.sizes as z}
-              <tr data-testid="envelope-row" data-size={z.label} data-passes={z.passes}>
-                <th>{z.label}</th>
-                <td>{z.r_min_m.toFixed(0)} m</td>
-                <td>{m1(z.bottom_width_straight_m)}</td>
-                <td class:pass={z.passes} class:fail={!z.passes}>{z.passes ? "✓ passes" : "✕ blocked"}</td>
-                <td>{z.stretch_count}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-        {@const W = 600}
-        {@const rowH = 16}
-        {@const L = Math.max(1, envelope.length_m)}
-        {@const x = (s: number) => 90 + ((W - 100) * Math.min(Math.max(s, 0), L)) / L}
-        {@const H = rowH * (envelope.sizes.length + 2) + 18}
-        {@const ky = rowH * envelope.sizes.length + 6}
-        <svg class="chart" data-testid="envelope-chart" viewBox="0 0 {W} {H}" role="img" aria-label="Where each size is blocked along the river, and the largest size for each kilometre">
-          {#each envelope.sizes as z, i}
-            <text x="84" y={rowH * i + 12} text-anchor="end">{z.label}</text>
-            <rect x={x(0)} y={rowH * i + 3} width={x(L) - x(0)} height={rowH - 6} class="track" />
-            {#each z.stretches as st}
-              <rect x={x(st.start_chainage_m)} y={rowH * i + 2} width={Math.max(1, x(st.end_chainage_m) - x(st.start_chainage_m))} height={rowH - 4} class="blocked"><title>{z.label}: {st.kind}, km {(st.start_chainage_m / 1000).toFixed(1)} to {(st.end_chainage_m / 1000).toFixed(1)}</title></rect>
-            {/each}
-          {/each}
-          <text x="84" y={ky + 12} text-anchor="end">per km</text>
-          {#each strip as k}
-            <rect x={x(k.from_m)} y={ky + 2} width={Math.max(1, x(k.to_m) - x(k.from_m) - 0.5)} height={rowH - 2} style="fill: {k.rank == null ? 'var(--fail)' : `color-mix(in srgb, var(--pass) ${Math.round((100 * k.rank) / Math.max(1, k.sizes - 1))}%, var(--warn))`}"><title>km {(k.from_m / 1000).toFixed(0)} to {(k.to_m / 1000).toFixed(0)}: {k.largest ?? "no size"}</title></rect>
-          {/each}
-          <text x={x(0)} y={H - 2}>0 km</text>
-          <text x={x(L)} y={H - 2} text-anchor="end">{(L / 1000).toFixed(1)} km</text>
-        </svg>
-        <p class="help">Blocked stretches in red on each size's track; the bottom row is the largest size that passes each kilometre.</p>
-        <label class="check"><input type="checkbox" data-testid="envelope-show" bind:checked={showStrip} /> Show the largest size per kilometre on the map</label>
-        <details>
-          <summary>Per kilometre ({strip.length})</summary>
-          <ul class="files" data-testid="envelope-km-list">
-            {#each strip as k}<li>km {(k.from_m / 1000).toFixed(0)} to {(k.to_m / 1000).toFixed(0)}: {k.largest ?? "no size of the series"}</li>{/each}
-          </ul>
-        </details>
-        {#if envelope.marks.length}
-          <h4>Catalogue classes against the result</h4>
-          <ul class="files" data-testid="envelope-marks">
-            {#each envelope.marks as mk}<li>{mk.id} ({mk.loa_m} × {mk.beam_m} m): {mk.within ? "within the largest size" : "larger than the largest size"}</li>{/each}
-          </ul>
-        {/if}
-      {/if}
-    </section>
   {/if}
 </div>
 
@@ -709,9 +633,6 @@
   .marks th, .marks td, .fits th, .fits td { text-align: left; padding: 1px var(--sp-1); border-bottom: var(--lw-thin) solid var(--rule); }
   .src { color: var(--ink-3); }
   .pass { color: var(--pass); }
-  .chart { width: 100%; height: auto; font: var(--fs-11) var(--font-ui); fill: var(--ink-2); }
-  .chart .track { fill: var(--pass-soft); }
-  .chart .blocked { fill: var(--fail); }
   .fail { color: var(--fail); }
   tr.shown { background: var(--surface-2); }
   .fits tbody tr { cursor: pointer; }
