@@ -67,7 +67,7 @@
       <table data-testid="option-table">
         <thead>
           <tr>
-            <th></th><th>Option</th><th>Verdict</th><th>Dredge m³</th><th>Dry cut m³</th><th>Tallest face m</th><th>Min radius m</th><th>Radius ok</th>
+            <th></th><th>Option</th><th>Verdict</th><th>Dredge m³</th><th>Dry cut m³</th><th>Tallest face m</th><th title="The design line's own minimum radius">Min radius m</th><th title="The design line's minimum radius against R_min (the R_min check)">Radius ok</th><th>Checks</th>
           </tr>
         </thead>
         <tbody>
@@ -88,6 +88,7 @@
                 {#if screeningOf(r.id)}
                   {@const v = VERDICT[screeningOf(r.id)!.verdict]}
                   <span class="mark {v.tone}" data-testid="verdict" data-verdict={screeningOf(r.id)!.verdict}><span aria-hidden="true">{v.shape}</span> {v.words}</span>
+                  {#if r.verdict_reason}<span class="reason" data-testid="verdict-reason">{r.verdict_reason}</span>{/if}
                 {:else}<span class="dim">—</span>{/if}
               </td>
               <td data-col="dredge">{m3(r.dredge_m3)}</td>
@@ -95,7 +96,10 @@
               <td data-col="tallest-face">{m(r.tallest_face_m)}</td>
               <td data-col="min-radius">{m(r.min_radius_m, 0)}</td>
               <td data-col="radius-ok">
-                {#if r.failed_checks.length}<span class="mark fail" aria-label="fails {r.failed_checks.join(', ')}">✕ fails</span>{:else}<span class="mark ok">✓</span>{/if}
+                {#if r.radius_ok === false}<span class="mark fail">✕ fails</span>{:else if r.radius_ok}<span class="mark ok">✓</span>{:else}<span class="dim">—</span>{/if}
+              </td>
+              <td data-col="checks">
+                {#if r.failed_checks.length}<span class="mark fail" aria-label="fails {r.failed_checks.join(', ')}">✕ {r.failed_checks.join(", ")}</span>{:else}<span class="mark ok">✓</span>{/if}
               </td>
             </tr>
           {/each}
@@ -190,6 +194,7 @@
   .mark.kind { color: var(--ink); background: var(--surface-2); }
   .mark { white-space: nowrap; }
   .dim { color: var(--ink-3); }
+  .reason { display: block; margin-top: 2px; max-width: 36ch; white-space: normal; font-size: var(--fs-11); color: var(--ink-2); }
   code { font-size: var(--fs-11); }
   .sub { display: block; font-size: var(--fs-11); color: var(--ink-3); }
   .notice { margin: 0 0 var(--sp-2); padding: var(--sp-1) var(--sp-2); font-size: var(--fs-12); color: var(--warn); background: var(--warn-soft); }

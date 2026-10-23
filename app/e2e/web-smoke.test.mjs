@@ -271,6 +271,11 @@ describe("OWD web smoke tests", () => {
     await until(b, "the verdict", async () => (await b.$$("[data-testid=verdict]")).length === 1);
     assert.equal(await (await tid(b, "verdict")).getAttribute("data-verdict"), sc.verdict);
     assert.match(await text(b, "verdict"), new RegExp(sc.verdict.replace(/-/g, " ")));
+    // #312: the radius column and the R_min check read the same design line and agree; the verdict says why.
+    const rminPassed = await b.execute(() => [...document.querySelectorAll("[data-testid=check]")].find((c) => /\bR_min:/.test(c.textContent))?.dataset.passed);
+    const radiusCell = await b.execute(() => document.querySelector("[data-testid=option-row] [data-col=radius-ok]").textContent);
+    assert.equal(radiusCell.includes("✓"), rminPassed === "true", `radius column "${radiusCell}", R_min check ${rminPassed}`);
+    assert.ok((await text(b, "verdict-reason")).length > 0, "the verdict's reason is shown");
     await (await tid(b, "tab-stretches")).click();
     assert.ok(sc.constraint_stretches.length > 0, "the example falls short of the Rules somewhere");
     await until(b, "the stretch table", async () => (await b.$$("[data-testid=stretch-row]")).length === sc.constraint_stretches.length);
