@@ -131,6 +131,7 @@ fn class_json(r: &ClassFit) -> Value {
         "loa_m": r.loa_m,
         "beam_m": r.beam_m,
         "r_min_m": r.r_min_m,
+        "radius_check_chord_m": r.radius_check_chord_m,
         "bottom_width_straight_m": r.bottom_width_straight_m,
         "fits": r.fits,
         "worst_width_deficit_m": r.worst_width_deficit_m,
@@ -458,6 +459,13 @@ impl Session {
                     }
                     None => sized.set_vessel(class, draught_m)?,
                 }
+                // The radius is read on a third of the class's R_min, as `align` and the plan-only
+                // answer read it (#368).
+                let shape = sized.sized_shape()?;
+                let mut option = option.clone();
+                option["checks"]["radius_check_chord_m"] = json!(
+                    owd_core::alignment::radius_check::default_check_chord(shape.min_bend_radius_m)
+                );
                 let plan = sized.section_plan(&json!({}))?;
                 let walk = sized.option_sections(&plan, &option, terrain)?;
                 let on_centre = || sized.screening_value(&option, &walk, &plan.river, &plan.centre);
@@ -483,7 +491,6 @@ impl Session {
                         use owd_core::alignment::fairway_fit::{
                             FitParams, Fixed, fairway_fit_in_water,
                         };
-                        let shape = sized.sized_shape()?;
                         let fit = fairway_fit_in_water(
                             &plan.centre,
                             &plan.river,

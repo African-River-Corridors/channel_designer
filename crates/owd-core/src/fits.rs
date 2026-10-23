@@ -78,6 +78,8 @@ pub struct ClassFit {
     pub worst_width_deficit_m: f64,
     /// The largest radius shortfall over the stretches (m); 0 when there is none.
     pub worst_radius_deficit_m: f64,
+    /// The chord the radius is read on (m): a third of R_min, as the `align` check reads it (#368).
+    pub radius_check_chord_m: f64,
     pub stretches: Vec<FitStretch>,
     /// What the Rule Sets say about the class (for example a clause that does not cover it).
     pub warnings: Vec<String>,
@@ -268,6 +270,7 @@ pub(crate) fn class_fit(
         fits: stretches.is_empty(),
         worst_width_deficit_m: worst(FitKind::Width),
         worst_radius_deficit_m: worst(FitKind::Radius),
+        radius_check_chord_m: chord,
         stretches,
         warnings: shape.warnings.clone(),
     })

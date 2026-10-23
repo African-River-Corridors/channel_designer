@@ -93,6 +93,9 @@ fn fits_answers_every_class_and_stores_the_answer_in_the_document() {
     assert_eq!(classes.len(), 12);
     for c in classes {
         assert_eq!(c["label"], "width and radius only, no depth");
+        // The chord the radius is read on is stated, a third of R_min (#368).
+        let chord = c["radius_check_chord_m"].as_f64().unwrap();
+        assert!((chord - c["r_min_m"].as_f64().unwrap() / 3.0).abs() < 1e-9);
         let wide = c["bottom_width_straight_m"].as_f64().unwrap() > 60.0;
         assert_eq!(c["fits"], !wide, "{}", c["vessel_standard_id"]);
         if wide {
@@ -116,6 +119,7 @@ fn fits_answers_every_class_and_stores_the_answer_in_the_document() {
         "{t}"
     );
     assert!(t.contains("width from 900 m to 1600 m"), "{t}");
+    assert!(t.contains("chord m"), "{t}");
 }
 
 #[test]
