@@ -5,7 +5,7 @@
 
 > **The banks cross at 24 places** (km 24 to 109 of the centreline) on the run below. `owd reach` warns
 > `banks_cross` and exits 1; the script goes on, because the study is written. The width stretches near those
-> places read banks that are wrong there. Fixing the crossings is a follow-up.
+> places read banks that are wrong there. Fixing the crossings is a follow-up (#410).
 
 What barge could use the Sassandra, Côte d'Ivoire, from the sea at Sassandra town up to the Soubré dam, and
 what would the next size up need? This page is the answer OWD gives with nothing but open data: a river name,
