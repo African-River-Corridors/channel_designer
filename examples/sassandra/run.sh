@@ -30,7 +30,14 @@ if [ "$status" -ne 0 ]; then
     echo "owd reach failed (exit $status): see $OUT/reach.json" >&2
     exit "$status"
   fi
-  echo "owd reach: the banks cross (banks_cross); the study is written, going on (see docs/examples/sassandra.md, Limits)" >&2
+  {
+    echo "################################################################################"
+    echo "WARNING: owd reach exited 1. Its one warning is banks_cross: the left and right"
+    echo "banks cross (24 places on the 2026-10-23 run, km 24 to 109). The study is written,"
+    echo "so the script goes on. The width stretches near the crossings are not to be"
+    echo "trusted. See docs/examples/sassandra.md, \"Limits\"."
+    echo "################################################################################"
+  } >&2
 fi
 
 # 2. The DEM (Copernicus GLO-30) and the default low-water level (SWORD and SWOT, the DEM where they give none).
