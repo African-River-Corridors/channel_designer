@@ -490,3 +490,42 @@ fn fits_names_a_rule_set_and_its_quality_as_size_does() {
     ]);
     assert_eq!(o.status.code(), Some(2));
 }
+
+#[test]
+fn draught_sets_every_class_s_draught_and_is_kept_in_the_settings() {
+    // #364. The river is 4 m deep with a 1.5 m bar. At 1 m draught every class's design depth is
+    // under 1.5 m, so no class meets the bar; at 3.5 m every class needs more than the 4 m.
+    let doc = full_study("fits-draught");
+    let rows = |args: &[&str]| -> (Value, Vec<Value>) {
+        let o = owd(args);
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        let v: Value = serde_json::from_str(&out(&o)).unwrap();
+        let rows = v["fits"]["rule_sets"][0]["classes"]
+            .as_array()
+            .unwrap()
+            .clone();
+        (v, rows)
+    };
+    let depth = |c: &Value| {
+        c["constraint_stretches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|s| s["kind"] == "depth")
+            .count()
+    };
+    let (v, shallow) = rows(&["fits", &doc, "--draught", "1", "--json"]);
+    assert_eq!(v["fits"]["draught_m"], 1.0);
+    assert!(shallow.iter().all(|c| depth(c) == 0), "{shallow:?}");
+    let (_, deep) = rows(&["fits", &doc, "--draught", "3.5", "--json"]);
+    assert!(deep.iter().all(|c| depth(c) > 0));
+    let d: Value = serde_json::from_str(&std::fs::read_to_string(&doc).unwrap()).unwrap();
+    assert_eq!(d["fits"]["settings"]["draught_m"], 3.5);
+    let t = out(&owd(&["fits", &doc, "--show"]));
+    assert!(t.contains("Draught: 3.5 m for every class"), "{t}");
+    // Without it, each class's own draught, and no key.
+    let (v, _) = rows(&["fits", &doc, "--json"]);
+    assert!(v["fits"].get("draught_m").is_none());
+    let bad = owd(&["fits", &doc, "--draught", "-1"]);
+    assert!(!bad.status.success());
+}

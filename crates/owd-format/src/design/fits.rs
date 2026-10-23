@@ -55,7 +55,7 @@ pub(super) fn run_all<J: Sync, T: Send>(
 }
 use super::hash::hash_value;
 use super::session::{DesignError, ENGINE_VERSION, Session, StageStatus};
-use owd_core::fits::{ClassFit, Fits, PLAN_ONLY_LABEL, plan_only_fits_with};
+use owd_core::fits::{ClassFit, Fits, PLAN_ONLY_LABEL, plan_only_fits_at};
 use owd_core::rules::engine::old_name_choice;
 use serde_json::{Value, json};
 
@@ -300,6 +300,27 @@ impl Session {
         plan_line: PlanLine,
         all_classes: bool,
     ) -> Result<(), DesignError> {
+        self.run_fits_at(choices, terrain, plan_line, all_classes, None)
+    }
+
+    /// [`Session::run_fits_classes`] with every class at `draught_m` instead of its own draught
+    /// (`owd fits --draught`, #364); the custom vessel keeps its own. Kept in the answer's settings
+    /// and in the answer (only when set), so changing it makes the answer stale.
+    pub fn run_fits_at(
+        &mut self,
+        choices: Option<&[String]>,
+        terrain: Option<SyncTerrain>,
+        plan_line: PlanLine,
+        all_classes: bool,
+        draught_m: Option<f64>,
+    ) -> Result<(), DesignError> {
+        if let Some(d) = draught_m
+            && !(d.is_finite() && d > 0.0)
+        {
+            return Err(DesignError::Input(format!(
+                "the draught must be a positive number of metres, not {d}"
+            )));
+        }
         let ids: Vec<String> = match choices {
             Some(r) if !r.is_empty() => r.to_vec(),
             _ => self.fits_choices(),
@@ -327,13 +348,20 @@ impl Session {
         };
         let refs: Vec<&str> = ids.iter().map(String::as_str).collect();
         let custom = self.custom_vessel();
-        let fits = plan_only_fits_with(&line, &water, &refs, all_classes, custom.as_ref())
-            .map_err(|e| DesignError::Input(e.message))?;
+        let fits = plan_only_fits_at(
+            &line,
+            &water,
+            &refs,
+            all_classes,
+            custom.as_ref(),
+            draught_m,
+        )
+        .map_err(|e| DesignError::Input(e.message))?;
         let mut results = fits_json(&fits);
         if let Some(t) =
             terrain.filter(|_| self.bed_model_value().is_some() && self.water_profile().is_some())
         {
-            self.add_full(&mut results, &line, t, true, read_on)?;
+            self.add_full(&mut results, &line, t, true, read_on, draught_m)?;
         } else {
             // A plan-only answer reads the reference line, or else the centreline.
             let plan_only_line = match read_on {
@@ -351,6 +379,10 @@ impl Session {
         let mut settings = json!({"rule_sets": ids, "plan_line": plan_line.name()});
         if all_classes {
             settings["all_classes"] = json!(true);
+        }
+        if let Some(d) = draught_m {
+            settings["draught_m"] = json!(d);
+            results["draught_m"] = json!(d);
         }
         self.doc["fits"] = json!({
             "settings": settings,
@@ -373,6 +405,7 @@ impl Session {
         terrain: SyncTerrain,
         parallel: bool,
         plan_line: PlanLine,
+        draught_m: Option<f64>,
     ) -> Result<(), DesignError> {
         let option = json!({
             "id": "river",
@@ -423,7 +456,7 @@ impl Session {
                     Some(c) => {
                         sized.set_custom_vessel(&c)?;
                     }
-                    None => sized.set_vessel(class, None)?,
+                    None => sized.set_vessel(class, draught_m)?,
                 }
                 let plan = sized.section_plan(&json!({}))?;
                 let walk = sized.option_sections(&plan, &option, terrain)?;
@@ -602,9 +635,9 @@ mod tests {
             probe.doc["fits"]["results"].clone()
         };
         let (mut a, mut b) = (base.clone(), base);
-        s.add_full(&mut a, &line, &land, true, PlanLine::Centreline)
+        s.add_full(&mut a, &line, &land, true, PlanLine::Centreline, None)
             .unwrap();
-        s.add_full(&mut b, &line, &land, false, PlanLine::Centreline)
+        s.add_full(&mut b, &line, &land, false, PlanLine::Centreline, None)
             .unwrap();
         assert_eq!(a.to_string(), b.to_string());
         assert_eq!(a["mode"], "full");

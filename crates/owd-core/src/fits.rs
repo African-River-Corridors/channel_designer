@@ -159,6 +159,19 @@ pub fn plan_only_fits_with(
     all: bool,
     custom: Option<&crate::rules::custom::CustomVessel>,
 ) -> Result<Fits, PyError> {
+    plan_only_fits_at(centreline, water, choices, all, custom, None)
+}
+
+/// [`plan_only_fits_with`], with every class sized at `draught_m` instead of its own (#364). The
+/// custom vessel keeps its own draught.
+pub fn plan_only_fits_at(
+    centreline: &[Pt],
+    water: &[Polygon],
+    choices: &[&str],
+    all: bool,
+    custom: Option<&crate::rules::custom::CustomVessel>,
+    draught_m: Option<f64>,
+) -> Result<Fits, PyError> {
     if centreline.len() < 2 {
         return Err(PyError::value(
             "the river centreline needs at least two points.",
@@ -173,7 +186,7 @@ pub fn plan_only_fits_with(
             .map_err(|e| PyError::value(e.raw_message().to_string()))?;
         let mut rows = Vec::new();
         for class in &classes {
-            let shape = channel_shape_for(&selection, class, None)
+            let shape = channel_shape_for(&selection, class, draught_m)
                 .map_err(|e| PyError::value(e.raw_message().to_string()))?;
             let std = crate::rules::classes::class(class)
                 .map_err(|_| PyError::value(format!("unknown vessel class {class}")))?;
