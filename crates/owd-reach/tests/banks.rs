@@ -150,11 +150,13 @@ fn a_recorded_window_of_the_lower_sassandra_gives_banks_and_flags_the_thin_stret
     let b = banks_from_jrc(&f, &route, &BankParams::default()).unwrap();
     // Wide water at the start, none flagged there.
     assert!(b.widths[..40].iter().all(|w| *w >= 90.0), "{:?}", &b.widths[..40]);
-    // One thin stretch (narrow, under 90 m), then the end of the water at 75 %.
+    // The thin stretch (narrow, under 90 m) and the end of the water at 75 % lie past the end of the
+    // checked centreline, so all three flags fall at its end: one place is one stretch (#361), of
+    // the most serious kind, no water.
     let kinds: Vec<StretchKind> = b.stretches.iter().map(|s| s.kind).collect();
-    assert_eq!(kinds, [StretchKind::Narrow, StretchKind::NoWater, StretchKind::NoWater], "{:?}", b.stretches);
-    assert!(b.stretches[0].min_width_m < 90.0 && b.stretches[0].min_width_m > 0.0);
-    assert!(b.stretches.windows(2).all(|w| w[0].to_m <= w[1].from_m));
+    assert_eq!(kinds, [StretchKind::NoWater], "{:?}", b.stretches);
+    assert_eq!(b.stretches[0].min_width_m, 0.0);
+    assert!(b.stretches.len() <= b.widths.len());
     // Banks stay within the largest search distance of the water; the polygon closes.
     assert_eq!(b.polygon.first(), b.polygon.last());
     assert!(b.left.iter().zip(&b.right).all(|(l, r)| ((l[0] - r[0]).powi(2) + (l[1] - r[1]).powi(2)).sqrt() <= 3_000.0 + 1.0));

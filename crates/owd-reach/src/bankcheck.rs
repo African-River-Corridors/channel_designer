@@ -937,9 +937,47 @@ pub fn rechain(stretches: &[Stretch], old: &[P2], new: &[P2]) -> Vec<Stretch> {
         .collect()
 }
 
-/// All the stretches, in chainage order. A stretch flagged only as narrower than its neighbours adds
-/// nothing where a `narrow` stretch overlaps or touches it.
-pub fn merge(mut a: Vec<Stretch>, b: Vec<Stretch>) -> Vec<Stretch> {
+/// How serious a kind of stretch is, for a merged stretch: the most serious kind wins.
+fn rank(k: StretchKind) -> u8 {
+    match k {
+        StretchKind::NoWater => 6,
+        StretchKind::NoEdge => 5,
+        StretchKind::JrcFallback => 4,
+        StretchKind::AtShiftLimit => 3,
+        StretchKind::Repaired(_) => 2,
+        StretchKind::Narrow => 1,
+    }
+}
+
+/// The kind of two overlapping stretches merged: the more serious, or both repairs' checks.
+fn merged_kind(a: StretchKind, b: StretchKind) -> StretchKind {
+    match (a, b) {
+        (StretchKind::Repaired(x), StretchKind::Repaired(y)) => StretchKind::Repaired(x.or(y)),
+        _ if rank(b) > rank(a) => b,
+        _ => a,
+    }
+}
+
+/// All the stretches, in chainage order, merged where they overlap or touch (#361): one place is
+/// one stretch, of its most serious kind and its narrowest width, so there are never more
+/// stretches than stations. A stretch flagged only as narrower than its neighbours adds nothing
+/// where a `narrow` stretch overlaps or touches it.
+pub fn merge(a: Vec<Stretch>, b: Vec<Stretch>) -> Vec<Stretch> {
+    let mut out: Vec<Stretch> = Vec::new();
+    for s in merge_unfused(a, b) {
+        match out.last_mut() {
+            Some(l) if s.from_m <= l.to_m => {
+                l.to_m = l.to_m.max(s.to_m);
+                l.min_width_m = l.min_width_m.min(s.min_width_m);
+                l.kind = merged_kind(l.kind, s.kind);
+            }
+            _ => out.push(s),
+        }
+    }
+    out
+}
+
+fn merge_unfused(mut a: Vec<Stretch>, b: Vec<Stretch>) -> Vec<Stretch> {
     let narrow_only = |s: &Stretch| matches!(s.kind, StretchKind::Repaired(c) if c == Checks { width_narrow: true, ..Checks::default() });
     // Overlapping, or next to it within the stretch's own length (the station where the width starts
     // to fall is often the one before the mask calls it narrow).

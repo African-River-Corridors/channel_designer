@@ -2049,8 +2049,16 @@ pub fn reach_with(
     } else {
         None
     };
+    // A river too narrow for the edge fit keeps its mask banks, and says why (#361).
+    let skipped = banks
+        .as_ref()
+        .filter(|_| flags.edge_fit)
+        .and_then(owd_reach::edgefit::edge_fit_skip_reason);
+    if let Some(why) = &skipped {
+        eprintln!("owd: note: {why}");
+    }
     let fitted = match &banks {
-        Some(b) if flags.edge_fit => {
+        Some(b) if flags.edge_fit && skipped.is_none() => {
             use owd_reach::edgefit::{FitParams, fit_to_scene, record_edge_fit};
             let f = fit_to_scene(fetch, b, &FitParams::default(), &query()?)
                 .map_err(|e| input_error(e.to_string()))?;
@@ -2210,14 +2218,14 @@ pub fn reach_with(
                 "scenes": seeded.as_ref().map(|s| s.scenes().iter().map(|c| c.id.clone()).collect::<Vec<_>>()),
                 "jrc_agreement": seeded.as_ref().and_then(|s| s.jrc_agreement),
             })),
-            "edge_fit": fitted.as_ref().map(|f| json!({
+            "edge_fit": skipped.as_ref().map(|why| json!({"skipped": why})).or_else(|| fitted.as_ref().map(|f| json!({
                 "scene_id": f.scene.id,
                 "scene_date": f.scene.date,
                 "scene_cloud_pct": f.scene.cloud_pct,
                 "max_shift_m": f.fit.params.max_shift_m,
                 "largest_shift_m": f.fit.left_shift.iter().chain(&f.fit.right_shift).fold(0.0f64, |a, d| a.max(d.abs())),
                 "low_confidence_stretches": f.fit.stretches.len(),
-            })),
+            }))),
         }),
     );
     // The study is written; broken banks are a failed check: exit code 1.
