@@ -729,12 +729,6 @@ impl AppState {
                 StageStatus::Fresh => "fresh",
                 StageStatus::Stale => "stale",
             },
-            // The largest vessel (spec 0016): like `fits`, it never reruns by itself.
-            "envelope_status": match self.session.envelope_status() {
-                StageStatus::NotRun => "not_run",
-                StageStatus::Fresh => "fresh",
-                StageStatus::Stale => "stale",
-            },
             "reach_view": self.reach_view(),
         })
     }

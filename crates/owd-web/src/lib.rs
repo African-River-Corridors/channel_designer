@@ -387,11 +387,6 @@ impl Session {
         self.edit(|s| s.run_fits())
     }
 
-    /// The largest vessel the river allows: the size sweep of spec 0016, one size after another.
-    pub fn run_envelope(&mut self) -> Js<String> {
-        self.edit(|s| s.run_envelope())
-    }
-
     /// Undo the last bank edit.
     pub fn undo_bank_edit(&mut self) -> Js<String> {
         self.edit(|s| s.undo_bank_edit())
