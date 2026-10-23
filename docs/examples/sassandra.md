@@ -182,6 +182,9 @@ report says so in its "Data and limits" box. Run `bash examples/sassandra/run.sh
 5. Give a depth of 3 m, season *dry*, and press **Set the depth**.
 6. Press **Answer what fits**. Pick a row to see its stretches on the map, and **Use this vessel** to go on to
    the alignment and the volumes.
+7. Press **Find the largest vessel** (spec 0016). The table gives each size of the series, 10 × 2 m to 50 × 10 m, and
+   whether it passes the whole reach. The chart shows where each size is blocked, and the map colours each
+   kilometre by the largest size that passes it.
 
 The app's mask threshold is the default (75 %). For this river, use the CLI script above, or lower the
 threshold once the app offers it.

@@ -1134,6 +1134,14 @@ fn run_fits(window: Window, state: State<Shared>) -> Reply {
     finish(&window, &guard)
 }
 
+/// The largest vessel the river allows: the size sweep of spec 0016.
+#[tauri::command]
+fn run_envelope(window: Window, state: State<Shared>) -> Reply {
+    let mut guard = lock(&state)?;
+    guard.run_envelope()?;
+    finish(&window, &guard)
+}
+
 pub fn run() {
     let initial = AppState::new_design("Untitled channel design", &today());
     tauri::Builder::default()
@@ -1181,6 +1189,7 @@ pub fn run() {
             reach_cancel,
             set_bed,
             run_fits,
+            run_envelope,
         ])
         .on_window_event(|window, event| {
             // The unsaved-changes guard on close: ask first, then close for real.
