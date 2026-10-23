@@ -70,6 +70,9 @@ pub struct CheckParams {
     pub reference_widths: f64,
     /// The half-length used when no width can be measured, in metres.
     pub reference_half_m: f64,
+    /// Where the rebuilt banks cross, the stations around the crossing narrower than this are a
+    /// pinch: both banks are repaired across it in the next round (issue #410).
+    pub pinch_width_m: f64,
 }
 
 impl CheckParams {
@@ -88,6 +91,7 @@ impl CheckParams {
             max_step_m: None,
             reference_widths: 1.0,
             reference_half_m: 250.0,
+            pinch_width_m: 10.0,
         }
     }
 
@@ -509,6 +513,28 @@ pub fn lines_cross(a: &[P2], b: &[P2]) -> Option<P2> {
     None
 }
 
+/// Every point where line `a` crosses line `b`, in the order of `a`'s segments.
+pub fn crossing_points(a: &[P2], b: &[P2]) -> Vec<P2> {
+    if a.len() < 2 || b.len() < 2 {
+        return Vec::new();
+    }
+    let idx = SegIndex::new(b, 50.0);
+    let mut buf = Vec::new();
+    let mut out = Vec::new();
+    for w in a.windows(2) {
+        let len = ((w[1][0] - w[0][0]).powi(2) + (w[1][1] - w[0][1]).powi(2)).sqrt();
+        if len == 0.0 {
+            continue;
+        }
+        let d = [(w[1][0] - w[0][0]) / len, (w[1][1] - w[0][1]) / len];
+        let mid = [(w[0][0] + w[1][0]) / 2.0, (w[0][1] + w[1][1]) / 2.0];
+        if let Some(t) = idx.nearest_hit(mid, d, len / 2.0, &mut buf) {
+            out.push([mid[0] + d[0] * t, mid[1] + d[1] * t]);
+        }
+    }
+    out
+}
+
 type Assessed = (
     Vec<P2>,
     Vec<(Option<f64>, Option<f64>)>,
@@ -518,8 +544,10 @@ type Assessed = (
 );
 
 /// Check the banks against the reference made from `seed` (any rough centreline): per station of the
-/// reference, its chainage, the two offsets and the checks failed. Nothing is changed.
-fn assess(left: &[P2], right: &[P2], seed: &[P2], p: &CheckParams) -> Assessed {
+/// reference, its chainage, the two offsets and the checks failed. Nothing is changed. `pinches` are
+/// points where the banks cross (from the last round): the stations around each that are narrower
+/// than `pinch_width_m` are repaired on both banks, flagged `side` (issue #410).
+fn assess(left: &[P2], right: &[P2], seed: &[P2], p: &CheckParams, pinches: &[P2]) -> Assessed {
     // The reference comes from the seed, not from the mid-line of the banks under test: banks that
     // cross back and forth would give a mid-line that does too.
     let m0 = resample(seed, p.station_m);
@@ -563,6 +591,49 @@ fn assess(left: &[P2], right: &[P2], seed: &[P2], p: &CheckParams) -> Assessed {
         bad_r[i] = r.is_none() || swapped;
         lo.push(l.filter(|_| !swapped));
         ro.push(r.filter(|_| !swapped));
+    }
+    // 1b. Pinches: where the banks crossed, both banks lie together, a few metres apart or swapped
+    // between the stations. That is a wrong bank, not a throat: from the station nearest the crossing,
+    // both banks are repaired out to the first stations either side that are wider than
+    // `pinch_width_m`, so the repair spans the pinch from real width on both sides. Only a pinch is
+    // repaired: a crossing whose nearest station is not narrow, a run that meets a station with no
+    // bank, or one longer than `max_run_m`, is left to the `crossing` flag.
+    let narrow = |i: usize| matches!(off[i], (Some(l), Some(r)) if l - r < p.pinch_width_m);
+    for x in pinches {
+        let Some(i) = (first..=last.max(first).min(n.saturating_sub(1))).min_by(|a, b| {
+            let d = |k: usize| (reference[k][0] - x[0]).powi(2) + (reference[k][1] - x[1]).powi(2);
+            d(*a).total_cmp(&d(*b))
+        }) else {
+            continue;
+        };
+        if !narrow(i) {
+            continue;
+        }
+        let (mut a, mut b) = (i, i);
+        while a > first && narrow(a - 1) {
+            a -= 1;
+        }
+        while b < last && narrow(b + 1) {
+            b += 1;
+        }
+        let ends_have_banks = |k: usize| off[k].0.is_some() && off[k].1.is_some();
+        if (b - a) as f64 * p.station_m > p.max_run_m
+            || a == first
+            || b == last
+            || !ends_have_banks(a - 1)
+            || !ends_have_banks(b + 1)
+        {
+            continue;
+        }
+        for j in a..=b {
+            // A bank on the wrong side between the stations: `side`. The check `crossing` stays for a
+            // crossing left after the last round.
+            checks[j].side = true;
+            bad_l[j] = true;
+            bad_r[j] = true;
+            lo[j] = None;
+            ro[j] = None;
+        }
     }
     // 2. Lateral jumps, per bank.
     for (o, bad, out) in [(&mut lo, &mut bad_l, 1.0), (&mut ro, &mut bad_r, -1.0)] {
@@ -635,7 +706,7 @@ fn assess(left: &[P2], right: &[P2], seed: &[P2], p: &CheckParams) -> Assessed {
 
 /// The failures of a pair of banks, without repairing them: chainage along the reference and checks.
 pub fn check_banks(left: &[P2], right: &[P2], seed: &[P2], p: &CheckParams) -> Vec<(f64, Checks)> {
-    let (reference, _, checks, _, _) = assess(left, right, seed, p);
+    let (reference, _, checks, _, _) = assess(left, right, seed, p, &[]);
     let s = owd_format::design::midline::arc(&reference);
     checks
         .iter()
@@ -647,6 +718,11 @@ pub fn check_banks(left: &[P2], right: &[P2], seed: &[P2], p: &CheckParams) -> V
 
 /// The most rounds of checks and repairs.
 pub const MAX_ROUNDS: usize = 3;
+
+/// The most rounds after [`MAX_ROUNDS`] while the banks still cross: each repairs the pinches the
+/// last one left (a repair can lay two banks together elsewhere). Provisional: on the recorded
+/// whole-river Sassandra banks (issue #410) two such rounds leave no crossing.
+pub const MAX_PINCH_ROUNDS: usize = 3;
 
 fn repairs(c: &Checked) -> bool {
     c.failed
@@ -664,14 +740,20 @@ pub fn check_and_repair(
     seed: &[P2],
     p: &CheckParams,
 ) -> Result<Checked, ReachError> {
-    let (mut c, mut crossed) = check_once(left, right, seed, p)?;
-    for _ in 1..MAX_ROUNDS {
-        if !repairs(&c) && !crossed {
+    let (mut c, mut crossed) = check_once(left, right, seed, p, &[])?;
+    for round in 1..MAX_ROUNDS + MAX_PINCH_ROUNDS {
+        if (!repairs(&c) && !crossed) || (round >= MAX_ROUNDS && !crossed) {
             break;
         }
+        // Where the banks crossed, the next round repairs the pinch (issue #410).
+        let pinches = if crossed {
+            crossing_points(&c.left, &c.right)
+        } else {
+            Vec::new()
+        };
         // Every round reads the banks along the seed, never along its own last centreline: a round
         // that went wrong must not make the next one's reference worse.
-        let (mut next, x) = check_once(&c.left, &c.right, seed, p)?;
+        let (mut next, x) = check_once(&c.left, &c.right, seed, p, &pinches)?;
         let earlier = rechain(&c.stretches, &c.centreline, &next.centreline);
         next.stretches = merge(earlier, next.stretches);
         c = next;
@@ -729,11 +811,12 @@ fn check_once(
     right: &[P2],
     seed: &[P2],
     p: &CheckParams,
+    pinches: &[P2],
 ) -> Result<(Checked, bool), ReachError> {
     if left.len() < 2 || right.len() < 2 || seed.len() < 2 {
         return Err(ReachError::Input("the banks are too short to check".into()));
     }
-    let (reference, off, checks, bad_l, bad_r) = assess(left, right, seed, p);
+    let (reference, off, checks, bad_l, bad_r) = assess(left, right, seed, p, pinches);
     // The same normals as `bank_offsets` gave the offsets along.
     let nrm = arc_normals(
         &reference,

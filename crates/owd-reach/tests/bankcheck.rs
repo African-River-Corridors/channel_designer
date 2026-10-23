@@ -294,3 +294,54 @@ mod merged_stretches {
         );
     }
 }
+
+/// Every point where the two lines cross (segment against segment).
+fn crossings(a: &[P], b: &[P]) -> Vec<P> {
+    let mut out = Vec::new();
+    for s in a.windows(2) {
+        for t in b.windows(2) {
+            let e = [s[1][0] - s[0][0], s[1][1] - s[0][1]];
+            let f = [t[1][0] - t[0][0], t[1][1] - t[0][1]];
+            let den = e[0] * f[1] - e[1] * f[0];
+            if den == 0.0 {
+                continue;
+            }
+            let g = [t[0][0] - s[0][0], t[0][1] - s[0][1]];
+            let u = (g[0] * f[1] - g[1] * f[0]) / den;
+            let v = (g[0] * e[1] - g[1] * e[0]) / den;
+            if (0.0..=1.0).contains(&u) && (0.0..=1.0).contains(&v) {
+                out.push([s[0][0] + u * e[0], s[0][1] + u * e[1]]);
+            }
+        }
+    }
+    out
+}
+
+t! {
+    /// Issue #410, offline, on the same recorded whole-river banks: the repairs left 12 crossings, in
+    /// pairs a few metres apart, each a pinch of about zero width where a `side` repair laid both
+    /// banks together. A zero-width pinch is a wrong bank: the rounds repair it, so none is left.
+    fn the_recorded_whole_river_banks_do_not_cross_after_the_repairs() {
+        let fx: serde_json::Value =
+            serde_json::from_str(include_str!("data/midline-tangle.json")).unwrap();
+        let pts = |k: &str| -> Vec<P> {
+            fx[k]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|p| [p[0].as_f64().unwrap(), p[1].as_f64().unwrap()])
+                .collect()
+        };
+        let (left, right, seed) = (pts("left"), pts("right"), pts("seed"));
+        let p = CheckParams {
+            max_step_m: Some(1.5),
+            ..CheckParams::at_step(5.0)
+        };
+        let c = check_and_repair(&left, &right, &seed, &p).unwrap();
+        let x = crossings(&c.left, &c.right);
+        assert!(x.is_empty(), "{} crossings left: {x:?}", x.len());
+        assert!(lines_cross(&c.left, &c.right).is_none());
+        // The repair keeps the centreline about as long as its seed (#373).
+        assert!(length(&c.centreline) / length(&seed) < 1.1);
+    }
+}
