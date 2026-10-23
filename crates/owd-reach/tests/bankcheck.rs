@@ -426,3 +426,65 @@ t! {
         assert_eq!(u.report.left_over, 0);
     }
 }
+
+/// The largest distance from a vertex of `a` to the line `b`, both ways (m).
+fn moved(a: &[P], b: &[P]) -> f64 {
+    let to = |p: P, line: &[P]| {
+        line.windows(2)
+            .map(|w| {
+                let d = [w[1][0] - w[0][0], w[1][1] - w[0][1]];
+                let l2 = d[0] * d[0] + d[1] * d[1];
+                let t = if l2 > 0.0 {
+                    (((p[0] - w[0][0]) * d[0] + (p[1] - w[0][1]) * d[1]) / l2).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                (p[0] - w[0][0] - t * d[0]).hypot(p[1] - w[0][1] - t * d[1])
+            })
+            .fold(f64::INFINITY, f64::min)
+    };
+    let far = |x: &[P], y: &[P]| x.iter().map(|p| to(*p, y)).fold(0.0, f64::max);
+    far(a, b).max(far(b, a))
+}
+
+t! {
+    /// Issue #411: banks with nothing to repair come out of the checks where they went in. Label:
+    /// property, over winding channels with no fault.
+    fn banks_with_nothing_to_repair_come_out_unchanged() {
+        for (w, amp) in [(80.0, 0.0), (200.0, 150.0), (400.0, 300.0)] {
+            let wave = |x: f64| amp * (x / 700.0).sin();
+            let left = bank(w / 2.0, wave);
+            let right = bank(-w / 2.0, wave);
+            let seed: Vec<P> = (0..=50).map(|i| [i as f64 * 100.0, wave(i as f64 * 100.0)]).collect();
+            assert!(check_banks(&left, &right, &seed, &params()).is_empty(), "w {w}: a fault-free channel");
+            let c = check_and_repair(&left, &right, &seed, &params()).unwrap();
+            assert!(c.failed.is_empty(), "w {w}");
+            let (ml, mr) = (moved(&c.left, &left), moved(&c.right, &right));
+            assert!(ml < 0.5 && mr < 0.5, "w {w}, amp {amp}: the banks moved {ml:.2} m and {mr:.2} m");
+        }
+    }
+}
+
+t! {
+    /// Issue #411, on the recorded whole-river banks: one more round on what `check_and_repair`
+    /// returned repairs nothing, and moves neither bank. It does not hold yet: the repaired banks
+    /// fail their own checks at about 2,700 stations, and running the checks again moves the banks
+    /// by kilometres (159 m and 3,058 m here), run after run, without settling. Kept as the
+    /// acceptance test for #411.
+    #[ignore = "issue #411: the repairs do not settle"]
+    fn one_more_round_on_the_repaired_whole_river_moves_nothing() {
+        let fx: serde_json::Value =
+            serde_json::from_str(include_str!("data/midline-tangle.json")).unwrap();
+        let pts = |k: &str| -> Vec<P> {
+            fx[k].as_array().unwrap().iter()
+                .map(|p| [p[0].as_f64().unwrap(), p[1].as_f64().unwrap()])
+                .collect()
+        };
+        let (left, right, seed) = (pts("left"), pts("right"), pts("seed"));
+        let p = CheckParams { max_step_m: Some(1.5), ..CheckParams::at_step(5.0) };
+        let c = check_and_repair(&left, &right, &seed, &p).unwrap();
+        let again = check_and_repair(&c.left, &c.right, &seed, &p).unwrap();
+        let (ml, mr) = (moved(&again.left, &c.left), moved(&again.right, &c.right));
+        assert!(ml < 0.5 && mr < 0.5, "one more round moved the banks {ml:.1} m and {mr:.1} m");
+    }
+}
