@@ -12,6 +12,11 @@ use serde_json::{Value, json};
 
 pub use owd_core::bed::DEPTH_ASSUMED_LABEL;
 
+/// The text every output carries when the depth is read from a DEM the user marked as holding the
+/// river bed (#363): OWD does not check that it does.
+pub const DEPTH_FROM_DEM_LABEL: &str =
+    "depth from the DEM's bathymetry, as marked by the user, not checked";
+
 impl Session {
     /// Set the bed model: `points` of `(river chainage in metres, depth in metres)` along the river
     /// centreline (one point is a constant depth), and a season label. It replaces a bed model
@@ -81,9 +86,17 @@ impl Session {
         b.is_object().then_some(b)
     }
 
-    /// The text every output carries while a bed model is used; `None` when the document has none.
+    /// The text every output carries while a bed model is used, or, with none, while the depth is
+    /// read from a DEM marked as holding the bed; `None` otherwise. A bed model wins over the mark:
+    /// it was set on purpose, and the volumes read it in the water.
     pub fn depth_note(&self) -> Option<&'static str> {
-        self.bed_model_value().map(|_| DEPTH_ASSUMED_LABEL)
+        if self.bed_model_value().is_some() {
+            Some(DEPTH_ASSUMED_LABEL)
+        } else if self.dem_holds_bathymetry() {
+            Some(DEPTH_FROM_DEM_LABEL)
+        } else {
+            None
+        }
     }
 
     /// `v` (an object) with `depth_basis` set while the document has a bed model. A document with

@@ -63,6 +63,29 @@ impl Session {
         });
     }
 
+    /// Mark the DEM as holding the river bed below the water level (surveyed bathymetry), or take
+    /// the mark off (#363). With the mark and a water level, `fits` gives the full answer, reading
+    /// the depth from the DEM, even with no bed model. OWD does not check the DEM: the user says so.
+    /// A new DEM ([`Session::set_dem`]) clears the mark.
+    pub fn set_dem_holds_bathymetry(&mut self, yes: bool) -> Result<(), DesignError> {
+        let Some(dem) = self.doc["inputs"]["dem"].as_object_mut() else {
+            return Err(DesignError::Input(
+                "the design has no DEM to mark: import one with `owd import --dem FILE`".into(),
+            ));
+        };
+        if yes {
+            dem.insert("holds_bathymetry".into(), json!(true));
+        } else {
+            dem.remove("holds_bathymetry");
+        }
+        Ok(())
+    }
+
+    /// Whether the user marked the DEM as holding the river bed.
+    pub fn dem_holds_bathymetry(&self) -> bool {
+        self.doc["inputs"]["dem"]["holds_bathymetry"] == true
+    }
+
     /// Say where the DEM file now is, relative to the document, when the design is saved to another
     /// folder. The file's hash, CRS and nodata value stay as recorded, and no stage goes stale.
     pub fn set_dem_path(&mut self, path: &str) {

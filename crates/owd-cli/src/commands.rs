@@ -298,6 +298,11 @@ pub fn import(
             })
             .map_err(from_design)?;
         session.set_dem(&relative_dem_path(doc, path), &bytes, &d);
+        if water.holds_bathymetry {
+            session
+                .set_dem_holds_bathymetry(true)
+                .map_err(from_design)?;
+        }
         report.inputs.push((
             "dem".to_string(),
             owd_format::design::terrain::dem_crs_name(&d),
@@ -704,6 +709,8 @@ pub struct WaterFlags {
     pub level: Option<f64>,
     pub slope: Option<f64>,
     pub table: Option<String>,
+    /// The DEM given holds the river bed (#363).
+    pub holds_bathymetry: bool,
 }
 
 /// Set the document's water level profile from the flags, if any were given. A level alone is a
@@ -811,6 +818,7 @@ pub fn align(
                 level: flags.water_level,
                 slope: flags.water_slope,
                 table: None,
+                holds_bathymetry: false,
             },
         )?;
     } else if flags.water_level.is_some() || flags.water_slope.is_some() {
@@ -1086,6 +1094,7 @@ pub fn volumes(doc: &str, flags: VolumesFlags, output: &Option<String>, json_mod
             level: flags.water_level,
             slope: flags.water_slope,
             table: None,
+            holds_bathymetry: false,
         },
     )?;
     let dem = stage_dem(&mut session, doc, bytes.as_deref(), &flags.dem, "volumes")?;

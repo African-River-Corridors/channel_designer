@@ -83,6 +83,10 @@
                 "sha256": { "type": "string", "minLength": 64, "maxLength": 64 },
                 "crs": { "type": "string" },
                 "nodata": { "type": ["number", "null"] },
+                "holds_bathymetry": {
+                  "description": "The user marks the DEM as holding the river bed below the water level (surveyed bathymetry), #363. With it and a water level, `fits` reads the depth from the DEM. Not checked by OWD; a new DEM clears it.",
+                  "const": true
+                },
                 "source": {
                   "description": "Where a fetched DEM came from (`owd fetch-dem`): the dataset, its licence notice, and each tile with its file, SHA-256, size and URL.",
                   "type": "object",

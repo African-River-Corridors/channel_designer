@@ -29,6 +29,7 @@ pub mod volumes;
 pub mod water;
 
 pub use alignment::{AlignMethod, Terrain};
+pub use bed::DEPTH_FROM_DEM_LABEL;
 pub use geojson::Role;
 pub use session::{
     DesignError, ImportReport, Session, Stage, StageStatus, Status, check_file_name, date_from_unix,

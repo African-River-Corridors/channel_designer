@@ -533,3 +533,75 @@ fn draught_sets_every_class_s_draught_and_is_kept_in_the_settings() {
     let bad = owd(&["fits", &doc, "--draught", "-1"]);
     assert!(!bad.status.success());
 }
+
+/// A DEM that holds the river bed, marked at import (#363): `fits` gives the full answer with no
+/// bed model, labelled as read from the DEM.
+#[test]
+fn a_dem_marked_as_holding_the_bed_gives_the_full_answer() {
+    use owd_format::geotiff::Dem;
+    let dir = work_dir("fits-bathymetry");
+    let doc = dir.join("study.owd").to_str().unwrap().to_string();
+    let ok = |o: Output| {
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        o
+    };
+    ok(owd(&["new", &doc, "--title", "t", "--date", "2026-10-23"]));
+    let (poly, centre) = files(&dir, 0.0);
+    // Land at 12 m; the water (|y| < 1500 m, the river of `files`) has its bed at 5 m.
+    let (w, h) = (100, 80);
+    let mut data = vec![12.0; w * h];
+    for row in 0..h {
+        let y = 602_000.0 - 50.0 * (row as f64 + 0.5);
+        if (y - 600_000.0).abs() < 1500.0 {
+            for col in 0..w {
+                data[row * w + col] = 5.0;
+            }
+        }
+    }
+    let dem = Dem {
+        width: w,
+        height: h,
+        data,
+        geotransform: [50.0, 0.0, 499_000.0, 0.0, -50.0, 602_000.0],
+        nodata: None,
+        epsg: Some(32630),
+    };
+    let tif = dir.join("bathy.tif");
+    std::fs::write(
+        &tif,
+        owd_format::design::dem_source::write_geotiff(&dem).unwrap(),
+    )
+    .unwrap();
+    let import = |marked: bool| {
+        let mut args = vec![
+            "import",
+            &doc,
+            "--polygon",
+            &poly,
+            "--centreline",
+            &centre,
+            "--dem",
+            tif.to_str().unwrap(),
+            "--water-level",
+            "10",
+        ];
+        if marked {
+            args.push("--holds-bathymetry");
+        }
+        ok(owd(&args));
+    };
+    import(false);
+    let v: Value = serde_json::from_str(&out(&ok(owd(&["fits", &doc, "--json"])))).unwrap();
+    assert_ne!(v["fits"]["mode"], "full", "unmarked: plan only, as before");
+    import(true);
+    let v: Value = serde_json::from_str(&out(&ok(owd(&["fits", &doc, "--json"])))).unwrap();
+    assert_eq!(v["fits"]["mode"], "full");
+    assert_eq!(
+        v["fits"]["rule_sets"][0]["classes"][0]["depth_basis"],
+        owd_format::design::DEPTH_FROM_DEM_LABEL
+    );
+    ok(owd(&["validate", &doc]));
+    // The flag needs a DEM.
+    let o = owd(&["import", &doc, "--holds-bathymetry"]);
+    assert_eq!(o.status.code(), Some(2));
+}
