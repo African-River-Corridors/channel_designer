@@ -58,16 +58,20 @@ use serde_json::{Value, json};
 /// The label of a full answer: what it read, and what it assumed.
 pub const FULL_LABEL: &str = "width, radius and depth; depth assumed, not measured";
 
-/// The line the full answer reads the river's own radius on (ADR 0013).
+/// The line the answer reads the river on (ADR 0013, spec 0016).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PlanLine {
     /// The river centreline. It is drawn from the bank lines, and each wiggle of it reads as a
     /// tight bend.
     Centreline,
-    /// A fairway fit (ADR 0007) for each class (the default): the smoothest line a channel of that
-    /// class can take in the water, seeded from the river centreline.
-    #[default]
+    /// A fairway fit (ADR 0007) for each class: the smoothest line a channel of that class can
+    /// take in the water, seeded from the river centreline.
     Fairway,
+    /// The reference line (spec 0016, the default): one smooth line in the water that belongs to
+    /// no vessel, made from the banks. Width, radius, depth and the reaches are all read along
+    /// it, in the plan-only answer and the full one. Without both banks, the centreline is read.
+    #[default]
+    Reference,
 }
 
 /// Why a plan-only answer asked for the fairway reads the centreline instead.
@@ -95,6 +99,7 @@ impl PlanLine {
         match self {
             PlanLine::Centreline => "centreline",
             PlanLine::Fairway => "fairway",
+            PlanLine::Reference => "reference",
         }
     }
 
@@ -102,8 +107,9 @@ impl PlanLine {
         match s {
             "centreline" => Ok(PlanLine::Centreline),
             "fairway" => Ok(PlanLine::Fairway),
+            "reference" => Ok(PlanLine::Reference),
             o => Err(DesignError::Input(format!(
-                "the plan line is `centreline` or `fairway`, not `{o}`"
+                "the plan line is `reference`, `centreline` or `fairway`, not `{o}`"
             ))),
         }
     }
@@ -198,6 +204,11 @@ impl Session {
             "crs": self.doc["project"]["crs"],
             "settings": self.doc["fits"]["settings"],
         });
+        // An answer read on the reference line depends on it (spec 0016); without one the hash
+        // stays what it was.
+        if self.doc["fits"]["results"]["plan_line"] == "reference" {
+            dep["reference_line"] = inp["reference_line"]["depends_on"].clone();
+        }
         // The custom vessel's row reads the custom vessel (spec 0015 T1); without one the hash
         // stays what it was.
         let custom = &self.doc["stages"]["sizing"]["settings"]["custom_vessel"];
@@ -290,7 +301,21 @@ impl Session {
                     .into(),
             )
         })?;
-        let line = self.river_centreline()?;
+        // The reference line is made from the banks: without them, the centreline is read.
+        let (line, read_on, note) = match plan_line {
+            PlanLine::Reference => match self.fresh_reference_line() {
+                Ok(l) => (l, PlanLine::Reference, None),
+                Err(e) => (
+                    self.river_centreline()?,
+                    PlanLine::Centreline,
+                    Some(format!(
+                        "the reference line could not be made ({}): the centreline is read",
+                        e
+                    )),
+                ),
+            },
+            p => (self.river_centreline()?, p, None),
+        };
         let refs: Vec<&str> = ids.iter().map(String::as_str).collect();
         let custom = self.custom_vessel();
         let fits = plan_only_fits_with(&line, &water, &refs, all_classes, custom.as_ref())
@@ -299,12 +324,20 @@ impl Session {
         if let Some(t) =
             terrain.filter(|_| self.bed_model_value().is_some() && self.water_profile().is_some())
         {
-            self.add_full(&mut results, &line, t, true, plan_line)?;
+            self.add_full(&mut results, &line, t, true, read_on)?;
         } else {
-            results["plan_line"] = json!(PlanLine::Centreline.name());
+            // A plan-only answer reads the reference line, or else the centreline.
+            let plan_only_line = match read_on {
+                PlanLine::Reference => PlanLine::Reference,
+                _ => PlanLine::Centreline,
+            };
+            results["plan_line"] = json!(plan_only_line.name());
             if plan_line == PlanLine::Fairway {
                 results["plan_line_note"] = json!(PLAN_ONLY_PLAN_LINE_NOTE);
             }
+        }
+        if let Some(n) = note {
+            results["plan_line_note"] = json!(n);
         }
         let mut settings = json!({"rule_sets": ids, "plan_line": plan_line.name()});
         if all_classes {
@@ -388,6 +421,20 @@ impl Session {
                 let on_centre = || sized.screening_value(&option, &walk, &plan.river, &plan.centre);
                 match plan_line {
                     PlanLine::Centreline => Ok((on_centre()?, PlanLine::Centreline, None)),
+                    // The option is the reference line itself: the walk, the width and the depth
+                    // are read along it, the radius on it, and the reaches where it lies on the
+                    // centreline.
+                    PlanLine::Reference => Ok((
+                        sized.screening_value_on(
+                            &option,
+                            &walk,
+                            &plan.river,
+                            &plan.centre,
+                            Some(centre),
+                        )?,
+                        PlanLine::Reference,
+                        None,
+                    )),
                     PlanLine::Fairway => {
                         // The class's own fairway: its R_min and bottom width, in the river's water,
                         // with the alignment stage's defaults (no clearance, no smoothing).

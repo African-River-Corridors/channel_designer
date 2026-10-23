@@ -64,9 +64,15 @@ than R_min where the water allows: a minimum-curvature corridor solve (ADR 0007)
 the water-aware rolling circle and the whole of a leg join, not a method of its own.
 
 **Plan line**:
-The line the full answer of `fits` reads the river's own radius on: each class's fairway fit (the
-default, ADR 0013) or the river centreline. A plan-only answer reads the centreline.
+The line `fits` reads the river on: the reference line (the default, ADR 0014), each class's fairway
+fit (ADR 0013) or the river centreline.
 _Avoid_: radius line
+
+**Reference line**:
+One smooth line in the water that belongs to no vessel (spec 0016): the smoothed mid-line of the
+banks, refitted in the water, held off the banks and pulled towards the mid-line. The default plan
+line.
+_Avoid_: mid-line (that is its seed), centreline
 
 **Infeasible stretch**:
 A stretch of a design line where no line that meets R_min fits inside navigable water. It is

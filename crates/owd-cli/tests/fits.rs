@@ -289,12 +289,16 @@ fn with_a_bed_model_and_a_dem_the_answer_is_full_with_the_verdict_and_the_depth_
 fn the_answer_says_which_plan_line_it_read_the_radius_on() {
     // Plan only: the fairway needs the full answer, so the radius is read on the centreline.
     let (_dir, doc) = setup("fits-plan-line");
-    let t = out(&owd(&["fits", &doc]));
+    let t = out(&owd(&["fits", &doc, "--plan-line", "fairway"]));
     assert!(t.contains("Plan line: centreline"), "{t}");
     assert!(t.contains("fairway"), "{t}");
-    // Full: the default is the fairway.
+    // The default, the reference line, needs the banks: this study has none.
+    let t = out(&owd(&["fits", &doc]));
+    assert!(t.contains("Plan line: centreline"), "{t}");
+    assert!(t.contains("reference line could not be made"), "{t}");
+    // Full: asked for, the fairway.
     let doc = full_study("fits-plan-line-full");
-    let o = owd(&["fits", &doc, "--json"]);
+    let o = owd(&["fits", &doc, "--plan-line", "fairway", "--json"]);
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let v: Value = serde_json::from_str(&out(&o)).unwrap();
     assert_eq!(v["fits"]["plan_line"], "fairway");
@@ -362,4 +366,65 @@ fn a_local_dem_and_a_fixed_water_level_go_in_with_import() {
     let d: Value = serde_json::from_str(&std::fs::read_to_string(&doc).unwrap()).unwrap();
     assert_eq!(d["inputs"]["dem"]["path"], "dem.tif");
     ok(owd(&["validate", &doc]));
+}
+
+#[test]
+fn with_both_banks_the_default_reads_the_reference_line_and_stores_it() {
+    // Label: property (spec 0016 T1).
+    let dir = work_dir("fits-reference");
+    let doc = dir.join("t.owd").to_str().unwrap().to_string();
+    assert!(
+        owd(&["new", &doc, "--title", "t", "--date", "2026-10-22"])
+            .status
+            .success()
+    );
+    let at = |x: f64, y: f64| [x + 500_000.0, y + 600_000.0];
+    let w = |name: &str, text: String| {
+        let p = dir.join(name);
+        std::fs::write(&p, text).unwrap();
+        p.to_str().unwrap().to_string()
+    };
+    let line = |y: f64| {
+        format!(
+            r#"{{"type":"LineString"{UTM30},"coordinates":{}}}"#,
+            json!([at(0.0, y), at(3000.0, y)])
+        )
+    };
+    let ring = json!([
+        at(0.0, -200.0),
+        at(3000.0, -200.0),
+        at(3000.0, 200.0),
+        at(0.0, 200.0),
+        at(0.0, -200.0)
+    ]);
+    let poly = w(
+        "polygon.geojson",
+        format!(r#"{{"type":"Polygon"{UTM30},"coordinates":[{ring}]}}"#),
+    );
+    let (left, right) = (
+        w("left.geojson", line(200.0)),
+        w("right.geojson", line(-200.0)),
+    );
+    let o = owd(&[
+        "import",
+        &doc,
+        "--polygon",
+        &poly,
+        "--left-bank",
+        &left,
+        "--right-bank",
+        &right,
+    ]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let o = owd(&["fits", &doc, "--json"]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let v: Value = serde_json::from_str(&out(&o)).unwrap();
+    assert_eq!(v["fits"]["plan_line"], "reference");
+    assert!(v["fits"].get("plan_line_note").is_none());
+    let d: Value = serde_json::from_str(&std::fs::read_to_string(&doc).unwrap()).unwrap();
+    let rl = &d["inputs"]["reference_line"]["line"]["coordinates"];
+    assert!(rl.as_array().unwrap().len() > 2);
+    assert!(owd(&["validate", &doc]).status.success());
+    let t = out(&owd(&["fits", &doc, "--show"]));
+    assert!(t.contains("Plan line: reference"), "{t}");
 }

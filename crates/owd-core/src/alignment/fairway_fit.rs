@@ -90,6 +90,13 @@ pub struct FitParams {
     /// The weight of the soft pull on a point outside the water towards the nearest water within
     /// one chord (a pull of one chord costs as much as this).
     pub pull_weight: f64,
+    /// A clearance from the edge of the water that grows with the local width: the boxes end
+    /// `max(min_m, share × width)` inside the edge, the width read across the line in the water
+    /// given. Off by default (the water given is already navigable water).
+    pub clearance: Option<Clearance>,
+    /// The weight of a pull of every free point towards the line given (the seed): an offset of
+    /// one chord from it costs as much as this, per spacing. Off (0) by default.
+    pub seed_pull_weight: f64,
     /// How far inside the edge of navigable water the boxes end (m). The default, 1 m, covers
     /// the sagitta of one 10 m spacing past an edge corner of radius 12.5 m or more: navigable
     /// water's corners at the land are rounded by the shrink, half the bottom width.
@@ -117,11 +124,31 @@ impl FitParams {
             reweight_cap: 1e4,
             free_cap_m: r_min,
             pull_weight: 1.0,
+            clearance: None,
+            seed_pull_weight: 0.0,
             contact_margin_m: 1.0,
             max_growth: 1.5,
             check_step_m: 10.0,
             inside_tol_m: 0.05,
         }
+    }
+}
+
+/// A clearance from the edge of the water: the larger of `min_m` and `share` of the local width.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Clearance {
+    pub min_m: f64,
+    pub share: f64,
+    /// The water's width at each vertex of the seed (the line given to the fit). A point reads the
+    /// width where it lies along the seed. Without it, the width is read across the line along
+    /// the point's normal, which runs along the river where the line kinks and reads far too wide.
+    pub seed_widths_m: Option<Vec<f64>>,
+}
+
+impl Clearance {
+    /// The clearance where the water is `width_m` wide.
+    pub fn at(&self, width_m: f64) -> f64 {
+        self.min_m.max(self.share * width_m)
     }
 }
 
@@ -241,7 +268,7 @@ pub fn fairway_fit(
 
     let seed_len = linear::length(&emit(&nodes, &fixed.must_follow));
     smooth_free(&mut nodes, params.chord_m / 2.0, h);
-    solve_corridor(&mut nodes, &grid, params, &mut notes);
+    solve_corridor(&mut nodes, &grid, line, params, &mut notes);
     let out = emit(&nodes, &fixed.must_follow);
     if linear::length(&out) > params.max_growth * seed_len {
         notes.push(format!(
@@ -668,6 +695,44 @@ fn water_spans(p: Pt, n: Pt, grid: &EdgeGrid, reach: f64) -> Vec<(f64, f64)> {
         .collect()
 }
 
+/// `ys` at chainage `s`, linear between the chainages `xs` (sorted), held flat beyond them.
+fn interp_at(xs: &[f64], ys: &[f64], s: f64) -> f64 {
+    let n = xs.len().min(ys.len());
+    if n == 0 {
+        return 0.0;
+    }
+    let k = xs[..n].partition_point(|&x| x <= s);
+    if k == 0 {
+        return ys[0];
+    }
+    if k >= n {
+        return ys[n - 1];
+    }
+    let (x0, x1) = (xs[k - 1], xs[k]);
+    if x1 > x0 {
+        ys[k - 1] + (ys[k] - ys[k - 1]) * (s - x0) / (x1 - x0)
+    } else {
+        ys[k]
+    }
+}
+
+/// The width of the water across a point: its span's, or, outside the water, the nearest span's.
+fn local_width(spans: &[(f64, f64)]) -> f64 {
+    spans
+        .iter()
+        .min_by(|x, y| {
+            let d = |&(a, c): &(f64, f64)| {
+                if a <= 0.0 && 0.0 <= c {
+                    0.0
+                } else {
+                    a.abs().min(c.abs())
+                }
+            };
+            d(x).total_cmp(&d(y))
+        })
+        .map_or(0.0, |(a, c)| c - a)
+}
+
 /// Where a point stands in the water, from its spans (each end `margin` inside the edge, not at
 /// the ray's reach).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -714,6 +779,7 @@ fn place(spans: &[(f64, f64)], reach: f64, outside_reach: f64, margin: f64) -> P
 fn solve_corridor(
     nodes: &mut Vec<Node>,
     grid: &EdgeGrid,
+    seed: &[Pt],
     params: &FitParams,
     notes: &mut Vec<String>,
 ) {
@@ -740,6 +806,13 @@ fn solve_corridor(
         )
     };
     let mut best: Option<((usize, f64), Vec<Node>)> = Some((score(nodes), nodes.clone()));
+    let by_seed = params
+        .clearance
+        .as_ref()
+        .is_some_and(|c| c.seed_widths_m.is_some());
+    let seed_index =
+        (params.seed_pull_weight > 0.0 || by_seed).then(|| linear::ProjectIndex::new(seed));
+    let seed_c = Chained::new(seed);
     for pass in 0..params.passes {
         let pts: Vec<Pt> = nodes.iter().map(|nd| nd.p).collect();
         let n = pts.len();
@@ -769,7 +842,17 @@ fn solve_corridor(
             .iter()
             .map(|&i| {
                 let spans = water_spans(pts[i], nrm[i], grid, reach);
-                place(&spans, reach, params.chord_m, params.contact_margin_m)
+                let margin = params
+                    .clearance
+                    .as_ref()
+                    .map_or(params.contact_margin_m, |c| {
+                        let width = match (&c.seed_widths_m, &seed_index) {
+                            (Some(ws), Some(ix)) => interp_at(&seed_c.cum, ws, ix.project(pts[i])),
+                            _ => local_width(&spans),
+                        };
+                        params.contact_margin_m.max(c.at(width))
+                    });
+                place(&spans, reach, params.chord_m, margin)
             })
             .collect();
         let chain = Chained::new(&pts);
@@ -846,6 +929,21 @@ fn solve_corridor(
                 rows.push(Row {
                     c: -pull * t,
                     terms: vec![(j, pull)],
+                });
+            }
+        }
+        // Every free point is pulled softly towards the seed, along its normal.
+        if let Some(ix) = seed_index
+            .as_ref()
+            .filter(|_| params.seed_pull_weight > 0.0)
+        {
+            let k = params.seed_pull_weight.sqrt() / params.chord_m;
+            for (j, &i) in free.iter().enumerate() {
+                let q = seed_c.at(ix.project(pts[i]));
+                let t = dot([q[0] - pts[i][0], q[1] - pts[i][1]], nrm[i]);
+                rows.push(Row {
+                    c: -k * t,
+                    terms: vec![(j, k)],
                 });
             }
         }

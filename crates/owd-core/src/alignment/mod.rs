@@ -11,6 +11,7 @@ pub mod loops;
 pub mod meanders;
 pub mod navigable;
 pub mod radius_check;
+pub mod reference_line;
 pub mod rolling_circle;
 pub mod route;
 pub mod widths;

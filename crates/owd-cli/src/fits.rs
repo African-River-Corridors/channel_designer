@@ -23,6 +23,10 @@ fn table(results: &Value) -> String {
     let line = results["plan_line"].as_str().unwrap_or("centreline");
     out.push_str(&match line {
         "fairway" => "Plan line: fairway (each class's fairway fit, ADR 0007).\n".to_string(),
+        "reference" => {
+            "Plan line: reference (one smooth line in the water for every vessel, spec 0016).\n"
+                .to_string()
+        }
         l => format!("Plan line: {l}.\n"),
     });
     if let Some(n) = results["plan_line_note"].as_str() {

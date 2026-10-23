@@ -245,10 +245,12 @@ fn radius_stretches(s: &Session) -> usize {
 #[test]
 fn on_the_fairway_the_river_radius_is_the_water_s_not_the_wiggle_of_its_centreline() {
     use owd_format::design::fits::PlanLine;
-    // Label: property. The default reads each class's fairway fit (ADR 0013): in the straight
+    // Label: property. The fairway reads each class's fairway fit (ADR 0013): in the straight
     // water it has no tight bend.
     let mut fairway = wiggly();
-    fairway.run_fits_with(None, Some(&land)).unwrap();
+    fairway
+        .run_fits_on(None, Some(&land), PlanLine::Fairway)
+        .unwrap();
     assert_eq!(
         radius_stretches(&fairway),
         0,
@@ -282,16 +284,17 @@ fn on_the_fairway_the_river_radius_is_the_water_s_not_the_wiggle_of_its_centreli
     };
     assert_eq!(others(&centre), others(&fairway));
     assert!(PlanLine::parse("bank").is_err());
-    assert_eq!(PlanLine::default(), PlanLine::Fairway);
+    assert_eq!(PlanLine::default(), PlanLine::Reference);
 }
 
 #[test]
 fn a_plan_only_answer_reads_the_centreline_and_says_why() {
     // Label: property. With no bed model the fairway cannot run: the answer falls back to the
     // centreline and says so, in the answer and in each row.
+    use owd_format::design::fits::PlanLine;
     let mut s = wiggly();
     s.clear_bed_model();
-    s.run_fits_with(None, Some(&land)).unwrap();
+    s.run_fits_on(None, Some(&land), PlanLine::Fairway).unwrap();
     let r = &s.document()["fits"];
     assert_ne!(r["results"]["mode"], "full", "{}", r["results"]);
     assert_eq!(r["settings"]["plan_line"], "fairway");
