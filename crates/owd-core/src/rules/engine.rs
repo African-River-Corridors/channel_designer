@@ -945,6 +945,52 @@ pub fn old_name_choice(
     })
 }
 
+/// The old ruleset name a Rule Set and its set input stand for: the inverse of
+/// [`old_name_choice`], so `owd fits` takes the form `owd size` takes (#362). `set` is an id or
+/// id@version; `inputs` are the set inputs given, of which the one the set reads is used.
+/// CN-reduced has no such form: it is a canal reach with a claim, so `--ruleset CN-reduced` names it.
+pub fn old_name_for(set: &str, inputs: &[(&str, &str)]) -> Result<&'static str, RuleError> {
+    let id = set.split('@').next().unwrap_or(set);
+    let (input, values): (&str, &[(&str, &'static str)]) = match id {
+        "pianc-wg141" => (
+            SE_QUALITY,
+            &[("A", "PIANC-A"), ("B", "PIANC-B"), ("C", "PIANC-C")],
+        ),
+        "gb50139" => (
+            RANGE_END,
+            &[("permissive", "CN"), ("strict", "CN-conservative")],
+        ),
+        other => {
+            return Err(RuleError::Key(format!(
+                "`owd fits` answers under the Rule Sets pianc-wg141 and gb50139, not `{other}`"
+            )));
+        }
+    };
+    let choices = || {
+        values
+            .iter()
+            .map(|(v, _)| *v)
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let Some((_, value)) = inputs.iter().find(|(k, _)| *k == input) else {
+        return Err(RuleError::Key(format!(
+            "the Rule Set {id} needs --set-input {input}=VALUE ({})",
+            choices()
+        )));
+    };
+    values
+        .iter()
+        .find(|(v, _)| v == value)
+        .map(|(_, name)| *name)
+        .ok_or_else(|| {
+            RuleError::Key(format!(
+                "{input}={value} is not a value of {id}: use one of {}",
+                choices()
+            ))
+        })
+}
+
 /// The selection an old ruleset name maps to, with the `owd` checks (see [`old_name_choice`]).
 /// CN-reduced is `gb50139` strict on one canal reach over the whole line, with the reduced-radius
 /// claim. Kept for `owd fits`, whose choices are the old names.

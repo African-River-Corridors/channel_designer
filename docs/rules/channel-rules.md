@@ -177,6 +177,10 @@ The old names map like this:
 | `CN-conservative` | `--rule-set gb50139 --set-input range_end=strict` |
 | `CN-reduced` | `owd waterway add … --waterway canal --claim-reduced-radius`, then `--rule-set gb50139 --set-input range_end=strict` |
 
+`owd fits` takes the same form as `owd size`: `owd fits design.owd --rule-set pianc-wg141 --set-input
+se_quality=C` is the answer under `PIANC-C` (#362). Each `--rule-set` is one more answer, with the set input it
+reads. The old names still work with `--ruleset`, and `CN-reduced` has only that form.
+
 The PIANC numbers are the same as before for the same choices. The `CN` numbers moved when `gb50139` was
 read against GB 50139-2014 itself (#250).
 

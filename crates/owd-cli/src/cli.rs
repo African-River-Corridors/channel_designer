@@ -597,8 +597,16 @@ enum Command {
     Fits {
         /// The channel design. `-` is stdin.
         doc: String,
-        /// A ruleset to answer under, for example PIANC-B. Repeat for more (default: the ones the
-        /// document holds, else PIANC-B).
+        /// A Rule Set to answer under, as `owd size` names it: pianc-wg141 or gb50139, with its
+        /// --set-input (se_quality=A|B|C, range_end=permissive|strict). Repeat for more answers
+        /// (default: the ones the document holds, else PIANC-B).
+        #[arg(long = "rule-set", value_name = "ID")]
+        rule_set: Vec<String>,
+        /// The set input of a --rule-set, such as se_quality=C or range_end=strict (repeatable).
+        #[arg(long = "set-input", value_name = "NAME=VALUE")]
+        set_input: Vec<String>,
+        /// An answer under an old ruleset name, for example PIANC-B or CN-reduced (repeatable).
+        /// These answers come first, then those of --rule-set.
         #[arg(long, value_name = "RULESET")]
         ruleset: Vec<String>,
         /// Print the answer the document holds, and say if it is stale, without running.
@@ -865,20 +873,24 @@ pub fn main() -> ExitCode {
         }),
         Command::Fits {
             doc,
+            rule_set,
+            set_input,
             ruleset,
             show,
             plan_line,
             all,
             out,
-        } => crate::fits::fits(
-            &doc,
-            &ruleset,
-            show,
-            plan_line.as_deref(),
-            all,
-            &out.output,
-            out.json,
-        ),
+        } => crate::fits::choices(ruleset, &rule_set, &set_input).and_then(|choices| {
+            crate::fits::fits(
+                &doc,
+                &choices,
+                show,
+                plan_line.as_deref(),
+                all,
+                &out.output,
+                out.json,
+            )
+        }),
         Command::Envelope {
             doc,
             sizes,

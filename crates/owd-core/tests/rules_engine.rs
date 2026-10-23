@@ -481,3 +481,23 @@ fn a_canal_and_a_river_reach_size_to_the_river_rmin_and_the_reduced_rule_applies
                 .is_some_and(|o| o.contains("canal, reduced_radius_claim yes typed"))
     }));
 }
+
+#[test]
+fn the_size_form_of_a_choice_names_the_same_old_ruleset() {
+    // Label: property. `old_name_for` undoes `old_name_choice` for every name that has the form (#362).
+    for name in engine::OLD_RULESETS {
+        if name == "CN-reduced" {
+            continue;
+        }
+        let (set, input, value) = engine::old_name_choice(name).unwrap();
+        assert_eq!(engine::old_name_for(set, &[(input, value)]).unwrap(), name);
+        let versioned = format!("{set}@1.0");
+        assert_eq!(
+            engine::old_name_for(&versioned, &[("other", "x"), (input, value)]).unwrap(),
+            name
+        );
+    }
+    assert!(engine::old_name_for("pianc-wg141", &[]).is_err());
+    assert!(engine::old_name_for("pianc-wg141", &[("se_quality", "Z")]).is_err());
+    assert!(engine::old_name_for("my-set", &[("se_quality", "A")]).is_err());
+}

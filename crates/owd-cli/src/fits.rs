@@ -97,6 +97,29 @@ fn table(results: &Value) -> String {
     out
 }
 
+/// The choices to answer under: the old ruleset names, then each `--rule-set` with its
+/// `--set-input`, named as `owd size` names them (#362).
+pub fn choices(
+    old: Vec<String>,
+    rule_sets: &[String],
+    set_inputs: &[String],
+) -> core::result::Result<Vec<String>, Failure> {
+    let mut inputs = Vec::new();
+    for kv in set_inputs {
+        let (k, v) = kv
+            .split_once('=')
+            .ok_or_else(|| input_error(format!("--set-input `{kv}`: write it as NAME=VALUE")))?;
+        inputs.push((k.trim(), v.trim()));
+    }
+    let mut out = old;
+    for set in rule_sets {
+        let name = owd_core::rules::engine::old_name_for(set, &inputs)
+            .map_err(|e| input_error(e.raw_message()))?;
+        out.push(name.to_string());
+    }
+    Ok(out)
+}
+
 /// Run the answer (or, with `show`, print the stored one) and write the document back.
 pub fn fits(
     doc: &str,
