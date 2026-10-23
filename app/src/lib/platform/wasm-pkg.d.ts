@@ -38,6 +38,7 @@ declare module "*/wasm-pkg/owd_web.js" {
     reach_step(step: string, percentile: number | undefined, at: string, fetch?: (url: string, start: number, len: number) => Uint8Array): string;
     set_bed(points: string, season: string): string;
     run_fits(): string;
+    run_envelope(): string;
   }
   export function engine_version(): string;
   export default function init(input?: unknown): Promise<unknown>;

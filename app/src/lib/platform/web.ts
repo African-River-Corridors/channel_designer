@@ -341,6 +341,7 @@ export async function createWebPlatform(): Promise<Platform> {
     },
     set_bed: (a) => change("set_bed", JSON.stringify(a.points), (a.season as string) ?? ""),
     run_fits: () => change("run_fits"),
+    run_envelope: () => change("run_envelope"),
     open_example: openExample,
     export_file: async (a) => {
       const kind = a.kind as string;

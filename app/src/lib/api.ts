@@ -177,6 +177,8 @@ export interface Snapshot {
   notices?: string[];
   /** Whether the "what fits" answer is current. */
   fits_status?: StageState;
+  /** Whether the largest-vessel sweep (spec 0016) is current. */
+  envelope_status?: StageState;
   /** What "Start from a river" shows besides the document (spec 0012). */
   reach_view?: ReachView;
 }
@@ -200,6 +202,44 @@ export interface ReachView {
   river?: { osm_id: string; name: string | null; length_m: number; line: LonLat[] } | null;
   /** Constraint stretches of the answer, by Rule Set choice then vessel class, with their ends in WGS84. */
   fits_stretches: Record<string, Record<string, { kind: string; from: LonLat | null; to: LonLat | null }[]>>;
+  /** The sweep's per-kilometre strip (spec 0016): each km of the plan line in WGS84, with the largest
+   * size that passes it and its place in the series (`rank` of `sizes`; null where none passes). */
+  envelope_strip?: EnvelopeStripRow[];
+}
+export interface EnvelopeStripRow {
+  from_m: number;
+  to_m: number;
+  largest: string | null;
+  rank: number | null;
+  sizes: number;
+  line: LonLat[];
+}
+/** One size of the sweep, as the study keeps it (`stages.envelope.results.sizes`). */
+export interface EnvelopeSize {
+  label: string;
+  loa_m: number;
+  beam_m: number;
+  r_min_m: number;
+  bottom_width_straight_m: number;
+  passes: boolean;
+  stretch_count: number;
+  stretches: { kind: string; start_chainage_m: number; end_chainage_m: number; deficit_m: number }[];
+  notes?: string[];
+}
+/** The largest vessel the river allows (spec 0016), as the study keeps it. */
+export interface EnvelopeResult {
+  label: string;
+  notice: string;
+  bank_caveat: string;
+  rule_set: string;
+  draught_m: number;
+  length_m: number;
+  largest: { label: string; loa_m: number; beam_m: number } | null;
+  sizes: EnvelopeSize[];
+  per_km: { from_m: number; to_m: number; largest: { label: string } | null }[];
+  marks: { id: string; custom: boolean; loa_m: number; beam_m: number; within: boolean }[];
+  plan_line?: string;
+  plan_line_note?: string;
 }
 /** One vessel class in the "what fits" answer. */
 export interface FitsClass {
@@ -491,3 +531,5 @@ export const reachCancel = () => invoke<void>("reach_cancel");
 export const setBed = (points: [number, number][], season: string) => invoke<Snapshot>("set_bed", { points, season });
 /** Answer "what fits" over every vessel class. */
 export const runFits = () => invoke<Snapshot>("run_fits");
+/** The largest vessel the river allows: the size sweep of spec 0016. */
+export const runEnvelope = () => invoke<Snapshot>("run_envelope");

@@ -733,6 +733,24 @@ describe("Open Waterway Designer app smoke test", () => {
       await until("the depth", async () => (await (await browser.$("[data-testid=mark-bed]")).getAttribute("data-mark")) === "user");
       await (await browser.$("[data-testid=fits-run]")).click();
       await until("the class table", async () => (await browser.$$("[data-testid^=fits-row-]")).length > 3, 60000);
+      // Spec 0016 T4: the largest vessel, through the shell: the series table, the chart, and the
+      // per-km strip on the map, as the study keeps them.
+      await (await browser.$("[data-testid=envelope-run]")).click();
+      await until("the series table", async () => (await browser.$$("[data-testid=envelope-row]")).length === 5, 120000);
+      // The answer for the whole reach is the largest size that passes (the series grows down the table).
+      const rows = await browser.$$("[data-testid=envelope-row]");
+      let largest = "no size of the series";
+      for (const r of rows) {
+        const passes = (await r.getAttribute("data-passes")) === "true";
+        assert.match(await r.getText(), passes ? /✓ passes/ : /✕ blocked/, "in words and a shape, not colour alone");
+        if (passes) largest = await r.getAttribute("data-size");
+      }
+      assert.equal(await text("envelope-largest"), largest);
+      assert.ok(await (await browser.$("[data-testid=envelope-chart]")).isExisting(), "the chart");
+      // The strip on the map: one line per km of the per-km list.
+      const kms = (await browser.$$("[data-testid=envelope-km-list] li")).length;
+      assert.ok(kms > 0, "a reach of a km or more");
+      await until("the strip on the map", async () => Number(await (await browser.$("[data-testid=envelope-panel]")).getAttribute("data-strip-drawn")) === kms);
       const row = (await browser.$$("[data-testid^=fits-row-]"))[0];
       const vessel = (await row.getAttribute("data-testid")).replace("fits-row-", "");
       await (await browser.$(`[data-testid=use-vessel-${vessel}]`)).click();
