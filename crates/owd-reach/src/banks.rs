@@ -141,6 +141,8 @@ pub struct MaskBanks {
     pub pixel_m: f64,
     /// The registry id of the seed: `jrc-gsw` or `sentinel2-l2a`.
     pub source: &'static str,
+    /// What the checks' final untangle moved (issue #410); zero when the banks did not cross.
+    pub untangle: crate::bankcheck::UntangleReport,
 }
 
 impl MaskBanks {
@@ -567,6 +569,7 @@ pub fn banks_from_source(
         rechain(&stretches, &line, &checked.centreline),
         checked.stretches,
     );
+    let untangle = checked.untangle;
     let (left, right, centreline, widths) = (
         checked.left,
         checked.right,
@@ -587,6 +590,7 @@ pub fn banks_from_source(
         stretches,
         pixel_m: src.pixel_m(),
         source: src.source(),
+        untangle,
     })
 }
 

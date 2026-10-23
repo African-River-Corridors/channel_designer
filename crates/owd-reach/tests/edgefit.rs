@@ -99,6 +99,7 @@ fn mask_banks() -> MaskBanks {
         stretches: Vec::new(),
         pixel_m: 30.0,
         source: "jrc-gsw",
+        untangle: Default::default(),
     }
 }
 

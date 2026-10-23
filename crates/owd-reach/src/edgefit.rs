@@ -116,6 +116,8 @@ pub struct EdgeFit {
     /// Width at each station of the centreline (the banks' mid-line), in metres.
     pub widths: Vec<f64>,
     pub stretches: Vec<Stretch>,
+    /// What the checks' final untangle moved (issue #410); zero when the banks did not cross.
+    pub untangle: crate::bankcheck::UntangleReport,
 }
 
 type P2 = [f64; 2];
@@ -940,6 +942,7 @@ fn finish(
             ..CheckParams::at_step(cfg.station_step_m)
         },
     )?;
+    let untangle = checked.untangle;
     let stretches = merge(
         rechain(&stretches, &centre, &checked.centreline),
         checked.stretches,
@@ -966,6 +969,7 @@ fn finish(
         right_beyond: res[1].beyond.clone(),
         widths,
         stretches,
+        untangle,
     })
 }
 
