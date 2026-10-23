@@ -114,6 +114,11 @@ enum Command {
         /// A GeoTIFF DEM, referenced by relative path and SHA-256 (never copied into the file).
         #[arg(long, value_name = "FILE")]
         dem: Option<String>,
+        /// With --dem: the DEM holds the river bed below the water level (surveyed bathymetry).
+        /// With a water level, `owd fits` then reads the depth from the DEM, with no bed model.
+        /// OWD does not check it, and every output that reads it says so. A new DEM clears it.
+        #[arg(long, requires = "dem")]
+        holds_bathymetry: bool,
         /// The water level in metres: a constant, or with --water-slope the level at the river's start.
         #[arg(long, value_name = "METRES")]
         water_level: Option<f64>,
@@ -771,6 +776,7 @@ pub fn main() -> ExitCode {
             centreline,
             polygon,
             dem,
+            holds_bathymetry,
             water_level,
             water_slope,
             water_table,
@@ -788,6 +794,7 @@ pub fn main() -> ExitCode {
                 level: water_level,
                 slope: water_slope,
                 table: water_table,
+                holds_bathymetry,
             },
             &out.output,
             out.json,

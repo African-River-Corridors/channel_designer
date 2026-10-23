@@ -203,6 +203,10 @@ impl Session {
             if let Some(a) = self.bed_axis_hash() {
                 f["bed_axis"] = a;
             }
+            // Only when marked, so an answer made before the mark keeps its hash (#363).
+            if self.dem_holds_bathymetry() {
+                f["dem_holds_bathymetry"] = json!(true);
+            }
             f
         });
         let mut dep = json!({
@@ -360,7 +364,11 @@ impl Session {
         .map_err(|e| DesignError::Input(e.message))?;
         let mut results = fits_json(&fits);
         if let Some(t) =
-            terrain.filter(|_| self.bed_model_value().is_some() && self.water_profile().is_some())
+            // The depth: a bed model, or a DEM marked as holding the bed (#363).
+            terrain.filter(|_| {
+                (self.bed_model_value().is_some() || self.dem_holds_bathymetry())
+                    && self.water_profile().is_some()
+            })
         {
             self.add_full(&mut results, &line, t, true, read_on, draught_m)?;
         } else {

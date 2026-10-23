@@ -68,6 +68,9 @@ owd fits study.owd
 - **The water level.** `--water-level 38` is one level for the whole river, in metres. Add `--water-slope` for a
   level that falls along the river, or give `--water-table FILE` (lines of `chainage_m,level_m`). Without one,
   `owd water-level` sets a default from SWORD and SWOT.
+- **A DEM with the river bed in it.** If your DEM holds surveyed bathymetry below the water level, add
+  `--holds-bathymetry` to the import. `owd fits` then reads the depth from the DEM, with no `owd bed`. OWD does
+  not check the DEM, and every output says the depth came from it.
 - **The depth.** `owd bed` gives an assumed depth where there is no survey. With the DEM, the water level and a
   depth, `owd fits` gives the full answer (width, radius and depth).
 

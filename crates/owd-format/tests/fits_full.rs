@@ -358,3 +358,94 @@ fn every_row_states_its_chord_and_the_full_answer_reads_the_river_on_it() {
     }
     assert!(seen > 0);
 }
+
+/// The land at 12 m, and inside the water (|y| < 200 m) a surveyed bed: 4 m below the water level
+/// of 10 m, with the shallow bar of 1.5 m from chainage 1200 to 1500 and its ramps (#363).
+fn bathymetry(xs: &[f64], ys: &[f64]) -> Vec<f64> {
+    xs.iter()
+        .zip(ys)
+        .map(|(&x, &y)| {
+            if (y - Y0).abs() >= 200.0 {
+                return LAND_M;
+            }
+            let s = x - X0;
+            let depth = if s < 1100.0 || s > 1600.0 {
+                4.0
+            } else if s < 1200.0 {
+                4.0 - 2.5 * (s - 1100.0) / 100.0
+            } else if s <= 1500.0 {
+                1.5
+            } else {
+                1.5 + 2.5 * (s - 1500.0) / 100.0
+            };
+            10.0 - depth
+        })
+        .collect()
+}
+
+fn with_dem(mut s: Session) -> Session {
+    let dem = owd_format::geotiff::Dem {
+        width: 1,
+        height: 1,
+        data: vec![12.0],
+        geotransform: [50.0, 0.0, X0, 0.0, -50.0, Y0],
+        nodata: None,
+        epsg: Some(32630),
+    };
+    s.set_dem("bathy.tif", b"surveyed bed", &dem);
+    s
+}
+
+#[test]
+fn a_dem_marked_as_holding_the_bed_gives_the_full_answer_with_its_own_label() {
+    // Label: sourced - hand calculation, as the shallow-bar test: the same bar, surveyed in the DEM.
+    use owd_format::design::DEPTH_FROM_DEM_LABEL;
+    // Unmarked: the DEM is land only as far as `fits` knows, so the answer is plan only, as before.
+    let mut s = with_dem(river());
+    s.run_fits_with(None, Some(&bathymetry)).unwrap();
+    assert_ne!(s.document()["fits"]["results"]["mode"], "full");
+    // Marked: the depth is read from the DEM, and every row says so.
+    s.set_dem_holds_bathymetry(true).unwrap();
+    assert_eq!(s.document()["inputs"]["dem"]["holds_bathymetry"], true);
+    s.run_fits_with(None, Some(&bathymetry)).unwrap();
+    assert_eq!(s.document()["fits"]["results"]["mode"], "full");
+    let d = design_depth("CEMT-IV");
+    assert!(d > 1.5 && d < 4.0, "{d}");
+    let row = rows(&s)
+        .into_iter()
+        .find(|c| c["vessel_standard_id"] == "CEMT-IV")
+        .unwrap();
+    assert_eq!(row["depth_basis"], DEPTH_FROM_DEM_LABEL);
+    let depth: Vec<&Value> = row["constraint_stretches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|x| x["kind"] == "depth")
+        .collect();
+    assert_eq!(depth.len(), 1, "{row}");
+    let (a, b) = (1100.0 + 40.0 * (4.0 - d), 1600.0 - 40.0 * (4.0 - d));
+    let tol = DEFAULT_STATION_M + 1e-6;
+    assert!(
+        (depth[0]["start_chainage_m"].as_f64().unwrap() - a).abs() <= tol,
+        "{row}"
+    );
+    assert!(
+        (depth[0]["end_chainage_m"].as_f64().unwrap() - b).abs() <= tol,
+        "{row}"
+    );
+    // A new DEM clears the mark: it was said of the old file.
+    let mut s = with_dem(s);
+    assert!(
+        s.document()["inputs"]["dem"]
+            .get("holds_bathymetry")
+            .is_none()
+    );
+    s.run_fits_with(None, Some(&bathymetry)).unwrap();
+    assert_ne!(s.document()["fits"]["results"]["mode"], "full");
+    // With a bed model too, the bed model wins (it was set on purpose), with its own label.
+    let mut s = with_bar(with_dem(river()));
+    s.set_dem_holds_bathymetry(true).unwrap();
+    assert_eq!(s.depth_note(), Some("depth assumed, not measured"));
+    // No DEM: nothing to mark.
+    assert!(river().set_dem_holds_bathymetry(true).is_err());
+}
