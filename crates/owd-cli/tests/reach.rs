@@ -293,6 +293,14 @@ fn banks_from_the_jrc_mask_go_into_the_document_with_the_notice_and_the_flags() 
     // The window's three flags fall at one place, the end of the checked centreline: one stretch
     // (#361).
     assert_eq!(result["banks"]["low_confidence_stretches"], 1);
+    // What the checks' untangle moved is on the record (issue #410): nothing, for banks that do not cross.
+    assert_eq!(
+        result["banks"]["untangle"]["pieces"], 0,
+        "{}",
+        result["banks"]
+    );
+    assert_eq!(result["banks"]["untangle"]["max_move_m"], 0.0);
+    assert_eq!(result["banks"]["untangle"]["crossings_left"], 0);
     let d = doc(&file);
     for input in ["left_bank", "right_bank", "centreline", "river_polygon"] {
         assert_eq!(d["provenance"][input]["source"], "jrc-gsw");

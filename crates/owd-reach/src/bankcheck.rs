@@ -70,6 +70,9 @@ pub struct CheckParams {
     pub reference_widths: f64,
     /// The half-length used when no width can be measured, in metres.
     pub reference_half_m: f64,
+    /// Where the rebuilt banks cross, the stations around the crossing narrower than this are a
+    /// pinch: both banks are repaired across it in the next round (issue #410).
+    pub pinch_width_m: f64,
 }
 
 impl CheckParams {
@@ -88,6 +91,7 @@ impl CheckParams {
             max_step_m: None,
             reference_widths: 1.0,
             reference_half_m: 250.0,
+            pinch_width_m: 10.0,
         }
     }
 
@@ -173,6 +177,237 @@ pub struct Checked {
     pub stretches: Vec<Stretch>,
     /// Stations of the reference line that failed a check, with the checks.
     pub failed: Vec<(f64, Checks)>,
+    /// What the final untangle moved (issue #410); all zero when the banks did not cross.
+    pub untangle: UntangleReport,
+}
+
+/// What the final untangle did (issue #410), so a big move is on the record, never silent.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct UntangleReport {
+    /// The pieces of bank it replaced.
+    pub pieces: usize,
+    /// The farthest any vertex of a replaced piece lies from the bank that replaced it, in metres.
+    pub max_move_m: f64,
+    /// The total length of bank it replaced, in metres.
+    pub moved_m: f64,
+    /// The crossings it could not resolve. Each is still flagged `crossing`.
+    pub left_over: usize,
+}
+
+/// The banks after the untangle, and what it did.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Untangled {
+    pub left: Vec<P2>,
+    pub right: Vec<P2>,
+    pub report: UntangleReport,
+}
+
+/// How far inside the other bank an untangled piece is laid, in metres. Provisional.
+pub const UNTANGLE_CLEARANCE_M: f64 = 2.0;
+
+/// One crossing of the two banks: segment `i` of the left at `u` (0..1) and segment `j` of the right
+/// at `v`, at `at`.
+#[derive(Debug, Clone, Copy)]
+struct Cross {
+    i: usize,
+    u: f64,
+    j: usize,
+    v: f64,
+    at: P2,
+}
+
+/// Every crossing of `left` with `right`, in the order of `left`.
+fn crosses(left: &[P2], right: &[P2]) -> Vec<Cross> {
+    use std::collections::HashMap;
+    const CELL: f64 = 100.0;
+    let key = |p: P2| ((p[0] / CELL).floor() as i64, (p[1] / CELL).floor() as i64);
+    let mut grid: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+    for (j, w) in right.windows(2).enumerate() {
+        let (a, b) = (key(w[0]), key(w[1]));
+        for x in a.0.min(b.0)..=a.0.max(b.0) {
+            for y in a.1.min(b.1)..=a.1.max(b.1) {
+                grid.entry((x, y)).or_default().push(j);
+            }
+        }
+    }
+    let mut out: Vec<Cross> = Vec::new();
+    for (i, s) in left.windows(2).enumerate() {
+        let (a, b) = (key(s[0]), key(s[1]));
+        let mut seen: Vec<usize> = Vec::new();
+        for x in a.0.min(b.0)..=a.0.max(b.0) {
+            for y in a.1.min(b.1)..=a.1.max(b.1) {
+                for &j in grid.get(&(x, y)).map_or(&[][..], |v| v.as_slice()) {
+                    if seen.contains(&j) {
+                        continue;
+                    }
+                    seen.push(j);
+                    let t = [right[j], right[j + 1]];
+                    let e = [s[1][0] - s[0][0], s[1][1] - s[0][1]];
+                    let f = [t[1][0] - t[0][0], t[1][1] - t[0][1]];
+                    let den = e[0] * f[1] - e[1] * f[0];
+                    if den == 0.0 {
+                        continue;
+                    }
+                    let g = [t[0][0] - s[0][0], t[0][1] - s[0][1]];
+                    let u = (g[0] * f[1] - g[1] * f[0]) / den;
+                    let v = (g[0] * e[1] - g[1] * e[0]) / den;
+                    if (0.0..=1.0).contains(&u) && (0.0..=1.0).contains(&v) {
+                        out.push(Cross {
+                            i,
+                            u,
+                            j,
+                            v,
+                            at: [s[0][0] + u * e[0], s[0][1] + u * e[1]],
+                        });
+                    }
+                }
+            }
+        }
+    }
+    out.sort_by(|a, b| (a.i as f64 + a.u).total_cmp(&(b.i as f64 + b.u)));
+    out
+}
+
+fn dist(a: P2, b: P2) -> f64 {
+    (b[0] - a[0]).hypot(b[1] - a[1])
+}
+
+/// The unit direction of `line` at vertex `k` (the mean of its two segments).
+fn direction_at(line: &[P2], k: usize) -> P2 {
+    let a = line[k.saturating_sub(1)];
+    let b = line[(k + 1).min(line.len() - 1)];
+    let l = dist(a, b).max(f64::MIN_POSITIVE);
+    [(b[0] - a[0]) / l, (b[1] - a[1]) / l]
+}
+
+/// Untangle two banks that cross, directly, after the last round of checks (issue #410), with no
+/// rebuild. Banks that do not cross come back unchanged.
+///
+/// Where one bank crosses the other and comes back, the two crossings bound a lens: the piece of
+/// one bank between them lies past the other. The wrong piece is the one with a gap chord (a
+/// segment longer than `midline::GAP_FACTOR` times its bank's median segment), else the more
+/// winding one (a spike or a dive). It is replaced by the other bank's piece between the same two
+/// points, laid `clearance_m` inside it, so the banks no longer cross there. A crossing with no
+/// partner (the bank runs on past the other to its end) is left, counted in `left_over`.
+pub fn untangle(left: &[P2], right: &[P2], clearance_m: f64) -> Untangled {
+    let (mut l, mut r) = (left.to_vec(), right.to_vec());
+    let mut report = UntangleReport::default();
+    let median_seg = |b: &[P2]| {
+        let mut v: Vec<f64> = b.windows(2).map(|w| dist(w[0], w[1])).collect();
+        median(&mut v).unwrap_or(0.0)
+    };
+    let (gap_l, gap_r) = (
+        owd_format::design::midline::GAP_FACTOR * median_seg(left),
+        owd_format::design::midline::GAP_FACTOR * median_seg(right),
+    );
+    let first = crosses(&l, &r).len();
+    for _ in 0..(4 * first + 4) {
+        let xs = crosses(&l, &r);
+        if xs.len() < 2 {
+            report.left_over = xs.len();
+            break;
+        }
+        let (c1, c2) = (xs[0], xs[1]);
+        // The two pieces of the lens, each with the crossing points at its ends.
+        let (jl, jh) = if (c1.j as f64 + c1.v) <= (c2.j as f64 + c2.v) {
+            (c1, c2)
+        } else {
+            (c2, c1)
+        };
+        let piece_l: Vec<P2> = std::iter::once(c1.at)
+            .chain(l[c1.i + 1..=c2.i].iter().copied())
+            .chain(std::iter::once(c2.at))
+            .collect();
+        let piece_r: Vec<P2> = std::iter::once(jl.at)
+            .chain(r[jl.j + 1..=jh.j].iter().copied())
+            .chain(std::iter::once(jh.at))
+            .collect();
+        let has_chord = |p: &[P2], gap: f64| p.windows(2).any(|w| dist(w[0], w[1]) > gap) || false;
+        let winding = |p: &[P2]| {
+            let len: f64 = p.windows(2).map(|w| dist(w[0], w[1])).sum();
+            len / dist(p[0], p[p.len() - 1]).max(1e-9)
+        };
+        // A crossed segment counts too: a chord is often the segment that crosses.
+        let chord_l = has_chord(&piece_l, gap_l)
+            || dist(l[c1.i], l[c1.i + 1]) > gap_l
+            || dist(l[c2.i], l[c2.i + 1]) > gap_l;
+        let chord_r = has_chord(&piece_r, gap_r)
+            || dist(r[jl.j], r[jl.j + 1]) > gap_r
+            || dist(r[jh.j], r[jh.j + 1]) > gap_r;
+        let move_left = match (chord_l, chord_r) {
+            (true, false) => true,
+            (false, true) => false,
+            _ => winding(&piece_l) >= winding(&piece_r),
+        };
+        // The other bank's piece, in the moved bank's direction, laid inside it: the river lies
+        // right of the left bank and left of the right bank.
+        let (other, along, side) = if move_left {
+            (&r, &piece_r, -1.0)
+        } else {
+            (&l, &piece_l, 1.0)
+        };
+        let k0 = if move_left { jl.j } else { c1.i };
+        let mut laid: Vec<P2> = Vec::with_capacity(along.len());
+        for (m, q) in along.iter().enumerate() {
+            let k = (k0 + m).min(other.len() - 1);
+            let d = direction_at(other, k);
+            // The moved left bank goes to the left of the right bank (its left normal); the moved
+            // right bank to the right of the left bank (its right normal).
+            let nrm = [d[1] * side, -d[0] * side];
+            laid.push([q[0] + nrm[0] * clearance_m, q[1] + nrm[1] * clearance_m]);
+        }
+        // The two lenses' ends come in the other bank's order; the moved bank takes them in its own.
+        if (c1.j as f64 + c1.v) > (c2.j as f64 + c2.v) {
+            laid.reverse();
+        }
+        let (bank, a, b) = if move_left {
+            (&mut l, c1.i, c2.i)
+        } else {
+            (&mut r, jl.j, jh.j)
+        };
+        let old_piece = if move_left { &piece_l } else { &piece_r };
+        // How far the bank moved: the farthest point of either piece from the other (both ways, so
+        // a long chord with few vertices still shows its full move).
+        let to = |line: &[P2], p: P2| {
+            line.windows(2)
+                .map(|w| seg_distance(p, w[0], w[1]))
+                .fold(f64::INFINITY, f64::min)
+        };
+        let far = |from: &[P2], line: &[P2]| -> f64 {
+            from.windows(2)
+                .flat_map(|w| {
+                    // Every 5 m along `from`, so a long segment is read along its length.
+                    let n = (dist(w[0], w[1]) / 5.0).ceil().max(1.0) as usize;
+                    (0..=n).map(move |k| {
+                        let f = k as f64 / n as f64;
+                        [
+                            w[0][0] + f * (w[1][0] - w[0][0]),
+                            w[0][1] + f * (w[1][1] - w[0][1]),
+                        ]
+                    })
+                })
+                .map(|p| to(line, p))
+                .fold(0.0, f64::max)
+        };
+        report.max_move_m = report
+            .max_move_m
+            .max(far(old_piece, &laid))
+            .max(far(&laid, old_piece));
+        report.moved_m += old_piece.windows(2).map(|w| dist(w[0], w[1])).sum::<f64>();
+        report.pieces += 1;
+        let mut next: Vec<P2> = bank[..=a].to_vec();
+        next.extend(laid);
+        next.extend_from_slice(&bank[b + 1..]);
+        *bank = next;
+    }
+    if report.pieces > 0 {
+        report.left_over = crosses(&l, &r).len();
+    }
+    Untangled {
+        left: l,
+        right: r,
+        report,
+    }
 }
 
 /// A moving average over `k` stations either side, the window shrunk evenly near the ends, so the end
@@ -509,6 +744,40 @@ pub fn lines_cross(a: &[P2], b: &[P2]) -> Option<P2> {
     None
 }
 
+/// The distance from `p` to the segment `a`–`b`.
+fn seg_distance(p: P2, a: P2, b: P2) -> f64 {
+    let d = [b[0] - a[0], b[1] - a[1]];
+    let l2 = d[0] * d[0] + d[1] * d[1];
+    let t = if l2 > 0.0 {
+        (((p[0] - a[0]) * d[0] + (p[1] - a[1]) * d[1]) / l2).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    (p[0] - a[0] - t * d[0]).hypot(p[1] - a[1] - t * d[1])
+}
+
+/// Every point where line `a` crosses line `b`, in the order of `a`'s segments.
+pub fn crossing_points(a: &[P2], b: &[P2]) -> Vec<P2> {
+    if a.len() < 2 || b.len() < 2 {
+        return Vec::new();
+    }
+    let idx = SegIndex::new(b, 50.0);
+    let mut buf = Vec::new();
+    let mut out = Vec::new();
+    for w in a.windows(2) {
+        let len = ((w[1][0] - w[0][0]).powi(2) + (w[1][1] - w[0][1]).powi(2)).sqrt();
+        if len == 0.0 {
+            continue;
+        }
+        let d = [(w[1][0] - w[0][0]) / len, (w[1][1] - w[0][1]) / len];
+        let mid = [(w[0][0] + w[1][0]) / 2.0, (w[0][1] + w[1][1]) / 2.0];
+        if let Some(t) = idx.nearest_hit(mid, d, len / 2.0, &mut buf) {
+            out.push([mid[0] + d[0] * t, mid[1] + d[1] * t]);
+        }
+    }
+    out
+}
+
 type Assessed = (
     Vec<P2>,
     Vec<(Option<f64>, Option<f64>)>,
@@ -518,8 +787,10 @@ type Assessed = (
 );
 
 /// Check the banks against the reference made from `seed` (any rough centreline): per station of the
-/// reference, its chainage, the two offsets and the checks failed. Nothing is changed.
-fn assess(left: &[P2], right: &[P2], seed: &[P2], p: &CheckParams) -> Assessed {
+/// reference, its chainage, the two offsets and the checks failed. Nothing is changed. `pinches` are
+/// points where the banks cross (from the last round): the stations around each that are narrower
+/// than `pinch_width_m` are repaired on both banks, flagged `side` (issue #410).
+fn assess(left: &[P2], right: &[P2], seed: &[P2], p: &CheckParams, pinches: &[P2]) -> Assessed {
     // The reference comes from the seed, not from the mid-line of the banks under test: banks that
     // cross back and forth would give a mid-line that does too.
     let m0 = resample(seed, p.station_m);
@@ -563,6 +834,49 @@ fn assess(left: &[P2], right: &[P2], seed: &[P2], p: &CheckParams) -> Assessed {
         bad_r[i] = r.is_none() || swapped;
         lo.push(l.filter(|_| !swapped));
         ro.push(r.filter(|_| !swapped));
+    }
+    // 1b. Pinches: where the banks crossed, both banks lie together, a few metres apart or swapped
+    // between the stations. That is a wrong bank, not a throat: from the station nearest the crossing,
+    // both banks are repaired out to the first stations either side that are wider than
+    // `pinch_width_m`, so the repair spans the pinch from real width on both sides. Only a pinch is
+    // repaired: a crossing whose nearest station is not narrow, a run that meets a station with no
+    // bank, or one longer than `max_run_m`, is left to the `crossing` flag.
+    let narrow = |i: usize| matches!(off[i], (Some(l), Some(r)) if l - r < p.pinch_width_m);
+    for x in pinches {
+        let Some(i) = (first..=last.max(first).min(n.saturating_sub(1))).min_by(|a, b| {
+            let d = |k: usize| (reference[k][0] - x[0]).powi(2) + (reference[k][1] - x[1]).powi(2);
+            d(*a).total_cmp(&d(*b))
+        }) else {
+            continue;
+        };
+        if !narrow(i) {
+            continue;
+        }
+        let (mut a, mut b) = (i, i);
+        while a > first && narrow(a - 1) {
+            a -= 1;
+        }
+        while b < last && narrow(b + 1) {
+            b += 1;
+        }
+        let ends_have_banks = |k: usize| off[k].0.is_some() && off[k].1.is_some();
+        if (b - a) as f64 * p.station_m > p.max_run_m
+            || a == first
+            || b == last
+            || !ends_have_banks(a - 1)
+            || !ends_have_banks(b + 1)
+        {
+            continue;
+        }
+        for j in a..=b {
+            // A bank on the wrong side between the stations: `side`. The check `crossing` stays for a
+            // crossing left after the last round.
+            checks[j].side = true;
+            bad_l[j] = true;
+            bad_r[j] = true;
+            lo[j] = None;
+            ro[j] = None;
+        }
     }
     // 2. Lateral jumps, per bank.
     for (o, bad, out) in [(&mut lo, &mut bad_l, 1.0), (&mut ro, &mut bad_r, -1.0)] {
@@ -635,7 +949,7 @@ fn assess(left: &[P2], right: &[P2], seed: &[P2], p: &CheckParams) -> Assessed {
 
 /// The failures of a pair of banks, without repairing them: chainage along the reference and checks.
 pub fn check_banks(left: &[P2], right: &[P2], seed: &[P2], p: &CheckParams) -> Vec<(f64, Checks)> {
-    let (reference, _, checks, _, _) = assess(left, right, seed, p);
+    let (reference, _, checks, _, _) = assess(left, right, seed, p, &[]);
     let s = owd_format::design::midline::arc(&reference);
     checks
         .iter()
@@ -647,6 +961,11 @@ pub fn check_banks(left: &[P2], right: &[P2], seed: &[P2], p: &CheckParams) -> V
 
 /// The most rounds of checks and repairs.
 pub const MAX_ROUNDS: usize = 3;
+
+/// The most rounds after [`MAX_ROUNDS`] while the banks still cross: each repairs the pinches the
+/// last one left (a repair can lay two banks together elsewhere). Provisional: on the recorded
+/// whole-river Sassandra banks (issue #410) two such rounds leave no crossing.
+pub const MAX_PINCH_ROUNDS: usize = 3;
 
 fn repairs(c: &Checked) -> bool {
     c.failed
@@ -664,21 +983,51 @@ pub fn check_and_repair(
     seed: &[P2],
     p: &CheckParams,
 ) -> Result<Checked, ReachError> {
-    let (mut c, mut crossed) = check_once(left, right, seed, p)?;
-    for _ in 1..MAX_ROUNDS {
-        if !repairs(&c) && !crossed {
+    let (mut c, mut crossed) = check_once(left, right, seed, p, &[])?;
+    for round in 1..MAX_ROUNDS + MAX_PINCH_ROUNDS {
+        if (!repairs(&c) && !crossed) || (round >= MAX_ROUNDS && !crossed) {
             break;
         }
+        // Where the banks crossed, the next round repairs the pinch (issue #410).
+        let pinches = if crossed {
+            crossing_points(&c.left, &c.right)
+        } else {
+            Vec::new()
+        };
         // Every round reads the banks along the seed, never along its own last centreline: a round
         // that went wrong must not make the next one's reference worse.
-        let (mut next, x) = check_once(&c.left, &c.right, seed, p)?;
+        let (mut next, x) = check_once(&c.left, &c.right, seed, p, &pinches)?;
         let earlier = rechain(&c.stretches, &c.centreline, &next.centreline);
         next.stretches = merge(earlier, next.stretches);
         c = next;
         crossed = x;
     }
     if crossed {
-        flag_crossings(&mut c, p);
+        // The rounds do not always settle (issue #410): untangle the banks directly, with no
+        // rebuild of the banks, and say how far that moved them. The mid-line follows the untangled
+        // banks (read along the last one), and the stretches move onto it.
+        let u = untangle(&c.left, &c.right, UNTANGLE_CLEARANCE_M);
+        if u.report.pieces > 0 {
+            let centreline = cut_loops(
+                &midline(&u.left, &u.right, &c.centreline, p.station_m),
+                CENTRELINE_LOOP_STATIONS,
+            );
+            c.stretches = rechain(&c.stretches, &c.centreline, &centreline);
+            c.widths = bank_offsets(&centreline, &u.left, &u.right)
+                .iter()
+                .map(|o| match o {
+                    (Some(l), Some(r)) => (l - r).max(0.0),
+                    _ => 0.0,
+                })
+                .collect();
+            c.centreline = centreline;
+            c.left = u.left;
+            c.right = u.right;
+        }
+        c.untangle = u.report;
+        if u.report.left_over > 0 {
+            flag_crossings(&mut c, p);
+        }
     }
     Ok(c)
 }
@@ -729,11 +1078,12 @@ fn check_once(
     right: &[P2],
     seed: &[P2],
     p: &CheckParams,
+    pinches: &[P2],
 ) -> Result<(Checked, bool), ReachError> {
     if left.len() < 2 || right.len() < 2 || seed.len() < 2 {
         return Err(ReachError::Input("the banks are too short to check".into()));
     }
-    let (reference, off, checks, bad_l, bad_r) = assess(left, right, seed, p);
+    let (reference, off, checks, bad_l, bad_r) = assess(left, right, seed, p, pinches);
     // The same normals as `bank_offsets` gave the offsets along.
     let nrm = arc_normals(
         &reference,
@@ -863,6 +1213,7 @@ fn check_once(
             widths,
             stretches,
             failed,
+            untangle: UntangleReport::default(),
         },
         crossed,
     ))

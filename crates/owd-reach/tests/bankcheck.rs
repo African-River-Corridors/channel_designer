@@ -4,7 +4,9 @@
 //! Label: property (every expected value follows from the geometry built here)
 
 use owd_format::design::midline::{bank_offsets, midline_offsets};
-use owd_reach::bankcheck::{CheckParams, Checks, check_and_repair, check_banks, lines_cross};
+use owd_reach::bankcheck::{
+    CheckParams, Checks, check_and_repair, check_banks, crossing_points, lines_cross, untangle,
+};
 use owd_reach::banks::StretchKind;
 
 macro_rules! t {
@@ -292,5 +294,135 @@ mod merged_stretches {
                 ..Checks::default()
             })
         );
+    }
+}
+
+/// Every point where the two lines cross (segment against segment).
+fn crossings(a: &[P], b: &[P]) -> Vec<P> {
+    let mut out = Vec::new();
+    for s in a.windows(2) {
+        for t in b.windows(2) {
+            let e = [s[1][0] - s[0][0], s[1][1] - s[0][1]];
+            let f = [t[1][0] - t[0][0], t[1][1] - t[0][1]];
+            let den = e[0] * f[1] - e[1] * f[0];
+            if den == 0.0 {
+                continue;
+            }
+            let g = [t[0][0] - s[0][0], t[0][1] - s[0][1]];
+            let u = (g[0] * f[1] - g[1] * f[0]) / den;
+            let v = (g[0] * e[1] - g[1] * e[0]) / den;
+            if (0.0..=1.0).contains(&u) && (0.0..=1.0).contains(&v) {
+                out.push([s[0][0] + u * e[0], s[0][1] + u * e[1]]);
+            }
+        }
+    }
+    out
+}
+
+t! {
+    /// Issue #410, offline, on the same recorded whole-river banks: the repairs left 12 crossings, in
+    /// pairs a few metres apart, each a pinch of about zero width where a `side` repair laid both
+    /// banks together. A zero-width pinch is a wrong bank: the rounds repair it, so none is left.
+    fn the_recorded_whole_river_banks_do_not_cross_after_the_repairs() {
+        let fx: serde_json::Value =
+            serde_json::from_str(include_str!("data/midline-tangle.json")).unwrap();
+        let pts = |k: &str| -> Vec<P> {
+            fx[k]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|p| [p[0].as_f64().unwrap(), p[1].as_f64().unwrap()])
+                .collect()
+        };
+        let (left, right, seed) = (pts("left"), pts("right"), pts("seed"));
+        let p = CheckParams {
+            max_step_m: Some(1.5),
+            ..CheckParams::at_step(5.0)
+        };
+        let c = check_and_repair(&left, &right, &seed, &p).unwrap();
+        let x = crossings(&c.left, &c.right);
+        assert!(x.is_empty(), "{} crossings left: {x:?}", x.len());
+        assert!(lines_cross(&c.left, &c.right).is_none());
+        // The untangle that did it is on the record, never silent.
+        assert!(c.untangle.pieces > 0, "{:?}", c.untangle);
+        assert!(c.untangle.max_move_m > 0.0 && c.untangle.moved_m >= c.untangle.max_move_m);
+        assert_eq!(c.untangle.left_over, 0);
+        println!("untangle on the fixture: {:?}", c.untangle);
+        // The repair keeps the centreline about as long as its seed (#373).
+        assert!(length(&c.centreline) / length(&seed) < 1.1);
+    }
+}
+
+t! {
+    /// Issue #410: the untangle never leaves two banks crossed, on generated tangles of a winding
+    /// channel: a bank that dives through the other and back, a spike across it, and a chord that
+    /// cuts a bend across the other bank and back. Label: property.
+    fn the_untangle_leaves_no_crossing_on_generated_tangles() {
+        let mut x: u64 = 7;
+        let mut next = || {
+            x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((x >> 33) as f64) / (1u64 << 31) as f64
+        };
+        let mut untangled = 0;
+        for case in 0..40 {
+            let w = 60.0 + next() * 300.0;
+            let (amp, ph) = (next() * 400.0, next() * 6.0);
+            let wave = |x: f64| amp * (x / 600.0 + ph).sin();
+            let mut left = bank(w / 2.0, wave);
+            let mut right = bank(-w / 2.0, wave);
+            for _ in 0..3 {
+                let at = 30 + (next() * 430.0) as usize;
+                let len = 1 + (next() * 20.0) as usize;
+                let on_left = next() < 0.5;
+                let (b, sign) = if on_left { (&mut left, -1.0) } else { (&mut right, 1.0) };
+                match (next() * 3.0) as usize {
+                    // A dive: the bank runs past the other one by up to the width again, and back.
+                    0 => {
+                        let d = w * (1.05 + next());
+                        for k in 0..=len {
+                            let f = (core::f64::consts::PI * k as f64 / len as f64).sin();
+                            let i = (at + k).min(b.len() - 1);
+                            b[i][1] += sign * d * f.max(0.3);
+                        }
+                    }
+                    // A spike: one vertex out across the other bank.
+                    1 => b[at][1] += sign * w * (1.5 + next()),
+                    // A chord: a run of vertices replaced by the straight line between its ends,
+                    // pushed across the other bank.
+                    _ => {
+                        let j = (at + 10 + len * 3).min(b.len() - 2);
+                        let (p, q) = (b[at], b[j]);
+                        for (k, v) in b.iter_mut().enumerate().take(j).skip(at + 1) {
+                            let f = (k - at) as f64 / (j - at) as f64;
+                            *v = [p[0] + f * (q[0] - p[0]), p[1] + f * (q[1] - p[1]) + sign * w * 1.2];
+                        }
+                    }
+                }
+            }
+            let u = untangle(&left, &right, 2.0);
+            let left_x = crossing_points(&u.left, &u.right);
+            assert!(left_x.is_empty() || u.report.left_over > 0, "case {case}: silent crossings {left_x:?}");
+            assert_eq!(!crossings(&u.left, &u.right).is_empty(), u.report.left_over > 0, "case {case}");
+            assert_eq!(u.report.left_over, 0, "case {case}: {:?}", u.report);
+            assert_eq!(crossings(&left, &right).is_empty(), u.report.pieces == 0, "case {case}");
+            untangled += usize::from(u.report.pieces > 0);
+        }
+        // The cases are tangles: most cross before the untangle.
+        assert!(untangled >= 30, "only {untangled} of 40 cases crossed");
+    }
+}
+
+t! {
+    /// Banks that do not cross come out of the untangle exactly as they went in, with nothing moved.
+    fn banks_that_do_not_cross_are_not_untangled() {
+        let wave = |x: f64| 300.0 * (x / 500.0).sin();
+        let (left, right) = (bank(100.0, wave), bank(-100.0, wave));
+        let u = untangle(&left, &right, 2.0);
+        assert_eq!(u.left, left);
+        assert_eq!(u.right, right);
+        assert_eq!(u.report.pieces, 0);
+        assert_eq!(u.report.max_move_m, 0.0);
+        assert_eq!(u.report.moved_m, 0.0);
+        assert_eq!(u.report.left_over, 0);
     }
 }

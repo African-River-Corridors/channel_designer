@@ -1816,6 +1816,17 @@ fn trace_line(text: &str, path: &str) -> core::result::Result<Vec<[f64; 2]>, Fai
         })
 }
 
+/// What the bank checks' final untangle moved (issue #410), for the reach's JSON: the pieces of
+/// bank replaced, the farthest move and the length replaced, in metres, and the crossings left.
+fn untangle_json(u: &owd_reach::bankcheck::UntangleReport) -> Value {
+    json!({
+        "pieces": u.pieces,
+        "max_move_m": u.max_move_m,
+        "moved_m": u.moved_m,
+        "crossings_left": u.left_over,
+    })
+}
+
 pub fn reach(flags: ReachFlags) -> Result {
     let mut dropped = owd_reach::DroppedFiles::new();
     for path in &flags.jrc_tile {
@@ -2198,6 +2209,18 @@ pub fn reach_with(
         human.push_str(&format!("\nOverpass: {}", planned.notes.join("; ")));
     }
     human.push_str("\n© OpenStreetMap contributors (ODbL)");
+    // A bank the checks had to untangle is moved, and says how far (issue #410).
+    for (what, u) in [
+        ("banks", banks.as_ref().map(|b| b.untangle)),
+        ("edge-fitted banks", fitted.as_ref().map(|f| f.fit.untangle)),
+    ] {
+        if let Some(u) = u.filter(|u| u.pieces > 0) {
+            human.push_str(&format!(
+                "\nthe {what} crossed: the checks untangled {} piece(s), {:.0} m of bank, moved up to {:.0} m (check them)",
+                u.pieces, u.moved_m, u.max_move_m
+            ));
+        }
+    }
     say(
         flags.file == "-",
         flags.json,
@@ -2217,6 +2240,7 @@ pub fn reach_with(
                 "low_confidence_stretches": b.stretches.len(),
                 "scenes": seeded.as_ref().map(|s| s.scenes().iter().map(|c| c.id.clone()).collect::<Vec<_>>()),
                 "jrc_agreement": seeded.as_ref().and_then(|s| s.jrc_agreement),
+                "untangle": untangle_json(&b.untangle),
             })),
             "edge_fit": skipped.as_ref().map(|why| json!({"skipped": why})).or_else(|| fitted.as_ref().map(|f| json!({
                 "scene_id": f.scene.id,
@@ -2225,6 +2249,7 @@ pub fn reach_with(
                 "max_shift_m": f.fit.params.max_shift_m,
                 "largest_shift_m": f.fit.left_shift.iter().chain(&f.fit.right_shift).fold(0.0f64, |a, d| a.max(d.abs())),
                 "low_confidence_stretches": f.fit.stretches.len(),
+                "untangle": untangle_json(&f.fit.untangle),
             }))),
         }),
     );
