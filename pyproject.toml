@@ -1,6 +1,6 @@
 [project]
 name = "open-waterway-designer"
-version = "0.3.0"
+version = "0.3.1"
 description = "Navigation channel design for inland waterways: width, bend and depth rules (PIANC, Chinese GB 50139), alignment, and cut and dredge volumes."
 requires-python = ">=3.12"
 license = "Apache-2.0"
