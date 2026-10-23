@@ -133,8 +133,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      # vessel_designer installs from git. While that repository is private this step needs read
-      # access to it; after release it does not.
+      # vessel-designer installs from PyPI (a wheel per platform).
       - name: Install
         run: |
           python -m pip install --upgrade pip
@@ -160,8 +159,8 @@ jobs:
           echo "$NEEDS" | jq -e '(keys == ["gate-lint", "gate-python", "gate-rust"]) and all(.[]; .result == "success")' >/dev/null \
             || { echo "test: a part of the gate did not pass" >&2; exit 1; }
 
-  # The test job uses the pinned git ref in pyproject.toml. This job tries the git
-  # dependency at @main instead, so an upstream change that will break the next pin bump
+  # The test job uses the vessel-designer release pinned in pyproject.toml. This job tries
+  # OVCD at @main instead, so an upstream change that will break the next pin bump
   # shows up here first. Weekly and on demand only; it never gates a pull request.
   upstream-main:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

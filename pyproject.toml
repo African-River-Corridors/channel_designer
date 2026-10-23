@@ -11,8 +11,8 @@ keywords = ["inland-waterways", "navigation-channel", "pianc", "dredging", "eart
 dependencies = [
     "numpy>=1.26",
     "shapely>=2.0",
-    # Pinned to a release tag, not @main (issue #11). The repository was renamed from vessel_designer.
-    "vessel_designer @ git+https://github.com/African-River-Corridors/open-vessel-concept-drawings@v0.2.2",
+    # From PyPI, so OWD itself can be published there (PyPI refuses git dependencies).
+    "vessel-designer>=0.2.5,<0.3",
 ]
 
 [project.optional-dependencies]

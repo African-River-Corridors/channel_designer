@@ -109,7 +109,16 @@ def scenario_rulesets() -> dict:
     out = {}
     for rid in sorted(_OLD_NAMES):
         for vid in sorted(VESSEL_STANDARDS):
-            s = channel_shape(vid, **_OLD_NAMES[rid])
+            # The catalogue holds classes a channel is not sized for: a pusher or a tug alone, or a
+            # class with no draught (ADN types fix construction, not an envelope). OWD refuses them
+            # with its reason. The refusal is a result too, so a change in it shows here.
+            try:
+                s = channel_shape(vid, **_OLD_NAMES[rid])
+            except ValueError as e:
+                if "cannot size a channel" not in str(e):
+                    raise
+                out[f"{rid}/{vid}"] = {"refused": str(e)}
+                continue
             out[f"{rid}/{vid}"] = {
                 "bottom_width_straight_m": s.bottom_width_straight_m, "min_bend_radius_m": s.min_bend_radius_m,
                 "design_depth_m": s.design_depth_m, "bend_widening_at_rmin_m": s.bend_widening_at_rmin_m,

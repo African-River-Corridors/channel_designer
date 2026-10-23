@@ -134,8 +134,8 @@ jobs:
           # `--only-binary :all:` makes pip refuse any source build: a compiler is never needed.
           python -m pip install --only-binary :all: --no-deps --no-index --find-links dist open-waterway-designer
           python -m pip install --only-binary :all: numpy shapely
-          # vessel_designer is pure Python, installed from git (its sdist builds without a compiler).
-          python -m pip install "vessel_designer @ git+https://github.com/African-River-Corridors/open-vessel-concept-drawings@v0.2.2"
+          # vessel-designer from PyPI, binary only: it ships a wheel per platform, so no compiler here either.
+          python -m pip install --only-binary :all: "vessel-designer>=0.2.5,<0.3"
       - name: Use it
         shell: pwsh
         run: |
