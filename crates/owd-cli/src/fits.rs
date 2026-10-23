@@ -40,12 +40,20 @@ fn table(results: &Value) -> String {
     for rs in results["rule_sets"].as_array().into_iter().flatten() {
         out.push_str(&format!("\n{}\n", rs["rule_set"].as_str().unwrap_or("?")));
         out.push_str(&format!(
-            "{:<24} {:>6} {:>6} {:>7} {:>5} {:>10} {:>11} {:>8}\n",
-            "class", "LOA m", "beam m", "Rmin m", "fits", "narrow by", "radius by", "stretches"
+            "{:<24} {:>6} {:>6} {:>7} {:>7} {:>5} {:>10} {:>11} {:>8}\n",
+            "class",
+            "LOA m",
+            "beam m",
+            "Rmin m",
+            "chord m",
+            "fits",
+            "narrow by",
+            "radius by",
+            "stretches"
         ));
         for c in rs["classes"].as_array().into_iter().flatten() {
             out.push_str(&format!(
-                "{:<24} {:>6} {:>6} {:>7} {:>5} {:>10} {:>11} {:>8}\n",
+                "{:<24} {:>6} {:>6} {:>7} {:>7} {:>5} {:>10} {:>11} {:>8}\n",
                 // The class id, or the custom vessel's label (spec 0015 T1).
                 c["vessel_standard_id"]
                     .as_str()
@@ -54,6 +62,10 @@ fn table(results: &Value) -> String {
                 f1(&c["loa_m"]),
                 f1(&c["beam_m"]),
                 format!("{:.0}", c["r_min_m"].as_f64().unwrap_or(f64::NAN)),
+                // The chord the radius is read on (#368); an answer made before it was kept has none.
+                c["radius_check_chord_m"]
+                    .as_f64()
+                    .map_or("-".to_string(), |x| format!("{x:.0}")),
                 if c["fits"] == true { "yes" } else { "no" },
                 f1(&c["worst_width_deficit_m"]),
                 f1(&c["worst_radius_deficit_m"]),

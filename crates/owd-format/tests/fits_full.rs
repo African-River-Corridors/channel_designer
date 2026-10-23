@@ -311,3 +311,50 @@ fn a_plan_only_answer_reads_the_centreline_and_says_why() {
         .count();
     assert!(radius > 0, "the centreline's zigzag");
 }
+
+#[test]
+fn every_row_states_its_chord_and_the_full_answer_reads_the_river_on_it() {
+    // Label: property (#368). The chord is a third of the class's R_min, as `align` reads it, in
+    // the plan-only answer and in the full one, and every row says which.
+    use owd_core::alignment::navigable::local_radius_on;
+    use owd_format::design::fits::PlanLine;
+    let mut plan = wiggly();
+    plan.clear_bed_model();
+    plan.run_fits_with(None, Some(&land)).unwrap();
+    let mut full = wiggly();
+    full.run_fits_on(None, Some(&land), PlanLine::Centreline)
+        .unwrap();
+    let centre: Vec<[f64; 2]> =
+        serde_json::from_value(full.document()["inputs"]["centreline"]["coordinates"].clone())
+            .unwrap();
+    for s in [&plan, &full] {
+        for c in rows(s) {
+            let chord = c["radius_check_chord_m"].as_f64().expect("the chord");
+            assert!(
+                (chord - c["r_min_m"].as_f64().unwrap() / 3.0).abs() < 1e-9,
+                "{c}"
+            );
+        }
+    }
+    // The full answer's river radius at the worst station of a radius stretch is the centreline's,
+    // read on that chord.
+    let mut seen = 0;
+    for c in rows(&full) {
+        let chord = c["radius_check_chord_m"].as_f64().unwrap();
+        for x in c["constraint_stretches"].as_array().unwrap() {
+            if x["kind"] != "radius" {
+                continue;
+            }
+            let at = x["worst_chainage_m"].as_f64().unwrap();
+            let want = local_radius_on(&centre, at, chord);
+            let got = x["river"].as_f64().unwrap();
+            assert!(
+                (got - want).abs() <= 1e-6 * want.abs().max(1.0),
+                "{}: {got} against {want} on a {chord} m chord",
+                c["vessel_standard_id"]
+            );
+            seen += 1;
+        }
+    }
+    assert!(seen > 0);
+}
