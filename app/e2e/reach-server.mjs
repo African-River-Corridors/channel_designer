@@ -78,11 +78,9 @@ function answer(url, origin) {
 let delayMs = 0;
 export const slow = (ms) => (delayMs = ms);
 
-export const hits = []; // DEBUG (temporary, #391)
 export function serveReach(port = 0) {
   let origin = "";
   const server = http.createServer(async (req, res) => {
-    hits.push(`${new Date().toISOString().slice(11, 23)} ${req.method} ${req.url.slice(0, 120)}`);
     if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
     const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "range", "access-control-expose-headers": "content-range, content-length" };
     if (req.method === "OPTIONS") return res.writeHead(204, cors).end();

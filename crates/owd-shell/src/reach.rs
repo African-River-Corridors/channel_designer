@@ -626,6 +626,91 @@ impl AppState {
 
     /// The constraint stretches of the "what fits" answer, for the map: by ruleset and vessel
     /// class, each with its kind and its two ends in longitude and latitude.
+    /// The largest vessel the river allows (spec 0016 T4): run the size sweep with the spec's
+    /// defaults (five single hulls, 10 x 2 m to 50 x 10 m, PIANC-C, 2 m draught) and keep it. The
+    /// desktop runs the sizes at once; the web, one after another.
+    pub fn run_envelope(&mut self) -> Result<(), String> {
+        self.refuse_while_running()?;
+        let mut s = self.session().clone();
+        s.run_envelope(
+            owd_core::envelope::Settings::default(),
+            cfg!(not(target_arch = "wasm32")),
+        )
+        .map_err(err)?;
+        self.replace_session(s);
+        self.set_dirty();
+        Ok(())
+    }
+
+    /// The sweep's per-kilometre strip for the map (spec 0016 T4): each kilometre cut from the plan
+    /// line it was read on, in WGS84, with the largest size that passes it (`null` where none does)
+    /// and that size's place in the series (`rank`, of `sizes`), for its colour. Empty before the
+    /// sweep has run.
+    // Not inlined: it runs from the view, which may be built deep in a reach step's stack, and the
+    // web worker's stack is small (#391).
+    #[inline(never)]
+    pub(crate) fn envelope_strip(&self) -> Value {
+        use owd_format::design::crs::Crs;
+        let session = self.session();
+        let doc = session.document();
+        let r = &doc["stages"]["envelope"]["results"];
+        let (Some(rows), Some(sizes)) = (r["per_km"].as_array(), r["sizes"].as_array()) else {
+            return json!([]);
+        };
+        let Some(utm) = doc["project"]["crs"]["epsg"]
+            .as_u64()
+            .and_then(|c| Crs::from_epsg(c as u32).ok())
+            .and_then(|c| match c {
+                Crs::Utm(u) => Some(u),
+                Crs::Wgs84 => None,
+            })
+        else {
+            return json!([]);
+        };
+        // The line the sweep read: the reference line, or the centreline when it could not be made.
+        let line = match r["plan_line"].as_str() {
+            Some("reference") => session.reference_line(),
+            _ => None,
+        }
+        .or_else(|| {
+            doc["inputs"]["centreline"]["coordinates"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|p| Some([p[0].as_f64()?, p[1].as_f64()?]))
+                        .collect()
+                })
+        })
+        .unwrap_or_default();
+        if line.len() < 2 {
+            return json!([]);
+        }
+        let ll = |p: [f64; 2]| utm.inverse(p[0], p[1]).map_or(Value::Null, |q| json!(q));
+        let strip: Vec<Value> = rows
+            .iter()
+            .map(|k| {
+                let (a, b) = (
+                    k["from_m"].as_f64().unwrap_or(0.0),
+                    k["to_m"].as_f64().unwrap_or(0.0),
+                );
+                let piece = match owd_core::geom::linear::substring(&line, a, b) {
+                    owd_core::geom::Geometry::LineString(p) => p,
+                    _ => Vec::new(),
+                };
+                let label = &k["largest"]["label"];
+                json!({
+                    "from_m": a,
+                    "to_m": b,
+                    "largest": label,
+                    "rank": sizes.iter().position(|z| &z["label"] == label),
+                    "sizes": sizes.len(),
+                    "line": piece.into_iter().map(ll).collect::<Vec<_>>(),
+                })
+            })
+            .collect();
+        json!(strip)
+    }
+
     fn fits_stretches(&self) -> Value {
         use owd_format::design::crs::Crs;
         let doc = self.session().document();

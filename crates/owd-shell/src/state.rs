@@ -712,7 +712,7 @@ impl AppState {
                 })
             })
             .collect();
-        json!({
+        let mut snap = json!({
             "engine_version": owd_format::design::session::ENGINE_VERSION,
             "document": self.session.document(),
             "stages": status,
@@ -730,7 +730,17 @@ impl AppState {
                 StageStatus::Stale => "stale",
             },
             "reach_view": self.reach_view(),
-        })
+        });
+        // The largest vessel (spec 0016): like `fits`, it never reruns by itself. Set outside the
+        // `json!` above, whose frame is already large, and the strip from a function of its own:
+        // the web worker's stack is small (#391).
+        snap["envelope_status"] = json!(match self.session.envelope_status() {
+            StageStatus::NotRun => "not_run",
+            StageStatus::Fresh => "fresh",
+            StageStatus::Stale => "stale",
+        });
+        snap["reach_view"]["envelope_strip"] = self.envelope_strip();
+        snap
     }
 }
 
